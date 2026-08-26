@@ -1,0 +1,674 @@
+{
+  "connector": "SAP UI Connector",
+  "modules": [
+    {
+      "id": "sales",
+      "label": "Sales",
+      "agents": [
+        {
+          "id": "sales-order-agent",
+          "label": "Sales Order Agent",
+          "description": "Create, view and manage SAP B1 sales orders.",
+          "kind": "tool",
+          "existingTools": ["create_sales_order", "get_open_orders", "check_atp"],
+          "status": "available"
+        },
+        {
+          "id": "sales-quotation-agent",
+          "label": "Sales Quotation Agent",
+          "description": "Conversational wizard to create a sales quotation.",
+          "kind": "controller",
+          "existingTools": ["create_sales_quotation", "get_open_quotations"],
+          "existingController": { "mount": "/api/sales-quotation", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "quotation-comparison-agent",
+          "label": "Quotation Comparison Agent",
+          "description": "Read-only comparison of open quotations grouped by customer.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/quotation-comparison", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "quotation-to-order-agent",
+          "label": "Quotation → Order Agent",
+          "description": "Convert an open sales quotation into a sales order.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/quotation-order", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "delivery-agent",
+          "label": "Delivery Agent",
+          "description": "Create a delivery note from an open sales order, incl. pick list and POD.",
+          "kind": "controller",
+          "existingTools": ["create_delivery", "get_pick_list", "confirm_delivery_pod"],
+          "existingController": { "mount": "/api/order-delivery", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "ar-invoice-agent",
+          "label": "AR Invoice Agent",
+          "description": "Generate an AR invoice from a delivery.",
+          "kind": "controller",
+          "existingTools": ["create_ar_invoice"],
+          "existingController": { "mount": "/api/delivery-arinv", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "ar-credit-memo-agent",
+          "label": "AR Credit Memo Agent",
+          "description": "Create an AR credit memo from an existing AR invoice.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/arinv-arcm", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "incoming-payment-agent",
+          "label": "Incoming Payment Agent",
+          "description": "Apply an incoming customer payment across open AR invoices.",
+          "kind": "controller",
+          "existingTools": ["apply_incoming_payment"],
+          "existingController": { "mount": "/api/incoming-payment", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "customer-agent",
+          "label": "Customer Agent",
+          "description": "List and inspect customer master records.",
+          "kind": "tool",
+          "existingTools": ["get_customer_list", "get_customer_details"],
+          "status": "available"
+        },
+        {
+          "id": "sales-analysis-agent",
+          "label": "Sales Analysis Agent",
+          "description": "Sales analysis dashboard over HANA sml.svc views.",
+          "kind": "page",
+          "existingTools": ["get_sales_analysis", "get_top_customers", "get_top_items", "get_sales_by_period", "get_salesperson_performance", "get_item_group_sales", "get_warehouse_sales", "get_year_over_year"],
+          "existingController": { "mount": "/api/sales-analysis", "endpoints": ["/analyze", "/chat"] },
+          "existingUI": "/sales-analysis.html",
+          "status": "available"
+        },
+        {
+          "id": "sales-forecast-agent",
+          "label": "Sales Forecast Agent",
+          "description": "9-model revenue/qty/GP forecast with auto model selection.",
+          "kind": "tool",
+          "existingTools": ["forecast_sales", "detect_seasonality"],
+          "status": "available"
+        },
+        {
+          "id": "credit-control-agent",
+          "label": "Credit Control Agent",
+          "description": "Rank overdue receivables by risk score, AR aging buckets.",
+          "kind": "tool",
+          "existingTools": ["get_collections_worklist", "get_ar_aging"],
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "purchase",
+      "label": "Purchase",
+      "agents": [
+        {
+          "id": "purchase-request-agent",
+          "label": "Purchase Request Agent",
+          "description": "Conversational wizard to create an internal purchase requisition.",
+          "kind": "controller",
+          "existingTools": ["create_purchase_request"],
+          "existingController": { "mount": "/api/pr-agent", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "purchase-quotation-agent",
+          "label": "Purchase Quotation Agent",
+          "description": "Create an RFQ / purchase quotation, optionally copied from a PR.",
+          "kind": "tool",
+          "existingTools": ["create_purchase_quotation"],
+          "status": "available"
+        },
+        {
+          "id": "purchase-order-agent",
+          "label": "Purchase Order Agent",
+          "description": "Create a purchase order; convert open PRs or purchase quotations into a PO.",
+          "kind": "controller",
+          "existingTools": ["create_purchase_order", "create_po_from_quotation"],
+          "existingController": { "mount": "/api/pr-to-po", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "grpo-agent",
+          "label": "GRPO Agent",
+          "description": "Receive an open PO as a Goods Receipt PO.",
+          "kind": "controller",
+          "existingTools": ["create_goods_receipt_po"],
+          "existingController": { "mount": "/api/po-to-grpo", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "ap-invoice-agent",
+          "label": "AP Invoice Agent",
+          "description": "Generate an AP invoice from a GRPO, with OCR-assisted matching and 3-way match validation.",
+          "kind": "controller",
+          "existingTools": ["create_ap_invoice", "run_three_way_match"],
+          "existingController": { "mount": "/api/grpo-apinv", "endpoints": ["/upload", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "three-way-match-agent",
+          "label": "3-Way Match Agent",
+          "description": "Manual PO ↔ GRPO ↔ AP Invoice validation and posting.",
+          "kind": "controller",
+          "existingTools": ["run_three_way_match", "create_ap_invoice"],
+          "existingController": { "mount": "/api/three-way-match", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "ap-credit-memo-agent",
+          "label": "AP Credit Memo Agent",
+          "description": "Create an AP credit memo from an existing AP invoice.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/apinv-apcm", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "outgoing-payment-agent",
+          "label": "Outgoing Payment Agent",
+          "description": "Apply an outgoing vendor payment across open AP invoices.",
+          "kind": "controller",
+          "existingTools": ["apply_outgoing_payment"],
+          "existingController": { "mount": "/api/outgoing-payment", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "vendor-agent",
+          "label": "Vendor Agent",
+          "description": "List and inspect vendor master records.",
+          "kind": "tool",
+          "existingTools": ["get_vendor_list"],
+          "status": "available"
+        },
+        {
+          "id": "purchase-analysis-agent",
+          "label": "Purchase Analysis Agent",
+          "description": "Purchase analysis dashboard over HANA sml.svc AP views.",
+          "kind": "page",
+          "existingTools": ["get_purchase_analysis"],
+          "existingController": { "mount": "/api/purchase-analysis", "endpoints": ["/analyze", "/chat"] },
+          "existingUI": "/purchase-analysis.html",
+          "status": "available"
+        },
+        {
+          "id": "vendor-payment-aging-agent",
+          "label": "Vendor Payment Aging Agent",
+          "description": "AP aging via HANA VendorPaymentAgingQuery view.",
+          "kind": "page",
+          "existingTools": ["get_ap_aging"],
+          "existingController": { "mount": "/api/vendor-payment-aging", "endpoints": ["/analyze", "/chat", "/options"] },
+          "existingUI": "/vendor-payment-aging.html",
+          "status": "available"
+        },
+        {
+          "id": "purchasing-agent",
+          "label": "Purchase Recommendation",
+          "description": "Reorder scan, supplier risk, and impact analysis.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/purchasing", "endpoints": ["/scan", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "shipment-delay-agent",
+          "label": "Shipment Delay Agent",
+          "description": "Predicts delayed POs and downstream sales-order impact.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/shipment-delays", "endpoints": ["/scan", "/chat"] },
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "inventory",
+      "label": "Inventory",
+      "agents": [
+        {
+          "id": "stock-agent",
+          "label": "Stock Agent",
+          "description": "Total stock levels (on-stock/committed/on-order/available) per item.",
+          "kind": "tool",
+          "existingTools": ["get_total_stock", "check_atp"],
+          "status": "available"
+        },
+        {
+          "id": "warehouse-agent",
+          "label": "Warehouse Agent",
+          "description": "List active warehouses; sales breakdown by warehouse.",
+          "kind": "tool",
+          "existingTools": ["get_warehouse_list", "get_warehouse_sales"],
+          "status": "available"
+        },
+        {
+          "id": "stock-replenishment-agent",
+          "label": "Stock Replenishment Agent",
+          "description": "Reorder point calculation and items to reorder now.",
+          "kind": "tool",
+          "existingTools": ["calc_reorder_point", "monitor_reorder_items", "calc_eoq"],
+          "status": "available"
+        },
+        {
+          "id": "inventory-aging-agent",
+          "label": "Inventory Aging Agent",
+          "description": "Dead/slow-moving stock detection with tied-up value.",
+          "kind": "tool",
+          "existingTools": ["detect_dead_slow_stock", "predict_stockout"],
+          "status": "available"
+        },
+        {
+          "id": "bin-location-agent",
+          "label": "Bin Location Agent",
+          "description": "Pick-list lines for a sales order, sorted by bin.",
+          "kind": "tool",
+          "existingTools": ["get_pick_list"],
+          "status": "available"
+        },
+        {
+          "id": "batch-agent",
+          "label": "Batch Agent",
+          "description": "Batch-managed item lookups via the generic Service Layer tool.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer"],
+          "status": "available"
+        },
+        {
+          "id": "serial-number-agent",
+          "label": "Serial Number Agent",
+          "description": "Serial-managed item lookups via the generic Service Layer tool.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer"],
+          "status": "coming_soon"
+        },
+        {
+          "id": "inventory-transfer-agent",
+          "label": "Inventory Transfer Agent",
+          "description": "Warehouse-to-warehouse stock transfer.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer"],
+          "status": "coming_soon"
+        }
+      ]
+    },
+    {
+      "id": "finance",
+      "label": "Finance",
+      "agents": [
+        {
+          "id": "ar-aging-agent",
+          "label": "AR Aging Agent",
+          "description": "AR aging buckets.",
+          "kind": "tool",
+          "existingTools": ["get_ar_aging"],
+          "status": "available"
+        },
+        {
+          "id": "ap-aging-agent",
+          "label": "AP Aging Agent",
+          "description": "AP aging buckets.",
+          "kind": "tool",
+          "existingTools": ["get_ap_aging"],
+          "status": "available"
+        },
+        {
+          "id": "cash-flow-agent",
+          "label": "Cash Flow Agent",
+          "description": "AR/AP cash inflow/outflow forecast by due-date bucket.",
+          "kind": "tool",
+          "existingTools": ["forecast_cash_flow"],
+          "status": "available"
+        },
+        {
+          "id": "working-capital-agent",
+          "label": "Working Capital Agent",
+          "description": "DSO/DPO/DSI/CCC metrics.",
+          "kind": "tool",
+          "existingTools": ["calc_working_capital"],
+          "status": "available"
+        },
+        {
+          "id": "margin-erosion-agent",
+          "label": "Margin Erosion Agent",
+          "description": "GP% decline trend detection.",
+          "kind": "tool",
+          "existingTools": ["detect_margin_erosion"],
+          "status": "available"
+        },
+        {
+          "id": "tax-analysis-agent",
+          "label": "Tax Analysis Agent",
+          "description": "Tax analysis via the generic Service Layer / direct SQL tools.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer", "query_sql_direct"],
+          "status": "coming_soon"
+        },
+        {
+          "id": "general-ledger-agent",
+          "label": "General Ledger Agent",
+          "description": "GL / journal entry queries via the generic Service Layer or direct SQL/HANA tools.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer", "query_sql_direct", "query_hana_direct"],
+          "status": "coming_soon"
+        }
+      ]
+    },
+    {
+      "id": "production",
+      "label": "Production",
+      "agents": [
+        {
+          "id": "production-order-agent",
+          "label": "Production Order Agent",
+          "description": "View production orders and their lines, conversational chat.",
+          "kind": "inline-route",
+          "existingController": { "mount": "/api/production", "endpoints": ["/orders", "/order/:docEntry/lines", "/probe/:docEntry", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "mrp-agent",
+          "label": "MRP Agent",
+          "description": "Inventory check, AI-assisted analysis, and draft-PO generation for material requirements.",
+          "kind": "inline-route",
+          "existingTools": ["aggregate_procurement_demand", "generate_draft_pos"],
+          "existingController": { "mount": "/api/mrp", "endpoints": ["/inventory-check", "/ai-analyze", "/build-draft-pos", "/post-po", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "material-availability-agent",
+          "label": "Material Availability Agent",
+          "description": "Net shortfall across open sales orders and production orders.",
+          "kind": "tool",
+          "existingTools": ["aggregate_procurement_demand"],
+          "status": "available"
+        },
+        {
+          "id": "bom-agent",
+          "label": "BOM Agent",
+          "description": "Conversational wizard to create a Bill of Materials.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/master", "endpoints": ["/bom/reset", "/bom/chat"] },
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "wms",
+      "label": "WMS",
+      "agents": [
+        {
+          "id": "grpo-receiving-agent",
+          "label": "GRPO Receiving Agent",
+          "description": "Receive an open PO as a Goods Receipt PO.",
+          "kind": "controller",
+          "existingTools": ["create_goods_receipt_po"],
+          "existingController": { "mount": "/api/po-to-grpo", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "picking-agent",
+          "label": "Picking Agent",
+          "description": "Pick-list lines for a sales order, sorted by bin.",
+          "kind": "tool",
+          "existingTools": ["get_pick_list"],
+          "status": "available"
+        },
+        {
+          "id": "wms-delivery-agent",
+          "label": "Delivery Agent",
+          "description": "Create a delivery note from an open sales order, incl. proof-of-delivery.",
+          "kind": "controller",
+          "existingTools": ["create_delivery", "confirm_delivery_pod"],
+          "existingController": { "mount": "/api/order-delivery", "chatEndpoint": "/chat" },
+          "status": "available"
+        },
+        {
+          "id": "put-away-agent",
+          "label": "Put-Away Agent",
+          "description": "Bin put-away workflow.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer"],
+          "status": "coming_soon"
+        },
+        {
+          "id": "packing-agent",
+          "label": "Packing Agent",
+          "description": "Packing / staging workflow.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer"],
+          "status": "coming_soon"
+        },
+        {
+          "id": "cycle-count-agent",
+          "label": "Cycle Count Agent",
+          "description": "Cycle counting workflow.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer"],
+          "status": "coming_soon"
+        }
+      ]
+    },
+    {
+      "id": "analytics",
+      "label": "Analytics",
+      "agents": [
+        {
+          "id": "abc-xyz-agent",
+          "label": "ABC-XYZ Agent",
+          "description": "ABC-XYZ inventory classification.",
+          "kind": "tool",
+          "existingTools": ["analyze_abc_xyz"],
+          "status": "available"
+        },
+        {
+          "id": "customer-rfm-agent",
+          "label": "Customer RFM Agent",
+          "description": "RFM customer segmentation.",
+          "kind": "tool",
+          "existingTools": ["segment_customers_rfm"],
+          "status": "available"
+        },
+        {
+          "id": "customer-churn-agent",
+          "label": "Customer Churn Agent",
+          "description": "Churn risk scoring.",
+          "kind": "tool",
+          "existingTools": ["detect_customer_churn"],
+          "status": "available"
+        },
+        {
+          "id": "customer-clv-agent",
+          "label": "Customer CLV Agent",
+          "description": "Customer lifetime value and tiering.",
+          "kind": "tool",
+          "existingTools": ["calc_customer_clv"],
+          "status": "available"
+        },
+        {
+          "id": "revenue-concentration-agent",
+          "label": "Revenue Concentration Agent",
+          "description": "Pareto / HHI revenue concentration.",
+          "kind": "tool",
+          "existingTools": ["analyze_revenue_concentration"],
+          "status": "available"
+        },
+        {
+          "id": "vendor-performance-agent",
+          "label": "Vendor Performance Agent",
+          "description": "Vendor lead-time reliability, on-time delivery, and concentration.",
+          "kind": "tool",
+          "existingTools": ["analyze_vendor_lead_time", "analyze_on_time_delivery", "analyze_vendor_concentration"],
+          "status": "available"
+        },
+        {
+          "id": "transaction-outliers-agent",
+          "label": "Transaction Outliers Agent",
+          "description": "Z-score outlier detection on AR/AP transactions.",
+          "kind": "tool",
+          "existingTools": ["detect_transaction_outliers"],
+          "status": "available"
+        },
+        {
+          "id": "sales-performance-agent",
+          "label": "Sales Performance Agent",
+          "description": "Top customers/items, salesperson performance, YoY comparison.",
+          "kind": "page",
+          "existingTools": ["get_top_customers", "get_top_items", "get_salesperson_performance", "get_year_over_year"],
+          "existingUI": "/sales-analysis.html",
+          "status": "available"
+        },
+        {
+          "id": "purchase-performance-agent",
+          "label": "Purchase Performance Agent",
+          "description": "Aggregate purchase invoices by vendor.",
+          "kind": "page",
+          "existingTools": ["get_purchase_analysis"],
+          "existingUI": "/purchase-analysis.html",
+          "status": "available"
+        },
+        {
+          "id": "demand-forecast-agent",
+          "label": "Demand Forecast Agent",
+          "description": "Per-item demand forecast with procurement suggestions; seasonality detection.",
+          "kind": "controller",
+          "existingTools": ["forecast_item_demand", "detect_seasonality"],
+          "existingController": { "mount": "/api/forecasting", "endpoints": ["/groups", "/items", "/analyze", "/analogous/:itemCode", "/chat"] },
+          "status": "available"
+        }
+      ]
+    },
+    {
+      "id": "approvals",
+      "label": "Approvals",
+      "agents": [
+        {
+          "id": "rush-order-approval-agent",
+          "label": "Rush Order Approval Agent",
+          "description": "Scores open sales orders 0-100 for urgency and routes approval.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/rush-orders", "endpoints": ["/scan", "/approve/:docEntry", "/history", "/report", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "purchase-order-approval-agent",
+          "label": "Purchase Order Approval Agent",
+          "description": "MRP draft-PO review and approval status.",
+          "kind": "inline-route",
+          "existingController": { "mount": "/api/mrp", "endpoints": ["/approval-status", "/post-po"] },
+          "status": "available"
+        },
+        {
+          "id": "roles-permissions-agent",
+          "label": "Roles & Permissions Agent",
+          "description": "Admin-only role and permission CRUD, controlling who can approve what.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/roles", "endpoints": ["/permissions", "/", "/:id", "/:id/permissions"] },
+          "status": "available"
+        },
+        {
+          "id": "sales-invoice-approval-agent",
+          "label": "Sales Invoice Approval Agent",
+          "description": "AR invoice approval workflow.",
+          "kind": "tool",
+          "existingTools": ["create_ar_invoice"],
+          "status": "coming_soon"
+        }
+      ]
+    },
+    {
+      "id": "autonomous",
+      "label": "Autonomous Agents",
+      "agents": [
+        {
+          "id": "procure-to-pay-agent",
+          "label": "Stock Reorder Monitor",
+          "description": "Reorder analysis and draft PO generation end-to-end.",
+          "kind": "inline-route",
+          "existingTools": ["monitor_reorder_items", "aggregate_procurement_demand", "generate_draft_pos"],
+          "existingController": { "mount": "/api/procurement", "endpoints": ["/reorder-analysis", "/generate-draft-pos", "/post-po", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "purchase-three-way-match-agent",
+          "label": "Purchase Three Way Match",
+          "description": "PO ↔ GRPO ↔ AP Invoice matching by vendor, with status and vendor filters.",
+          "kind": "page",
+          "existingController": { "mount": "/api/purchase-three-way-match", "endpoints": ["/scan"] },
+          "status": "available"
+        },
+        {
+          "id": "inventory-optimization-agent",
+          "label": "Inventory Optimization Agent",
+          "description": "ABC-XYZ, EOQ, reorder point, and dead/slow stock combined.",
+          "kind": "tool",
+          "existingTools": ["analyze_abc_xyz", "calc_eoq", "calc_reorder_point", "detect_dead_slow_stock"],
+          "status": "available"
+        },
+        {
+          "id": "credit-risk-agent",
+          "label": "Credit Risk Agent",
+          "description": "Collections worklist and AR aging risk scoring.",
+          "kind": "tool",
+          "existingTools": ["get_collections_worklist", "get_ar_aging"],
+          "status": "available"
+        },
+        {
+          "id": "purchase-optimization-agent",
+          "label": "Purchase Optimization Agent",
+          "description": "Vendor concentration, lead-time, and on-time delivery analysis for sourcing decisions.",
+          "kind": "tool",
+          "existingTools": ["analyze_vendor_concentration", "analyze_vendor_lead_time", "analyze_on_time_delivery"],
+          "status": "available"
+        },
+        {
+          "id": "wms-fulfillment-agent",
+          "label": "WMS Fulfillment Agent",
+          "description": "Order intelligence: flags open sales orders at stock-shortage risk.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/order-intelligence", "endpoints": ["/scan", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "exception-management-agent",
+          "label": "Exception Management Agent",
+          "description": "Activity creation/logging linked to BPs, orders, and service calls, with AI recommendations.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/activity-agent", "endpoints": ["/scan", "/create", "/close/:id", "/list", "/history", "/prompt-parse", "/prompt-create", "/chat"] },
+          "status": "available"
+        },
+        {
+          "id": "management-copilot-agent",
+          "label": "Management Copilot",
+          "description": "Cross-module natural-language chat over the full tool set (this connector's list_sap_agents plus the sap-b1 connector's 65 tools).",
+          "kind": "tool",
+          "existingTools": ["call_service_layer", "query_sql_direct", "query_hana_direct"],
+          "status": "available"
+        },
+        {
+          "id": "month-end-closing-agent",
+          "label": "Month-End Closing Agent",
+          "description": "Month-end close checklist automation.",
+          "kind": "tool",
+          "existingTools": ["call_service_layer"],
+          "status": "coming_soon"
+        },
+        {
+          "id": "order-to-cash-agent",
+          "label": "Order-to-Cash Agent",
+          "description": "Quotation → order → delivery → invoice → payment chained end-to-end.",
+          "kind": "tool",
+          "existingTools": ["create_sales_quotation", "create_sales_order", "create_delivery", "create_ar_invoice", "apply_incoming_payment"],
+          "status": "available"
+        }
+      ]
+    }
+  ]
+}

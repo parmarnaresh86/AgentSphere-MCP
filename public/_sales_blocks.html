@@ -1,0 +1,739 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     _sales_blocks.html  —  Sales O2C agents: nav items + panels + modals
+     Insert instructions:
+       SECTION 1 → after the #nav-apinv-apcm div (~line 1500 in index.html)
+       SECTION 2 → after the #apcm-panel closing comment (~line 13554)
+       SECTION 3 → after Section 2, before the pgrpo-line-form-modal comment
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SECTION 1: NAV ITEMS  (paste after #nav-apinv-apcm div)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- ── SALES O2C CYCLE ─────────────────────────────────────────────────────── -->
+<div style="margin:6px 8px 2px;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:4px 0 2px;border-top:1px solid var(--border)">Sales O2C</div>
+
+<!-- 1 · Sales Quotation (new) -->
+<div class="nav-item" id="nav-sq" onclick="showSQPanel()" title="Create new sales quotation for a customer" style="cursor:pointer">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+  SALES QUOTATION
+  <span style="margin-left:auto;font-size:9px;background:rgba(21,128,61,.55);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700;flex-shrink:0">NEW</span>
+</div>
+
+<!-- 2 · Quotation Comparison (view) -->
+<div class="nav-item" id="nav-qcomp" onclick="showQCompPanel()" title="View and compare open sales quotations" style="cursor:pointer">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+  QUOTATION COMPARE
+  <span style="margin-left:auto;font-size:9px;background:rgba(124,58,237,.55);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700;flex-shrink:0">VIEW</span>
+</div>
+
+<!-- 3 · Quotation → Sales Order -->
+<div class="nav-item" id="nav-q2o" onclick="showQ2OPanel()" title="Convert open sales quotation to sales order" style="cursor:pointer">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+  QUOT → ORDER
+  <span style="margin-left:auto;font-size:9px;background:rgba(14,116,144,.55);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700;flex-shrink:0">AI</span>
+</div>
+
+<!-- 4 · Sales Order → Delivery -->
+<div class="nav-item" id="nav-o2d" onclick="showO2DPanel()" title="Create delivery note from open sales order" style="cursor:pointer">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+  ORDER → DELIVERY
+  <span style="margin-left:auto;font-size:9px;background:rgba(180,83,9,.55);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700;flex-shrink:0">AI</span>
+</div>
+
+<!-- 5 · Delivery → A/R Invoice -->
+<div class="nav-item" id="nav-d2arinv" onclick="showD2ARInvPanel()" title="Invoice customer from delivery note" style="cursor:pointer">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+  DELIVERY → AR INV
+  <span style="margin-left:auto;font-size:9px;background:rgba(3,105,161,.55);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700;flex-shrink:0">AI</span>
+</div>
+
+<!-- 6 · A/R Invoice → A/R Credit Memo -->
+<div class="nav-item" id="nav-arinv2arcm" onclick="showARInv2ARCMPanel()" title="Create AR credit memo from open AR invoice" style="cursor:pointer">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="12" y1="9" x2="12" y2="9"/></svg>
+  AR INV → CREDIT
+  <span style="margin-left:auto;font-size:9px;background:rgba(159,18,57,.55);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700;flex-shrink:0">CM</span>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SECTION 2: PANELS  (paste after #apcm-panel closing comment)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- ════════════════════════════════════════════════════════
+     SALES QUOTATION AGENT PANEL
+════════════════════════════════════════════════════════ -->
+<div id="sq-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <!-- Header -->
+  <div style="background:#15803d;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📋</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Sales Quotation Agent</div>
+      <div id="sq-status-text" style="font-size:10px;opacity:.65">Create new quotation for customer</div>
+    </div>
+    <span id="sq-step-badge" style="background:rgba(21,128,61,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="sqResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+
+  <!-- Body: chat + summary sidebar -->
+  <div style="flex:1;display:flex;overflow:hidden">
+
+    <!-- Chat area -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="sq-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="sq-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;transition:border-color .15s" id="sq-input-row" onfocusin="this.style.borderColor='#15803d';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+          <textarea id="sq-input" rows="1" placeholder="Type customer name or code to start a quotation…"
+            style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="sq-send-btn" onclick="sqSendFromInput()"
+            style="width:34px;height:34px;background:#15803d;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sales Quotation Summary sidebar -->
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#15803d;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        📋 Quotation Summary
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Customer &amp; line details</div>
+      </div>
+      <div id="sq-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+
+  </div>
+</div><!-- /#sq-panel -->
+
+<!-- ════════════════════════════════════════════════════════
+     QUOTATION COMPARISON AGENT PANEL
+════════════════════════════════════════════════════════ -->
+<div id="qcomp-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <!-- Header -->
+  <div style="background:#7c3aed;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📊</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Quotation Comparison</div>
+      <div id="qcomp-status-text" style="font-size:10px;opacity:.65">View &amp; compare open sales quotations</div>
+    </div>
+    <span id="qcomp-step-badge" style="background:rgba(124,58,237,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="qcompResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+
+  <!-- Body: chat + summary sidebar -->
+  <div style="flex:1;display:flex;overflow:hidden">
+
+    <!-- Chat area -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="qcomp-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="qcomp-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;transition:border-color .15s" id="qcomp-input-row" onfocusin="this.style.borderColor='#7c3aed';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+          <textarea id="qcomp-input" rows="1" placeholder="Type customer name, quotation number or date range…"
+            style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="qcomp-send-btn" onclick="qcompSendFromInput()"
+            style="width:34px;height:34px;background:#7c3aed;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quotation Comparison Summary sidebar -->
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#7c3aed;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        📊 Comparison View
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Open quotations &amp; status</div>
+      </div>
+      <div id="qcomp-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+
+  </div>
+</div><!-- /#qcomp-panel -->
+
+<!-- ════════════════════════════════════════════════════════
+     QUOTATION → SALES ORDER AGENT PANEL
+════════════════════════════════════════════════════════ -->
+<div id="q2o-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <!-- Header -->
+  <div style="background:#0e7490;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📑</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Quotation → Sales Order</div>
+      <div id="q2o-status-text" style="font-size:10px;opacity:.65">Convert open quotation to sales order</div>
+    </div>
+    <span id="q2o-step-badge" style="background:rgba(14,116,144,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="q2oResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+
+  <!-- Body: chat + summary sidebar -->
+  <div style="flex:1;display:flex;overflow:hidden">
+
+    <!-- Chat area -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="q2o-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="q2o-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;transition:border-color .15s" id="q2o-input-row" onfocusin="this.style.borderColor='#0e7490';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+          <textarea id="q2o-input" rows="1" placeholder="Type quotation number or customer name…"
+            style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="q2o-send-btn" onclick="q2oSendFromInput()"
+            style="width:34px;height:34px;background:#0e7490;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Q2O Summary sidebar -->
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#0e7490;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        📑 Order Preview
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Quotation &amp; order details</div>
+      </div>
+      <div id="q2o-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+
+  </div>
+</div><!-- /#q2o-panel -->
+
+<!-- ════════════════════════════════════════════════════════
+     SALES ORDER → DELIVERY AGENT PANEL
+════════════════════════════════════════════════════════ -->
+<div id="o2d-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <!-- Header -->
+  <div style="background:#b45309;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🚛</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Sales Order → Delivery</div>
+      <div id="o2d-status-text" style="font-size:10px;opacity:.65">Create delivery note from open sales order</div>
+    </div>
+    <span id="o2d-step-badge" style="background:rgba(180,83,9,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="o2dResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+
+  <!-- Body: chat + summary sidebar -->
+  <div style="flex:1;display:flex;overflow:hidden">
+
+    <!-- Chat area -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="o2d-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="o2d-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;transition:border-color .15s" id="o2d-input-row" onfocusin="this.style.borderColor='#b45309';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+          <textarea id="o2d-input" rows="1" placeholder="Type sales order number or customer name to create delivery…"
+            style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="o2d-send-btn" onclick="o2dSendFromInput()"
+            style="width:34px;height:34px;background:#b45309;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delivery Summary sidebar -->
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#b45309;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        🚛 Delivery Preview
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Order &amp; delivery line details</div>
+      </div>
+      <div id="o2d-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+
+  </div>
+</div><!-- /#o2d-panel -->
+
+<!-- ════════════════════════════════════════════════════════
+     DELIVERY → A/R INVOICE AGENT PANEL
+════════════════════════════════════════════════════════ -->
+<div id="d2arinv-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <!-- Header -->
+  <div style="background:#0369a1;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🧾</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Delivery → A/R Invoice</div>
+      <div id="d2arinv-status-text" style="font-size:10px;opacity:.65">Invoice customer from delivery note</div>
+    </div>
+    <span id="d2arinv-step-badge" style="background:rgba(3,105,161,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="d2arinvResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+
+  <!-- Body: chat + summary sidebar -->
+  <div style="flex:1;display:flex;overflow:hidden">
+
+    <!-- Chat area -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="d2arinv-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="d2arinv-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;transition:border-color .15s" id="d2arinv-input-row" onfocusin="this.style.borderColor='#0369a1';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+          <textarea id="d2arinv-input" rows="1" placeholder="Type delivery number or customer name to invoice…"
+            style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="d2arinv-send-btn" onclick="d2arinvSendFromInput()"
+            style="width:34px;height:34px;background:#0369a1;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- A/R Invoice Summary sidebar -->
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#0369a1;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        🧾 Invoice Summary
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Delivery &amp; invoice details</div>
+      </div>
+      <div id="d2arinv-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+
+  </div>
+</div><!-- /#d2arinv-panel -->
+
+<!-- ════════════════════════════════════════════════════════
+     A/R INVOICE → A/R CREDIT MEMO AGENT PANEL
+════════════════════════════════════════════════════════ -->
+<div id="arinv2arcm-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <!-- Header -->
+  <div style="background:#9f1239;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔴</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">A/R Invoice → Credit Memo Agent</div>
+      <div id="arinv2arcm-status-text" style="font-size:10px;opacity:.65">Select customer → choose invoice → post credit memo</div>
+    </div>
+    <span id="arinv2arcm-step-badge" style="background:rgba(159,18,57,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="arinv2arcmResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+
+  <!-- Body: chat + summary sidebar -->
+  <div style="flex:1;display:flex;overflow:hidden">
+
+    <!-- Chat area -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="arinv2arcm-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="arinv2arcm-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;transition:border-color .15s" id="arinv2arcm-input-row" onfocusin="this.style.borderColor='#9f1239';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+          <textarea id="arinv2arcm-input" rows="1" placeholder="Type customer name or code…"
+            style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="arinv2arcm-send-btn" onclick="arinv2arcmSendFromInput()"
+            style="width:34px;height:34px;background:#9f1239;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- A/R Credit Memo Summary sidebar -->
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#9f1239;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        🔴 Credit Memo Summary
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Customer &amp; invoice details</div>
+      </div>
+      <div id="arinv2arcm-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+
+  </div>
+</div><!-- /#arinv2arcm-panel -->
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SECTION 3: FORM MODALS  (paste after Section 2 panels)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- ── Modal 1: Sales Quotation Form ─────────────────────────────────────── -->
+<div id="sq-form-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:10px;width:1060px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(0,0,0,.35);overflow:hidden">
+    <!-- Header -->
+    <div style="background:#15803d;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:18px">📋</span>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700">Sales Quotation — New</div>
+        <div style="display:flex;gap:16px;margin-top:2px;font-size:11px;color:rgba(255,255,255,.65)">
+          <span>Customer: <strong id="sq-form-customer-label" style="color:#fff">—</strong></span>
+        </div>
+      </div>
+      <button onclick="sqCloseForm()" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;width:30px;height:30px;border-radius:4px;line-height:1">&times;</button>
+    </div>
+    <!-- Header inputs row -->
+    <div style="padding:10px 20px;border-bottom:1px solid #e5e7eb;display:flex;gap:16px;align-items:center;flex-wrap:wrap;flex-shrink:0;background:#f8fafb">
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Customer</label>
+        <input type="text" id="sq-form-customer" readonly placeholder="Customer name" style="width:160px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Doc Date</label>
+        <input type="date" id="sq-form-docdate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Valid Until</label>
+        <input type="date" id="sq-form-validuntil" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Ref / NumAtCard</label>
+        <input type="text" id="sq-form-reference" placeholder="Customer ref…" style="width:120px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex:1">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Comments</label>
+        <input type="text" id="sq-form-comments" placeholder="Optional comments…" style="flex:1;min-width:120px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+    </div>
+    <!-- Item search section -->
+    <div style="padding:8px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#f0fdf4">
+      <label style="font-size:11px;font-weight:700;color:#15803d;white-space:nowrap">Add Item:</label>
+      <input type="text" id="sq-item-search" placeholder="Item code or description…" style="width:220px;border:1px solid #bbf7d0;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)" onkeydown="if(event.key==='Enter')sqSearchItems()">
+      <button onclick="sqSearchItems()" style="padding:5px 14px;background:#15803d;color:#fff;border:none;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Search Items</button>
+      <div id="sq-item-results" style="display:none;position:absolute;top:auto;left:auto;z-index:1010;background:#fff;border:1px solid #d1d5db;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:220px;overflow-y:auto;min-width:460px;margin-top:2px"></div>
+    </div>
+    <!-- Lines table -->
+    <div style="flex:1;overflow:auto;padding:0">
+      <table style="width:100%;border-collapse:collapse;font-family:var(--font);font-size:12px">
+        <thead>
+          <tr style="background:#15803d;color:#fff;position:sticky;top:0;z-index:1">
+            <th style="padding:8px 10px;text-align:center;width:36px"><input type="checkbox" id="sq-chk-all" title="Select all" style="cursor:pointer;width:14px;height:14px" onchange="(function(c){const n=window._sqLineCount||0;for(let i=0;i<n;i++){const el=document.getElementById('sq-chk-'+i);if(el)el.checked=c.checked;}sqFormCalcTotal()})(this)"></th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Item Code</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Description</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Unit Price</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Disc%</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Line Total</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Tax Code</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">WH</th>
+          </tr>
+        </thead>
+        <tbody id="sq-form-tbody"></tbody>
+      </table>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#f8fafb">
+      <div style="font-size:11.5px;color:#6b7280">
+        <span style="color:#15803d;font-size:10.5px">Add items above, adjust quantities and prices, then post</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="sq-form-total" style="font-size:15px;font-weight:700;color:#15803d"></div>
+        <button onclick="sqCloseForm()" style="padding:8px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font)">Cancel</button>
+        <button id="sq-form-submit-btn" onclick="sqSubmitForm()" style="padding:9px 28px;background:#15803d;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">&#x2705; Post Quotation</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal 2: Quotation → Sales Order Form ──────────────────────────────── -->
+<div id="q2o-form-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:10px;width:1060px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(0,0,0,.35);overflow:hidden">
+    <!-- Header -->
+    <div style="background:#0e7490;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:18px">📑</span>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700">Sales Order — Review &amp; Post</div>
+        <div style="display:flex;gap:16px;margin-top:2px;font-size:11px;color:rgba(255,255,255,.65)">
+          <span>Customer: <strong id="q2o-form-customer-label" style="color:#fff">—</strong></span>
+          <span>Source Quotation: <strong id="q2o-form-quotnum-label" style="color:#fff">—</strong></span>
+        </div>
+      </div>
+      <button onclick="q2oCloseForm()" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;width:30px;height:30px;border-radius:4px;line-height:1">&times;</button>
+    </div>
+    <!-- Header inputs row -->
+    <div style="padding:10px 20px;border-bottom:1px solid #e5e7eb;display:flex;gap:16px;align-items:center;flex-wrap:wrap;flex-shrink:0;background:#f8fafb">
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Customer</label>
+        <input type="text" id="q2o-form-customer" readonly style="width:150px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Source Quotation</label>
+        <input type="text" id="q2o-form-quotnum" readonly style="width:100px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Order Date</label>
+        <input type="date" id="q2o-form-docdate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Delivery Date</label>
+        <input type="date" id="q2o-form-duedate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Customer PO Ref</label>
+        <input type="text" id="q2o-form-custpo" placeholder="Customer PO #…" style="width:120px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex:1">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Comments</label>
+        <input type="text" id="q2o-form-comments" placeholder="Optional comments…" style="flex:1;min-width:120px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+    </div>
+    <!-- Lines table -->
+    <div style="flex:1;overflow:auto;padding:0">
+      <table style="width:100%;border-collapse:collapse;font-family:var(--font);font-size:12px">
+        <thead>
+          <tr style="background:#0e7490;color:#fff;position:sticky;top:0;z-index:1">
+            <th style="padding:8px 10px;text-align:center;width:36px"><input type="checkbox" id="q2o-chk-all" title="Select all" style="cursor:pointer;width:14px;height:14px" onchange="(function(c){const n=window._q2oLineCount||0;for(let i=0;i<n;i++){const el=document.getElementById('q2o-chk-'+i);if(el)el.checked=c.checked;}q2oFormCalcTotal()})(this)"></th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Item Code</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Description</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Quot Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Order Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Unit Price</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Disc%</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Tax</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">WH</th>
+          </tr>
+        </thead>
+        <tbody id="q2o-form-tbody"></tbody>
+      </table>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#f8fafb">
+      <div style="font-size:11.5px;color:#6b7280">
+        <span style="color:#0e7490;font-size:10.5px">Adjust order qty and price as needed before posting</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="q2o-form-total" style="font-size:15px;font-weight:700;color:#0e7490"></div>
+        <button onclick="q2oCloseForm()" style="padding:8px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font)">Cancel</button>
+        <button id="q2o-form-submit-btn" onclick="q2oSubmitForm()" style="padding:9px 28px;background:#0e7490;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">&#x2705; Post Sales Order</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal 3: Sales Order → Delivery Form ───────────────────────────────── -->
+<div id="o2d-form-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:10px;width:1060px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(0,0,0,.35);overflow:hidden">
+    <!-- Header -->
+    <div style="background:#b45309;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:18px">🚛</span>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700">Delivery Note — Review &amp; Post</div>
+        <div style="display:flex;gap:16px;margin-top:2px;font-size:11px;color:rgba(255,255,255,.65)">
+          <span>Customer: <strong id="o2d-form-customer-label" style="color:#fff">—</strong></span>
+          <span>Source Order: <strong id="o2d-form-ordernum-label" style="color:#fff">—</strong></span>
+        </div>
+      </div>
+      <button onclick="o2dCloseForm()" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;width:30px;height:30px;border-radius:4px;line-height:1">&times;</button>
+    </div>
+    <!-- Header inputs row -->
+    <div style="padding:10px 20px;border-bottom:1px solid #e5e7eb;display:flex;gap:16px;align-items:center;flex-wrap:wrap;flex-shrink:0;background:#f8fafb">
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Customer</label>
+        <input type="text" id="o2d-form-customer" readonly style="width:150px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Source Order</label>
+        <input type="text" id="o2d-form-ordernum" readonly style="width:100px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Delivery Date</label>
+        <input type="date" id="o2d-form-docdate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Reference</label>
+        <input type="text" id="o2d-form-reference" placeholder="Delivery ref…" style="width:120px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex:1">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Comments</label>
+        <input type="text" id="o2d-form-comments" placeholder="Optional comments…" style="flex:1;min-width:120px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+    </div>
+    <!-- Lines table -->
+    <div style="flex:1;overflow:auto;padding:0">
+      <table style="width:100%;border-collapse:collapse;font-family:var(--font);font-size:12px">
+        <thead>
+          <tr style="background:#b45309;color:#fff;position:sticky;top:0;z-index:1">
+            <th style="padding:8px 10px;text-align:center;width:36px"><input type="checkbox" id="o2d-chk-all" title="Select all" style="cursor:pointer;width:14px;height:14px" onchange="(function(c){const n=window._o2dLineCount||0;for(let i=0;i<n;i++){const el=document.getElementById('o2d-chk-'+i);if(el)el.checked=c.checked;}o2dFormCalcTotal()})(this)"></th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Item Code</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Description</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Ordered Qty</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Open Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Delivery Qty</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">WH</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Tax</th>
+          </tr>
+        </thead>
+        <tbody id="o2d-form-tbody"></tbody>
+      </table>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#f8fafb">
+      <div style="font-size:11.5px;color:#6b7280">
+        <span style="color:#b45309;font-size:10.5px">Partial delivery supported — adjust qty as needed</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="o2d-form-total" style="font-size:15px;font-weight:700;color:#b45309"></div>
+        <button onclick="o2dCloseForm()" style="padding:8px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font)">Cancel</button>
+        <button id="o2d-form-submit-btn" onclick="o2dSubmitForm()" style="padding:9px 28px;background:#b45309;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">&#x2705; Post Delivery</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal 4: Delivery → A/R Invoice Form ───────────────────────────────── -->
+<div id="d2arinv-form-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:10px;width:1060px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(0,0,0,.35);overflow:hidden">
+    <!-- Header -->
+    <div style="background:#0369a1;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:18px">🧾</span>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700">A/R Invoice — Review &amp; Post</div>
+        <div style="display:flex;gap:16px;margin-top:2px;font-size:11px;color:rgba(255,255,255,.65)">
+          <span>Customer: <strong id="d2arinv-form-customer-label" style="color:#fff">—</strong></span>
+          <span>Source Delivery: <strong id="d2arinv-form-delnum-label" style="color:#fff">—</strong></span>
+        </div>
+      </div>
+      <button onclick="d2arinvCloseForm()" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;width:30px;height:30px;border-radius:4px;line-height:1">&times;</button>
+    </div>
+    <!-- Header inputs row -->
+    <div style="padding:10px 20px;border-bottom:1px solid #e5e7eb;display:flex;gap:16px;align-items:center;flex-wrap:wrap;flex-shrink:0;background:#f8fafb">
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Customer</label>
+        <input type="text" id="d2arinv-form-customer" readonly style="width:150px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Source Delivery</label>
+        <input type="text" id="d2arinv-form-delnum" readonly style="width:100px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Invoice Date</label>
+        <input type="date" id="d2arinv-form-invdate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Due Date</label>
+        <input type="date" id="d2arinv-form-duedate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Reference</label>
+        <input type="text" id="d2arinv-form-reference" placeholder="Invoice ref…" style="width:110px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex:1">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Comments</label>
+        <input type="text" id="d2arinv-form-comments" placeholder="Optional comments…" style="flex:1;min-width:100px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+    </div>
+    <!-- Lines table -->
+    <div style="flex:1;overflow:auto;padding:0">
+      <table style="width:100%;border-collapse:collapse;font-family:var(--font);font-size:12px">
+        <thead>
+          <tr style="background:#0369a1;color:#fff;position:sticky;top:0;z-index:1">
+            <th style="padding:8px 10px;text-align:center;width:36px"><input type="checkbox" id="d2arinv-chk-all" title="Select all" style="cursor:pointer;width:14px;height:14px" onchange="(function(c){const n=window._d2arinvLineCount||0;for(let i=0;i<n;i++){const el=document.getElementById('d2arinv-chk-'+i);if(el)el.checked=c.checked;}d2arinvFormCalcTotal()})(this)"></th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Item Code</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Description</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Delivery Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Invoice Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Unit Price</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Line Total</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Tax</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">WH</th>
+          </tr>
+        </thead>
+        <tbody id="d2arinv-form-tbody"></tbody>
+      </table>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#f8fafb">
+      <div style="font-size:11.5px;color:#6b7280">
+        <span style="color:#0369a1;font-size:10.5px">Adjust invoice qty and price as needed before posting</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="d2arinv-form-total" style="font-size:15px;font-weight:700;color:#0369a1"></div>
+        <button onclick="d2arinvCloseForm()" style="padding:8px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font)">Cancel</button>
+        <button id="d2arinv-form-submit-btn" onclick="d2arinvSubmitForm()" style="padding:9px 28px;background:#0369a1;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">&#x2705; Post A/R Invoice</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal 5: A/R Invoice → A/R Credit Memo Form ───────────────────────── -->
+<div id="arinv2arcm-form-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:10px;width:1060px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(0,0,0,.35);overflow:hidden">
+    <!-- Header -->
+    <div style="background:#9f1239;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:18px">🔴</span>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700">A/R Credit Memo — Review &amp; Post</div>
+        <div style="display:flex;gap:16px;margin-top:2px;font-size:11px;color:rgba(255,255,255,.65)">
+          <span>Customer: <strong id="arinv2arcm-form-customer-label" style="color:#fff">—</strong></span>
+          <span>Source Invoice: <strong id="arinv2arcm-form-invnum-label" style="color:#fff">—</strong></span>
+        </div>
+      </div>
+      <button onclick="arinv2arcmCloseForm()" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;width:30px;height:30px;border-radius:4px;line-height:1">&times;</button>
+    </div>
+    <!-- Header inputs row -->
+    <div style="padding:10px 20px;border-bottom:1px solid #e5e7eb;display:flex;gap:16px;align-items:center;flex-wrap:wrap;flex-shrink:0;background:#f8fafb">
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Customer</label>
+        <input type="text" id="arinv2arcm-form-customer" readonly style="width:150px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Source Invoice</label>
+        <input type="text" id="arinv2arcm-form-invnum" readonly style="width:100px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text);background:#f3f4f6">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Posting Date</label>
+        <input type="date" id="arinv2arcm-form-docdate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Due Date</label>
+        <input type="date" id="arinv2arcm-form-duedate" style="border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Remarks</label>
+        <input type="text" id="arinv2arcm-form-remarks" placeholder="Ref / return note…" style="width:120px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex:1">
+        <label style="font-size:11px;font-weight:700;color:#374151;white-space:nowrap">Comments</label>
+        <input type="text" id="arinv2arcm-form-comments" placeholder="Optional comments…" style="flex:1;min-width:100px;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
+      </div>
+    </div>
+    <!-- Lines table -->
+    <div style="flex:1;overflow:auto;padding:0">
+      <table style="width:100%;border-collapse:collapse;font-family:var(--font);font-size:12px">
+        <thead>
+          <tr style="background:#9f1239;color:#fff;position:sticky;top:0;z-index:1">
+            <th style="padding:8px 10px;text-align:center;width:36px"><input type="checkbox" id="arinv2arcm-chk-all" title="Select all" style="cursor:pointer;width:14px;height:14px" onchange="(function(c){const n=window._arinv2arcmLineCount||0;for(let i=0;i<n;i++){const el=document.getElementById('arinv2arcm-chk-'+i);if(el)el.checked=c.checked;}arinv2arcmFormCalcTotal()})(this)"></th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Item Code</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Description</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Invoice Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Credit Qty</th>
+            <th style="padding:8px 10px;text-align:center;font-size:10.5px">Unit Price</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10.5px">Line Total</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">Tax</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10.5px">WH</th>
+          </tr>
+        </thead>
+        <tbody id="arinv2arcm-form-tbody"></tbody>
+      </table>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#f8fafb">
+      <div style="font-size:11.5px;color:#6b7280">
+        <span style="color:#9f1239;font-size:10.5px">Credit qty must not exceed original invoice qty</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="arinv2arcm-form-total" style="font-size:15px;font-weight:700;color:#9f1239"></div>
+        <button onclick="arinv2arcmCloseForm()" style="padding:8px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font)">Cancel</button>
+        <button id="arinv2arcm-form-submit-btn" onclick="arinv2arcmSubmitForm()" style="padding:9px 28px;background:#9f1239;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">&#x2705; Post Credit Memo</button>
+      </div>
+    </div>
+  </div>
+</div>

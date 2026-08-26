@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Vendor Payment Aging — SAP B1</title>
+
+<!-- Auth guard -->
+<script>
+(function(){
+  const token = localStorage.getItem('hanny_token');
+  if (!token) { window.location.replace('/login.html'); return; }
+  fetch('/auth/me', { headers: { 'x-auth-token': token } })
+    .then(r => { if (!r.ok) { localStorage.removeItem('hanny_token'); window.location.replace('/login.html'); } })
+    .catch(() => {});
+})();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;
+  --shell-hover:rgba(255,255,255,.10);
+  --blue:#0070F2;
+  --blue-light:#E8F4FF;
+  --blue-mid:#0064D9;
+  --bg:#F5F6F7;
+  --white:#FFFFFF;
+  --text:#32363A;
+  --muted:#6A6D70;
+  --border:#E5E5E5;
+  --bot-bg:#FFFFFF;
+  --user-bg:#E8F4FF;
+  --green:#107E3E;
+  --red:#BB0000;
+  --orange:#E9730C;
+  --yellow:#F0AB00;
+  --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+  --r:4px;
+  --shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);display:flex;flex-direction:column}
+
+/* ── Shell bar ─────────────────────────────────────────────────────────────── */
+.shell-bar{
+  background:var(--shell);height:44px;padding:0 16px;
+  display:flex;align-items:center;gap:12px;flex-shrink:0;
+  box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;
+}
+.shell-back{
+  display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.75);
+  text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);
+  transition:background .15s;border:1px solid rgba(255,255,255,.2);
+}
+.shell-back:hover{background:var(--shell-hover);color:#fff}
+.shell-divider{width:1px;height:20px;background:rgba(255,255,255,.2)}
+.shell-icon{
+  width:28px;height:28px;border-radius:4px;background:var(--orange);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;
+}
+.shell-title{font-size:14px;font-weight:600;color:#fff;letter-spacing:.1px}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55);margin-left:4px}
+.shell-spacer{flex:1}
+.shell-badge{
+  font-size:9.5px;padding:2px 8px;border-radius:10px;
+  background:rgba(0,112,242,.5);color:#fff;font-weight:600;letter-spacing:.2px;
+}
+.shell-badge.loading{background:rgba(233,115,12,.5)}
+.shell-badge.error{background:rgba(187,0,0,.5)}
+.shell-badge.ready{background:rgba(16,126,62,.5)}
+.shell-btn{height:28px;padding:0 10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:var(--r);color:rgba(255,255,255,.85);font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background .15s;white-space:nowrap}
+.shell-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+.shell-btn.active{background:rgba(233,115,12,.4)}
+
+/* ── Filter bar ────────────────────────────────────────────────────────────── */
+.filter-bar{
+  background:var(--white);border-bottom:1px solid var(--border);
+  padding:8px 16px;display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;
+  flex-shrink:0;z-index:20;
+}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.fg input,.fg select{
+  height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--bg);font-size:12.5px;color:var(--text);font-family:var(--font);
+  outline:none;transition:border-color .15s;min-width:0;
+}
+.fg input:focus,.fg select:focus{border-color:var(--blue);background:var(--white)}
+.fg.w-date input{width:130px}
+.fg.w-bucket select{width:110px}
+.fg.w-vendor input{width:170px}
+.fg.w-dim select{width:150px}
+.fg.w-branch select{width:130px}
+.fg.w-doctype select{width:130px}
+.fg.w-bucket-size select{width:100px}
+.analyze-btn{
+  height:30px;padding:0 16px;background:var(--blue);color:#fff;border:none;
+  border-radius:var(--r);font-size:12.5px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;gap:6px;transition:background .15s;
+  white-space:nowrap;align-self:flex-end;
+}
+.analyze-btn:hover{background:var(--blue-mid)}
+.analyze-btn:disabled{background:#94a3b8;cursor:not-allowed}
+.filter-clear{
+  height:30px;padding:0 10px;background:transparent;color:var(--muted);
+  border:1px solid var(--border);border-radius:var(--r);font-size:11.5px;cursor:pointer;
+  transition:all .15s;align-self:flex-end;white-space:nowrap;
+}
+.filter-clear:hover{border-color:var(--red);color:var(--red);background:#FFF5F5}
+.overdue-toggle{
+  display:flex;align-items:center;gap:6px;cursor:pointer;
+  font-size:12px;color:var(--muted);align-self:flex-end;padding-bottom:4px;
+  white-space:nowrap;
+}
+.overdue-toggle input[type=checkbox]{accent-color:var(--red);width:14px;height:14px}
+
+/* ── Main area ─────────────────────────────────────────────────────────────── */
+.main-area{display:flex;flex:1;min-height:0;overflow:hidden}
+
+/* ── Chat panel ────────────────────────────────────────────────────────────── */
+.chat-panel{
+  display:flex;flex-direction:column;width:380px;flex-shrink:0;
+  border-right:1px solid var(--border);background:var(--white);
+}
+.chat-topbar{
+  background:var(--white);border-bottom:1px solid var(--border);
+  padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.chat-topbar-avatar{
+  width:30px;height:30px;border-radius:50%;background:var(--orange);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;flex-shrink:0;
+}
+.chat-topbar-name{font-size:13px;font-weight:600;color:var(--text)}
+.chat-topbar-status{font-size:11px;color:var(--green);display:flex;align-items:center;gap:4px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+#messages{
+  flex:1;overflow-y:auto;padding:12px 14px;
+  display:flex;flex-direction:column;gap:10px;
+  background:var(--bg);scroll-behavior:smooth;
+}
+#messages::-webkit-scrollbar{width:5px}
+#messages::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+.msg-row{display:flex;gap:8px;max-width:100%;align-self:flex-start}
+.msg-row.user{align-self:flex-end;flex-direction:row-reverse}
+.av{
+  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:11px;flex-shrink:0;margin-top:2px;font-weight:700;
+}
+.av.bot{background:var(--orange);color:#fff}
+.av.user{background:var(--blue-light);color:var(--blue);border:1px solid #99CAFF}
+.bubble{
+  padding:8px 12px;border-radius:var(--r);line-height:1.6;
+  font-size:12.5px;max-width:90%;box-shadow:var(--shadow);
+}
+.bubble.bot{background:var(--white);border:1px solid var(--border);border-top-left-radius:0;color:var(--text)}
+.bubble.user{background:var(--blue);color:#fff;border-top-right-radius:0}
+.bubble.bot table{border-collapse:collapse;width:100%;margin:6px 0;font-size:11.5px}
+.bubble.bot th{background:#F5F6F7;padding:5px 8px;text-align:left;font-size:10.5px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);border-right:1px solid var(--border)}
+.bubble.bot td{padding:4px 8px;border-bottom:1px solid #F0F0F0;border-right:1px solid #F0F0F0}
+.bubble.bot tr:hover td{background:var(--blue-light)}
+.bubble.bot h2{font-size:14px;font-weight:700;color:var(--orange);margin:4px 0 6px;border-bottom:2px solid #FFF3E5;padding-bottom:4px}
+.bubble.bot h3{font-size:12.5px;font-weight:700;color:var(--blue);margin:6px 0 3px}
+.bubble.bot strong{font-weight:700}
+.bubble.bot code{background:#F5F6F7;border-radius:2px;padding:1px 4px;font-size:11.5px;font-family:monospace}
+.bubble.bot ul,.bubble.bot ol{padding-left:16px;margin:3px 0}
+.bubble.bot li{margin:1px 0}
+.bubble.bot p{margin:3px 0}
+.bubble.bot blockquote{border-left:3px solid var(--orange);background:#FFF8F0;padding:6px 10px;margin:6px 0;border-radius:0 var(--r) var(--r) 0;font-size:12px}
+.qr-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;padding-left:36px}
+.qr-chip{
+  background:var(--white);border:1px solid var(--orange);color:var(--orange);
+  border-radius:20px;padding:4px 12px;font-size:11.5px;font-weight:500;
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.qr-chip:hover{background:var(--orange);color:#fff}
+.qr-chip.used{opacity:.4;cursor:default;pointer-events:none}
+.typing-row{display:flex;gap:8px;align-self:flex-start}
+.typing-bubble{
+  background:var(--white);border:1px solid var(--border);
+  border-radius:var(--r);border-top-left-radius:0;padding:10px 14px;
+  display:flex;align-items:center;gap:5px;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:bounce 1.2s infinite ease-in-out}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1);opacity:1}}
+.input-area{background:var(--white);border-top:1px solid var(--border);padding:8px 12px 10px;flex-shrink:0}
+.input-row{
+  display:flex;align-items:flex-end;gap:6px;
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--r);padding:5px 8px;transition:border-color .15s;
+}
+.input-row:focus-within{border-color:var(--orange);background:var(--white)}
+#user-input{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--text);font-size:13px;font-family:var(--font);
+  resize:none;max-height:80px;line-height:1.5;min-height:20px;
+}
+#user-input::placeholder{color:#ABABAB}
+.send-btn{
+  width:30px;height:30px;background:var(--orange);color:#fff;
+  border:none;border-radius:var(--r);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:background .15s;
+}
+.send-btn:hover{background:#d4630b}
+.send-btn:disabled{background:#cbd5e1;cursor:not-allowed}
+.input-hint{font-size:10.5px;color:var(--muted);margin-top:4px;text-align:right}
+
+/* ── Analytics panel ───────────────────────────────────────────────────────── */
+.analytics-panel{
+  flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--bg);
+}
+.ap-scroll{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+.ap-scroll::-webkit-scrollbar{width:5px}
+.ap-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+/* KPI cards */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpi-card{
+  background:var(--white);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;box-shadow:var(--shadow);
+}
+.kpi-card.overdue{border-left:3px solid var(--red)}
+.kpi-card.future{border-left:3px solid var(--blue)}
+.kpi-card.balance{border-left:3px solid var(--orange)}
+.kpi-card.vendors{border-left:3px solid var(--green)}
+.kpi-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px}
+.kpi-value{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-.3px}
+.kpi-sub{font-size:10.5px;color:var(--muted);margin-top:2px}
+.kpi-card.overdue .kpi-value{color:var(--red)}
+.kpi-card.future .kpi-value{color:var(--blue)}
+.kpi-card.balance .kpi-value{color:var(--orange)}
+.kpi-card.vendors .kpi-value{color:var(--green)}
+
+/* Chart card */
+.chart-card{
+  background:var(--white);border:1px solid var(--border);border-radius:6px;
+  padding:14px;box-shadow:var(--shadow);
+}
+.card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:10px;
+}
+.card-title{font-size:12.5px;font-weight:700;color:var(--text)}
+.card-sub{font-size:11px;color:var(--muted)}
+.chart-tabs{display:flex;gap:6px;margin-bottom:10px}
+.chart-tab{
+  font-size:11px;padding:3px 10px;border-radius:20px;cursor:pointer;
+  border:1px solid var(--border);color:var(--muted);background:var(--bg);transition:all .15s;
+}
+.chart-tab.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.chart-wrap{position:relative;height:200px}
+
+/* Dimension breakdown */
+.dim-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:4px}
+.dim-card{
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r);
+  padding:8px 10px;cursor:pointer;transition:border-color .15s;
+}
+.dim-card:hover{border-color:var(--orange)}
+.dim-card.selected{border-color:var(--orange);background:#FFF8F0}
+.dim-name{font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:2px}
+.dim-amount{font-size:13px;font-weight:700;color:var(--orange)}
+.dim-overdue{font-size:10.5px;color:var(--red)}
+.dim-vendors{font-size:10.5px;color:var(--muted)}
+
+/* Vendor table */
+.table-card{
+  background:var(--white);border:1px solid var(--border);border-radius:6px;
+  box-shadow:var(--shadow);overflow:hidden;
+}
+.table-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-bottom:1px solid var(--border);
+}
+.table-header span{font-size:12.5px;font-weight:700;color:var(--text)}
+.table-actions{display:flex;gap:8px;align-items:center}
+.tbl-btn{
+  font-size:11px;padding:3px 10px;border-radius:var(--r);cursor:pointer;
+  border:1px solid var(--border);color:var(--muted);background:var(--bg);
+  transition:all .15s;
+}
+.tbl-btn:hover{border-color:var(--blue);color:var(--blue)}
+.tbl-btn.active{background:var(--blue-light);border-color:var(--blue);color:var(--blue)}
+.search-row{padding:8px 14px;border-bottom:1px solid var(--border)}
+.search-row input{
+  width:100%;height:28px;padding:0 8px;border:1px solid var(--border);
+  border-radius:var(--r);font-size:12px;color:var(--text);font-family:var(--font);outline:none;
+}
+.search-row input:focus{border-color:var(--blue)}
+.table-wrap{overflow-x:auto;max-height:320px;overflow-y:auto}
+.table-wrap::-webkit-scrollbar{width:5px;height:5px}
+.table-wrap::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+#vendor-table{border-collapse:collapse;width:100%;font-size:12px;min-width:700px}
+#vendor-table th{
+  background:#F5F6F7;padding:7px 10px;text-align:left;
+  font-size:10.5px;font-weight:700;color:var(--muted);
+  border-bottom:2px solid var(--border);position:sticky;top:0;cursor:pointer;
+  user-select:none;white-space:nowrap;
+}
+#vendor-table th:hover{background:#EBEBEB}
+#vendor-table th .sort-icon{opacity:.4;margin-left:4px;font-size:10px}
+#vendor-table th.sort-asc .sort-icon::after{content:'▲';opacity:1}
+#vendor-table th.sort-desc .sort-icon::after{content:'▼';opacity:1}
+#vendor-table td{padding:6px 10px;border-bottom:1px solid #F0F0F0;white-space:nowrap}
+#vendor-table tr:hover td{background:var(--blue-light)}
+#vendor-table .amt{text-align:right;font-variant-numeric:tabular-nums}
+#vendor-table .overdue-cell{color:var(--red);font-weight:600}
+#vendor-table .days-pill{
+  display:inline-block;padding:1px 7px;border-radius:10px;font-size:10.5px;font-weight:600;
+}
+#vendor-table .days-0{background:#E8F8F0;color:var(--green)}
+#vendor-table .days-30{background:#FFF3CD;color:#856404}
+#vendor-table .days-60{background:#FFE4CC;color:#7D3C0C}
+#vendor-table .days-90{background:#FFE0E0;color:var(--red)}
+
+/* No-data placeholder */
+.no-data{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:40px;gap:10px;color:var(--muted);text-align:center;
+}
+.no-data-icon{font-size:36px;opacity:.35}
+.no-data-text{font-size:13px}
+.no-data-hint{font-size:11px;color:#aaa}
+
+/* AI insight card */
+.insight-card{
+  background:linear-gradient(135deg,#FFF8F0,#FFF3E5);
+  border:1px solid #F5CBA0;border-left:3px solid var(--orange);
+  border-radius:var(--r);padding:12px 14px;font-size:12.5px;
+  color:var(--text);line-height:1.65;
+}
+.insight-card h3{font-size:12px;font-weight:700;color:var(--orange);margin-bottom:6px}
+
+/* Responsive */
+@media(max-width:1100px){
+  .chat-panel{display:none}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:768px){
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .filter-bar{flex-direction:column;align-items:stretch}
+  .fg{flex-direction:row;align-items:center}
+  .fg label{width:80px;flex-shrink:0}
+  .fg input,.fg select{flex:1}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Shell bar ───────────────────────────────────────────────────────────── -->
+<div class="shell-bar">
+  <a class="shell-back" href="/index.html">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Back
+  </a>
+  <div class="shell-divider"></div>
+  <div class="shell-icon">📊</div>
+  <div>
+    <div class="shell-title">Vendor Payment Aging</div>
+  </div>
+  <span class="shell-subtitle">AP Analytics &amp; Aging Report</span>
+  <div class="shell-spacer"></div>
+  <button class="shell-btn" id="toggle-chat-btn" onclick="toggleChat()">⬡ Chat</button>
+  <button class="shell-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+  <span class="shell-badge" id="status-badge">READY</span>
+</div>
+
+<!-- ── Filter bar ──────────────────────────────────────────────────────────── -->
+<div class="filter-bar">
+  <div class="fg w-date">
+    <label>Aging Date</label>
+    <input type="date" id="f-aging-date"/>
+  </div>
+  <div class="fg w-bucket">
+    <label>Bucket Size</label>
+    <select id="f-bucket-size">
+      <option value="30">30 Days</option>
+      <option value="45">45 Days</option>
+      <option value="60">60 Days</option>
+      <option value="90">90 Days</option>
+    </select>
+  </div>
+  <div class="fg w-vendor">
+    <label>Vendor</label>
+    <input type="text" id="f-vendor" placeholder="Code or name…"/>
+  </div>
+  <div class="fg w-dim">
+    <label>Dimension</label>
+    <select id="f-dimension">
+      <option value="">All Dimensions</option>
+      <optgroup label="Predefined">
+        <option value="BRAND">Brand</option>
+        <option value="SUB-BRAND">Sub-Brand</option>
+        <option value="UNIVERSAL">Universal</option>
+        <option value="NATIONAL">National</option>
+        <option value="LOCAL">Local</option>
+        <option value="IMPORT">Import</option>
+      </optgroup>
+      <optgroup label="From Data" id="dim-data-group"></optgroup>
+    </select>
+  </div>
+  <div class="fg w-branch">
+    <label>Branch</label>
+    <select id="f-branch"><option value="">All Branches</option></select>
+  </div>
+  <div class="fg w-doctype">
+    <label>Doc Type</label>
+    <select id="f-doctype"><option value="">All Types</option></select>
+  </div>
+  <div class="fg">
+    <label>Bucket</label>
+    <select id="f-bucket-filter" style="width:120px"><option value="">All Buckets</option></select>
+  </div>
+  <label class="overdue-toggle">
+    <input type="checkbox" id="f-overdue-only"/> Overdue Only
+  </label>
+  <button class="analyze-btn" id="analyze-btn" onclick="runAnalyze()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Analyze
+  </button>
+  <button class="filter-clear" onclick="clearFilters()">Clear</button>
+</div>
+
+<!-- ── Main area ──────────────────────────────────────────────────────────── -->
+<div class="main-area">
+
+  <!-- ── Chat panel ──────────────────────────────────────────────────────── -->
+  <div class="chat-panel">
+    <div class="chat-topbar">
+      <div class="chat-topbar-avatar">📊</div>
+      <div style="flex:1">
+        <div class="chat-topbar-name">Aging Assistant</div>
+        <div class="chat-topbar-status">
+          <span class="status-dot"></span>
+          <span id="chat-status-text">Ready</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="messages">
+      <div class="no-data">
+        <div class="no-data-icon">📊</div>
+        <div class="no-data-text">Set filters and click <strong>Analyze</strong></div>
+        <div class="no-data-hint">I'll answer questions about your AP aging data</div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="user-input" rows="1" placeholder="Ask about aging data…" autocomplete="off"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendFromInput()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+      <div class="input-hint"><strong>Enter</strong> to send &nbsp;|&nbsp; <strong>Shift+Enter</strong> for new line</div>
+    </div>
+  </div>
+
+  <!-- ── Analytics panel ─────────────────────────────────────────────────── -->
+  <div class="analytics-panel">
+    <div class="ap-scroll">
+
+      <!-- KPI cards -->
+      <div class="kpi-row">
+        <div class="kpi-card balance">
+          <div class="kpi-label">Balance Due</div>
+          <div class="kpi-value" id="kpi-balance">—</div>
+          <div class="kpi-sub" id="kpi-docs">— documents</div>
+        </div>
+        <div class="kpi-card overdue">
+          <div class="kpi-label">Overdue Amount</div>
+          <div class="kpi-value" id="kpi-overdue">—</div>
+          <div class="kpi-sub" id="kpi-overdue-pct">—% of balance</div>
+        </div>
+        <div class="kpi-card future">
+          <div class="kpi-label">Future Remit</div>
+          <div class="kpi-value" id="kpi-future">—</div>
+          <div class="kpi-sub">Not yet due</div>
+        </div>
+        <div class="kpi-card vendors">
+          <div class="kpi-label">Vendors</div>
+          <div class="kpi-value" id="kpi-vendors">—</div>
+          <div class="kpi-sub" id="kpi-aging-date">As of —</div>
+        </div>
+      </div>
+
+      <!-- AI insight -->
+      <div class="insight-card" id="insight-card" style="display:none">
+        <h3>🤖 AI Insight</h3>
+        <div id="insight-body"></div>
+      </div>
+
+      <!-- Charts row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <!-- Aging bucket chart -->
+        <div class="chart-card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Aging Bucket Breakdown</div>
+              <div class="card-sub" id="chart-sub">Balance due by bucket</div>
+            </div>
+            <div class="chart-tabs">
+              <div class="chart-tab active" onclick="switchChartType('balance',this)">Balance</div>
+              <div class="chart-tab" onclick="switchChartType('overdue',this)">Overdue</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="aging-chart"></canvas></div>
+        </div>
+
+        <!-- Dimension breakdown chart -->
+        <div class="chart-card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Dimension Analysis</div>
+              <div class="card-sub">Balance due by vendor group</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="dim-chart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Dimension quick-select cards -->
+      <div class="chart-card" id="dim-card-section" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Dimension Groups</div>
+          <div class="card-sub">Click to filter</div>
+        </div>
+        <div class="dim-grid" id="dim-grid"></div>
+      </div>
+
+      <!-- Vendor table -->
+      <div class="table-card">
+        <div class="table-header">
+          <span>Vendor Aging Detail <span id="vendor-count" style="font-weight:400;color:var(--muted);font-size:11px"></span></span>
+          <div class="table-actions">
+            <button class="tbl-btn" onclick="exportCsv()">⬇ Export CSV</button>
+            <button class="tbl-btn" id="toggle-buckets-btn" onclick="toggleBucketColumns()">Show Buckets</button>
+          </div>
+        </div>
+        <div class="search-row">
+          <input type="text" id="tbl-search" placeholder="Search vendor in table…" oninput="filterTable()"/>
+        </div>
+        <div class="table-wrap">
+          <table id="vendor-table">
+            <thead>
+              <tr id="table-head">
+                <th onclick="sortTable('name')" data-col="name">Vendor <span class="sort-icon"></span></th>
+                <th onclick="sortTable('group')" data-col="group">Group / Dimension <span class="sort-icon"></span></th>
+                <th onclick="sortTable('branch')" data-col="branch">Branch <span class="sort-icon"></span></th>
+                <th onclick="sortTable('balanceDue')" data-col="balanceDue" class="sort-desc">Balance Due <span class="sort-icon"></span></th>
+                <th onclick="sortTable('overdue')" data-col="overdue">Overdue <span class="sort-icon"></span></th>
+                <th onclick="sortTable('futureRemit')" data-col="futureRemit">Future Remit <span class="sort-icon"></span></th>
+                <th onclick="sortTable('maxDaysOutstanding')" data-col="maxDaysOutstanding">Max Days <span class="sort-icon"></span></th>
+              </tr>
+            </thead>
+            <tbody id="vendor-tbody">
+              <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">
+                <div style="font-size:24px;margin-bottom:8px">📋</div>
+                Click <strong>Analyze</strong> to load vendor aging data
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /ap-scroll -->
+  </div><!-- /analytics-panel -->
+
+</div><!-- /main-area -->
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let sessionId = null;
+let isBusy    = false;
+let agingData = null;
+let allVendors = [];
+let bucketCols = [];
+let showBuckets = false;
+let sortCol = 'balanceDue';
+let sortDir = 'desc';
+let agingChart = null;
+let dimChart = null;
+let chartMode = 'balance';
+let currentAgingContext = '';
+
+// Predefined dimension labels
+const PREDEFINED_DIMS = {
+  'BRAND': 'Brand', 'SUB-BRAND': 'Sub-Brand', 'UNIVERSAL': 'Universal',
+  'NATIONAL': 'National', 'LOCAL': 'Local', 'IMPORT': 'Import',
+};
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  document.getElementById('f-aging-date').value = todayStr;
+
+  setupMarked();
+
+  const inp = document.getElementById('user-input');
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
+  });
+  inp.addEventListener('input', () => {
+    inp.style.height = 'auto';
+    inp.style.height = Math.min(inp.scrollHeight, 80) + 'px';
+  });
+
+  startChat();
+});
+
+// ── Marked.js ────────────────────────────────────────────────────────────────
+function setupMarked() {
+  if (typeof marked === 'undefined') return;
+  marked.setOptions({ breaks: true, gfm: true });
+}
+
+function renderMd(text) {
+  if (typeof marked === 'undefined') return escHtml(text).replace(/\n/g, '<br>');
+  try { return marked.parse(text); } catch { return escHtml(text); }
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtN(n, d = 0) {
+  if (n == null || isNaN(Number(n))) return '—';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+// ── Chat helpers ─────────────────────────────────────────────────────────────
+function appendMessage(role, content, quickReplies) {
+  const msgs = document.getElementById('messages');
+  const placeholder = msgs.querySelector('.no-data');
+  if (placeholder) placeholder.remove();
+
+  const row = document.createElement('div');
+  row.className = `msg-row ${role}`;
+  row.innerHTML = `
+    <div class="av ${role === 'bot' ? 'bot' : 'user'}">${role === 'bot' ? '📊' : '👤'}</div>
+    <div class="bubble ${role === 'bot' ? 'bot' : 'user'}">${
+      role === 'bot' ? renderMd(content) : escHtml(content)
+    }</div>`;
+  msgs.appendChild(row);
+
+  if (quickReplies && quickReplies.length) {
+    const qrDiv = document.createElement('div');
+    qrDiv.className = 'qr-row';
+    quickReplies.forEach(qr => {
+      const chip = document.createElement('button');
+      chip.className = 'qr-chip';
+      chip.textContent = qr;
+      chip.onclick = () => { markQRUsed(); sendMessage(qr); };
+      qrDiv.appendChild(chip);
+    });
+    msgs.appendChild(qrDiv);
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function markQRUsed() {
+  document.querySelectorAll('.qr-chip:not(.used)').forEach(c => c.classList.add('used'));
+}
+
+function showTyping() {
+  const msgs = document.getElementById('messages');
+  const row = document.createElement('div');
+  row.className = 'typing-row'; row.id = 'typing-indicator';
+  row.innerHTML = `<div class="av bot">📊</div><div class="typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+  msgs.appendChild(row);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function hideTyping() { const t = document.getElementById('typing-indicator'); if (t) t.remove(); }
+
+function setChatBusy(busy) {
+  document.getElementById('send-btn').disabled = busy;
+  document.getElementById('user-input').disabled = busy;
+  document.getElementById('chat-status-text').textContent = busy ? 'Thinking…' : 'Ready';
+}
+
+// ── Chat API ─────────────────────────────────────────────────────────────────
+async function startChat() {
+  try {
+    const token = localStorage.getItem('hanny_token') || '';
+    const r = await fetch('/api/vendor-payment-aging/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify({ message: '', sessionId: null }),
+    });
+    const data = await safeJson(r);
+    if (data.ok) {
+      sessionId = data.sessionId;
+      appendMessage('bot', data.reply, data.quickReplies);
+    }
+  } catch (e) { console.warn('[VPAging] startChat:', e.message); }
+}
+
+async function sendMessage(msg) {
+  if (isBusy || !msg.trim()) return;
+  isBusy = true;
+  setChatBusy(true);
+  appendMessage('user', msg);
+  showTyping();
+  try {
+    const token = localStorage.getItem('hanny_token') || '';
+    const r = await fetch('/api/vendor-payment-aging/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify({ message: msg, sessionId, agingContext: currentAgingContext }),
+    });
+    const data = await safeJson(r);
+    hideTyping();
+    if (data.ok) {
+      sessionId = data.sessionId;
+      appendMessage('bot', data.reply, data.quickReplies);
+    } else {
+      appendMessage('bot', `❌ ${data.error || 'Error'}`);
+    }
+  } catch (e) {
+    hideTyping();
+    appendMessage('bot', `⚠️ Connection error: ${e.message}`);
+  } finally {
+    isBusy = false;
+    setChatBusy(false);
+  }
+}
+
+function sendFromInput() {
+  const inp = document.getElementById('user-input');
+  const msg = inp.value.trim();
+  if (!msg || isBusy) return;
+  inp.value = '';
+  inp.style.height = 'auto';
+  markQRUsed();
+  sendMessage(msg);
+}
+
+// ── Analyze ──────────────────────────────────────────────────────────────────
+async function runAnalyze() {
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  setStatus('loading', 'LOADING…');
+
+  const params = {
+    agingDate:  document.getElementById('f-aging-date').value || new Date().toISOString().slice(0,10),
+    bucketSize: parseInt(document.getElementById('f-bucket-size').value) || 30,
+    filters: {
+      vendorSearch: document.getElementById('f-vendor').value.trim() || undefined,
+      dimension:    document.getElementById('f-dimension').value    || undefined,
+      branch:       document.getElementById('f-branch').value       || undefined,
+      docType:      document.getElementById('f-doctype').value      || undefined,
+      agingBucket:  document.getElementById('f-bucket-filter').value|| undefined,
+      onlyOverdue:  document.getElementById('f-overdue-only').checked || undefined,
+    },
+  };
+
+  try {
+    const token = localStorage.getItem('hanny_token') || '';
+    const r = await fetch('/api/vendor-payment-aging/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify(params),
+    });
+    const data = await safeJson(r);
+    if (!data.ok) throw new Error(data.error || 'Analysis failed');
+
+    agingData = data;
+    allVendors = data.vendors || [];
+    bucketCols = (data.buckets || []).map(b => b.bucket);
+
+    updateKPIs(data.totals, params.agingDate);
+    updateFilterOptions(data.options);
+    updateCharts(data.buckets, data.dimBreakdown);
+    updateDimCards(data.dimBreakdown);
+    renderTable();
+
+    if (data.aiInsight) {
+      document.getElementById('insight-card').style.display = 'block';
+      document.getElementById('insight-body').innerHTML = renderMd(data.aiInsight);
+    }
+
+    // Build aging context for chat
+    currentAgingContext = buildContextString(data);
+    sessionId = null; // reset so next chat uses fresh context
+
+    setStatus('ready', 'READY');
+    appendMessage('bot', `✅ Loaded aging as of **${params.agingDate}** — **${data.totals.vendorCount}** vendors, balance due **${fmtN(data.totals.balanceDue)}**.${data.totals.overdue > 0 ? ` ⚠️ Overdue: **${fmtN(data.totals.overdue)}**` : ''}\n\nAsk me anything about this data.`,
+      ['Show top overdue vendors', 'Aging bucket summary', 'Filter by dimension', 'Vendors over 90 days']);
+  } catch (e) {
+    setStatus('error', 'ERROR');
+    appendMessage('bot', `❌ Failed to load aging data: **${e.message}**\n\nPlease check your HANA connection and try again.`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Build context string for chat ────────────────────────────────────────────
+function buildContextString(data) {
+  const { vendors, totals, buckets, dimBreakdown, params } = data;
+  const top = (vendors || []).slice(0, 15);
+  const buckStr = (buckets || []).map(b => `  ${b.bucket}: ${fmtN(b.balanceDue)} (${b.vendorCount} vendors)`).join('\n');
+  const dimStr  = (dimBreakdown || []).slice(0, 8).map(d => `  ${d.dimension}: ${fmtN(d.balanceDue)} balance, ${fmtN(d.overdue)} overdue`).join('\n');
+  const topStr  = top.map((v, i) => `  ${i+1}. ${v.name} (${v.code}): Balance ${fmtN(v.balanceDue)}, Overdue ${fmtN(v.overdue)}, ${v.maxDaysOutstanding} days max`).join('\n');
+
+  return `VENDOR PAYMENT AGING — As of: ${params?.agingDate} | Bucket: ${params?.bucketSize} days
+TOTALS: Balance Due ${fmtN(totals.balanceDue)}, Overdue ${fmtN(totals.overdue)}, Future ${fmtN(totals.futureRemit)}, Vendors: ${totals.vendorCount}
+AGING BUCKETS:\n${buckStr}
+DIMENSIONS:\n${dimStr}
+TOP VENDORS:\n${topStr}`;
+}
+
+// ── KPI update ────────────────────────────────────────────────────────────────
+function updateKPIs(t, agingDate) {
+  document.getElementById('kpi-balance').textContent  = fmtN(t.balanceDue);
+  document.getElementById('kpi-overdue').textContent  = fmtN(t.overdue);
+  document.getElementById('kpi-future').textContent   = fmtN(t.futureRemit);
+  document.getElementById('kpi-vendors').textContent  = t.vendorCount;
+  document.getElementById('kpi-docs').textContent     = `${t.docCount} documents`;
+  document.getElementById('kpi-aging-date').textContent = `As of ${agingDate}`;
+  const pct = t.balanceDue > 0 ? ((t.overdue / t.balanceDue) * 100).toFixed(1) : '0.0';
+  document.getElementById('kpi-overdue-pct').textContent = `${pct}% of balance`;
+}
+
+// ── Filter options ────────────────────────────────────────────────────────────
+function updateFilterOptions(opts) {
+  if (!opts) return;
+
+  const branchSel = document.getElementById('f-branch');
+  const curBranch = branchSel.value;
+  branchSel.innerHTML = '<option value="">All Branches</option>';
+  (opts.branches || []).forEach(b => {
+    const o = document.createElement('option');
+    o.value = b; o.textContent = b;
+    if (b === curBranch) o.selected = true;
+    branchSel.appendChild(o);
+  });
+
+  const docSel = document.getElementById('f-doctype');
+  const curDoc = docSel.value;
+  docSel.innerHTML = '<option value="">All Types</option>';
+  (opts.docTypes || []).forEach(d => {
+    const o = document.createElement('option');
+    o.value = d; o.textContent = d;
+    if (d === curDoc) o.selected = true;
+    docSel.appendChild(o);
+  });
+
+  const bucketSel = document.getElementById('f-bucket-filter');
+  const curBkt = bucketSel.value;
+  bucketSel.innerHTML = '<option value="">All Buckets</option>';
+  (opts.buckets || []).forEach(b => {
+    const o = document.createElement('option');
+    o.value = b; o.textContent = b;
+    if (b === curBkt) o.selected = true;
+    bucketSel.appendChild(o);
+  });
+
+  // Add dynamic dimensions
+  const dimGroup = document.getElementById('dim-data-group');
+  dimGroup.innerHTML = '';
+  const predefined = new Set(Object.keys(PREDEFINED_DIMS));
+  (opts.dimensions || []).filter(d => !predefined.has(d)).forEach(d => {
+    const o = document.createElement('option');
+    o.value = d; o.textContent = d;
+    dimGroup.appendChild(o);
+  });
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const BUCKET_COLORS = [
+  '#107E3E','#0070F2','#E9730C','#F0AB00','#BB0000','#9333EA','#0891B2',
+];
+
+function updateCharts(buckets, dimBreakdown) {
+  renderAgingChart(buckets);
+  renderDimChart(dimBreakdown);
+}
+
+function renderAgingChart(buckets) {
+  const ctx = document.getElementById('aging-chart').getContext('2d');
+  if (agingChart) agingChart.destroy();
+
+  const labels = (buckets || []).map(b => b.bucket);
+  const data   = (buckets || []).map(b => chartMode === 'overdue' ? b.overdue : b.balanceDue);
+  const colors = labels.map((_, i) => BUCKET_COLORS[i % BUCKET_COLORS.length]);
+
+  agingChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: chartMode === 'overdue' ? 'Overdue' : 'Balance Due',
+        data,
+        backgroundColor: colors.map(c => c + 'CC'),
+        borderColor: colors,
+        borderWidth: 1.5,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' ' + fmtN(ctx.raw),
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: {
+          grid: { color: '#F0F0F0' },
+          ticks: { font: { size: 10 }, callback: v => fmtN(v) },
+        },
+      },
+    },
+  });
+}
+
+function renderDimChart(dimBreakdown) {
+  const ctx = document.getElementById('dim-chart').getContext('2d');
+  if (dimChart) dimChart.destroy();
+  if (!dimBreakdown || !dimBreakdown.length) return;
+
+  const top    = dimBreakdown.slice(0, 7);
+  const labels = top.map(d => d.dimension || 'Unassigned');
+  const data   = top.map(d => d.balanceDue);
+
+  dimChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: BUCKET_COLORS.map(c => c + 'CC'),
+        borderColor: BUCKET_COLORS,
+        borderWidth: 1.5,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtN(ctx.raw)}` } },
+      },
+    },
+  });
+}
+
+function switchChartType(mode, el) {
+  chartMode = mode;
+  document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  if (agingData) renderAgingChart(agingData.buckets);
+}
+
+// ── Dimension cards ───────────────────────────────────────────────────────────
+function updateDimCards(dimBreakdown) {
+  if (!dimBreakdown || !dimBreakdown.length) { document.getElementById('dim-card-section').style.display = 'none'; return; }
+  document.getElementById('dim-card-section').style.display = '';
+  const grid = document.getElementById('dim-grid');
+  grid.innerHTML = '';
+
+  // "All" card
+  const allCard = document.createElement('div');
+  allCard.className = 'dim-card selected';
+  allCard.id = 'dim-card-ALL';
+  allCard.onclick = () => selectDimCard('');
+  allCard.innerHTML = `<div class="dim-name">All Dimensions</div><div class="dim-amount">${fmtN(agingData?.totals?.balanceDue || 0)}</div><div class="dim-vendors">${agingData?.totals?.vendorCount || 0} vendors</div>`;
+  grid.appendChild(allCard);
+
+  dimBreakdown.forEach(d => {
+    const card = document.createElement('div');
+    card.className = 'dim-card';
+    card.id = `dim-card-${d.dimension}`;
+    card.onclick = () => selectDimCard(d.dimension);
+    card.innerHTML = `<div class="dim-name">${escHtml(d.dimension || 'Unassigned')}</div><div class="dim-amount">${fmtN(d.balanceDue)}</div><div class="dim-overdue">Overdue: ${fmtN(d.overdue)}</div><div class="dim-vendors">${d.vendorCount} vendors</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function selectDimCard(dim) {
+  document.querySelectorAll('.dim-card').forEach(c => c.classList.remove('selected'));
+  const id = `dim-card-${dim || 'ALL'}`;
+  document.getElementById(id)?.classList.add('selected');
+  document.getElementById('f-dimension').value = dim;
+  // Re-render table with filter
+  if (agingData) {
+    const filtered = dim ? allVendors.filter(v => v.group === dim) : allVendors;
+    renderTableFromVendors(filtered);
+  }
+}
+
+// ── Vendor table ──────────────────────────────────────────────────────────────
+function renderTable() { renderTableFromVendors(allVendors); }
+
+function renderTableFromVendors(vendors) {
+  document.getElementById('vendor-count').textContent = `(${vendors.length})`;
+  const q = (document.getElementById('tbl-search').value || '').toLowerCase();
+  const shown = q ? vendors.filter(v => (v.name + v.code + v.group).toLowerCase().includes(q)) : vendors;
+
+  const sorted = [...shown].sort((a, b) => {
+    const va = a[sortCol] ?? '';
+    const vb = b[sortCol] ?? '';
+    if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va;
+    return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+
+  const tbody = document.getElementById('vendor-tbody');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">No vendors match the current filters</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(v => {
+    const daysClass = v.maxDaysOutstanding > 90 ? 'days-90' : v.maxDaysOutstanding > 60 ? 'days-60' : v.maxDaysOutstanding > 30 ? 'days-30' : 'days-0';
+    let bucketCells = '';
+    if (showBuckets) {
+      bucketCols.forEach(b => {
+        bucketCells += `<td class="amt">${fmtN(v.buckets?.[b] || 0)}</td>`;
+      });
+    }
+    return `<tr>
+      <td><div style="font-weight:600;font-size:12px">${escHtml(v.name || v.code)}</div><div style="font-size:10.5px;color:var(--muted)">${escHtml(v.code)}</div></td>
+      <td>${escHtml(v.group || '—')}</td>
+      <td>${escHtml(v.branch || '—')}</td>
+      <td class="amt">${fmtN(v.balanceDue)}</td>
+      <td class="amt overdue-cell">${v.overdue > 0 ? fmtN(v.overdue) : '<span style="color:var(--green)">Current</span>'}</td>
+      <td class="amt">${fmtN(v.futureRemit)}</td>
+      <td class="amt"><span class="days-pill ${daysClass}">${v.maxDaysOutstanding}</span></td>
+      ${bucketCells}
+    </tr>`;
+  }).join('');
+}
+
+function sortTable(col) {
+  if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortCol = col; sortDir = 'desc'; }
+
+  document.querySelectorAll('#vendor-table th').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.col === col) th.classList.add(`sort-${sortDir}`);
+  });
+
+  if (agingData) renderTable();
+}
+
+function filterTable() { if (agingData) renderTable(); }
+
+function toggleBucketColumns() {
+  showBuckets = !showBuckets;
+  const btn = document.getElementById('toggle-buckets-btn');
+  btn.textContent = showBuckets ? 'Hide Buckets' : 'Show Buckets';
+  btn.classList.toggle('active', showBuckets);
+
+  // Rebuild table header
+  const headRow = document.getElementById('table-head');
+  const staticCols = headRow.querySelectorAll('th:not(.bucket-col)');
+  headRow.querySelectorAll('.bucket-col').forEach(c => c.remove());
+
+  if (showBuckets) {
+    bucketCols.forEach(b => {
+      const th = document.createElement('th');
+      th.className = 'bucket-col';
+      th.style.cssText = 'font-size:10px;';
+      th.textContent = b;
+      headRow.appendChild(th);
+    });
+  }
+
+  if (agingData) renderTable();
+}
+
+// ── Export CSV ────────────────────────────────────────────────────────────────
+function exportCsv() {
+  if (!allVendors.length) { alert('No data to export. Run Analyze first.'); return; }
+  const headers = ['Code', 'Vendor Name', 'Group/Dimension', 'Branch', 'Balance Due', 'Overdue', 'Future Remit', 'Max Days Outstanding'];
+  const rows = allVendors.map(v => [
+    v.code, v.name, v.group, v.branch,
+    v.balanceDue.toFixed(2), v.overdue.toFixed(2), v.futureRemit.toFixed(2), v.maxDaysOutstanding,
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c || '').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const agingDate = document.getElementById('f-aging-date').value || 'today';
+  a.href = url; a.download = `vendor_aging_${agingDate}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function clearFilters() {
+  document.getElementById('f-vendor').value = '';
+  document.getElementById('f-dimension').value = '';
+  document.getElementById('f-branch').value = '';
+  document.getElementById('f-doctype').value = '';
+  document.getElementById('f-bucket-filter').value = '';
+  document.getElementById('f-overdue-only').checked = false;
+}
+
+function setStatus(state, label) {
+  const badge = document.getElementById('status-badge');
+  badge.textContent = label || state.toUpperCase();
+  badge.className = `shell-badge ${state}`;
+}
+
+// ── Safe JSON fetch ────────────────────────────────────────────────────────
+async function safeJson(r) {
+  const ct = r.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    if (r.status === 401) throw new Error('Session expired — please refresh the page');
+    const t = await r.text().catch(()=>'');
+    throw new Error(t.includes('<!DOCTYPE') ? `Server error (${r.status})` : t.slice(0,200) || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+// ── Fullscreen & chat toggle ───────────────────────────────────────────────
+let _chatVisible = true;
+function toggleChat() {
+  const panel = document.querySelector('.chat-panel');
+  const btn = document.getElementById('toggle-chat-btn');
+  if (!panel) return;
+  _chatVisible = !_chatVisible;
+  panel.style.display = _chatVisible ? '' : 'none';
+  btn.textContent = _chatVisible ? '⬡ Chat' : '⬢ Chat';
+  btn.classList.toggle('active', !_chatVisible);
+}
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('fullscreen-btn').textContent = document.fullscreenElement ? '⊡' : '⛶';
+});
+</script>
+</body>
+</html>

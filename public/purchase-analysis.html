@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Purchase Analysis Dashboard — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  if(!t){window.location.replace('/login.html');return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace('/login.html');}}).catch(()=>{});
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--red:#BB0000;--orange:#E9730C;--purple:#7B2D8B;
+  --teal:#0B7D8A;--gold:#B07800;--navy:#1E40AF;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);display:flex;flex-direction:column}
+
+/* Shell */
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30}
+.shell-back{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);transition:background .15s;border:1px solid rgba(255,255,255,.2)}
+.shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
+.shell-divider{width:1px;height:20px;background:rgba(255,255,255,.2)}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.5);margin-left:4px}
+.shell-spacer{flex:1}
+.shell-badge{font-size:9.5px;padding:2px 8px;border-radius:10px;background:rgba(0,112,242,.5);color:#fff;font-weight:600}
+.shell-badge.loading{background:rgba(233,115,12,.55)}
+.shell-badge.ready{background:rgba(16,126,62,.55)}
+.shell-badge.error{background:rgba(187,0,0,.55)}
+.shell-btn{height:28px;padding:0 10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:var(--r);color:rgba(255,255,255,.85);font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background .15s;white-space:nowrap}
+.shell-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+.shell-btn.active{background:rgba(0,112,242,.4)}
+
+/* Filter bar */
+.filter-bar{background:var(--white);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0;z-index:20}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fg input,.fg select{height:29px;padding:0 7px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);font-family:var(--font);outline:none;transition:border-color .15s}
+.fg input:focus,.fg select:focus{border-color:var(--blue);background:var(--white)}
+.fg.wd input{width:118px}
+.fg.wv input{width:150px}
+.fg.wi input{width:140px}
+.fg.ws select{width:120px}
+.analyze-btn{height:29px;padding:0 14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:background .15s;white-space:nowrap;align-self:flex-end}
+.analyze-btn:hover{background:var(--blue-mid)}
+.analyze-btn:disabled{background:#94a3b8;cursor:not-allowed}
+.clear-btn{height:29px;padding:0 10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--r);font-size:11.5px;cursor:pointer;transition:all .15s;align-self:flex-end}
+.clear-btn:hover{border-color:var(--red);color:var(--red)}
+
+/* Main layout */
+.main-area{display:flex;flex:1;min-height:0;overflow:hidden}
+
+/* Chat panel */
+.chat-panel{width:360px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--white)}
+.chat-topbar{border-bottom:1px solid var(--border);padding:8px 13px;display:flex;align-items:center;gap:9px;flex-shrink:0}
+.chat-avatar{width:29px;height:29px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0}
+.chat-name{font-size:12.5px;font-weight:600}
+.chat-status{font-size:11px;color:var(--green);display:flex;align-items:center;gap:4px}
+.status-dot{width:5px;height:5px;border-radius:50%;background:var(--green)}
+#messages{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:9px;background:var(--bg);scroll-behavior:smooth}
+#messages::-webkit-scrollbar{width:4px}
+#messages::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
+.msg-row{display:flex;gap:7px;align-self:flex-start}
+.msg-row.user{align-self:flex-end;flex-direction:row-reverse}
+.av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:2px;font-weight:700}
+.av.bot{background:var(--blue);color:#fff}.av.user{background:var(--blue-light);color:var(--blue);border:1px solid #99CAFF}
+.bubble{padding:7px 11px;border-radius:var(--r);line-height:1.6;font-size:12.5px;max-width:90%;box-shadow:var(--shadow)}
+.bubble.bot{background:var(--white);border:1px solid var(--border);border-top-left-radius:0;color:var(--text)}
+.bubble.user{background:var(--blue);color:#fff;border-top-right-radius:0}
+.bubble.bot table{border-collapse:collapse;width:100%;margin:5px 0;font-size:11px}
+.bubble.bot th{background:#F5F6F7;padding:4px 8px;font-size:10px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border)}
+.bubble.bot td{padding:3px 8px;border-bottom:1px solid #F0F0F0}
+.bubble.bot tr:hover td{background:var(--blue-light)}
+.bubble.bot h2{font-size:13px;font-weight:700;color:var(--blue);margin:3px 0 5px;border-bottom:1px solid var(--blue-light);padding-bottom:3px}
+.bubble.bot h3{font-size:12px;font-weight:700;color:var(--blue);margin:5px 0 2px}
+.bubble.bot strong{font-weight:700}.bubble.bot code{background:#F5F6F7;border-radius:2px;padding:1px 4px;font-size:11px;font-family:monospace}
+.bubble.bot ul,.bubble.bot ol{padding-left:14px;margin:2px 0}.bubble.bot li{margin:1px 0}
+.bubble.bot p{margin:2px 0}.bubble.bot blockquote{border-left:3px solid var(--blue);background:var(--blue-light);padding:5px 9px;margin:4px 0;border-radius:0 var(--r) var(--r) 0;font-size:12px}
+.qr-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;padding-left:33px}
+.qr-chip{background:var(--white);border:1px solid var(--blue);color:var(--blue);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.qr-chip:hover{background:var(--blue);color:#fff}.qr-chip.used{opacity:.4;cursor:default;pointer-events:none}
+.typing-row{display:flex;gap:7px;align-self:flex-start}
+.typing-bubble{background:var(--white);border:1px solid var(--border);border-radius:var(--r);border-top-left-radius:0;padding:9px 13px;display:flex;align-items:center;gap:4px}
+.dot{width:6px;height:6px;border-radius:50%;background:#94a3b8;animation:bounce 1.2s infinite ease-in-out}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1);opacity:1}}
+.input-area{background:var(--white);border-top:1px solid var(--border);padding:7px 11px 9px;flex-shrink:0}
+.input-row{display:flex;align-items:flex-end;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:4px 7px;transition:border-color .15s}
+.input-row:focus-within{border-color:var(--blue);background:var(--white)}
+#user-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;font-family:var(--font);resize:none;max-height:70px;line-height:1.5;min-height:20px}
+#user-input::placeholder{color:#ABABAB}
+.send-btn{width:28px;height:28px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
+.send-btn:hover{background:var(--blue-mid)}.send-btn:disabled{background:#cbd5e1;cursor:not-allowed}
+.input-hint{font-size:10px;color:var(--muted);margin-top:3px;text-align:right}
+
+/* Analytics panel */
+.analytics-panel{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* View tabs */
+.view-tabs{background:var(--white);border-bottom:2px solid var(--border);padding:0 14px;display:flex;gap:0;flex-shrink:0;overflow-x:auto}
+.view-tabs::-webkit-scrollbar{height:3px}
+.view-tabs::-webkit-scrollbar-thumb{background:#cbd5e1}
+.vtab{padding:10px 14px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.vtab:hover{color:var(--text);background:#F8F9FA}
+.vtab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:700}
+.vtab .badge{font-size:9px;padding:1px 5px;border-radius:8px;background:var(--bg);color:var(--muted);font-weight:600}
+.vtab.active .badge{background:var(--blue-light);color:var(--blue)}
+
+/* Analytics scroll area */
+.ap-scroll{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.ap-scroll::-webkit-scrollbar{width:5px}
+.ap-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+/* KPI row */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kpi-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:10px 12px;box-shadow:var(--shadow)}
+.kpi-card.c-blue{border-left:3px solid var(--blue)}.kpi-card.c-orange{border-left:3px solid var(--orange)}
+.kpi-card.c-green{border-left:3px solid var(--green)}.kpi-card.c-red{border-left:3px solid var(--red)}
+.kpi-card.c-purple{border-left:3px solid var(--purple)}.kpi-card.c-teal{border-left:3px solid var(--teal)}
+.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+.kpi-value{font-size:17px;font-weight:700;color:var(--text)}
+.kpi-sub{font-size:10.5px;color:var(--muted);margin-top:1px}
+.kpi-card.c-blue .kpi-value{color:var(--blue)}.kpi-card.c-orange .kpi-value{color:var(--orange)}
+.kpi-card.c-green .kpi-value{color:var(--green)}.kpi-card.c-red .kpi-value{color:var(--red)}
+
+/* Chart row */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chart-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:12px;box-shadow:var(--shadow)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.card-title{font-size:12px;font-weight:700;color:var(--text)}
+.card-actions{display:flex;gap:5px}
+.dim-tab{font-size:10.5px;padding:2px 8px;border-radius:12px;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg);transition:all .15s}
+.dim-tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.chart-wrap{position:relative;height:180px}
+
+/* AI insight */
+.insight-card{background:linear-gradient(135deg,#EBF4FF,#E8F4FF);border:1px solid #BFDBFE;border-left:3px solid var(--blue);border-radius:var(--r);padding:11px 13px;font-size:12.5px;line-height:1.65}
+.insight-card h3{font-size:11.5px;font-weight:700;color:var(--blue);margin-bottom:5px}
+
+/* Table card */
+.table-card{background:var(--white);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);overflow:hidden}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border)}
+.table-header span{font-size:12px;font-weight:700;color:var(--text)}
+.tbl-actions{display:flex;gap:6px;align-items:center}
+.tbl-btn{font-size:11px;padding:3px 9px;border-radius:var(--r);cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg);transition:all .15s}
+.tbl-btn:hover{border-color:var(--blue);color:var(--blue)}.tbl-btn.active{background:var(--blue-light);border-color:var(--blue);color:var(--blue)}
+.tbl-search{padding:6px 12px;border-bottom:1px solid var(--border)}
+.tbl-search input{width:100%;height:27px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);font-size:12px;outline:none}
+.tbl-search input:focus{border-color:var(--blue)}
+.table-wrap{overflow-x:auto;max-height:280px;overflow-y:auto}
+.table-wrap::-webkit-scrollbar{width:4px;height:4px}
+.table-wrap::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
+.data-table{border-collapse:collapse;width:100%;font-size:11.5px;min-width:600px}
+.data-table th{background:#F5F6F7;padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);position:sticky;top:0;cursor:pointer;user-select:none;white-space:nowrap}
+.data-table th:hover{background:#EBEBEB}
+.data-table th.sort-asc::after{content:' ▲';opacity:.7}.data-table th.sort-desc::after{content:' ▼';opacity:.7}
+.data-table td{padding:5px 10px;border-bottom:1px solid #F0F0F0;white-space:nowrap}
+.data-table tr:hover td{background:var(--blue-light)}
+.data-table .amt{text-align:right;font-variant-numeric:tabular-nums}
+.data-table .tag{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600}
+.tag-blue{background:var(--blue-light);color:var(--blue)}
+.tag-green{background:#E8F8F0;color:var(--green)}
+.tag-orange{background:#FFF3E5;color:var(--orange)}
+.tag-red{background:#FFE0E0;color:var(--red)}
+
+/* No data */
+.no-data{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px;gap:9px;color:var(--muted);text-align:center}
+.no-data-icon{font-size:32px;opacity:.3}
+
+/* Dim filter chips */
+.dim-chips{display:flex;gap:6px;flex-wrap:wrap;padding:6px 14px;background:var(--white);border-bottom:1px solid var(--border);flex-shrink:0}
+.dim-chip{font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg);transition:all .15s}
+.dim-chip.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.dim-section-label{font-size:10px;color:var(--muted);font-weight:600;align-self:center;white-space:nowrap}
+
+@media(max-width:1100px){.chat-panel{display:none}}
+@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.chart-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- Shell -->
+<div class="shell-bar">
+  <a class="shell-back" href="/index.html">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Back
+  </a>
+  <div class="shell-divider"></div>
+  <div class="shell-icon">🛒</div>
+  <div><div class="shell-title">Purchase Analysis Dashboard</div></div>
+  <span class="shell-subtitle">8 AP/Procurement HANA Views</span>
+  <div class="shell-spacer"></div>
+  <button class="shell-btn" id="toggle-chat-btn" onclick="toggleChat()">⬡ Chat</button>
+  <button class="shell-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+  <span class="shell-badge" id="status-badge">READY</span>
+</div>
+
+<!-- Filter bar -->
+<div class="filter-bar">
+  <div class="fg wd"><label>From Date</label><input type="date" id="f-from"/></div>
+  <div class="fg wd"><label>To Date</label><input type="date" id="f-to"/></div>
+  <div class="fg wv"><label>Vendor</label><input type="text" id="f-vendor" placeholder="Code or name…"/></div>
+  <div class="fg wi"><label>Item</label><input type="text" id="f-item" placeholder="Item code or desc…"/></div>
+  <div class="fg ws"><label>Brand</label>
+    <select id="f-brand">
+      <option value="">All Brands</option>
+      <optgroup label="Predefined" id="brand-predefined">
+        <option value="BRAND">BRAND</option><option value="OWN">OWN</option><option value="THIRD">THIRD PARTY</option>
+      </optgroup>
+      <optgroup label="From Data" id="brand-data"></optgroup>
+    </select>
+  </div>
+  <div class="fg ws"><label>Sub-Brand</label><select id="f-subbrand"><option value="">All Sub-Brands</option><optgroup label="From Data" id="subbrand-data"></optgroup></select></div>
+  <div class="fg ws"><label>Universe</label><select id="f-universe"><option value="">All Universe</option><optgroup label="From Data" id="universe-data"></optgroup></select></div>
+  <div class="fg ws"><label>Branch</label><select id="f-branch"><option value="">All Branches</option></select></div>
+  <div class="fg ws"><label>Item Group</label><select id="f-itemgroup"><option value="">All Groups</option></select></div>
+  <button class="analyze-btn" id="analyze-btn" onclick="runAnalyze()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Analyze
+  </button>
+  <button class="clear-btn" onclick="clearFilters()">Clear</button>
+</div>
+
+<!-- Main area -->
+<div class="main-area">
+
+  <!-- Chat panel -->
+  <div class="chat-panel">
+    <div class="chat-topbar">
+      <div class="chat-avatar">🛒</div>
+      <div style="flex:1">
+        <div class="chat-name">Procurement AI</div>
+        <div class="chat-status"><span class="status-dot"></span><span id="chat-status">Ready</span></div>
+      </div>
+    </div>
+    <div id="messages">
+      <div class="no-data">
+        <div class="no-data-icon">📊</div>
+        <div style="font-size:12.5px">Select a tab and click <strong>Analyze</strong></div>
+        <div style="font-size:11px;color:#aaa;margin-top:4px">I'll answer questions about your procurement data</div>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="user-input" rows="1" placeholder="Ask about your purchase data…" autocomplete="off"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendFromInput()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+      <div class="input-hint"><strong>Enter</strong> send · <strong>Shift+Enter</strong> new line</div>
+    </div>
+  </div>
+
+  <!-- Analytics panel -->
+  <div class="analytics-panel">
+
+    <!-- View tabs -->
+    <div class="view-tabs" id="view-tabs">
+      <div class="vtab active" data-view="purchase" onclick="switchView('purchase',this)">📦 Purchase Analysis</div>
+      <div class="vtab" data-view="returns" onclick="switchView('returns',this)">↩ Returns</div>
+      <div class="vtab" data-view="avgprice" onclick="switchView('avgprice',this)">💰 Avg Price</div>
+      <div class="vtab" data-view="ontime" onclick="switchView('ontime',this)">⏱ On-Time Receipt</div>
+      <div class="vtab" data-view="bydoc" onclick="switchView('bydoc',this)">📄 By Document</div>
+      <div class="vtab" data-view="cycletime" onclick="switchView('cycletime',this)">🔄 Cycle Time</div>
+      <div class="vtab" data-view="receivedontime" onclick="switchView('receivedontime',this)">✅ Received On Time</div>
+      <div class="vtab" data-view="vendorbalance" onclick="switchView('vendorbalance',this)">🏦 Vendor Balance</div>
+    </div>
+
+    <!-- Content scroll -->
+    <div class="ap-scroll">
+
+      <!-- KPI row -->
+      <div class="kpi-row" id="kpi-row">
+        <div class="kpi-card c-blue"><div class="kpi-label" id="kpi1-label">Total Spend</div><div class="kpi-value" id="kpi1-val">—</div><div class="kpi-sub" id="kpi1-sub">—</div></div>
+        <div class="kpi-card c-orange"><div class="kpi-label" id="kpi2-label">Quantity</div><div class="kpi-value" id="kpi2-val">—</div><div class="kpi-sub" id="kpi2-sub">—</div></div>
+        <div class="kpi-card c-green"><div class="kpi-label" id="kpi3-label">Vendors</div><div class="kpi-value" id="kpi3-val">—</div><div class="kpi-sub" id="kpi3-sub">—</div></div>
+        <div class="kpi-card c-teal"><div class="kpi-label" id="kpi4-label">Records</div><div class="kpi-value" id="kpi4-val">—</div><div class="kpi-sub" id="kpi4-sub">—</div></div>
+      </div>
+
+      <!-- AI Insight -->
+      <div class="insight-card" id="insight-card" style="display:none">
+        <h3>🤖 AI Insight — <span id="insight-view-label"></span></h3>
+        <div id="insight-body"></div>
+      </div>
+
+      <!-- Charts -->
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title" id="chart1-title">Top Vendors by Spend</div>
+            <div class="card-actions" id="chart1-actions">
+              <div class="dim-tab active" onclick="switchGroupBy('vendor',this)">Vendor</div>
+              <div class="dim-tab" onclick="switchGroupBy('item',this)">Item</div>
+              <div class="dim-tab" onclick="switchGroupBy('brand',this)">Brand</div>
+              <div class="dim-tab" onclick="switchGroupBy('period',this)">Period</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart1"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title" id="chart2-title">Dimension Breakdown</div>
+            <div class="card-actions" id="chart2-actions">
+              <div class="dim-tab active" onclick="switchDimChart('brand',this)">Brand</div>
+              <div class="dim-tab" onclick="switchDimChart('subbrand',this)">Sub-Brand</div>
+              <div class="dim-tab" onclick="switchDimChart('universe',this)">Universe</div>
+              <div class="dim-tab" onclick="switchDimChart('branch',this)">Branch</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart2"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Data table -->
+      <div class="table-card">
+        <div class="table-header">
+          <span id="table-title">Vendor Analysis <span id="row-count" style="font-weight:400;font-size:11px;color:var(--muted)"></span></span>
+          <div class="tbl-actions">
+            <button class="tbl-btn active" id="grp-vendor-btn" onclick="setTableGroup('vendor')">By Vendor</button>
+            <button class="tbl-btn" id="grp-item-btn" onclick="setTableGroup('item')">By Item</button>
+            <button class="tbl-btn" id="grp-period-btn" onclick="setTableGroup('period')">By Period</button>
+            <button class="tbl-btn" onclick="exportCsv()">⬇ CSV</button>
+          </div>
+        </div>
+        <div class="tbl-search"><input type="text" id="tbl-search" placeholder="Search in table…" oninput="filterTable()"/></div>
+        <div class="table-wrap">
+          <table class="data-table" id="data-table">
+            <thead id="table-head"></thead>
+            <tbody id="table-body">
+              <tr><td colspan="6" style="text-align:center;padding:28px;color:var(--muted)">
+                <div style="font-size:26px;margin-bottom:6px">🛒</div>
+                Select a tab and click <strong>Analyze</strong> to load data
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /ap-scroll -->
+  </div><!-- /analytics-panel -->
+</div><!-- /main-area -->
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const TOKEN = () => localStorage.getItem('hanny_token') || '';
+let sessionId = null, isBusy = false, currentData = null;
+let activeView = 'purchase', tableGroup = 'vendor', chartGroup = 'vendor', dimChartKey = 'brand';
+let sortCol = null, sortDir = 'desc';
+let chart1 = null, chart2 = null;
+let dataCtxStr = '';
+
+const VIEW_META = {
+  purchase:      { label:'Purchase Analysis',      kpis:['NetPurchaseAmountLC','QuantityInInventoryUoM','vendors','rowCount'] },
+  returns:       { label:'Purchase Returns',        kpis:['ReturnedAmountLC','ReturnedQuantityInInventoryUoM','vendors','rowCount'] },
+  avgprice:      { label:'Average Purchasing Price',kpis:['PurchaseAmountLC','AverageUnitPriceLC','vendors','rowCount'] },
+  ontime:        { label:'On-Time Receipt',         kpis:['NumberOfPurchaseOrder','DelayedDays','AdvanceDays','rowCount'] },
+  bydoc:         { label:'By Document',             kpis:['NetPurchaseAmountLC','OpenAmountLC','AppliedNetPurchaseAmountLC','rowCount'] },
+  cycletime:     { label:'Cycle Time',              kpis:['NumberOfPurchaseOrder','AveragePOFulfillmentDays','vendors','rowCount'] },
+  receivedontime:{ label:'Received On Time',        kpis:['TotalPurchaseOrderAmountLC','OnTimeReceiptRateByAmount','NumberOfPurchaseOrder','rowCount'] },
+  vendorbalance: { label:'Vendor Balance',          kpis:['OpenPurchaseOrderBalanceLC','OpenGRPOBalanceLC','AccountPayableBalanceLC','rowCount'] },
+};
+
+const KPI_LABELS = {
+  NetPurchaseAmountLC:'Net Purchase Amount',ReturnedAmountLC:'Returned Amount',PurchaseAmountLC:'Purchase Amount',
+  NumberOfPurchaseOrder:'PO Count',DelayedDays:'Total Delayed Days',AdvanceDays:'Total Advance Days',
+  OpenAmountLC:'Open Amount',AppliedNetPurchaseAmountLC:'Applied Amount',AveragePOFulfillmentDays:'Avg Fulfillment Days',
+  TotalPurchaseOrderAmountLC:'Total PO Amount',OnTimeReceiptRateByAmount:'On-Time Rate',
+  OpenPurchaseOrderBalanceLC:'Open PO Balance',OpenGRPOBalanceLC:'Open GRPO Balance',AccountPayableBalanceLC:'AP Balance',
+  QuantityInInventoryUoM:'Total Quantity',ReturnedQuantityInInventoryUoM:'Returned Qty',AverageUnitPriceLC:'Avg Unit Price',
+  vendors:'Vendors',rowCount:'Records',
+};
+
+const CHART_COLORS = ['#0070F2','#E9730C','#107E3E','#BB0000','#7B2D8B','#0B7D8A','#B07800','#1E40AF'];
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  document.getElementById('f-to').value   = now.toISOString().slice(0,10);
+  document.getElementById('f-from').value = `${now.getFullYear()}-01-01`;
+  setupMarked();
+  const inp = document.getElementById('user-input');
+  inp.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendFromInput();} });
+  inp.addEventListener('input', ()=>{ inp.style.height='auto'; inp.style.height=Math.min(inp.scrollHeight,70)+'px'; });
+  startChat();
+});
+
+// ── Marked ────────────────────────────────────────────────────────────────────
+function setupMarked(){ if(typeof marked!=='undefined') marked.setOptions({breaks:true,gfm:true}); }
+function renderMd(t){ if(typeof marked==='undefined') return escHtml(t).replace(/\n/g,'<br>'); try{return marked.parse(t);}catch{return escHtml(t);} }
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtN(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function fmtPct(n){ return n==null?'—':Number(n).toFixed(1)+'%'; }
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchView(view, el) {
+  activeView = view;
+  document.querySelectorAll('.vtab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  // Reset table group and chart labels for new view
+  sortCol = null;
+  if (currentData?.view === view) return; // already loaded
+  resetCharts();
+}
+
+// ── Analyze ───────────────────────────────────────────────────────────────────
+async function runAnalyze() {
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  setStatus('loading','LOADING…');
+
+  const body = {
+    view:     activeView,
+    fromDate: document.getElementById('f-from').value,
+    toDate:   document.getElementById('f-to').value,
+    filters: {
+      vendor:   document.getElementById('f-vendor').value.trim()   || undefined,
+      item:     document.getElementById('f-item').value.trim()     || undefined,
+      brand:    document.getElementById('f-brand').value           || undefined,
+      subBrand: document.getElementById('f-subbrand').value        || undefined,
+      universe: document.getElementById('f-universe').value        || undefined,
+      branch:   document.getElementById('f-branch').value         || undefined,
+      itemGroup:document.getElementById('f-itemgroup').value       || undefined,
+    },
+  };
+
+  try {
+    const r = await fetch('/api/purchase-analysis/analyze', {
+      method:'POST', headers:{'Content-Type':'application/json','x-auth-token':TOKEN()}, body:JSON.stringify(body),
+    });
+    const data = await safeJson(r);
+    if(!data.ok) throw new Error(data.error||'Analysis failed');
+
+    currentData = data;
+    updateKPIs(data);
+    updateFilterOptions(data.options);
+    renderCharts(data);
+    renderTable();
+
+    if (data.aiInsight) {
+      document.getElementById('insight-card').style.display='';
+      document.getElementById('insight-view-label').textContent = VIEW_META[activeView]?.label||activeView;
+      document.getElementById('insight-body').innerHTML = renderMd(data.aiInsight);
+    }
+
+    dataCtxStr = buildContextStr(data);
+    sessionId = null; // reset chat session with new context
+
+    setStatus('ready','READY');
+    const meta = VIEW_META[activeView];
+    appendMessage('bot',
+      `✅ **${meta?.label||activeView}** loaded — **${data.rowCount}** rows, **${data.totals?.vendors||'?'}** vendors.\n\nAsk me anything about this data.`,
+      ['Top 10 vendors by spend','Monthly trend','Brand breakdown','Return rate analysis','Show OData query example']
+    );
+  } catch(e) {
+    setStatus('error','ERROR');
+    appendMessage('bot',`❌ Failed: **${e.message}**\n\nCheck HANA connection and date range.`);
+  } finally { btn.disabled=false; }
+}
+
+// ── KPI update ────────────────────────────────────────────────────────────────
+function updateKPIs(data) {
+  const meta = VIEW_META[activeView];
+  if (!meta) return;
+  const [k1,k2,k3,k4] = meta.kpis;
+  const t = data.totals || {};
+  const vendors = new Set((data.byVendor||[]).map(v=>v._key)).size;
+
+  const vals = {
+    [k1]: t[k1], [k2]: t[k2],
+    vendors, rowCount: data.rowCount,
+  };
+
+  [[k1,'kpi1'],[k2,'kpi2'],[k3,'kpi3'],[k4,'kpi4']].forEach(([key,id],i) => {
+    document.getElementById(`${id}-label`).textContent = KPI_LABELS[key]||key;
+    const v = key==='vendors'?vendors:key==='rowCount'?data.rowCount:t[key];
+    document.getElementById(`${id}-val`).textContent = (key.includes('Rate')||key.includes('Pct')) ? fmtPct(v) : fmtN(v);
+    document.getElementById(`${id}-sub`).textContent = `${data.params?.fromDate} – ${data.params?.toDate}`;
+  });
+}
+
+// ── Filter options ────────────────────────────────────────────────────────────
+function updateFilterOptions(opts) {
+  if(!opts) return;
+  populateSel('f-branch', opts.branches||[], 'All Branches');
+  populateSel('f-itemgroup', opts.itemGroups||[], 'All Groups');
+  populateDynamic('brand-data', opts.brands||[]);
+  populateDynamic('subbrand-data', opts.subBrands||[]);
+  populateDynamic('universe-data', opts.universes||[]);
+}
+function populateSel(id, items, placeholder) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  items.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; if(v===cur)o.selected=true; sel.appendChild(o); });
+}
+function populateDynamic(groupId, items) {
+  const g = document.getElementById(groupId);
+  if(!g) return; g.innerHTML='';
+  const predefined = new Set(['BRAND','OWN','THIRD PARTY','THIRD']);
+  items.filter(v=>!predefined.has(v)).forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; g.appendChild(o); });
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+function resetCharts() {
+  if(chart1){chart1.destroy();chart1=null;}
+  if(chart2){chart2.destroy();chart2=null;}
+}
+
+function renderCharts(data) {
+  renderChart1(data);
+  renderChart2(data);
+}
+
+function getChartData(data) {
+  const measures = data.measures || [];
+  const m0 = measures[0] || 'NetPurchaseAmountLC';
+  const maps = { vendor: data.byVendor, item: data.byItem, brand: data.byBrand, period: data.byPeriod };
+  const src = maps[chartGroup] || data.byVendor || [];
+  const labels = src.slice(0,15).map(r => r.vendorName || r.itemName || r._label || r._key || '?');
+  const vals   = src.slice(0,15).map(r => r[m0]||0);
+  return { labels, vals, measure: KPI_LABELS[m0]||m0 };
+}
+
+function renderChart1(data) {
+  const ctx = document.getElementById('chart1').getContext('2d');
+  if(chart1) chart1.destroy();
+  const { labels, vals, measure } = getChartData(data);
+  const isPeriod = chartGroup === 'period';
+
+  document.getElementById('chart1-title').textContent = `Top by ${KPI_LABELS[data.measures?.[0]]||'Amount'} — ${chartGroup[0].toUpperCase()+chartGroup.slice(1)}`;
+
+  chart1 = new Chart(ctx, {
+    type: isPeriod ? 'line' : 'bar',
+    data: {
+      labels,
+      datasets:[{
+        label: measure,
+        data: vals,
+        backgroundColor: isPeriod ? 'rgba(0,112,242,.15)' : CHART_COLORS.map(c=>c+'CC'),
+        borderColor: isPeriod ? '#0070F2' : CHART_COLORS,
+        borderWidth: isPeriod ? 2 : 1.5,
+        borderRadius: isPeriod ? 0 : 3,
+        fill: isPeriod,
+        tension: 0.35,
+        pointRadius: isPeriod ? 3 : 0,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtN(c.raw)}} },
+      scales:{
+        x:{ grid:{display:false}, ticks:{font:{size:9}, maxRotation:30} },
+        y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:9},callback:v=>fmtN(v)} }
+      }
+    }
+  });
+}
+
+function renderChart2(data) {
+  const ctx = document.getElementById('chart2').getContext('2d');
+  if(chart2) chart2.destroy();
+  const dimMaps = { brand: data.byBrand, subbrand: data.bySubBrand, universe: data.byUniverse, branch: data.byBranch };
+  const src = (dimMaps[dimChartKey]||[]).slice(0,10);
+  if(!src.length) return;
+  const m0 = (data.measures||[])[0]||'NetPurchaseAmountLC';
+  const labels = src.map(r=>r._label||r._key||'?');
+  const vals   = src.map(r=>r[m0]||0);
+  document.getElementById('chart2-title').textContent = `${dimChartKey[0].toUpperCase()+dimChartKey.slice(1)} Breakdown`;
+
+  chart2 = new Chart(ctx, {
+    type: 'doughnut',
+    data:{ labels, datasets:[{ data:vals, backgroundColor:CHART_COLORS.map(c=>c+'CC'), borderColor:CHART_COLORS, borderWidth:1.5 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'right',labels:{font:{size:9},boxWidth:10}},
+        tooltip:{callbacks:{label:c=>` ${c.label}: ${fmtN(c.raw)}`}}
+      }
+    }
+  });
+}
+
+function switchGroupBy(grp, el) {
+  chartGroup = grp;
+  document.querySelectorAll('#chart1-actions .dim-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if(currentData) renderChart1(currentData);
+}
+
+function switchDimChart(key, el) {
+  dimChartKey = key;
+  document.querySelectorAll('#chart2-actions .dim-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if(currentData) renderChart2(currentData);
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────────
+function setTableGroup(grp) {
+  tableGroup = grp;
+  ['vendor','item','period'].forEach(g=>{
+    const btn = document.getElementById(`grp-${g}-btn`);
+    if(btn) btn.classList.toggle('active', g===grp);
+  });
+  if(currentData) renderTable();
+}
+
+function renderTable() {
+  if(!currentData) return;
+  const data = currentData;
+  const measures = data.measures||[];
+
+  const srcMap = { vendor:data.byVendor, item:data.byItem, period:data.byPeriod };
+  let rows = srcMap[tableGroup] || data.byVendor || [];
+
+  const q = (document.getElementById('tbl-search').value||'').toLowerCase();
+  if(q) rows = rows.filter(r=>(r._label||r._key||r.vendorName||r.itemName||'').toLowerCase().includes(q));
+
+  if(sortCol) rows = [...rows].sort((a,b)=>{
+    const va=a[sortCol]??0, vb=b[sortCol]??0;
+    return sortDir==='asc'?(va-vb):(vb-va);
+  });
+
+  document.getElementById('row-count').textContent = `(${rows.length})`;
+
+  // Build header
+  const headRow = document.getElementById('table-head');
+  const cols = tableGroup==='period'
+    ? [['_key','Period']]
+    : tableGroup==='item'
+    ? [['_key','Item Code'],['itemName','Item Name'],['_count','Docs']]
+    : [['_key','Vendor Code'],['vendorName','Vendor Name'],['_count','Docs']];
+
+  const mCols = measures.slice(0,4).map(m=>[m, KPI_LABELS[m]||m]);
+  const allCols = [...cols, ...mCols];
+
+  headRow.innerHTML = allCols.map(([k,l])=>`<th class="${sortCol===k?'sort-'+sortDir:''}" onclick="doSort('${k}')" data-col="${k}">${l}</th>`).join('');
+
+  // Build body
+  const tbody = document.getElementById('table-body');
+  if(!rows.length){
+    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:22px;color:var(--muted)">No data matches current filters</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.slice(0,200).map(r=>{
+    const mainCells = cols.map(([k])=>{
+      const v = r[k]||'—';
+      if(k==='_key') return `<td style="font-weight:600;font-size:11.5px">${escHtml(String(v))}</td>`;
+      return `<td>${escHtml(String(v))}</td>`;
+    });
+    const mCells = mCols.map(([k])=>`<td class="amt">${fmtN(r[k])}</td>`);
+    return `<tr>${[...mainCells,...mCells].join('')}</tr>`;
+  }).join('');
+}
+
+function doSort(col) {
+  sortDir = sortCol===col&&sortDir==='desc'?'asc':'desc';
+  sortCol = col;
+  if(currentData) renderTable();
+}
+
+function filterTable() { if(currentData) renderTable(); }
+
+// ── Export CSV ────────────────────────────────────────────────────────────────
+function exportCsv() {
+  if(!currentData) { alert('Load data first.'); return; }
+  const srcMap = { vendor:currentData.byVendor, item:currentData.byItem, period:currentData.byPeriod };
+  const rows = srcMap[tableGroup]||currentData.byVendor||[];
+  const measures = currentData.measures||[];
+  const headers = ['Key','Label',...measures.map(m=>KPI_LABELS[m]||m),'Docs'];
+  const csv = [headers,...rows.map(r=>[r._key,r.vendorName||r.itemName||r._label||'',...measures.map(m=>r[m]||0),r._count||0])].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download=`purchase_${activeView}_${currentData.params?.fromDate||'data'}.csv`;
+  a.click();
+}
+
+// ── Context string for chat ───────────────────────────────────────────────────
+function buildContextStr(data) {
+  const measures = data.measures||[];
+  const m0 = measures[0]||'';
+  const topV = (data.byVendor||[]).slice(0,10).map((v,i)=>`  ${i+1}. ${v.vendorName||v._key}: ${measures.map(m=>KPI_LABELS[m]+' '+fmtN(v[m])).join(', ')}`).join('\n');
+  const periods = (data.byPeriod||[]).slice(-6).map(p=>`  ${p._key}: ${fmtN(p[m0])}`).join('\n');
+  const brands = (data.byBrand||[]).slice(0,5).map(b=>`  ${b._label}: ${fmtN(b[m0])}`).join('\n');
+  return `VIEW: ${VIEW_META[activeView]?.label||activeView} | Period: ${data.params?.fromDate} to ${data.params?.toDate}
+TOTALS: ${measures.map(m=>`${KPI_LABELS[m]}: ${fmtN(data.totals?.[m])}`).join(', ')}
+TOP VENDORS:\n${topV}
+RECENT MONTHLY TREND:\n${periods}
+BRAND BREAKDOWN:\n${brands}`;
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+async function startChat() {
+  try {
+    const r = await fetch('/api/purchase-analysis/chat',{method:'POST',headers:{'Content-Type':'application/json','x-auth-token':TOKEN()},body:JSON.stringify({message:'',sessionId:null})});
+    const d = await safeJson(r);
+    if(d.ok){ sessionId=d.sessionId; appendMessage('bot',d.reply,d.quickReplies); }
+  } catch {}
+}
+
+async function sendMessage(msg) {
+  if(isBusy||!msg.trim()) return;
+  isBusy=true; setChatBusy(true);
+  appendMessage('user',msg); showTyping();
+  try {
+    const r = await fetch('/api/purchase-analysis/chat',{
+      method:'POST', headers:{'Content-Type':'application/json','x-auth-token':TOKEN()},
+      body:JSON.stringify({message:msg,sessionId,dataContext:dataCtxStr,activeView}),
+    });
+    const d = await safeJson(r);
+    hideTyping();
+    if(d.ok){ sessionId=d.sessionId; appendMessage('bot',d.reply,d.quickReplies); }
+    else appendMessage('bot',`❌ ${d.error}`);
+  } catch(e){ hideTyping(); appendMessage('bot',`⚠️ ${e.message}`); }
+  finally{ isBusy=false; setChatBusy(false); }
+}
+
+function sendFromInput(){
+  const inp=document.getElementById('user-input');
+  const msg=inp.value.trim(); if(!msg||isBusy) return;
+  inp.value=''; inp.style.height='auto';
+  markQRUsed(); sendMessage(msg);
+}
+
+function appendMessage(role, content, quickReplies) {
+  const msgs=document.getElementById('messages');
+  const placeholder=msgs.querySelector('.no-data'); if(placeholder) placeholder.remove();
+  const row=document.createElement('div'); row.className=`msg-row ${role}`;
+  row.innerHTML=`<div class="av ${role==='bot'?'bot':'user'}">${role==='bot'?'🛒':'👤'}</div><div class="bubble ${role==='bot'?'bot':'user'}">${role==='bot'?renderMd(content):escHtml(content)}</div>`;
+  msgs.appendChild(row);
+  if(quickReplies?.length){
+    const qrDiv=document.createElement('div'); qrDiv.className='qr-row';
+    quickReplies.forEach(qr=>{ const c=document.createElement('button'); c.className='qr-chip'; c.textContent=qr; c.onclick=()=>{markQRUsed();sendMessage(qr);}; qrDiv.appendChild(c); });
+    msgs.appendChild(qrDiv);
+  }
+  msgs.scrollTop=msgs.scrollHeight;
+}
+function markQRUsed(){ document.querySelectorAll('.qr-chip:not(.used)').forEach(c=>c.classList.add('used')); }
+function showTyping(){ const msgs=document.getElementById('messages'); const r=document.createElement('div'); r.className='typing-row'; r.id='typing-indicator'; r.innerHTML='<div class="av bot">🛒</div><div class="typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>'; msgs.appendChild(r); msgs.scrollTop=msgs.scrollHeight; }
+function hideTyping(){ const t=document.getElementById('typing-indicator'); if(t) t.remove(); }
+function setChatBusy(b){ document.getElementById('send-btn').disabled=b; document.getElementById('user-input').disabled=b; document.getElementById('chat-status').textContent=b?'Thinking…':'Ready'; }
+function setStatus(s,l){ const b=document.getElementById('status-badge'); b.textContent=l||s; b.className=`shell-badge ${s}`; }
+function clearFilters(){ ['f-vendor','f-item'].forEach(id=>document.getElementById(id).value=''); ['f-brand','f-subbrand','f-universe','f-branch','f-itemgroup'].forEach(id=>document.getElementById(id).value=''); }
+
+// ── Safe JSON fetch ────────────────────────────────────────────────────────
+async function safeJson(r) {
+  const ct = r.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    if (r.status === 401) throw new Error('Session expired — please refresh the page');
+    const t = await r.text().catch(()=>'');
+    throw new Error(t.includes('<!DOCTYPE') ? `Server error (${r.status})` : t.slice(0,200) || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+// ── Fullscreen & chat toggle ───────────────────────────────────────────────
+let _chatVisible = true;
+function toggleChat() {
+  const panel = document.querySelector('.chat-panel');
+  const btn = document.getElementById('toggle-chat-btn');
+  if (!panel) return;
+  _chatVisible = !_chatVisible;
+  panel.style.display = _chatVisible ? '' : 'none';
+  btn.textContent = _chatVisible ? '⬡ Chat' : '⬢ Chat';
+  btn.classList.toggle('active', !_chatVisible);
+}
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+    document.getElementById('fullscreen-btn').textContent = '⊡';
+  } else {
+    document.exitFullscreen().catch(()=>{});
+    document.getElementById('fullscreen-btn').textContent = '⛶';
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('fullscreen-btn').textContent = document.fullscreenElement ? '⊡' : '⛶';
+});
+</script>
+</body>
+</html>

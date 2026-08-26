@@ -1,0 +1,659 @@
+{
+  "_meta": {
+    "description": "SAP B1 Service Layer OData schema — fields read from live WMS_DEV_UK company",
+    "baseUrl": "/b1s/v1",
+    "generatedOn": "2026-05-15",
+    "statusValues": {
+      "DocumentStatus": "'bost_Open' | 'bost_Close'",
+      "Cancelled": "'tYES' | 'tNO'",
+      "CardType": "'cCustomer' | 'cSupplier' | 'cLead'",
+      "InvoiceType_Payment": "'it_Invoice' | 'it_PurchaseInvoice'"
+    },
+    "baseTypeCodes": {
+      "23": "Quotation (oQuotation)",
+      "17": "Sales Order (oOrders)",
+      "15": "Delivery Note (oDeliveryNotes)",
+      "13": "AR Invoice (oInvoices)",
+      "20": "GRPO / Purchase Delivery Note (oPurchaseDeliveryNotes)",
+      "22": "Purchase Order (oPurchaseOrders)",
+      "1470000113": "Purchase Request (oPurchaseRequest)",
+      "-1": "No base document"
+    },
+    "odataFilterHints": {
+      "dates": "Use ISO format: DocDate ge '2025-01-01' and DocDate le '2025-12-31'",
+      "stringContains": "contains(CardName,'smith')",
+      "enumEquals": "DocumentStatus eq 'bost_Open'",
+      "andOr": "CardType eq 'cCustomer' and Valid eq 'tYES'"
+    }
+  },
+
+  "commonDocumentHeader": {
+    "description": "Shared header fields on all transactional documents (Quotations, Orders, Invoices, DeliveryNotes, PurchaseOrders, etc.)",
+    "fields": {
+      "DocEntry": "int — primary key (use in URLs like /Orders(123))",
+      "DocNum": "int — user-visible document number",
+      "DocDate": "DateTime — document date",
+      "DocDueDate": "DateTime — delivery / due date",
+      "TaxDate": "DateTime — tax posting date",
+      "CardCode": "string — business partner code (FK → BusinessPartners.CardCode)",
+      "CardName": "string — business partner name (denormalized)",
+      "DocTotal": "decimal — document total in document currency",
+      "VatSum": "decimal — total VAT amount",
+      "DocCurrency": "string — document currency code",
+      "DocRate": "decimal — exchange rate to local currency",
+      "DiscountPercent": "decimal — header-level discount %",
+      "Reference1": "string — customer/vendor reference",
+      "Reference2": "string — secondary reference",
+      "NumAtCard": "string — vendor/customer own doc number",
+      "Comments": "string — remarks / notes",
+      "JournalMemo": "string — GL posting memo",
+      "SalesPersonCode": "int — FK → SalesPersons.SalesEmployeeCode",
+      "TransportationCode": "int — shipping method code",
+      "Series": "int — document numbering series",
+      "DocumentStatus": "enum — 'bost_Open' | 'bost_Close'",
+      "Cancelled": "enum — 'tYES' | 'tNO'",
+      "CancelStatus": "enum — 'csNo' | 'csCancelledByCancellation'",
+      "Address": "string — ship-to address block",
+      "Address2": "string — bill-to address block",
+      "ContactPersonCode": "int — contact person",
+      "PaymentGroupCode": "int — payment terms group",
+      "FinancialPeriod": "int — fiscal period number",
+      "UserSign": "int — created-by user internal ID",
+      "TransNum": "int — journal entry transaction number (null on quotations/requests)",
+      "DocObjectCode": "string — entity type identifier (e.g. 'oOrders', 'oPurchaseOrders')",
+      "CreationDate": "DateTime",
+      "UpdateDate": "DateTime",
+      "DocTotalSys": "decimal — total in local currency",
+      "VatSumSys": "decimal — VAT in local currency"
+    }
+  },
+
+  "commonDocumentLine": {
+    "description": "Shared line fields on all document DocumentLines arrays",
+    "fields": {
+      "LineNum": "int — 0-based line index",
+      "ItemCode": "string — FK → Items.ItemCode",
+      "ItemDescription": "string — item name (denormalized)",
+      "Quantity": "decimal — ordered/delivered quantity",
+      "Price": "decimal — unit price (excl. VAT)",
+      "UnitPrice": "decimal — same as Price (alias)",
+      "PriceAfterVAT": "decimal — unit price including VAT",
+      "DiscountPercent": "decimal — line discount %",
+      "VatGroup": "string — VAT group code",
+      "TaxPercentagePerRow": "decimal — effective tax %",
+      "LineTotal": "decimal — Price × Quantity (excl. VAT)",
+      "TaxTotal": "decimal — VAT amount for this line",
+      "GrossTotal": "decimal — total including VAT",
+      "WarehouseCode": "string — FK → Warehouses.WarehouseCode",
+      "SalesPersonCode": "int — line-level salesperson (-1 = inherit from header)",
+      "AccountCode": "string — GL account for this line",
+      "CostingCode": "string — profit center / cost center",
+      "ProjectCode": "string — project code",
+      "BaseType": "int — source document type (see baseTypeCodes)",
+      "BaseEntry": "int — source document DocEntry",
+      "BaseLine": "int — source document LineNum",
+      "LineStatus": "enum — 'bost_Open' | 'bost_Close'",
+      "RemainingOpenQuantity": "decimal — unfulfilled quantity",
+      "InventoryQuantity": "decimal — quantity in inventory UOM",
+      "OpenAmount": "decimal — remaining open amount",
+      "VendorNum": "string — vendor's part number",
+      "SerialNum": "string — serial number on line",
+      "ShipDate": "DateTime — requested ship date",
+      "ActualDeliveryDate": "DateTime",
+      "UoMCode": "string — unit of measure code",
+      "TreeType": "string — BOM type ('iNotATree' = plain item)",
+      "LineType": "enum — 'dlt_Regular' | 'dlt_Alternative'"
+    }
+  },
+
+  "entities": {
+    "Quotations": {
+      "odataPath": "/Quotations",
+      "sapTable": "OQUT / QUT1",
+      "docObjectCode": "oQuotation",
+      "description": "Sales Quotations — offers sent to customers before an order is placed",
+      "uniqueFields": {
+        "DocObjectCode": "'oQuotation'",
+        "GrossProfit": "decimal — gross profit amount on quotation",
+        "GrossProfitTotalBasePrice": "decimal",
+        "RemainingOpenQuantity": "unfulfilled qty per line"
+      },
+      "commonFilters": [
+        "DocumentStatus eq 'bost_Open'",
+        "CardCode eq 'C001'",
+        "DocDate ge '2025-01-01'",
+        "SalesPersonCode eq 5"
+      ],
+      "joins": "Lines: DocumentLines[]; Link to Orders via BaseType=23, BaseEntry=DocEntry"
+    },
+
+    "Orders": {
+      "odataPath": "/Orders",
+      "sapTable": "ORDR / RDR1",
+      "docObjectCode": "oOrders",
+      "description": "Sales Orders — confirmed customer orders",
+      "uniqueFields": {
+        "PartialSupply": "'tYES' | 'tNO' — allows partial deliveries",
+        "DocObjectCode": "'oOrders'"
+      },
+      "commonFilters": [
+        "DocumentStatus eq 'bost_Open'",
+        "Cancelled eq 'tNO'",
+        "CardCode eq 'C001'"
+      ],
+      "joins": "Lines: DocumentLines[]; Created from Quotation (BaseType=23); Base for DeliveryNote (BaseType=17)"
+    },
+
+    "Invoices": {
+      "odataPath": "/Invoices",
+      "sapTable": "OINV / INV1",
+      "docObjectCode": "oInvoices",
+      "description": "AR Invoices — billed to customers",
+      "uniqueFields": {
+        "PaidToDate": "decimal — amount paid to date (local currency)",
+        "PaidToDateFC": "decimal — amount paid (foreign currency)",
+        "PaidToDateSys": "decimal — amount paid (system currency)",
+        "InvoicePayment": "'tYES' | 'tNO'",
+        "DocumentInstallments": "array of installment payment schedules"
+      },
+      "commonFilters": [
+        "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'",
+        "PaidToDate lt DocTotal",
+        "DocDueDate lt '2025-12-31'"
+      ],
+      "joins": "Lines: DocumentLines[]; Created from DeliveryNote (BaseType=15) or Order (BaseType=17)"
+    },
+
+    "DeliveryNotes": {
+      "odataPath": "/DeliveryNotes",
+      "sapTable": "ODLN / DLN1",
+      "docObjectCode": "oDeliveryNotes",
+      "description": "Sales Delivery Notes — goods issued to customer",
+      "uniqueFields": {
+        "DocObjectCode": "'oDeliveryNotes'"
+      },
+      "joins": "Created from Order (BaseType=17); Base for Invoice (BaseType=15)"
+    },
+
+    "CreditNotes": {
+      "odataPath": "/CreditNotes",
+      "sapTable": "ORIN / RIN1",
+      "docObjectCode": "oCreditNotes",
+      "description": "AR Credit Notes — customer returns / adjustments",
+      "uniqueFields": {
+        "DocObjectCode": "'oCreditNotes'",
+        "ShipToCodeForReturn": "string",
+        "AddressForReturn": "string",
+        "ReturnAction": "string",
+        "ReturnReason": "string (on lines)"
+      }
+    },
+
+    "Returns": {
+      "odataPath": "/Returns",
+      "sapTable": "ORDN / RDN1",
+      "docObjectCode": "oReturns",
+      "description": "Sales Returns — goods returned from customer",
+      "uniqueFields": {
+        "DocObjectCode": "'oReturns'"
+      }
+    },
+
+    "PurchaseOrders": {
+      "odataPath": "/PurchaseOrders",
+      "sapTable": "OPOR / POR1",
+      "docObjectCode": "oPurchaseOrders",
+      "description": "Purchase Orders — sent to vendors/suppliers",
+      "uniqueFields": {
+        "DocObjectCode": "'oPurchaseOrders'",
+        "OpenForLandedCosts": "'tYES' | 'tNO'",
+        "PartialSupply": "'tYES' | 'tNO'"
+      },
+      "commonFilters": [
+        "DocumentStatus eq 'bost_Open'",
+        "CardCode eq 'V001'",
+        "DocDate ge '2025-01-01'"
+      ],
+      "joins": "Lines: DocumentLines[]; Base for GRPO (BaseType=22)"
+    },
+
+    "PurchaseDeliveryNotes": {
+      "odataPath": "/PurchaseDeliveryNotes",
+      "sapTable": "OPDN / PDN1",
+      "docObjectCode": "oPurchaseDeliveryNotes",
+      "description": "Goods Receipt PO (GRPO) — goods received from supplier",
+      "uniqueFields": {
+        "DocObjectCode": "'oPurchaseDeliveryNotes'",
+        "TransNum": "int — GL transaction created on receipt",
+        "WareHouseUpdateType": "'dwh_Stock' — stock is updated"
+      },
+      "commonFilters": [
+        "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'",
+        "CardCode eq 'V001'",
+        "DocDate ge '2025-01-01'"
+      ],
+      "joins": "Created from PurchaseOrder (BaseType=22); Base for PurchaseInvoice (BaseType=20)"
+    },
+
+    "PurchaseInvoices": {
+      "odataPath": "/PurchaseInvoices",
+      "sapTable": "OPCH / PCH1",
+      "docObjectCode": "oPurchaseInvoices",
+      "description": "AP Invoices — supplier invoices to be paid",
+      "uniqueFields": {
+        "PaidToDate": "decimal — amount paid to date",
+        "PaidToDateFC": "decimal",
+        "PaidToDateSys": "decimal",
+        "InvoicePayment": "'tYES' | 'tNO'",
+        "DocumentInstallments": "array of payment installments",
+        "DocObjectCode": "'oPurchaseInvoices'"
+      },
+      "commonFilters": [
+        "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'",
+        "PaidToDate lt DocTotal",
+        "DocDueDate le '2025-12-31'"
+      ],
+      "joins": "Created from GRPO (BaseType=20) or PurchaseOrder (BaseType=22)"
+    },
+
+    "PurchaseQuotations": {
+      "odataPath": "/PurchaseQuotations",
+      "sapTable": "OPQT / PQT1",
+      "docObjectCode": "oPurchaseQuotations",
+      "description": "Purchase Quotations (RFQ) — price quotes requested from vendors",
+      "uniqueFields": {
+        "DocObjectCode": "'oPurchaseQuotations'",
+        "RequriedDate": "DateTime — required delivery date",
+        "GroupSeries": "int — quotation group series (for comparing multiple vendor quotes)",
+        "GroupNumber": "int — quotation group number"
+      },
+      "joins": "Lines: DocumentLines[]; Created from PurchaseRequest (BaseType=1470000113)"
+    },
+
+    "PurchaseRequests": {
+      "odataPath": "/PurchaseRequests",
+      "sapTable": "OPRQ / PRQ1",
+      "docObjectCode": "oPurchaseRequest",
+      "description": "Purchase Requests (Internal PR) — internal requisitions before ordering",
+      "uniqueFields": {
+        "DocObjectCode": "'oPurchaseRequest'",
+        "Requester": "string — requester employee ID",
+        "RequesterName": "string — requester full name",
+        "RequesterBranch": "int — branch code",
+        "RequesterDepartment": "int — department code",
+        "RequesterEmail": "string",
+        "SendNotification": "'tYES' | 'tNO'",
+        "ReqType": "int — request type",
+        "ReqCode": "string — requester code",
+        "LineVendor": "string (on lines) — suggested vendor per line"
+      },
+      "commonFilters": [
+        "DocumentStatus eq 'bost_Open'",
+        "RequriedDate ge '2025-01-01'"
+      ],
+      "joins": "Lines: DocumentLines[]; Base for PurchaseQuotation (BaseType=1470000113)"
+    },
+
+    "BusinessPartners": {
+      "odataPath": "/BusinessPartners",
+      "sapTable": "OCRD",
+      "description": "Business Partners — customers, suppliers, leads",
+      "fields": {
+        "CardCode": "string — unique BP code (PK)",
+        "CardName": "string — full name",
+        "CardType": "enum — 'cCustomer' | 'cSupplier' | 'cLead'",
+        "GroupCode": "int — FK → BusinessPartnerGroups.Code",
+        "Phone1": "string",
+        "EmailAddress": "string",
+        "CreditLimit": "decimal",
+        "SalesPersonCode": "int — default salesperson",
+        "Currency": "string — default currency",
+        "CurrentAccountBalance": "decimal — current open balance",
+        "OpenDeliveryNotesBalance": "decimal",
+        "OpenOrdersBalance": "decimal",
+        "Valid": "enum — 'tYES' | 'tNO'",
+        "Frozen": "enum — 'tYES' | 'tNO'",
+        "PriceListNum": "int — default price list",
+        "PayTermsGrpCode": "int — payment terms",
+        "DiscountPercent": "decimal",
+        "HouseBank": "string",
+        "BankCountry": "string",
+        "DebitorAccount": "string — AR control account",
+        "DunningTerm": "string",
+        "CompanyPrivate": "enum — 'cCompany' | 'cPrivate'"
+      },
+      "commonFilters": [
+        "CardType eq 'cCustomer'",
+        "CardType eq 'cSupplier'",
+        "Valid eq 'tYES' and Frozen eq 'tNO'",
+        "contains(CardName,'smith')"
+      ]
+    },
+
+    "SalesPersons": {
+      "odataPath": "/SalesPersons",
+      "sapTable": "OSLP",
+      "description": "Sales Employees / Sales Persons",
+      "fields": {
+        "SalesEmployeeCode": "int — PK",
+        "SalesEmployeeName": "string",
+        "CommissionForSalesEmployee": "decimal — commission %",
+        "CommissionGroup": "int",
+        "Locked": "enum — 'tYES' | 'tNO'",
+        "Active": "enum — 'tYES' | 'tNO'",
+        "Telephone": "string",
+        "Mobile": "string",
+        "Email": "string"
+      }
+    },
+
+    "Items": {
+      "odataPath": "/Items",
+      "sapTable": "OITM",
+      "description": "Item Master Data — products, services, raw materials",
+      "fields": {
+        "ItemCode": "string — unique item code (PK)",
+        "ItemName": "string — description",
+        "ForeignName": "string — foreign language name",
+        "ItemsGroupCode": "int — FK → ItemGroups.Number",
+        "PurchaseItem": "enum — 'tYES'|'tNO'",
+        "SalesItem": "enum — 'tYES'|'tNO'",
+        "InventoryItem": "enum — 'tYES'|'tNO'",
+        "QuantityOnStock": "decimal — total on-hand across all warehouses",
+        "QuantityOrderedFromVendors": "decimal — on order from suppliers",
+        "QuantityOrderedByCustomers": "decimal — committed to customers",
+        "MinInventory": "decimal — minimum/reorder level",
+        "MaxInventory": "decimal — maximum inventory level",
+        "DesiredInventory": "decimal — target inventory",
+        "DefaultWarehouse": "string — FK → Warehouses.WarehouseCode",
+        "Mainsupplier": "string — default vendor CardCode",
+        "InventoryUOM": "string — base unit of measure",
+        "CostAccountingMethod": "enum — 'bis_MovingAverage' | 'bis_Standard' | 'bis_FIFO'",
+        "PlanningSystem": "enum — 'bop_MRP' | 'bop_None'",
+        "ProcurementMethod": "enum — 'bom_Buy' | 'bom_Make'",
+        "LeadTime": "int — replenishment lead time in days",
+        "MinOrderQuantity": "decimal — minimum order quantity",
+        "OrderMultiple": "decimal — order in multiples of this",
+        "ManageSerialNumbers": "enum — 'tYES'|'tNO'",
+        "ManageBatchNumbers": "enum — 'tYES'|'tNO'",
+        "Valid": "enum — 'tYES'|'tNO'",
+        "Frozen": "enum — 'tYES'|'tNO'",
+        "SalesVATGroup": "string — VAT group for sales",
+        "PurchaseVATGroup": "string — VAT group for purchases",
+        "ItemType": "enum — 'itItems' | 'itLabor' | 'itTravel'",
+        "ItemClass": "enum — 'itcMaterial' | 'itcService' | 'itcFixedAssets'",
+        "MaterialType": "enum — 'mt_FinishedGoods' | 'mt_RawMaterial' | 'mt_WIP'",
+        "BarCode": "string",
+        "UpdateDate": "DateTime",
+        "CreateDate": "DateTime"
+      },
+      "commonFilters": [
+        "SalesItem eq 'tYES' and Valid eq 'tYES'",
+        "PurchaseItem eq 'tYES' and Frozen eq 'tNO'",
+        "ItemsGroupCode eq 100",
+        "contains(ItemName,'pump')",
+        "ItemCode eq 'A00001'"
+      ],
+      "notes": "Use /Items('{ItemCode}') for single-item lookup. QuantityOnStock is total across all warehouses; use ItemWarehouseInfoCollection or /ItemWarehouseInfos for per-warehouse stock."
+    },
+
+    "ItemGroups": {
+      "odataPath": "/ItemGroups",
+      "sapTable": "OITB",
+      "description": "Item Group / Category master",
+      "fields": {
+        "Number": "int — group code (PK, same as ItmsGrpCod in OITB)",
+        "GroupName": "string",
+        "InventorySystem": "enum — 'bis_FIFO' | 'bis_MovingAverage' | 'bis_Standard'",
+        "PlanningSystem": "enum — 'bop_MRP' | 'bop_None'",
+        "ProcurementMethod": "enum — 'bom_Buy' | 'bom_Make'",
+        "ItemClass": "enum — 'itcMaterial' | 'itcService' | 'itcFixedAssets'",
+        "LeadTime": "int",
+        "MinimumOrderQuantity": "decimal",
+        "OrderMultiple": "decimal"
+      }
+    },
+
+    "Warehouses": {
+      "odataPath": "/Warehouses",
+      "sapTable": "OWHS",
+      "description": "Warehouse master data",
+      "fields": {
+        "WarehouseCode": "string — PK",
+        "WarehouseName": "string",
+        "Street": "string",
+        "Block": "string",
+        "City": "string",
+        "ZipCode": "string",
+        "Country": "string",
+        "Location": "int — location code",
+        "Nettable": "enum — 'tYES'|'tNO' — included in MRP",
+        "DropShip": "enum — 'tYES'|'tNO'",
+        "Inactive": "enum — 'tYES'|'tNO'",
+        "EnableBinLocations": "enum — 'tYES'|'tNO'",
+        "Storekeeper": "int",
+        "ManageSerialAndBatchNumbers": "enum — 'tYES'|'tNO'"
+      }
+    },
+
+    "JournalEntries": {
+      "odataPath": "/JournalEntries",
+      "sapTable": "OJDT / JDT1",
+      "description": "General Ledger journal entries",
+      "fields": {
+        "JdtNum": "int — PK (= TransId in SQL view)",
+        "ReferenceDate": "DateTime — posting date",
+        "TaxDate": "DateTime",
+        "DueDate": "DateTime",
+        "Memo": "string — journal description",
+        "Reference": "string — reference 1",
+        "Reference2": "string",
+        "Reference3": "string",
+        "OriginalJournal": "string — source document type (ttReceipt, ttARInvoice, etc.)",
+        "Original": "int — source document number",
+        "BaseReference": "string",
+        "Series": "int",
+        "TransactionCode": "string"
+      },
+      "lineFields": {
+        "Line_ID": "int — line number",
+        "AccountCode": "string — GL account code",
+        "ShortName": "string — BP CardCode (for receivable/payable lines)",
+        "Debit": "decimal — debit amount (local)",
+        "Credit": "decimal — credit amount (local)",
+        "DebitSys": "decimal — debit in system currency",
+        "CreditSys": "decimal — credit in system currency",
+        "FCDebit": "decimal — debit in foreign currency",
+        "FCCredit": "decimal — credit in foreign currency",
+        "LineMemo": "string",
+        "ContraAccount": "string — offsetting account",
+        "Reference1": "string",
+        "Reference2": "string",
+        "CostingCode": "string",
+        "TaxCode": "string",
+        "ControlAccount": "string",
+        "DueDate": "DateTime"
+      },
+      "commonFilters": [
+        "ReferenceDate ge '2025-01-01'",
+        "OriginalJournal eq 'ttARInvoice'",
+        "JdtNum eq 2437"
+      ]
+    },
+
+    "IncomingPayments": {
+      "odataPath": "/IncomingPayments",
+      "sapTable": "ORCT",
+      "description": "Customer payments received (AR)",
+      "fields": {
+        "DocEntry": "int — PK",
+        "DocNum": "int",
+        "DocDate": "DateTime",
+        "DueDate": "DateTime",
+        "TaxDate": "DateTime",
+        "CardCode": "string — customer CardCode",
+        "CardName": "string",
+        "DocCurrency": "string",
+        "DocType": "'rCustomer'",
+        "CashAccount": "string",
+        "CashSum": "decimal",
+        "CheckAccount": "string",
+        "TransferAccount": "string",
+        "TransferSum": "decimal",
+        "Reference1": "string",
+        "JournalRemarks": "string",
+        "Remarks": "string",
+        "Cancelled": "enum",
+        "ControlAccount": "string — AR control account",
+        "ContactPersonCode": "int",
+        "Series": "int",
+        "BankCode": "string",
+        "DiscountPercent": "decimal"
+      },
+      "subCollections": {
+        "PaymentInvoices": "applied invoice lines — DocEntry, DocNum, SumApplied, InvoiceType ('it_Invoice'), DiscountPercent, TotalDiscount",
+        "PaymentChecks": "check payment details",
+        "PaymentCreditCards": "credit card details",
+        "PaymentAccounts": "GL account payments"
+      },
+      "commonFilters": [
+        "CardCode eq 'C001'",
+        "DocDate ge '2025-01-01'",
+        "Cancelled eq 'tNO'"
+      ]
+    },
+
+    "VendorPayments": {
+      "odataPath": "/VendorPayments",
+      "sapTable": "OVPM",
+      "description": "Outgoing vendor payments (AP)",
+      "fields": {
+        "DocEntry": "int — PK",
+        "DocNum": "int",
+        "DocDate": "DateTime",
+        "DueDate": "DateTime",
+        "CardCode": "string — vendor CardCode",
+        "CardName": "string",
+        "DocType": "'rSupplier'",
+        "DocCurrency": "string",
+        "TransferAccount": "string — bank account used",
+        "TransferSum": "decimal",
+        "CashSum": "decimal",
+        "Reference1": "string",
+        "JournalRemarks": "string",
+        "Cancelled": "enum",
+        "ControlAccount": "string — AP control account"
+      },
+      "subCollections": {
+        "PaymentInvoices": "applied invoice lines — DocEntry, DocNum, SumApplied, InvoiceType ('it_PurchaseInvoice'), DiscountPercent, TotalDiscount",
+        "PaymentChecks": "check details",
+        "PaymentCreditCards": "credit card details"
+      }
+    },
+
+    "ChartOfAccounts": {
+      "odataPath": "/ChartOfAccounts",
+      "sapTable": "OACT",
+      "description": "General Ledger chart of accounts",
+      "fields": {
+        "Code": "string — account code (PK)",
+        "Name": "string — account name",
+        "Balance": "decimal — current balance",
+        "CashAccount": "enum — 'tYES'|'tNO'",
+        "BudgetAccount": "enum",
+        "ActiveAccount": "enum",
+        "PrimaryAccount": "enum",
+        "AccountType": "enum — 'at_Revenues' | 'at_Expenditure' | 'at_Other'",
+        "AcctCode": "string",
+        "FormatCode": "string — account group format",
+        "ExternalCode": "string",
+        "Level": "int — hierarchy level",
+        "LocSysCurr": "decimal — local currency balance",
+        "SysCurr": "decimal — system currency balance",
+        "Postable": "enum — 'tYES'|'tNO'"
+      }
+    }
+  },
+
+  "analyticalViews": {
+    "description": "SAP HANA analytical views accessible via /QueryService or direct HANA SQL",
+    "views": {
+      "SML_SALES": "Sales summary by period, customer, item",
+      "SML_PURCHASE": "Purchase summary by period, vendor, item",
+      "SML_INVENTORY": "Inventory valuation and movement",
+      "SML_FINANCIAL": "Financial P&L summary"
+    },
+    "notes": "On HANA, prefix table names with schema: \"SBO_DB\".\"OQUT\". On MSSQL, use [CompanyDB].[dbo].[OQUT]."
+  },
+
+  "customUDFFields": {
+    "description": "User-defined fields (U_ prefix) found across transaction documents in this company",
+    "documentLevel": {
+      "U_SHOPIFY_NO": "Shopify order number",
+      "U_SHOPIFY_CUS_NME": "Shopify customer name",
+      "U_SH_CUS_CODE": "Shopify customer code",
+      "U_SH_CUS_EMAIL": "Shopify customer email",
+      "U_SW_MOB_USR_ID": "Mobile app user ID",
+      "U_SW_MOB_USR_NM": "Mobile app user name",
+      "U_TRUCK": "Truck identifier",
+      "U_TTYPE": "Loading instruction type",
+      "U_LTYPE": "Loading instruction subtype",
+      "U_DEST": "Destination",
+      "U_TRIP": "Trip reference",
+      "U_TRIPNO": "Trip number",
+      "U_Department": "Requesting department",
+      "U_ApprovalDept": "Approving department",
+      "U_Vehicle": "Vehicle code",
+      "U_SO_NUM": "Sales order number reference",
+      "U_PRO_NU": "Project number",
+      "U_PurQte": "Purchase quotation reference",
+      "U_GRNNO": "GRN / goods receipt note number",
+      "U_SERVCALL": "Service call reference",
+      "U_SENTWP": "Sent via WhatsApp flag"
+    },
+    "lineLevel": {
+      "U_PROJECT": "Project code on line",
+      "U_SO_NUM": "Sales order reference on PO line",
+      "U_PRO_NUM": "Production order number",
+      "U_SSCCNO": "SSCC barcode number",
+      "U_WASTEQTY": "Waste quantity",
+      "U_beas_art": "BEAS article reference",
+      "U_beas_prjuid": "BEAS project UID"
+    }
+  },
+
+  "commonQueryPatterns": {
+    "openSalesOrders": {
+      "endpoint": "/Orders",
+      "params": { "$filter": "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'", "$select": "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,SalesPersonCode" }
+    },
+    "overdueInvoices": {
+      "endpoint": "/Invoices",
+      "params": { "$filter": "DocumentStatus eq 'bost_Open' and DocDueDate lt '2026-01-01' and Cancelled eq 'tNO'", "$select": "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,PaidToDate,SalesPersonCode", "$orderby": "DocDueDate asc" }
+    },
+    "openPurchaseOrders": {
+      "endpoint": "/PurchaseOrders",
+      "params": { "$filter": "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'", "$select": "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal" }
+    },
+    "itemStockLookup": {
+      "endpoint": "/Items('{ItemCode}')",
+      "params": { "$select": "ItemCode,ItemName,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,MinInventory,DefaultWarehouse,Mainsupplier,LeadTime,MinOrderQuantity,CostAccountingMethod" }
+    },
+    "supplierList": {
+      "endpoint": "/BusinessPartners",
+      "params": { "$filter": "CardType eq 'cSupplier' and Valid eq 'tYES'", "$select": "CardCode,CardName,Phone1,EmailAddress,Currency,CurrentAccountBalance" }
+    },
+    "customerList": {
+      "endpoint": "/BusinessPartners",
+      "params": { "$filter": "CardType eq 'cCustomer' and Valid eq 'tYES'", "$select": "CardCode,CardName,Phone1,EmailAddress,CreditLimit,CurrentAccountBalance,SalesPersonCode" }
+    },
+    "openPurchaseRequests": {
+      "endpoint": "/PurchaseRequests",
+      "params": { "$filter": "DocumentStatus eq 'bost_Open'", "$select": "DocEntry,DocNum,DocDate,DocDueDate,Requester,RequesterName,DocTotal,Comments" }
+    },
+    "journalEntriesByDate": {
+      "endpoint": "/JournalEntries",
+      "params": { "$filter": "ReferenceDate ge '2025-01-01' and ReferenceDate le '2025-12-31'", "$select": "JdtNum,ReferenceDate,Memo,Reference,OriginalJournal,Original", "$orderby": "ReferenceDate desc" }
+    }
+  }
+}

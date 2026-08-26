@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python main.py)",
+      "PowerShell(Start-Process -NoNewWindow -FilePath \"node\" -ArgumentList \"chat-server.mjs\" -WorkingDirectory \"d:\\\\akhshat\\\\MCP\"; Start-Sleep -Seconds 5; try { $r = Invoke-WebRequest -Uri \"http://localhost:3000\" -TimeoutSec 8 -UseBasicParsing; \"HTTP $\\($r.StatusCode\\) — server is up\" } catch { \"Not ready yet: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(Get-ChildItem d:\\\\akhshat\\\\MCP | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, Attributes)",
+      "Bash(awk '{print $9, \"\\(\" $5 \"\\)\"}')",
+      "PowerShell(Start-Sleep -Seconds 4; \\(Invoke-WebRequest -Uri \"http://localhost:3000\" -UseBasicParsing -TimeoutSec 5\\).StatusCode)"
+    ]
+  },
+  "mcpServers": {
+    "sap-b1": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "D:\\akhshat\\MCP\\dist\\server.js"
+      ],
+      "env": {
+        "SAP_B1_BASE_URL": "https://silverdemo.silvertouch.com:50000/b1s/v1",
+        "SAP_B1_COMPANY": "WMS_DEV_UK",
+        "SAP_B1_USER": "manager",
+        "SAP_B1_PASSWORD": "1234",
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+      }
+    }
+  }
+}

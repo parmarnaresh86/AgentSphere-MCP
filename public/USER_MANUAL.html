@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentsphere AI — User Manual</title>
+<style>
+  :root {
+    --primary: #0a6ed1;
+    --primary-dark: #085ab5;
+    --secondary: #354a5e;
+    --accent: #0070f2;
+    --success: #107e3e;
+    --warning: #e9730c;
+    --danger: #bb0000;
+    --bg: #f5f6f7;
+    --surface: #ffffff;
+    --border: #d9dadb;
+    --text: #32363a;
+    --text-muted: #6a6d70;
+    --sidebar-bg: #354a5e;
+    --sidebar-text: #ffffff;
+    --sidebar-active: #0a6ed1;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "72", "72full", Arial, Helvetica, sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.6;
+  }
+
+  /* Document Layout */
+  .doc-wrapper { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+  /* Cover Page */
+  .cover {
+    background: linear-gradient(135deg, #0a1628 0%, #1a3a5c 50%, #0a6ed1 100%);
+    color: white;
+    padding: 80px 60px;
+    border-radius: 12px;
+    margin-bottom: 40px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 60%);
+  }
+  .cover-logo {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+  .cover h1 {
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 8px;
+  }
+  .cover .tagline {
+    font-size: 18px;
+    opacity: 0.85;
+    margin-bottom: 32px;
+    font-weight: 300;
+  }
+  .cover .meta {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    font-size: 13px;
+    opacity: 0.7;
+  }
+  .cover .meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px;
+    margin-bottom: 40px;
+  }
+  .toc h2 { color: var(--primary); margin-bottom: 20px; font-size: 20px; border-bottom: 2px solid var(--primary); padding-bottom: 8px; }
+  .toc ol { padding-left: 24px; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc ol ol { margin-top: 4px; }
+  .toc ol ol li { font-size: 13px; color: var(--text-muted); }
+
+  /* Sections */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 36px;
+    margin-bottom: 32px;
+  }
+
+  h2.section-title {
+    font-size: 26px;
+    color: var(--secondary);
+    border-bottom: 3px solid var(--primary);
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2.section-title .num {
+    background: var(--primary);
+    color: white;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  h3 { font-size: 18px; color: var(--primary-dark); margin: 24px 0 12px; }
+  h4 { font-size: 15px; color: var(--secondary); margin: 16px 0 8px; font-weight: 600; }
+  p { margin-bottom: 12px; line-height: 1.7; }
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  li { margin-bottom: 6px; }
+  strong { color: var(--secondary); }
+  code { background: #f0f4f8; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; color: #c7254e; }
+
+  /* Screenshot Mockups */
+  .screen-mockup {
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 20px 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  }
+  .screen-titlebar {
+    background: #e8ecee;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .screen-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-red { background: #ff5f57; }
+  .dot-yellow { background: #febc2e; }
+  .dot-green { background: #28c840; }
+  .screen-url {
+    background: white;
+    border-radius: 4px;
+    padding: 3px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    flex: 1;
+    max-width: 400px;
+    margin-left: 12px;
+  }
+  .screen-body { background: var(--bg); }
+
+  /* Login screen mockup */
+  .mock-login {
+    background: linear-gradient(135deg, #1a3a5c 0%, #0a6ed1 100%);
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+  .mock-login-card {
+    background: white;
+    border-radius: 8px;
+    padding: 40px;
+    width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    text-align: center;
+  }
+  .mock-login-card .logo { font-size: 28px; font-weight: 700; color: var(--primary); margin-bottom: 4px; }
+  .mock-login-card .subtitle { font-size: 12px; color: var(--text-muted); margin-bottom: 24px; }
+  .mock-field {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    text-align: left;
+    color: var(--text-muted);
+    font-size: 13px;
+    width: 100%;
+  }
+  .mock-btn {
+    background: var(--primary);
+    color: white;
+    border-radius: 4px;
+    padding: 10px;
+    width: 100%;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 8px;
+  }
+
+  /* App shell mockup */
+  .mock-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 500px;
+  }
+  .mock-header {
+    background: var(--secondary);
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mock-header .brand { font-weight: 700; font-size: 15px; }
+  .mock-header .user-info { font-size: 12px; opacity: 0.8; display: flex; align-items: center; gap: 12px; }
+  .mock-body { display: flex; flex: 1; }
+  .mock-sidebar {
+    width: 220px;
+    background: #2d3f50;
+    color: white;
+    padding: 8px 0;
+    flex-shrink: 0;
+  }
+  .mock-nav-section { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.4); padding: 12px 16px 4px; }
+  .mock-nav-item {
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mock-nav-item.active { background: var(--primary); }
+  .mock-nav-item:hover:not(.active) { background: rgba(255,255,255,0.08); }
+  .mock-content { flex: 1; padding: 20px; background: var(--bg); }
+
+  /* Chat mockup */
+  .mock-chat-area {
+    display: flex;
+    flex-direction: column;
+    height: 380px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .mock-chat-messages {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mock-msg { max-width: 80%; }
+  .mock-msg.bot { align-self: flex-start; }
+  .mock-msg.user { align-self: flex-end; }
+  .mock-bubble {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .mock-msg.bot .mock-bubble { background: #f0f4f8; color: var(--text); border-bottom-left-radius: 2px; }
+  .mock-msg.user .mock-bubble { background: var(--primary); color: white; border-bottom-right-radius: 2px; }
+  .mock-chat-input {
+    border-top: 1px solid var(--border);
+    padding: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .mock-input-field {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .mock-send-btn {
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  /* Table styles */
+  .mock-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 8px 0;
+  }
+  .mock-table th {
+    background: #f0f4f8;
+    padding: 6px 10px;
+    text-align: left;
+    border: 1px solid var(--border);
+    font-weight: 600;
+    color: var(--secondary);
+  }
+  .mock-table td {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+  }
+  .mock-table tr:nth-child(even) td { background: #fafafa; }
+
+  /* KPI Cards */
+  .kpi-row { display: flex; gap: 16px; margin: 12px 0; }
+  .kpi-card {
+    flex: 1;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    border-left: 4px solid var(--primary);
+  }
+  .kpi-card .label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+  .kpi-card .value { font-size: 22px; font-weight: 700; color: var(--secondary); margin: 4px 0; }
+  .kpi-card .change { font-size: 11px; color: var(--success); }
+  .kpi-card.warn { border-left-color: var(--warning); }
+  .kpi-card.danger { border-left-color: var(--danger); }
+  .kpi-card.success { border-left-color: var(--success); }
+
+  /* Callout boxes */
+  .callout {
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    border-left: 4px solid;
+    font-size: 13px;
+  }
+  .callout.info { background: #e8f4ff; border-color: var(--primary); color: #0a4a8a; }
+  .callout.tip { background: #e6f9ef; border-color: var(--success); color: #0a4a1a; }
+  .callout.warn { background: #fff4e0; border-color: var(--warning); color: #7a3c00; }
+  .callout.danger { background: #ffe8e8; border-color: var(--danger); color: #660000; }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  /* Steps */
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 14px;
+    margin-bottom: 16px;
+    align-items: flex-start;
+  }
+  .steps li::before {
+    content: counter(step);
+    background: var(--primary);
+    color: white;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.blue { background: #e8f4ff; color: var(--primary); }
+  .badge.green { background: #e6f9ef; color: var(--success); }
+  .badge.orange { background: #fff4e0; color: var(--warning); }
+  .badge.red { background: #ffe8e8; color: var(--danger); }
+
+  /* Feature Grid */
+  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
+  .feature-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    background: white;
+  }
+  .feature-card .icon { font-size: 28px; margin-bottom: 10px; }
+  .feature-card h4 { margin: 0 0 8px; color: var(--primary-dark); }
+  .feature-card p { font-size: 13px; color: var(--text-muted); margin: 0; }
+
+  /* Workflow Diagram */
+  .workflow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+    overflow-x: auto;
+    padding: 16px 0;
+  }
+  .wf-step {
+    background: white;
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+    min-width: 110px;
+    flex-shrink: 0;
+  }
+  .wf-arrow {
+    color: var(--primary);
+    font-size: 20px;
+    margin: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* Agent panel mockup */
+  .mock-agent-panel {
+    display: flex;
+    gap: 16px;
+    height: 350px;
+  }
+  .mock-agent-chat { flex: 1; display: flex; flex-direction: column; }
+  .mock-agent-summary {
+    width: 240px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .mock-agent-summary h5 { font-size: 13px; color: var(--secondary); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 12px; }
+  .mock-summary-item { margin-bottom: 8px; font-size: 12px; }
+  .mock-summary-item .lbl { color: var(--text-muted); font-size: 11px; }
+  .mock-summary-item .val { font-weight: 600; color: var(--text); }
+
+  /* DB Builder mockup */
+  .mock-db-builder {
+    display: flex;
+    height: 420px;
+    gap: 0;
+  }
+  .mock-schema-panel {
+    width: 200px;
+    background: #1e2832;
+    color: #cdd8e3;
+    padding: 12px;
+    border-radius: 8px 0 0 8px;
+    overflow-y: auto;
+  }
+  .mock-schema-panel .tree-node { padding: 4px 0; font-size: 12px; cursor: pointer; }
+  .mock-schema-panel .tree-node.parent { color: #7eb3e0; font-weight: 600; }
+  .mock-schema-panel .tree-node.child { padding-left: 16px; color: #a8b8c8; font-size: 11px; }
+  .mock-sql-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 8px 8px 0;
+    overflow: hidden;
+  }
+  .mock-sql-toolbar {
+    background: #f8f9fa;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .mock-sql-editor {
+    background: #1e2832;
+    color: #a8d8a8;
+    padding: 16px;
+    font-family: monospace;
+    font-size: 12px;
+    flex: 1;
+    line-height: 1.6;
+  }
+  .sql-kw { color: #7eb3e0; }
+  .sql-fn { color: #f0c060; }
+  .mock-sql-results { background: white; border-top: 1px solid var(--border); height: 140px; overflow-y: auto; padding: 8px; }
+
+  /* Caption */
+  .caption {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: -8px;
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+
+  /* Quick Reference Table */
+  .ref-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .ref-table th { background: var(--secondary); color: white; padding: 10px 14px; text-align: left; }
+  .ref-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+  .ref-table tr:last-child td { border-bottom: none; }
+  .ref-table tr:hover td { background: #f5f8fc; }
+
+  /* Footer */
+  .doc-footer {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-muted);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+
+  @media print {
+    body { background: white; }
+    .doc-wrapper { max-width: 100%; padding: 0; }
+    .section { break-inside: avoid; }
+    .screen-mockup { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="doc-wrapper">
+
+<!-- ══════════════════════════════════════════
+     COVER PAGE
+══════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">🤖</div>
+  <h1>Agentsphere AI</h1>
+  <div class="tagline">SAP Business One Intelligent Assistant — User Manual</div>
+  <div class="meta">
+    <span>📄 Version 1.0</span>
+    <span>📅 June 2026</span>
+    <span>🏢 Silvertouch Technologies</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TABLE OF CONTENTS
+══════════════════════════════════════════ -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#intro">Introduction &amp; Overview</a></li>
+    <li><a href="#requirements">System Requirements &amp; Installation</a></li>
+    <li><a href="#login">Logging In</a></li>
+    <li><a href="#dashboard">Main Dashboard</a>
+      <ol>
+        <li><a href="#nav">Navigation Sidebar</a></li>
+        <li><a href="#chat">AI Chat Interface</a></li>
+        <li><a href="#kpi">KPI Overview Panel</a></li>
+      </ol>
+    </li>
+    <li><a href="#p2p">Procure-to-Pay (P2P) Cycle</a>
+      <ol>
+        <li><a href="#pr-agent">Purchase Request Agent</a></li>
+        <li><a href="#pr-to-po">PR → Purchase Order Conversion</a></li>
+        <li><a href="#po-to-grpo">PO → Goods Receipt (GRPO)</a></li>
+        <li><a href="#three-way">Three-Way Match</a></li>
+        <li><a href="#ap-invoice">GRPO → AP Invoice</a></li>
+        <li><a href="#outgoing">Outgoing Payments</a></li>
+      </ol>
+    </li>
+    <li><a href="#o2c">Order-to-Cash (O2C) Cycle</a>
+      <ol>
+        <li><a href="#sales-quot">Sales Quotation Agent</a></li>
+        <li><a href="#quot-to-order">Quotation → Sales Order</a></li>
+        <li><a href="#order-to-delivery">Order → Delivery</a></li>
+        <li><a href="#delivery-to-inv">Delivery → AR Invoice</a></li>
+        <li><a href="#incoming">Incoming Payments (Collections)</a></li>
+        <li><a href="#credit-memo">AR Credit Memos</a></li>
+      </ol>
+    </li>
+    <li><a href="#demand">Demand &amp; Supply</a>
+      <ol>
+        <li><a href="#forecasting">Forecasting Agent</a></li>
+        <li><a href="#rush">Rush Orders</a></li>
+        <li><a href="#reorder">Reorder Points</a></li>
+      </ol>
+    </li>
+    <li><a href="#analytics">Analytics &amp; Reporting</a></li>
+    <li><a href="#db-builder">DB Query Builder</a></li>
+    <li><a href="#master-data">Master Data Agent</a></li>
+    <li><a href="#settings">System Settings</a>
+      <ol>
+        <li><a href="#sap-conn">SAP B1 Connection Manager</a></li>
+        <li><a href="#roles">Roles &amp; Permissions</a></li>
+      </ol>
+    </li>
+    <li><a href="#tips">Tips &amp; Best Practices</a></li>
+    <li><a href="#troubleshoot">Troubleshooting</a></li>
+  </ol>
+</div>
+
+<!-- ══════════════════════════════════════════
+     1. INTRODUCTION
+══════════════════════════════════════════ -->
+<div class="section" id="intro">
+  <h2 class="section-title"><span class="num">1</span> Introduction &amp; Overview</h2>
+
+  <p><strong>Agentsphere AI</strong> is an intelligent conversational assistant built specifically for <strong>SAP Business One</strong>. It gives your team the ability to query live SAP data, create business documents, and run complex workflows — all through plain English conversation, without needing to know SAP menus or transaction codes.</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="icon">💬</div>
+      <h4>Natural Language Interface</h4>
+      <p>Ask questions in plain English. The AI understands intent and fetches live SAP data automatically.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🔄</div>
+      <h4>End-to-End Workflows</h4>
+      <p>Run complete P2P and O2C document chains — from PR to payment, from quotation to collection.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">📊</div>
+      <h4>Live Analytics</h4>
+      <p>Sales analysis, AR aging, vendor performance, forecasting — all powered by live HANA queries.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🤖</div>
+      <h4>25+ AI Agents</h4>
+      <p>Specialized agents for every business function: purchasing, sales, inventory, finance, and more.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🏢</div>
+      <h4>Multi-Company</h4>
+      <p>Switch between multiple SAP B1 companies seamlessly within one interface.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🔒</div>
+      <h4>Role-Based Access</h4>
+      <p>User roles control which agents and features each team member can access.</p>
+    </div>
+  </div>
+
+  <h3>Application Modules at a Glance</h3>
+  <table class="ref-table">
+    <thead><tr><th>Module</th><th>Purpose</th><th>Primary Users</th></tr></thead>
+    <tbody>
+      <tr><td><strong>AI Chat Dashboard</strong></td><td>Central interface for all natural-language queries and agent tasks</td><td>All users</td></tr>
+      <tr><td><strong>P2P Agents</strong></td><td>Purchase Request → PO → GRPO → AP Invoice → Payment workflow</td><td>Procurement team</td></tr>
+      <tr><td><strong>O2C Agents</strong></td><td>Quotation → Order → Delivery → AR Invoice → Collection workflow</td><td>Sales team</td></tr>
+      <tr><td><strong>Demand &amp; Supply</strong></td><td>Forecasting, rush orders, reorder point management</td><td>Warehouse / Planning</td></tr>
+      <tr><td><strong>Analytics</strong></td><td>Revenue, AR/AP aging, vendor performance, YoY comparisons</td><td>Management / Finance</td></tr>
+      <tr><td><strong>DB Query Builder</strong></td><td>Direct SQL queries against MSSQL / HANA databases</td><td>Data analysts / IT</td></tr>
+      <tr><td><strong>Master Data Agent</strong></td><td>Create/update customers, vendors, and items with AI assistance</td><td>Admin / Operations</td></tr>
+      <tr><td><strong>System Settings</strong></td><td>SAP connections, user roles, permissions</td><td>System administrator</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════
+     2. SYSTEM REQUIREMENTS
+══════════════════════════════════════════ -->
+<div class="section" id="requirements">
+  <h2 class="section-title"><span class="num">2</span> System Requirements &amp; Installation</h2>
+
+  <h3>Prerequisites</h3>
+  <ul>
+    <li><strong>Node.js</strong> version 18 or higher</li>
+    <li>Network access to your <strong>SAP B1 Service Layer</strong> (HTTPS on port 50001 typically)</li>
+    <li>A modern web browser (Chrome 90+, Firefox 90+, Edge 90+)</li>
+    <li>An AI provider API key: Anthropic Claude, Azure OpenAI, or Azure GPT-4o</li>
+  </ul>
+
+  <h3>Installation Steps</h3>
+  <ol class="steps">
+    <li><strong>Install dependencies</strong> — Run <code>install.bat</code> (Windows) or <code>npm install</code> in the project root.</li>
+    <li><strong>Configure environment</strong> — Copy <code>.env.example</code> to <code>.env</code> and fill in your SAP B1 Service Layer URL, company database name, credentials, and AI API key.</li>
+    <li><strong>Build the MCP server</strong> — Run <code>npm run build</code> to compile TypeScript to <code>dist/</code>.</li>
+    <li><strong>Start the application</strong> — Run <code>Start.bat</code> or <code>npm run chat</code>. The web UI starts on <strong>port 3000</strong>.</li>
+    <li><strong>Open in browser</strong> — Navigate to <code>http://localhost:3000</code> (or your server IP).</li>
+  </ol>
+
+  <h3>Key Environment Variables</h3>
+  <table class="ref-table">
+    <thead><tr><th>Variable</th><th>Description</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><code>SAP_B1_SERVICE_LAYER_URL</code></td><td>SAP Service Layer base URL</td><td><code>https://192.168.1.10:50000/b1s/v1</code></td></tr>
+      <tr><td><code>SAP_B1_COMPANY</code></td><td>SAP company database name</td><td><code>SBODemoGB</code></td></tr>
+      <tr><td><code>SAP_B1_USERNAME</code></td><td>SAP B1 login username</td><td><code>manager</code></td></tr>
+      <tr><td><code>SAP_B1_PASSWORD</code></td><td>SAP B1 login password</td><td><code>••••••••</code></td></tr>
+      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Anthropic (Claude) API key</td><td><code>sk-ant-...</code></td></tr>
+      <tr><td><code>AI_PROVIDER</code></td><td>AI provider selection</td><td><code>anthropic</code> / <code>azure</code> / <code>gpt</code></td></tr>
+      <tr><td><code>PORT</code></td><td>Web server port (default 3000)</td><td><code>3000</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>💡 Quick Start on Windows</strong>
+    Double-click <code>Start.bat</code> to launch the server. Double-click <code>Stop.bat</code> to shut it down. <code>Status.bat</code> checks if the server is running.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     3. LOGGING IN
+══════════════════════════════════════════ -->
+<div class="section" id="login">
+  <h2 class="section-title"><span class="num">3</span> Logging In</h2>
+
+  <p>Open your browser and navigate to <code>http://localhost:3000</code>. You will see the Agentsphere login screen.</p>
+
+  <!-- Login Mockup -->
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">http://localhost:3000/login.html</div>
+    </div>
+    <div class="screen-body">
+      <div class="mock-login">
+        <div class="mock-login-card">
+          <div class="logo">🤖 Agentsphere AI</div>
+          <div class="subtitle">SAP Business One Intelligent Assistant</div>
+          <div class="mock-field">📧 Email address</div>
+          <div class="mock-field">🔒 Password ••••••••</div>
+          <div class="mock-btn">Sign In</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 3.1 — Login Screen</div>
+
+  <h3>Login Process</h3>
+  <ol class="steps">
+    <li>Enter your <strong>email address</strong> in the first field.</li>
+    <li>Enter your <strong>password</strong>. Click the eye icon to toggle visibility.</li>
+    <li>Click <strong>Sign In</strong>. Your session token is stored in the browser for 24 hours.</li>
+    <li>You are redirected to the <strong>main dashboard</strong> (<code>index.html</code>).</li>
+  </ol>
+
+  <div class="callout info">
+    <strong>ℹ️ Session Management</strong>
+    Sessions expire after 24 hours of inactivity. You will be automatically redirected to the login page when your session expires.
+  </div>
+
+  <div class="callout warn">
+    <strong>⚠️ Forgotten Password</strong>
+    Contact your system administrator to reset your password. Password resets are managed through the <strong>Roles &amp; Permissions</strong> section.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     4. MAIN DASHBOARD
+══════════════════════════════════════════ -->
+<div class="section" id="dashboard">
+  <h2 class="section-title"><span class="num">4</span> Main Dashboard</h2>
+
+  <p>After login, you land on the main dashboard — your central workspace. It has three key areas: the <strong>top header bar</strong>, the <strong>left navigation sidebar</strong>, and the <strong>main content / chat area</strong>.</p>
+
+  <!-- Dashboard Mockup -->
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">http://localhost:3000</div>
+    </div>
+    <div class="screen-body">
+      <div class="mock-shell">
+        <div class="mock-header">
+          <div class="brand">🤖 Agentsphere AI</div>
+          <div class="user-info">
+            <span>🏢 SBODemoGB</span>
+            <span>👤 John Smith</span>
+            <span>🔔</span>
+          </div>
+        </div>
+        <div class="mock-body">
+          <div class="mock-sidebar">
+            <div class="mock-nav-section">Overview</div>
+            <div class="mock-nav-item active">🏠 Dashboard</div>
+            <div class="mock-nav-section">Purchase (P2P)</div>
+            <div class="mock-nav-item">📝 PR Agent</div>
+            <div class="mock-nav-item">📦 PR → PO</div>
+            <div class="mock-nav-item">📥 PO → GRPO</div>
+            <div class="mock-nav-item">🔍 Three-Way Match</div>
+            <div class="mock-nav-section">Sales (O2C)</div>
+            <div class="mock-nav-item">💰 Sales Quotation</div>
+            <div class="mock-nav-item">🛒 Quot → Order</div>
+            <div class="mock-nav-item">🚚 Order → Delivery</div>
+            <div class="mock-nav-section">Demand &amp; Supply</div>
+            <div class="mock-nav-item">📈 Forecasting</div>
+            <div class="mock-nav-item">⚡ Rush Orders</div>
+          </div>
+          <div class="mock-content">
+            <div class="kpi-row">
+              <div class="kpi-card success"><div class="label">Open Orders</div><div class="value">124</div><div class="change">↑ 8 today</div></div>
+              <div class="kpi-card"><div class="label">Revenue MTD</div><div class="value">£284K</div><div class="change">↑ 12% vs last month</div></div>
+              <div class="kpi-card warn"><div class="label">Overdue AR</div><div class="value">£42K</div><div class="change">18 invoices</div></div>
+              <div class="kpi-card danger"><div class="label">Low Stock Items</div><div class="value">7</div><div class="change">Needs reorder</div></div>
+            </div>
+            <div class="mock-chat-area" style="height:200px;">
+              <div class="mock-chat-messages">
+                <div class="mock-msg bot"><div class="mock-bubble">👋 Hello! I'm your SAP B1 assistant. Ask me anything about orders, stock, customers, or financials. <br><br><strong>Quick prompts:</strong> "Show sales this month" • "AR aging report" • "Top 10 customers"</div></div>
+              </div>
+              <div class="mock-chat-input">
+                <div class="mock-input-field">Ask me anything about your business data...</div>
+                <div class="mock-send-btn">➤</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 4.1 — Main Dashboard with KPI cards and AI chat interface</div>
+
+  <h3 id="nav">4.1 Navigation Sidebar</h3>
+  <p>The left sidebar organises all agents into logical business sections. Click any item to open that agent's panel in the main content area.</p>
+
+  <table class="ref-table">
+    <thead><tr><th>Section</th><th>Navigation Items</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Overview</strong></td><td>Dashboard (KPIs, chat)</td></tr>
+      <tr><td><strong>Purchase (P2P)</strong></td><td>PR Agent, PR→PO, PO→GRPO, Three-Way Match, GRPO→AP Invoice, AP Credit Memo, Outgoing Payments</td></tr>
+      <tr><td><strong>Sales (O2C)</strong></td><td>Sales Quotation, Quotation Compare, Quot→Order, Order→Delivery, Delivery→AR Invoice, AR Credit Memo, Incoming Payments</td></tr>
+      <tr><td><strong>Demand &amp; Supply</strong></td><td>Forecasting, Rush Orders, Purchasing Agent, Quotation Comparison, Order Intelligence, Shipment Delay, Reorder Points</td></tr>
+      <tr><td><strong>Master Data &amp; Analytics</strong></td><td>Master Data Agent, Activity Agent, Data Sync</td></tr>
+      <tr><td><strong>System Setup</strong></td><td>SAP B1 Connections, Roles &amp; Permissions, Service Call Forms</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="chat">4.2 AI Chat Interface</h3>
+  <p>The central chat window accepts natural-language questions. You can type freely — the system automatically detects intent and calls the right SAP tools.</p>
+
+  <!-- Chat Conversation Mockup -->
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">Main Chat — Dashboard</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-chat-area">
+        <div class="mock-chat-messages">
+          <div class="mock-msg bot">
+            <div class="mock-bubble">👋 Good morning! How can I help you today? Try asking about sales, inventory, customers, or purchasing.</div>
+          </div>
+          <div class="mock-msg user">
+            <div class="mock-bubble">Show me top 5 customers by revenue this year</div>
+          </div>
+          <div class="mock-msg bot">
+            <div class="mock-bubble">
+              <strong>Top 5 Customers by Revenue — YTD 2026</strong><br><br>
+              <table class="mock-table">
+                <thead><tr><th>#</th><th>Customer</th><th>Revenue</th><th>Orders</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>Maxi-Teq</td><td>£124,500</td><td>28</td></tr>
+                  <tr><td>2</td><td>ADA Computers</td><td>£98,300</td><td>21</td></tr>
+                  <tr><td>3</td><td>Microchips</td><td>£76,200</td><td>18</td></tr>
+                  <tr><td>4</td><td>TechnoStar</td><td>£64,100</td><td>15</td></tr>
+                  <tr><td>5</td><td>OceanStar</td><td>£52,400</td><td>12</td></tr>
+                </tbody>
+              </table>
+              <br>💡 <em>Maxi-Teq leads with £124.5K revenue across 28 orders YTD.</em>
+            </div>
+          </div>
+        </div>
+        <div class="mock-chat-input">
+          <div class="mock-input-field">Ask a follow-up question...</div>
+          <div class="mock-send-btn">➤</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 4.2 — AI Chat responding to a natural language query with a formatted table</div>
+
+  <h4>Sample Queries You Can Ask</h4>
+  <table class="ref-table">
+    <thead><tr><th>Category</th><th>Example Queries</th></tr></thead>
+    <tbody>
+      <tr><td>Sales</td><td>"Show sales this month", "Revenue by item group Q1", "Top 10 customers this year"</td></tr>
+      <tr><td>Purchasing</td><td>"Open purchase orders", "Vendor performance last 3 months", "Pending GRPOs"</td></tr>
+      <tr><td>Finance</td><td>"AR aging report", "AP aging", "Overdue invoices", "Cash flow forecast"</td></tr>
+      <tr><td>Inventory</td><td>"Low stock items", "Total stock value", "Items to reorder"</td></tr>
+      <tr><td>Customers</td><td>"Customer details for C20000", "Payment history for Maxi-Teq"</td></tr>
+      <tr><td>Analytics</td><td>"Year over year comparison", "Forecast demand for item A0001", "Revenue concentration"</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="kpi">4.3 KPI Overview Panel</h3>
+  <p>The top of the dashboard shows four real-time KPI cards. Click any KPI card to drill down into the related data.</p>
+  <div class="kpi-row">
+    <div class="kpi-card success"><div class="label">Open Sales Orders</div><div class="value">124</div><div class="change">↑ 8 added today</div></div>
+    <div class="kpi-card"><div class="label">Revenue (MTD)</div><div class="value">£284K</div><div class="change">↑ 12% vs last month</div></div>
+    <div class="kpi-card warn"><div class="label">Overdue AR</div><div class="value">£42K</div><div class="change">Across 18 invoices</div></div>
+    <div class="kpi-card danger"><div class="label">Low Stock Items</div><div class="value">7</div><div class="change">Below reorder point</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     5. PROCURE-TO-PAY
+══════════════════════════════════════════ -->
+<div class="section" id="p2p">
+  <h2 class="section-title"><span class="num">5</span> Procure-to-Pay (P2P) Cycle</h2>
+
+  <p>The P2P workflow covers the entire purchasing process from a Purchase Request through to Vendor Payment. Each step is handled by a dedicated AI agent.</p>
+
+  <div class="workflow">
+    <div class="wf-step">Purchase Request</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">Purchase Order</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">Goods Receipt (GRPO)</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">AP Invoice</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">Outgoing Payment</div>
+  </div>
+
+  <!-- ─── PR Agent ─── -->
+  <h3 id="pr-agent">5.1 Purchase Request Agent</h3>
+  <p>The <strong>PR Agent</strong> is a conversational wizard that creates Purchase Requests (PRs) through natural-language dialogue. Navigate to <strong>Purchase (P2P) → PR Agent</strong>.</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">PR Agent — Purchase Request Wizard</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-agent-panel">
+        <div class="mock-agent-chat">
+          <div class="mock-chat-area">
+            <div class="mock-chat-messages">
+              <div class="mock-msg bot"><div class="mock-bubble">👋 I'm the Purchase Request Agent. Tell me what you need to purchase and I'll help you create the PR.</div></div>
+              <div class="mock-msg user"><div class="mock-bubble">I need 50 units of A0001 and 20 units of A0002 from vendor V10000</div></div>
+              <div class="mock-msg bot"><div class="mock-bubble">
+                Got it! I've added 2 line items:<br>
+                • <strong>A0001</strong> — Qty: 50<br>
+                • <strong>A0002</strong> — Qty: 20<br>
+                Vendor: <strong>V10000</strong><br><br>
+                What's the required delivery date?
+              </div></div>
+              <div class="mock-msg user"><div class="mock-bubble">Next Friday please</div></div>
+              <div class="mock-msg bot"><div class="mock-bubble">✅ Delivery date set to <strong>2026-06-19</strong>. Shall I create this Purchase Request now?</div></div>
+            </div>
+            <div class="mock-chat-input">
+              <div class="mock-input-field">Type "confirm" to create or add more items...</div>
+              <div class="mock-send-btn">➤</div>
+            </div>
+          </div>
+        </div>
+        <div class="mock-agent-summary">
+          <h5>📋 PR Summary</h5>
+          <div class="mock-summary-item"><div class="lbl">Vendor</div><div class="val">V10000</div></div>
+          <div class="mock-summary-item"><div class="lbl">Required Date</div><div class="val">2026-06-19</div></div>
+          <div class="mock-summary-item"><div class="lbl">Line Items</div><div class="val">2</div></div>
+          <div class="mock-summary-item"><div class="lbl">Item 1</div><div class="val">A0001 × 50</div></div>
+          <div class="mock-summary-item"><div class="lbl">Item 2</div><div class="val">A0002 × 20</div></div>
+          <div class="mock-summary-item"><div class="lbl">Status</div><div class="val"><span class="badge orange">Pending Confirm</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 5.1 — PR Agent conversation with live PR summary panel</div>
+
+  <h4>How to Create a Purchase Request</h4>
+  <ol class="steps">
+    <li>Navigate to <strong>Purchase (P2P) → PR Agent</strong> in the sidebar.</li>
+    <li>Describe what you need: <em>"I need 50 units of item A0001 from vendor V10000 by next Friday"</em></li>
+    <li>The agent will confirm each detail and show a live summary on the right side panel.</li>
+    <li>Add more items if needed: <em>"Also add 10 units of B0025"</em></li>
+    <li>Type <strong>"Confirm"</strong> or <strong>"Create PR"</strong> to submit the purchase request to SAP B1.</li>
+    <li>The system returns a <strong>PR Document Number</strong> confirming creation.</li>
+  </ol>
+
+  <!-- ─── PR to PO ─── -->
+  <h3 id="pr-to-po">5.2 PR → Purchase Order Conversion</h3>
+  <p>This agent fetches open Purchase Requests and helps you convert them into Purchase Orders. Navigate to <strong>Purchase (P2P) → PR → PO</strong>.</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">PR → PO Agent</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-chat-area" style="height:240px;">
+        <div class="mock-chat-messages">
+          <div class="mock-msg bot"><div class="mock-bubble">
+            📋 <strong>Open Purchase Requests (3 found)</strong><br><br>
+            <table class="mock-table">
+              <thead><tr><th>PR #</th><th>Vendor</th><th>Items</th><th>Required</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td>PR-1042</td><td>V10000</td><td>2 lines</td><td>2026-06-19</td><td><span class="badge blue">Convert</span></td></tr>
+                <tr><td>PR-1041</td><td>V20000</td><td>1 line</td><td>2026-06-18</td><td><span class="badge blue">Convert</span></td></tr>
+                <tr><td>PR-1039</td><td>V10000</td><td>4 lines</td><td>2026-06-25</td><td><span class="badge blue">Convert</span></td></tr>
+              </tbody>
+            </table>
+            <br>Which PR(s) would you like to convert to a Purchase Order?
+          </div></div>
+          <div class="mock-msg user"><div class="mock-bubble">Convert PR-1042 and PR-1041</div></div>
+          <div class="mock-msg bot"><div class="mock-bubble">✅ <strong>2 Purchase Orders created:</strong><br>• PO-2201 from PR-1042 (V10000)<br>• PO-2202 from PR-1041 (V20000)</div></div>
+        </div>
+        <div class="mock-chat-input">
+          <div class="mock-input-field">Type PR number or "convert all"...</div>
+          <div class="mock-send-btn">➤</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 5.2 — PR to PO conversion agent listing open PRs</div>
+
+  <!-- ─── PO to GRPO ─── -->
+  <h3 id="po-to-grpo">5.3 PO → Goods Receipt (GRPO)</h3>
+  <p>When goods arrive, use this agent to receive against open Purchase Orders and create Goods Receipt POs (GRPOs).</p>
+
+  <ol class="steps">
+    <li>Navigate to <strong>PO → GRPO</strong>. The agent lists all open POs ready to receive.</li>
+    <li>Select the PO: <em>"Receive PO-2201"</em></li>
+    <li>The agent shows each line item and asks for received quantity.</li>
+    <li>Confirm partial or full receipt: <em>"Full receipt"</em> or <em>"Received 40 out of 50"</em></li>
+    <li>The agent creates the GRPO in SAP B1 and returns the document number.</li>
+  </ol>
+
+  <div class="callout tip">
+    <strong>💡 Partial Receipts</strong>
+    You can receive a partial quantity against a PO line. The PO remains open for the remaining quantity until a final receipt is posted.
+  </div>
+
+  <!-- ─── Three-Way Match ─── -->
+  <h3 id="three-way">5.4 Three-Way Match</h3>
+  <p>The Three-Way Match agent reconciles <strong>Purchase Order ↔ GRPO ↔ AP Invoice</strong> to verify price, quantity, and total accuracy before approving payment.</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">Three-Way Match Agent</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-chat-area" style="height:260px;">
+        <div class="mock-chat-messages">
+          <div class="mock-msg user"><div class="mock-bubble">Run three-way match for vendor V10000</div></div>
+          <div class="mock-msg bot"><div class="mock-bubble">
+            <strong>Three-Way Match Results — V10000</strong><br><br>
+            <table class="mock-table">
+              <thead><tr><th>PO</th><th>GRPO</th><th>AP Inv</th><th>PO Qty</th><th>Rcvd</th><th>Inv Amt</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>2201</td><td>GRPO-501</td><td>AP-301</td><td>50</td><td>50</td><td>£2,500</td><td><span class="badge green">✅ Match</span></td></tr>
+                <tr><td>2199</td><td>GRPO-498</td><td>AP-295</td><td>20</td><td>18</td><td>£1,100</td><td><span class="badge red">⚠ Qty Diff</span></td></tr>
+              </tbody>
+            </table>
+            <br>PO-2199 has a quantity discrepancy. 20 ordered, 18 received, but invoice is for 20. Please review before approving.
+          </div></div>
+        </div>
+        <div class="mock-chat-input">
+          <div class="mock-input-field">Ask to approve matched invoices or investigate discrepancies...</div>
+          <div class="mock-send-btn">➤</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 5.4 — Three-Way Match showing a discrepancy flagged in red</div>
+
+  <!-- ─── AP Invoice ─── -->
+  <h3 id="ap-invoice">5.5 GRPO → AP Invoice</h3>
+  <p>This agent matches Goods Receipts to vendor invoices — with optional <strong>OCR</strong> support for uploading PDF invoices.</p>
+
+  <ol class="steps">
+    <li>Navigate to <strong>GRPO → AP Invoice</strong>.</li>
+    <li>The agent lists GRPOs awaiting invoicing from each vendor.</li>
+    <li>Optionally upload a PDF invoice for OCR extraction: drag &amp; drop or click the attach button.</li>
+    <li>Review extracted amounts — the system cross-references PO prices and flags discrepancies.</li>
+    <li>Confirm to create the <strong>AP Invoice</strong> in SAP B1.</li>
+  </ol>
+
+  <div class="callout info">
+    <strong>ℹ️ OCR Invoice Processing</strong>
+    PDF invoices are parsed using the built-in PDF extractor. The agent identifies line items, unit prices, and totals automatically. You review and confirm before posting.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     6. ORDER-TO-CASH
+══════════════════════════════════════════ -->
+<div class="section" id="o2c">
+  <h2 class="section-title"><span class="num">6</span> Order-to-Cash (O2C) Cycle</h2>
+
+  <p>The O2C workflow manages the entire sales process from initial quotation through to cash collection.</p>
+
+  <div class="workflow">
+    <div class="wf-step">Sales Quotation</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">Sales Order</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">Delivery Note</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">AR Invoice</div>
+    <div class="wf-arrow">→</div>
+    <div class="wf-step">Incoming Payment</div>
+  </div>
+
+  <!-- ─── Sales Quotation ─── -->
+  <h3 id="sales-quot">6.1 Sales Quotation Agent</h3>
+  <p>Create sales quotations through natural language conversation. Navigate to <strong>Sales (O2C) → Sales Quotation</strong>.</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">Sales Quotation Agent</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-agent-panel">
+        <div class="mock-agent-chat">
+          <div class="mock-chat-area">
+            <div class="mock-chat-messages">
+              <div class="mock-msg bot"><div class="mock-bubble">Welcome to the Sales Quotation Agent! Who is the customer and what would you like to quote?</div></div>
+              <div class="mock-msg user"><div class="mock-bubble">Create a quotation for Maxi-Teq, 10 units of A0001 and 5 units of B0002, valid for 30 days</div></div>
+              <div class="mock-msg bot"><div class="mock-bubble">
+                Fetching pricing for <strong>Maxi-Teq</strong>...<br><br>
+                • <strong>A0001</strong> × 10 @ £45.00 = <strong>£450.00</strong><br>
+                • <strong>B0002</strong> × 5 @ £120.00 = <strong>£600.00</strong><br>
+                Valid until: <strong>2026-07-10</strong><br>
+                Total: <strong>£1,050.00</strong><br><br>
+                Apply any discount or special pricing?
+              </div></div>
+            </div>
+            <div class="mock-chat-input">
+              <div class="mock-input-field">Type "create" to generate quotation, or add a discount...</div>
+              <div class="mock-send-btn">➤</div>
+            </div>
+          </div>
+        </div>
+        <div class="mock-agent-summary">
+          <h5>💰 Quotation Summary</h5>
+          <div class="mock-summary-item"><div class="lbl">Customer</div><div class="val">Maxi-Teq</div></div>
+          <div class="mock-summary-item"><div class="lbl">Valid Until</div><div class="val">2026-07-10</div></div>
+          <div class="mock-summary-item"><div class="lbl">Lines</div><div class="val">2</div></div>
+          <div class="mock-summary-item"><div class="lbl">Subtotal</div><div class="val">£1,050.00</div></div>
+          <div class="mock-summary-item"><div class="lbl">Tax (20%)</div><div class="val">£210.00</div></div>
+          <div class="mock-summary-item"><div class="lbl">Total</div><div class="val" style="color:var(--primary);font-size:15px;">£1,260.00</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 6.1 — Sales Quotation Agent with live pricing and summary panel</div>
+
+  <!-- ─── Quotation to Order ─── -->
+  <h3 id="quot-to-order">6.2 Quotation → Sales Order</h3>
+  <p>When a quotation is accepted, convert it to a Sales Order in one step.</p>
+  <ol class="steps">
+    <li>Navigate to <strong>Quot → Order</strong>. Open quotations are listed by customer.</li>
+    <li>Select the quotation: <em>"Convert quotation SQ-405 to sales order"</em></li>
+    <li>Confirm any final changes (quantity adjustments, delivery date).</li>
+    <li>The system creates the Sales Order and returns the SO document number.</li>
+  </ol>
+
+  <!-- ─── Order to Delivery ─── -->
+  <h3 id="order-to-delivery">6.3 Order → Delivery Note</h3>
+  <p>Generate Delivery Notes from confirmed Sales Orders for warehouse dispatch.</p>
+  <ol class="steps">
+    <li>Navigate to <strong>Order → Delivery</strong>. Open orders ready to ship are listed.</li>
+    <li>Select one or more orders: <em>"Create delivery for SO-1088"</em></li>
+    <li>Specify warehouse and shipping details if prompted.</li>
+    <li>Confirm — the Delivery Note is created in SAP B1.</li>
+  </ol>
+
+  <!-- ─── Delivery to Invoice ─── -->
+  <h3 id="delivery-to-inv">6.4 Delivery → AR Invoice</h3>
+  <p>Invoice customers directly from posted Delivery Notes.</p>
+  <ol class="steps">
+    <li>Navigate to <strong>Delivery → AR Invoice</strong>.</li>
+    <li>Select the delivery: <em>"Invoice delivery DN-804"</em></li>
+    <li>Review the invoice amounts and payment terms.</li>
+    <li>Confirm to post the <strong>AR Invoice</strong> in SAP B1.</li>
+  </ol>
+
+  <!-- ─── Incoming Payments ─── -->
+  <h3 id="incoming">6.5 Incoming Payments (Collections)</h3>
+  <p>Record customer payments against open AR invoices.</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">Incoming Payments Agent</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-chat-area" style="height:240px;">
+        <div class="mock-chat-messages">
+          <div class="mock-msg user"><div class="mock-bubble">Maxi-Teq paid £5,000 today</div></div>
+          <div class="mock-msg bot"><div class="mock-bubble">
+            <strong>Open AR Invoices — Maxi-Teq</strong><br><br>
+            <table class="mock-table">
+              <thead><tr><th>Invoice</th><th>Date</th><th>Amount</th><th>Due</th></tr></thead>
+              <tbody>
+                <tr><td>AR-2201</td><td>2026-05-12</td><td>£3,200</td><td><span class="badge red">Overdue</span></td></tr>
+                <tr><td>AR-2245</td><td>2026-06-01</td><td>£1,800</td><td><span class="badge orange">15 days</span></td></tr>
+              </tbody>
+            </table>
+            <br>Payment of £5,000 will fully settle both invoices. Apply payment?
+          </div></div>
+        </div>
+        <div class="mock-chat-input">
+          <div class="mock-input-field">Type "apply" to post the payment...</div>
+          <div class="mock-send-btn">➤</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 6.5 — Incoming Payments agent automatically matching payment to open invoices</div>
+
+  <h3 id="credit-memo">6.6 AR Credit Memos</h3>
+  <p>Issue credit notes for returns, adjustments, or billing errors.</p>
+  <ol class="steps">
+    <li>Navigate to <strong>AR Invoice → Credit Memo</strong>.</li>
+    <li>Reference the original invoice: <em>"Create credit memo for AR-2201"</em></li>
+    <li>Specify the reason and amount (full or partial credit).</li>
+    <li>Confirm to post the Credit Memo — it is automatically linked to the original invoice.</li>
+  </ol>
+</div>
+
+<!-- ══════════════════════════════════════════
+     7. DEMAND & SUPPLY
+══════════════════════════════════════════ -->
+<div class="section" id="demand">
+  <h2 class="section-title"><span class="num">7</span> Demand &amp; Supply</h2>
+
+  <!-- ─── Forecasting ─── -->
+  <h3 id="forecasting">7.1 Forecasting Agent</h3>
+  <p>The Forecasting Agent uses historical sales data to predict future demand using multiple forecasting models (linear trend, exponential smoothing, moving average).</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">Forecasting Agent</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-chat-area" style="height:240px;">
+        <div class="mock-chat-messages">
+          <div class="mock-msg user"><div class="mock-bubble">Forecast demand for item A0001 for the next 3 months</div></div>
+          <div class="mock-msg bot"><div class="mock-bubble">
+            <strong>Demand Forecast — A0001 (CPU Unit)</strong><br>
+            Method: Exponential Smoothing<br><br>
+            <table class="mock-table">
+              <thead><tr><th>Month</th><th>Forecast Qty</th><th>Confidence</th><th>Lower</th><th>Upper</th></tr></thead>
+              <tbody>
+                <tr><td>Jul 2026</td><td>285</td><td>92%</td><td>260</td><td>310</td></tr>
+                <tr><td>Aug 2026</td><td>304</td><td>88%</td><td>271</td><td>337</td></tr>
+                <tr><td>Sep 2026</td><td>298</td><td>84%</td><td>252</td><td>344</td></tr>
+              </tbody>
+            </table>
+            <br>💡 <em>Demand is stable with slight seasonal uptick in August. Consider placing a PO for ~300 units in late June.</em>
+          </div></div>
+        </div>
+        <div class="mock-chat-input">
+          <div class="mock-input-field">Ask about another item or adjust the forecast period...</div>
+          <div class="mock-send-btn">➤</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 7.1 — Demand Forecast with confidence intervals for a 3-month outlook</div>
+
+  <!-- ─── Rush Orders ─── -->
+  <h3 id="rush">7.2 Rush Orders</h3>
+  <p>The Rush Orders agent identifies urgent or high-priority orders that need expedited processing and suggests priority actions.</p>
+
+  <ol class="steps">
+    <li>Navigate to <strong>Demand &amp; Supply → Rush Orders</strong>.</li>
+    <li>The agent automatically scans open orders for priority signals: promised date breaches, VIP customers, manual priority flags.</li>
+    <li>Review the prioritised list and take action: <em>"Expedite SO-1095"</em></li>
+    <li>The agent can send notifications or create urgent delivery tasks.</li>
+  </ol>
+
+  <!-- ─── Reorder ─── -->
+  <h3 id="reorder">7.3 Reorder Points</h3>
+  <p>Automatically identifies stock items that have fallen below their calculated reorder point and can generate draft Purchase Orders.</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">Reorder Points</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div style="padding:16px; background:white; border-radius:8px; border:1px solid var(--border);">
+        <table class="mock-table">
+          <thead><tr><th>Item</th><th>Description</th><th>Stock</th><th>Reorder Pt</th><th>Min Order</th><th>Suggested PO</th></tr></thead>
+          <tbody>
+            <tr><td>A0001</td><td>CPU Unit</td><td>12</td><td>50</td><td>100</td><td><span class="badge red">🔴 100 units</span></td></tr>
+            <tr><td>B0025</td><td>Memory Module</td><td>8</td><td>30</td><td>50</td><td><span class="badge red">🔴 50 units</span></td></tr>
+            <tr><td>C0114</td><td>Power Cable</td><td>45</td><td>40</td><td>200</td><td><span class="badge orange">🟡 200 units</span></td></tr>
+          </tbody>
+        </table>
+        <div style="margin-top:12px; font-size:13px; color:var(--text-muted);">
+          💬 Type "Generate draft POs for all red items" to auto-create purchase orders.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 7.3 — Reorder Points showing items below threshold with suggested PO quantities</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     8. ANALYTICS & REPORTING
+══════════════════════════════════════════ -->
+<div class="section" id="analytics">
+  <h2 class="section-title"><span class="num">8</span> Analytics &amp; Reporting</h2>
+
+  <p>Ask analytics questions directly in the main chat. The system routes to live HANA analytics views (via <code>query_sml_view</code>) and returns formatted markdown tables with business insights.</p>
+
+  <h3>Available Analytics Queries</h3>
+  <table class="ref-table">
+    <thead><tr><th>Report Type</th><th>Example Query</th></tr></thead>
+    <tbody>
+      <tr><td>Sales Analysis</td><td>"Show revenue by customer for this year", "Top 10 items by sales Q2"</td></tr>
+      <tr><td>AR Aging</td><td>"AR aging report", "Show overdue invoices over 60 days"</td></tr>
+      <tr><td>AP Aging</td><td>"AP aging by vendor", "What do we owe this month?"</td></tr>
+      <tr><td>Year-over-Year</td><td>"Compare this year vs last year sales", "YoY growth by item group"</td></tr>
+      <tr><td>Sales by Period</td><td>"Monthly sales trend 2025", "Weekly sales this quarter"</td></tr>
+      <tr><td>Salesperson Performance</td><td>"Salesperson performance this year", "Top sales reps by revenue"</td></tr>
+      <tr><td>Vendor Performance</td><td>"Vendor delivery performance", "On-time delivery rates"</td></tr>
+      <tr><td>Revenue Concentration</td><td>"Revenue concentration by customer", "Customer dependency analysis"</td></tr>
+      <tr><td>Cash Flow</td><td>"Cash flow forecast next 90 days", "Working capital status"</td></tr>
+      <tr><td>Inventory</td><td>"Dead stock items", "Slow-moving stock", "ABC/XYZ analysis"</td></tr>
+    </tbody>
+  </table>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">Analytics — Main Chat</div>
+    </div>
+    <div class="screen-body" style="padding:16px; background:var(--bg);">
+      <div class="mock-chat-area" style="height:280px;">
+        <div class="mock-chat-messages">
+          <div class="mock-msg user"><div class="mock-bubble">Show AR aging report</div></div>
+          <div class="mock-msg bot"><div class="mock-bubble">
+            <strong>AR Aging Report as of 10 June 2026</strong><br><br>
+            <table class="mock-table">
+              <thead><tr><th>Customer</th><th>0-30 days</th><th>31-60 days</th><th>61-90 days</th><th>90+ days</th><th>Total</th></tr></thead>
+              <tbody>
+                <tr><td>Maxi-Teq</td><td>£3,200</td><td>£1,800</td><td>—</td><td>—</td><td>£5,000</td></tr>
+                <tr><td>ADA Computers</td><td>£8,400</td><td>—</td><td>£2,100</td><td>£900</td><td>£11,400</td></tr>
+                <tr><td>Microchips</td><td>£4,100</td><td>£3,300</td><td>—</td><td>—</td><td>£7,400</td></tr>
+                <tr><td><strong>TOTAL</strong></td><td><strong>£15,700</strong></td><td><strong>£5,100</strong></td><td><strong>£2,100</strong></td><td><strong>£900</strong></td><td><strong>£23,800</strong></td></tr>
+              </tbody>
+            </table>
+            <br>💡 <em>ADA Computers has £900 in 90+ day overdue. Recommend prioritising collection contact this week.</em>
+          </div></div>
+        </div>
+        <div class="mock-chat-input">
+          <div class="mock-input-field">Ask a follow-up: "Who should I call first?" or "Show collections worklist"...</div>
+          <div class="mock-send-btn">➤</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 8.1 — AR Aging Report with actionable insight highlighted</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     9. DB QUERY BUILDER
+══════════════════════════════════════════ -->
+<div class="section" id="db-builder">
+  <h2 class="section-title"><span class="num">9</span> DB Query Builder</h2>
+
+  <p>The <strong>DB Query Builder</strong> (<code>db-builder.html</code>) allows advanced users to write and execute raw SQL against MSSQL or HANA databases. Access it via the top header menu or navigate directly to <code>/db-builder.html</code>.</p>
+
+  <div class="callout warn">
+    <strong>⚠️ Restricted Access</strong>
+    This feature is intended for data analysts and IT administrators. Only SELECT queries are permitted — INSERT, UPDATE, DELETE, and DROP are blocked by the system.
+  </div>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">http://localhost:3000/db-builder.html</div>
+    </div>
+    <div class="screen-body">
+      <div class="mock-db-builder">
+        <div class="mock-schema-panel">
+          <div style="font-size:10px; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Schema Browser</div>
+          <div class="tree-node parent">▶ ORDR (Sales Orders)</div>
+          <div class="tree-node parent">▼ OINV (AR Invoices)</div>
+          <div class="tree-node child">DocNum</div>
+          <div class="tree-node child">CardCode</div>
+          <div class="tree-node child">DocDate</div>
+          <div class="tree-node child">DocTotal</div>
+          <div class="tree-node child">DocStatus</div>
+          <div class="tree-node parent">▶ OPOR (Purchase Orders)</div>
+          <div class="tree-node parent">▶ OITM (Items)</div>
+          <div class="tree-node parent">▶ OCRD (Business Partners)</div>
+        </div>
+        <div class="mock-sql-area">
+          <div class="mock-sql-toolbar">
+            <span class="badge blue">▶ Run Query</span>
+            <span class="badge green">📋 Save</span>
+            <span class="badge orange">🗑 Clear</span>
+            <span style="margin-left:auto; font-size:12px; color:var(--text-muted);">Connection: SBODemoGB (MSSQL) ✅</span>
+          </div>
+          <div class="mock-sql-editor">
+<span class="sql-kw">SELECT TOP</span> 10<br>
+&nbsp;&nbsp;T0.<span class="sql-fn">CardCode</span>, T0.<span class="sql-fn">CardName</span>,<br>
+&nbsp;&nbsp;<span class="sql-kw">SUM</span>(T0.DocTotal) <span class="sql-kw">AS</span> TotalRevenue,<br>
+&nbsp;&nbsp;<span class="sql-kw">COUNT</span>(T0.DocNum) <span class="sql-kw">AS</span> InvoiceCount<br>
+<span class="sql-kw">FROM</span> OINV T0<br>
+<span class="sql-kw">WHERE</span> T0.DocDate &gt;= <span class="sql-fn">'2026-01-01'</span><br>
+&nbsp;&nbsp;<span class="sql-kw">AND</span> T0.DocStatus = <span class="sql-fn">'O'</span><br>
+<span class="sql-kw">GROUP BY</span> T0.CardCode, T0.CardName<br>
+<span class="sql-kw">ORDER BY</span> TotalRevenue <span class="sql-kw">DESC</span>
+          </div>
+          <div class="mock-sql-results">
+            <table class="mock-table">
+              <thead><tr><th>CardCode</th><th>CardName</th><th>TotalRevenue</th><th>InvoiceCount</th></tr></thead>
+              <tbody>
+                <tr><td>C20000</td><td>Maxi-Teq</td><td>124500.00</td><td>28</td></tr>
+                <tr><td>C30000</td><td>ADA Computers</td><td>98300.00</td><td>21</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 9.1 — DB Query Builder with schema browser, SQL editor, and query results</div>
+
+  <h3>Using the Query Builder</h3>
+  <ol class="steps">
+    <li>Select a database connection from the connection dropdown (top right).</li>
+    <li>Browse the <strong>Schema Browser</strong> (left panel) to explore tables and columns. Click a column name to insert it into the editor.</li>
+    <li>Write your SQL query in the dark editor panel. Standard SQL syntax for MSSQL or HANA is supported.</li>
+    <li>Click <strong>▶ Run Query</strong> or press <kbd>Ctrl+Enter</kbd> to execute.</li>
+    <li>Results appear in the bottom panel as a formatted table.</li>
+    <li>Click <strong>📋 Save</strong> to cache the query for future use.</li>
+  </ol>
+
+  <div class="callout info">
+    <strong>ℹ️ AI-Assisted Query Generation</strong>
+    Type a plain English question in the chat box below the editor and click <strong>Generate SQL</strong>. The AI will write the query for you based on the connected schema.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     10. MASTER DATA AGENT
+══════════════════════════════════════════ -->
+<div class="section" id="master-data">
+  <h2 class="section-title"><span class="num">10</span> Master Data Agent</h2>
+
+  <p>The <strong>Master Data Agent</strong> allows you to create and update <strong>Customers</strong>, <strong>Vendors</strong>, and <strong>Items</strong> in SAP B1 through natural conversation. Navigate to <strong>Master Data &amp; Analytics → Master Data Agent</strong>.</p>
+
+  <h3>Creating a New Customer</h3>
+  <ol class="steps">
+    <li>Type: <em>"Create a new customer"</em></li>
+    <li>The agent prompts for required fields: name, address, payment terms, currency.</li>
+    <li>Provide details conversationally: <em>"Name: Acme Ltd, UK, Net 30, GBP"</em></li>
+    <li>Confirm — the BP record is created in SAP B1 and you receive the new CardCode.</li>
+  </ol>
+
+  <h3>Updating Existing Master Data</h3>
+  <ul>
+    <li><em>"Update the phone number for customer C20000 to +44 1234 567890"</em></li>
+    <li><em>"Change payment terms for vendor V10000 to Net 45"</em></li>
+    <li><em>"Add a new item: Description=Ethernet Cable, Group=Electronics, Price=12.50"</em></li>
+    <li><em>"Show me all customers in London"</em></li>
+  </ul>
+
+  <h3>Supported Entity Types</h3>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="icon">👤</div>
+      <h4>Customers (BP)</h4>
+      <p>Create, update, and query customer business partner records, addresses, contacts, and payment terms.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🏭</div>
+      <h4>Vendors (BP)</h4>
+      <p>Manage vendor records, bank details, purchasing terms, and lead times.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">📦</div>
+      <h4>Items</h4>
+      <p>Create and update item master records, prices, UOM, item groups, and warehouse assignments.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     11. SYSTEM SETTINGS
+══════════════════════════════════════════ -->
+<div class="section" id="settings">
+  <h2 class="section-title"><span class="num">11</span> System Settings</h2>
+
+  <h3 id="sap-conn">11.1 SAP B1 Connection Manager</h3>
+  <p>Manage multiple SAP B1 company connections. Navigate to <strong>System Setup → SAP B1 Connections</strong>.</p>
+
+  <div class="screen-mockup">
+    <div class="screen-titlebar">
+      <div class="screen-dot dot-red"></div>
+      <div class="screen-dot dot-yellow"></div>
+      <div class="screen-dot dot-green"></div>
+      <div class="screen-url">System Setup — SAP B1 Connections</div>
+    </div>
+    <div class="screen-body" style="padding:20px; background:var(--bg);">
+      <div style="background:white; border-radius:8px; border:1px solid var(--border); padding:20px;">
+        <h4 style="margin-bottom:16px;">SAP B1 Company Connections</h4>
+        <table class="mock-table">
+          <thead><tr><th>Company Name</th><th>DB Name</th><th>Service Layer URL</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>UK Demo Company</td>
+              <td>SBODemoGB</td>
+              <td>https://192.168.1.10:50000</td>
+              <td><span class="badge green">● Active</span></td>
+              <td><span class="badge blue">Switch</span></td>
+            </tr>
+            <tr>
+              <td>US Operations</td>
+              <td>SBODemoUS</td>
+              <td>https://192.168.1.11:50000</td>
+              <td><span class="badge orange">● Standby</span></td>
+              <td><span class="badge blue">Switch</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="margin-top:16px;">
+          <span class="badge blue" style="padding:8px 16px; font-size:13px;">+ Add New Connection</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Figure 11.1 — SAP B1 Connection Manager with multi-company support</div>
+
+  <h4>Adding a New SAP B1 Connection</h4>
+  <ol class="steps">
+    <li>Click <strong>+ Add New Connection</strong>.</li>
+    <li>Enter the Service Layer URL (e.g., <code>https://192.168.1.10:50000</code>).</li>
+    <li>Enter the Company Database name, username, and password.</li>
+    <li>Click <strong>Test Connection</strong> to verify connectivity.</li>
+    <li>Click <strong>Save</strong> — the connection appears in the list.</li>
+  </ol>
+
+  <h4>Switching Companies</h4>
+  <p>Click <strong>Switch</strong> next to any connection to make it the active company. All subsequent queries and documents will be created in that company's database. The active company name is always shown in the header bar.</p>
+
+  <h3 id="roles">11.2 Roles &amp; Permissions</h3>
+  <p>Control which users can access which agents and features. Navigate to <strong>System Setup → Roles &amp; Permissions</strong>.</p>
+
+  <table class="ref-table">
+    <thead><tr><th>Role</th><th>Accessible Modules</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Administrator</strong></td><td>All modules including system settings, connection manager, and user management</td></tr>
+      <tr><td><strong>Purchasing Manager</strong></td><td>P2P cycle (PR, PO, GRPO, AP Invoice, Payments), Analytics, Master Data</td></tr>
+      <tr><td><strong>Sales Manager</strong></td><td>O2C cycle (Quotation, Order, Delivery, AR Invoice, Collections), Analytics</td></tr>
+      <tr><td><strong>Warehouse</strong></td><td>Inventory, Demand &amp; Supply (Forecasting, Rush Orders, Reorder Points)</td></tr>
+      <tr><td><strong>Finance</strong></td><td>AR/AP Aging, Payments, Cash Flow, Analytics, Three-Way Match</td></tr>
+      <tr><td><strong>Read Only</strong></td><td>View-only access to Analytics and Dashboard. No document creation.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════
+     12. TIPS & BEST PRACTICES
+══════════════════════════════════════════ -->
+<div class="section" id="tips">
+  <h2 class="section-title"><span class="num">12</span> Tips &amp; Best Practices</h2>
+
+  <h3>Natural Language Query Tips</h3>
+  <ul>
+    <li><strong>Be specific about dates:</strong> Say "this month", "last quarter", "January 2026", or "last 30 days". The system always uses the current date as context.</li>
+    <li><strong>Reference document numbers directly:</strong> "Show me SO-1088" or "What's the status of PO-2201?"</li>
+    <li><strong>Use customer/vendor codes or names:</strong> Both work — "C20000" and "Maxi-Teq" are equivalent.</li>
+    <li><strong>Ask for follow-ups:</strong> After a result, ask "Now break that down by item group" or "Show me the same for last year".</li>
+    <li><strong>Use action words for document creation:</strong> "Create", "Generate", "Make", "Add" trigger document creation agents.</li>
+  </ul>
+
+  <h3>Keyboard Shortcuts</h3>
+  <table class="ref-table">
+    <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>Enter</kbd></td><td>Send chat message</td></tr>
+      <tr><td><kbd>Shift+Enter</kbd></td><td>New line in chat input</td></tr>
+      <tr><td><kbd>Ctrl+Enter</kbd></td><td>Execute SQL in DB Query Builder</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Cancel current action / close modal</td></tr>
+      <tr><td><kbd>Ctrl+/</kbd></td><td>Show all available commands (help)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>💡 Pro Tip: Ask "what can you do?"</strong>
+    Type <em>"What can you do?"</em> or <em>"help"</em> in the chat to get a full list of available commands and example queries for the current agent context.
+  </div>
+
+  <h3>Performance Tips</h3>
+  <ul>
+    <li>The NLP layer handles common queries (stock levels, sales totals, AR/AP aging) <strong>instantly without AI</strong> — these responses are faster than open-ended questions.</li>
+    <li>For large datasets (e.g., all transactions for a full year), use the <strong>DB Query Builder</strong> for faster direct SQL execution.</li>
+    <li>Use the <strong>Forecasting Agent</strong> weekly to keep demand predictions fresh.</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════
+     13. TROUBLESHOOTING
+══════════════════════════════════════════ -->
+<div class="section" id="troubleshoot">
+  <h2 class="section-title"><span class="num">13</span> Troubleshooting</h2>
+
+  <table class="ref-table">
+    <thead><tr><th>Problem</th><th>Likely Cause</th><th>Solution</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Cannot connect to SAP B1</td>
+        <td>Service Layer URL wrong or service down</td>
+        <td>Check <code>SAP_B1_SERVICE_LAYER_URL</code> in <code>.env</code>. Verify SAP B1 service is running. Check firewall rules on port 50000.</td>
+      </tr>
+      <tr>
+        <td>SSL certificate error on startup</td>
+        <td>Self-signed SAP Service Layer certificate</td>
+        <td>Set <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> in <code>.env</code>. This is expected for on-premise SAP installs.</td>
+      </tr>
+      <tr>
+        <td>"Session expired" error</td>
+        <td>SAP B1SESSION cookie expired</td>
+        <td>The system auto-renews sessions on 401 errors. If it persists, check SAP B1 credentials in <code>.env</code>.</td>
+      </tr>
+      <tr>
+        <td>AI not responding / slow</td>
+        <td>API key invalid or rate limited</td>
+        <td>Verify <code>ANTHROPIC_API_KEY</code> (or Azure key) in <code>.env</code>. Check your API usage dashboard.</td>
+      </tr>
+      <tr>
+        <td>"I didn't understand" response</td>
+        <td>Query too vague or intent not recognized</td>
+        <td>Be more specific. Try using exact document numbers, customer codes, or dates. Type "help" to see example queries.</td>
+      </tr>
+      <tr>
+        <td>Login fails</td>
+        <td>User account not set up</td>
+        <td>Ask your administrator to create your user account via the <strong>Roles &amp; Permissions</strong> page.</td>
+      </tr>
+      <tr>
+        <td>Document creation fails</td>
+        <td>Missing required SAP fields or business rule violation</td>
+        <td>Read the error message — the AI translates SAP errors to plain English. Common issues: item not in warehouse, credit limit exceeded, mandatory UDF missing.</td>
+      </tr>
+      <tr>
+        <td>Server won't start</td>
+        <td>Port 3000 already in use or Node.js not installed</td>
+        <td>Run <code>Status.bat</code> to check if already running. Ensure Node.js ≥18 is installed: <code>node --version</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Getting Support</h3>
+  <div class="callout info">
+    <strong>📧 Contact Support</strong>
+    For technical support, contact: <strong>naresh.parmar@silvertouch.com</strong><br>
+    Include: your error message, the query you ran, and the company database name.
+  </div>
+
+  <h3>Log Files</h3>
+  <p>Application logs are written to the console. To capture logs, start the server with output redirection:</p>
+  <pre style="background:#1e2832; color:#a8d8a8; padding:12px 16px; border-radius:6px; font-family:monospace; font-size:13px;">node chat-server.mjs &gt; agentsphere.log 2&gt;&amp;1</pre>
+</div>
+
+<!-- FOOTER -->
+<div class="doc-footer">
+  <p>Agentsphere AI — SAP Business One Intelligent Assistant</p>
+  <p>User Manual v1.0 | June 2026 | Silvertouch Technologies</p>
+  <p style="margin-top:8px; font-size:11px;">This document is confidential and intended for authorized users only.</p>
+</div>
+
+</div>
+</body>
+</html>

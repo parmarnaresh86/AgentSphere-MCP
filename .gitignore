@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local databases / runtime data
+hanny.db
+hanny.db-shm
+hanny.db-wal
+data.db
+db-backup-corrupt/
+
+# Logs
+*.log
+hs_err_pid*.log
+
+# This subproject has its own separate git repo/deploy — not part of this repo
+sql-gateway-mcp/
+
+# Build/release artifacts — not source
+releases/
+
+# Local dev config containing plaintext credentials
+.vscode/mcp.json

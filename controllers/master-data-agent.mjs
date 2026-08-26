@@ -1,0 +1,1169 @@
+/**
+ * Menu Master Agent — Conversational wizard for SAP B1 master data creation
+ * Agents: Item Master | Customer Master | Supplier Master | Bill of Material
+ */
+import { Router } from 'express';
+import db from '../db.mjs';
+
+db.exec(`CREATE TABLE IF NOT EXISTS master_data_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent_type TEXT NOT NULL,
+  doc_code TEXT, doc_name TEXT, user_name TEXT,
+  payload TEXT, sap_result TEXT, status TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+// ── Shared utils ──────────────────────────────────────────────────────────────
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const arr = r => Array.isArray(r) ? r : (r?.value ?? []);
+function logEntry(type, code, name, payload, result, status, user) {
+  try {
+    db.prepare(`INSERT INTO master_data_log(agent_type,doc_code,doc_name,user_name,payload,sap_result,status)VALUES(?,?,?,?,?,?,?)`)
+      .run(type, code||'', name||'', user||'', JSON.stringify(payload), JSON.stringify(result), status);
+  } catch(_) {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ITEM MASTER
+// ─────────────────────────────────────────────────────────────────────────────
+const _itemSess = new Map();
+function itemInit() {
+  return {
+    step:'ASK_NAME', sid:`itm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+    itemName:null, itemCode:null,
+    series:null, seriesList:[],
+    groupCode:null, groupName:null, groupList:[],
+    invItem:null, salesItem:null, purchItem:null,
+    uomList:[], invUom:null, invUomCode:null, invUomName:null,
+    salesUom:null, salesUomCode:null, salesUomName:null,
+    purchUom:null, purchUomCode:null, purchUomName:null, uomStep:null,
+    manage:null,
+    warehouse:null, warehouseName:null, warehouseList:[],
+  };
+}
+
+function itemSteps(step) {
+  const all = ['ASK_NAME','ASK_CODE','ASK_SERIES','ASK_GROUP','ASK_TYPE','ASK_UOM','ASK_MANAGE','ASK_WAREHOUSE','CONFIRM','DONE'];
+  const labels = ['Name','Code','Series','Group','Type','UOM','Tracking','Warehouse','Confirm','Done'];
+  const idx = all.indexOf(step);
+  return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-size:11px;padding:6px 0 4px">
+    ${all.map((s,i) => {
+      const active = i===idx, done = i<idx;
+      return `<span style="display:inline-flex;align-items:center;gap:3px;color:${active?'#fff':done?'#6ee7b7':'rgba(255,255,255,0.45)'}">
+        <span style="width:15px;height:15px;border-radius:50%;background:${active?'rgba(255,255,255,0.3)':done?'#10b981':'rgba(255,255,255,0.15)'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">${done?'✓':(i+1)}</span>
+        ${labels[i]}${i<all.length-1?'<span style="color:rgba(255,255,255,0.3);margin-left:2px">›</span>':''}
+      </span>`;
+    }).join('')}
+  </div>`;
+}
+
+function seriesChips(list) {
+  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No series available</em>';
+  return list.map(s =>
+    `<button onclick="masterSend('select_series:${s.Series}:${esc(s.Name)}')" style="margin:3px;padding:6px 14px;background:#f0fdf4;border:1.5px solid #10b981;border-radius:20px;cursor:pointer;font-size:12.5px;color:#065f46;font-weight:600">${esc(s.Name)}</button>`
+  ).join('');
+}
+function groupChips(list) {
+  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No groups available</em>';
+  return list.map(g =>
+    `<button onclick="masterSend('select_group:${g.Number}:${esc(g.GroupName)}')" style="margin:3px;padding:6px 14px;background:#eff6ff;border:1.5px solid #3b82f6;border-radius:20px;cursor:pointer;font-size:12.5px;color:#1e40af;font-weight:600">${esc(g.GroupName)}</button>`
+  ).join('');
+}
+function uomChips(list, step) {
+  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No UOMs available</em>';
+  return list.map(u =>
+    `<button onclick="masterSend('select_uom:${step}:${u.AbsEntry}:${esc(u.Code||u.Name)}:${esc(u.Name)}')" style="margin:3px;padding:5px 12px;background:#faf5ff;border:1.5px solid #8b5cf6;border-radius:20px;cursor:pointer;font-size:12.5px;color:#5b21b6"><strong>${esc(u.Code||u.Name)}</strong>${u.Code&&u.Name&&u.Code!==u.Name?' — '+esc(u.Name):''}</button>`
+  ).join('');
+}
+function warehouseChips(list) {
+  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No warehouses available</em>';
+  return list.map(w =>
+    `<button onclick="masterSend('select_wh:${esc(w.WarehouseCode)}:${esc(w.WarehouseName)}')" style="margin:3px;padding:5px 12px;background:#fff7ed;border:1.5px solid #f97316;border-radius:20px;cursor:pointer;font-size:12.5px;color:#9a3412">${esc(w.WarehouseCode)} — ${esc(w.WarehouseName)}</button>`
+  ).join('');
+}
+function itemTypeForm() {
+  return `<div style="background:var(--card-bg,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:14px;margin:6px 0;max-width:340px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px">Select item types (check all that apply):</div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="im-inv" checked style="accent-color:#0f766e;width:15px;height:15px"> Inventory Item</label>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="im-sales" checked style="accent-color:#0f766e;width:15px;height:15px"> Sales Item</label>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;font-size:13px"><input type="checkbox" id="im-purch" checked style="accent-color:#0f766e;width:15px;height:15px"> Purchase Item</label>
+    <button onclick="masterSubmitItemType()" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer">Continue →</button>
+  </div>`;
+}
+function manageChips() {
+  return [
+    {v:'none',  l:'No Tracking',   c:'#6b7280', bg:'#f9fafb', b:'#d1d5db'},
+    {v:'batch', l:'Batch Numbers',  c:'#1d4ed8', bg:'#eff6ff', b:'#3b82f6'},
+    {v:'serial',l:'Serial Numbers', c:'#7c3aed', bg:'#f5f3ff', b:'#7c3aed'},
+  ].map(o => `<button onclick="masterSend('select_manage:${o.v}')" style="margin:4px;padding:8px 16px;background:${o.bg};border:1.5px solid ${o.b};border-radius:20px;cursor:pointer;font-size:12.5px;color:${o.c};font-weight:600">${o.l}</button>`).join('');
+}
+function itemSummaryHtml(sess) {
+  const rows = [
+    ['Item Name', esc(sess.itemName)],
+    ['Item Code', sess.itemCode ? esc(sess.itemCode) : '<em>Auto-generate</em>'],
+    ['Series', sess.seriesList.find(s=>s.Series===sess.series)?.Name ?? sess.series],
+    ['Item Group', esc(sess.groupName)],
+    ['Inventory Item', sess.invItem?'✅ Yes':'❌ No'],
+    ['Sales Item', sess.salesItem?'✅ Yes':'❌ No'],
+    ['Purchase Item', sess.purchItem?'✅ Yes':'❌ No'],
+    ...(sess.invItem?[['Inventory UOM', esc(sess.invUomCode||(sess.invUomName||'—'))]]: []),
+    ...(sess.salesItem?[['Sales UOM', esc(sess.salesUomCode||(sess.salesUomName||'—'))]]: []),
+    ...(sess.purchItem?[['Purchase UOM', esc(sess.purchUomCode||(sess.purchUomName||'—'))]]: []),
+    ['Tracking', sess.manage==='serial'?'🔢 Serial Numbers':sess.manage==='batch'?'⊞ Batch Numbers':'— None'],
+    ['Default Warehouse', `${esc(sess.warehouse)} — ${esc(sess.warehouseName)}`],
+  ];
+  return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13.5px;font-weight:700;color:#065f46;margin-bottom:10px">📋 Item Master Summary</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      ${rows.map(([k,v])=>`<tr><td style="padding:4px 8px;color:#6b7280;width:42%;border-bottom:1px solid #f3f4f6">${k}</td><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('')}
+    </table>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button onclick="masterSend('confirm_create')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer">✅ Create Item</button>
+      <button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">↺ Start Over</button>
+    </div>
+  </div>`;
+}
+
+async function handleItemChat(sess, msg, sap, res, user) {
+  const sid = sess.sid;
+  const step = sess.step;
+
+  if (msg === 'restart' || msg === 'Create Another Item' || msg === 'Start Over') {
+    const fresh = itemInit(); fresh.sid = sid; _itemSess.set(sid, fresh);
+    return res.json({ ok:true, reply:'<div>Let\'s start fresh. What is the <strong>Item Name</strong>?</div>', step:'ASK_NAME', sessionId:sid });
+  }
+
+  if (msg.startsWith('select_series:')) {
+    const [,num,name] = msg.split(':');
+    sess.series = Number(num);
+    sess.step = 'ASK_GROUP';
+    const gRes = await sap.get('/ItemGroups', { $select:'Number,GroupName', $orderby:'GroupName', $top:200 });
+    sess.groupList = arr(gRes);
+    return res.json({ ok:true, reply:`<div>Series <strong>${esc(name)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Item Group</strong>:</div><div style="margin-top:8px">${groupChips(sess.groupList)}</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg.startsWith('select_group:')) {
+    const parts = msg.split(':'); sess.groupCode = Number(parts[1]); sess.groupName = parts.slice(2).join(':');
+    sess.step = 'ASK_TYPE';
+    return res.json({ ok:true, reply:`<div>Group <strong>${esc(sess.groupName)}</strong> ✓</div><div style="margin-top:10px">Which <strong>item types</strong> apply?</div>${itemTypeForm()}`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg.startsWith('submit_item_type:')) {
+    const [,i,s,p] = msg.split(':');
+    sess.invItem = i==='true'; sess.salesItem = s==='true'; sess.purchItem = p==='true';
+    if (!sess.invItem && !sess.salesItem && !sess.purchItem)
+      return res.json({ ok:true, reply:'<div style="color:#b91c1c">⚠️ Select at least one item type.</div>', step:sess.step, sessionId:sid });
+    const uRes = await sap.get('/UnitOfMeasurements', { $select:'AbsEntry,Code,Name', $orderby:'Name', $top:200 });
+    sess.uomList = arr(uRes);
+    sess.step = 'ASK_UOM';
+    sess.uomStep = sess.invItem ? 'inv' : sess.salesItem ? 'sales' : 'purch';
+    const lbl = {inv:'Inventory',sales:'Sales',purch:'Purchase'}[sess.uomStep];
+    return res.json({ ok:true, reply:`<div>Types saved ✓</div><div style="margin-top:8px">Select <strong>${lbl} UOM</strong>:</div><div style="margin-top:8px">${uomChips(sess.uomList, sess.uomStep)}</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg.startsWith('select_uom:')) {
+    // format: select_uom:step:AbsEntry:Code:Name
+    const parts = msg.split(':');
+    const which = parts[1]; const entry = Number(parts[2]); const code = parts[3]; const name = parts.slice(4).join(':') || code;
+    if (which==='inv')   { sess.invUom=entry;  sess.invUomCode=code;  sess.invUomName=name;  }
+    if (which==='sales') { sess.salesUom=entry; sess.salesUomCode=code; sess.salesUomName=name; }
+    if (which==='purch') { sess.purchUom=entry; sess.purchUomCode=code; sess.purchUomName=name; }
+    const display = code + (name && name!==code ? ` (${name})` : '');
+    let next = null;
+    if (which==='inv'   && sess.salesItem) next='sales';
+    else if (which==='inv'   && sess.purchItem) next='purch';
+    else if (which==='sales' && sess.purchItem) next='purch';
+    if (next) {
+      sess.uomStep = next;
+      const lbl = {sales:'Sales',purch:'Purchase'}[next];
+      return res.json({ ok:true, reply:`<div>${display} UOM ✓</div><div style="margin-top:8px">Select <strong>${lbl} UOM</strong>:</div><div style="margin-top:8px">${uomChips(sess.uomList, next)}</div>`, step:sess.step, sessionId:sid });
+    }
+    sess.step = 'ASK_MANAGE';
+    return res.json({ ok:true, reply:`<div>${display} UOM ✓</div><div style="margin-top:10px">How should this item be <strong>tracked</strong>?</div><div style="margin-top:8px">${manageChips()}</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg.startsWith('select_manage:')) {
+    const [,v] = msg.split(':'); sess.manage = v;
+    sess.step = 'ASK_WAREHOUSE';
+    const whRes = await sap.get('/Warehouses', { $select:'WarehouseCode,WarehouseName', $filter:"Inactive eq 'tNO'", $top:200 });
+    sess.warehouseList = arr(whRes);
+    const lbl = {none:'No Tracking',batch:'Batch Numbers',serial:'Serial Numbers'}[v]||v;
+    return res.json({ ok:true, reply:`<div>Tracking: <strong>${lbl}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Default Warehouse</strong>:</div><div style="margin-top:8px">${warehouseChips(sess.warehouseList)}</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg.startsWith('select_wh:')) {
+    const parts = msg.split(':'); sess.warehouse = parts[1]; sess.warehouseName = parts.slice(2).join(':');
+    sess.step = 'CONFIRM';
+    return res.json({ ok:true, reply:`<div>Warehouse <strong>${esc(sess.warehouse)}</strong> ✓</div><div style="margin-top:10px">Please review and confirm:</div>${itemSummaryHtml(sess)}`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg === 'confirm_create') {
+    // UoM field names vary by SAP B1 version/config — discover via /api/master/item/debug-fields
+    // and set UoMGroupEntry or individual entries after confirming the correct property names.
+    const payload = {
+      ItemName: sess.itemName,
+      ...(sess.itemCode ? {ItemCode:sess.itemCode} : {}),
+      Series: sess.series,
+      ItemsGroupCode: sess.groupCode,
+      InventoryItem: sess.invItem?'tYES':'tNO',
+      SalesItem:     sess.salesItem?'tYES':'tNO',
+      PurchaseItem:  sess.purchItem?'tYES':'tNO',
+      ManageSerialNumbers: sess.manage==='serial'?'tYES':'tNO',
+      ManageBatchNumbers:  sess.manage==='batch' ?'tYES':'tNO',
+      DefaultWarehouse: sess.warehouse,
+    };
+    try {
+      const result = await sap.post('/Items', payload);
+      sess.step = 'DONE';
+      logEntry('item', result.ItemCode||sess.itemCode||sess.itemName, sess.itemName, payload, result, 'success', user);
+      return res.json({ ok:true, reply:`<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:8px;padding:14px;margin:4px 0"><div style="font-size:14px;font-weight:700;color:#065f46;margin-bottom:6px">✅ Item Created Successfully!</div><div style="font-size:12.5px;color:#065f46">Code: <strong>${esc(result.ItemCode||'Auto-assigned')}</strong> &nbsp;|&nbsp; Name: <strong>${esc(sess.itemName)}</strong></div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another Item'] });
+    } catch(e) {
+      logEntry('item', sess.itemCode||'', sess.itemName, payload, {error:e.message}, 'error', user);
+      return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
+    }
+  }
+
+  // Step-based text input
+  if (step==='ASK_NAME'||step==='INIT') {
+    if (!msg.trim()) return res.json({ ok:true, reply:'<div>Please enter the <strong>Item Name</strong> to continue.</div>', step, sessionId:sid });
+    sess.itemName = msg.trim(); sess.step = 'ASK_CODE';
+    return res.json({ ok:true, reply:`<div>Item Name: <strong>${esc(sess.itemName)}</strong> ✓</div><div style="margin-top:8px">Enter the <strong>Item Code</strong>, or type <em>auto</em> to let SAP generate it:</div>`, step:sess.step, sessionId:sid });
+  }
+  if (step==='ASK_CODE') {
+    const code = msg.trim(); sess.itemCode = (!code||code.toLowerCase()==='auto') ? null : code.toUpperCase();
+    sess.step = 'ASK_SERIES';
+    const serRes = await sap.post('/SeriesService_GetDocumentSeries', { DocumentTypeParams:{ Document:'4' } });
+    sess.seriesList = arr(serRes);
+    return res.json({ ok:true, reply:`<div>Code: <strong>${sess.itemCode||'Auto-generate'}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Number Series</strong>:</div><div style="margin-top:8px">${seriesChips(sess.seriesList)}</div>`, step:sess.step, sessionId:sid });
+  }
+  return res.json({ ok:true, reply:'<div>Please follow the wizard steps above.</div>', step, sessionId:sid });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER / SUPPLIER MASTER  (shared logic, different CardType)
+// ─────────────────────────────────────────────────────────────────────────────
+const _bpSess = { customer: new Map(), supplier: new Map() };
+function bpInit(bpType) {
+  return {
+    step:'ASK_NAME', sid:`${bpType.slice(0,3)}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+    bpType,
+    cardName:null, cardCode:null,
+    series:null, seriesList:[],
+    groupCode:null, groupName:null, groupList:[],
+    currency:null, currencyList:[],
+    payTerms:null, payTermsName:null, termsList:[],
+    phone:null, email:null,
+    addresses:[],
+  };
+}
+function bpSteps(step, bpType) {
+  const all = ['ASK_NAME','ASK_CODE','ASK_SERIES','ASK_GROUP','ASK_CURRENCY','ASK_TERMS','ASK_PHONE','ASK_EMAIL','ASK_ADDRESS','CONFIRM','DONE'];
+  const labels = ['Name','Code','Series','Group','Currency','Pay Terms','Phone','Email','Address','Confirm','Done'];
+  const idx = all.indexOf(step);
+  return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-size:11px;padding:6px 0 4px">
+    ${all.map((s,i)=>{
+      const a=i===idx, d=i<idx;
+      return `<span style="display:inline-flex;align-items:center;gap:3px;color:${a?'#fff':d?'#6ee7b7':'rgba(255,255,255,0.45)'}"><span style="width:15px;height:15px;border-radius:50%;background:${a?'rgba(255,255,255,0.3)':d?'#10b981':'rgba(255,255,255,0.15)'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">${d?'✓':(i+1)}</span>${labels[i]}${i<all.length-1?'<span style="color:rgba(255,255,255,0.3);margin-left:2px">›</span>':''}</span>`;
+    }).join('')}
+  </div>`;
+}
+
+function bpGroupChips(list) {
+  return list.map(g => `<button onclick="masterSend('select_bp_group:${g.Code}:${esc(g.Name)}')" style="margin:3px;padding:6px 14px;background:#eff6ff;border:1.5px solid #3b82f6;border-radius:20px;cursor:pointer;font-size:12.5px;color:#1e40af;font-weight:600">${esc(g.Name)}</button>`).join('') || '<em>No groups</em>';
+}
+function addressFormHtml(bpType, count) {
+  const heading = count === 0 ? 'Add Bill To / Ship To Address' : 'Add Another Address';
+  const S = 'width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12.5px;box-sizing:border-box';
+  return `<div style="background:var(--card-bg,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:14px;margin:6px 0;max-width:440px">
+    <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:10px">${heading}</div>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280;width:36%;white-space:nowrap">Address Name</td>
+          <td style="padding:3px 0"><input id="addr-name-${bpType}" type="text" placeholder="e.g. Main Office, Warehouse" style="${S}"></td></tr>
+      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">Type</td>
+          <td style="padding:3px 0"><select id="addr-type-${bpType}" style="${S}"><option value="bo_BillTo">Bill To</option><option value="bo_ShipTo">Ship To</option></select></td></tr>
+      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">Street</td>
+          <td style="padding:3px 0"><input id="addr-street-${bpType}" type="text" placeholder="Street / Road" style="${S}"></td></tr>
+      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">City</td>
+          <td style="padding:3px 0"><input id="addr-city-${bpType}" type="text" placeholder="City" style="${S}"></td></tr>
+      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">State / Province</td>
+          <td style="padding:3px 0"><input id="addr-state-${bpType}" type="text" placeholder="Optional" style="${S}"></td></tr>
+      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">ZIP / Postal</td>
+          <td style="padding:3px 0"><input id="addr-zip-${bpType}" type="text" placeholder="Postal code" style="${S}"></td></tr>
+      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">Country Code</td>
+          <td style="padding:3px 0"><input id="addr-country-${bpType}" type="text" placeholder="e.g. GB, US, IN" maxlength="3" style="${S};text-transform:uppercase"></td></tr>
+    </table>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="masterSubmitAddress('${bpType}')" style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer">Save Address</button>
+      <button onclick="masterSend('done_addresses','${bpType}')" style="background:#f0fdf4;color:#065f46;border:1.5px solid #10b981;border-radius:6px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer">Done →</button>
+      <button onclick="masterSend('done_addresses','${bpType}')" style="background:transparent;color:#9ca3af;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer">Skip</button>
+    </div>
+  </div>`;
+}
+function addressesTableHtml(addresses) {
+  if (!addresses.length) return '<em style="font-size:12px;color:#6b7280">No addresses added yet</em>';
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0">
+    <tr style="background:#f3f4f6">
+      <th style="padding:5px 8px;text-align:left;font-weight:600">#</th>
+      <th style="padding:5px 8px;text-align:left;font-weight:600">Name</th>
+      <th style="padding:5px 8px;text-align:left;font-weight:600">Type</th>
+      <th style="padding:5px 8px;text-align:left;font-weight:600">Street</th>
+      <th style="padding:5px 8px;text-align:left;font-weight:600">City</th>
+      <th style="padding:5px 8px;text-align:left;font-weight:600">Country</th>
+      <th style="padding:5px 8px"></th>
+    </tr>
+    ${addresses.map((a,i)=>`<tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:4px 8px;color:#6b7280">${i+1}</td>
+      <td style="padding:4px 8px;font-weight:600">${esc(a.AddressName)}</td>
+      <td style="padding:4px 8px"><span style="padding:2px 8px;border-radius:12px;font-size:11px;background:${a.AddressType==='bo_BillTo'?'#eff6ff':'#f0fdf4'};color:${a.AddressType==='bo_BillTo'?'#1d4ed8':'#065f46'}">${a.AddressType==='bo_BillTo'?'Bill To':'Ship To'}</span></td>
+      <td style="padding:4px 8px">${esc(a.Street)}</td>
+      <td style="padding:4px 8px">${esc(a.City)}</td>
+      <td style="padding:4px 8px">${esc(a.Country)}</td>
+      <td style="padding:4px 8px"><button onclick="masterSend('remove_address:${i}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px;padding:0">✕</button></td>
+    </tr>`).join('')}
+  </table>`;
+}
+function currencyChips(list) {
+  return list.map(c => `<button onclick="masterSend('select_currency:${esc(c.Code)}')" style="margin:3px;padding:5px 12px;background:#f0fdf4;border:1.5px solid #10b981;border-radius:20px;cursor:pointer;font-size:12.5px;color:#065f46;font-weight:600">${esc(c.Code)} — ${esc(c.Name)}</button>`).join('') || '<em>No currencies</em>';
+}
+function termsChips(list) {
+  return list.map(t => `<button onclick="masterSend('select_terms:${t.GroupNumber}:${esc(t.PaymentTermsGroupName)}')" style="margin:3px;padding:5px 12px;background:#fff7ed;border:1.5px solid #f97316;border-radius:20px;cursor:pointer;font-size:12.5px;color:#9a3412">${esc(t.PaymentTermsGroupName)}</button>`).join('') || '<em>No payment terms</em>';
+}
+function bpSummaryHtml(sess) {
+  const rows = [
+    ['Name', esc(sess.cardName)],
+    ['Code', sess.cardCode ? esc(sess.cardCode) : '<em>Auto-generate</em>'],
+    ['Type', sess.bpType==='customer'?'👤 Customer':'🏭 Supplier'],
+    ['Series', sess.series != null ? (sess.seriesList.find(s=>s.Series===sess.series)?.Name ?? String(sess.series)) : '<em>Default</em>'],
+    ['Group', esc(sess.groupName)],
+    ['Currency', esc(sess.currency||'—')],
+    ['Payment Terms', esc(sess.payTermsName||'—')],
+    ['Phone', esc(sess.phone||'—')],
+    ['Email', esc(sess.email||'—')],
+  ];
+  return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13.5px;font-weight:700;color:#065f46;margin-bottom:10px">📋 ${sess.bpType==='customer'?'Customer':'Supplier'} Master Summary</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      ${rows.map(([k,v])=>`<tr><td style="padding:4px 8px;color:#6b7280;width:42%;border-bottom:1px solid #f3f4f6">${k}</td><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('')}
+    </table>
+    ${sess.addresses.length ? `<div style="margin-top:10px;font-size:12.5px;font-weight:600;color:#374151">Addresses (${sess.addresses.length}):</div><div style="margin-top:4px">${addressesTableHtml(sess.addresses)}</div>` : '<div style="margin-top:8px;font-size:12px;color:#9ca3af">No addresses added.</div>'}
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button onclick="masterSend('confirm_bp')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer">✅ Create ${sess.bpType==='customer'?'Customer':'Supplier'}</button>
+      <button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">↺ Start Over</button>
+    </div>
+  </div>`;
+}
+
+async function handleBPChat(sess, msg, sap, res, user) {
+  const sid = sess.sid; const step = sess.step; const bpType = sess.bpType;
+
+  if (msg==='restart'||msg==='Create Another'||msg==='Start Over') {
+    const fresh = bpInit(bpType); fresh.sid = sid; _bpSess[bpType].set(sid, fresh);
+    return res.json({ ok:true, reply:`<div>Starting over. What is the <strong>${bpType==='customer'?'Customer':'Supplier'} Name</strong>?</div>`, step:'ASK_NAME', sessionId:sid });
+  }
+
+  if (msg.startsWith('select_bp_series:')) {
+    const [,num,name] = msg.split(':');
+    sess.series = (num==='skip'||!num) ? null : Number(num);
+    sess.step = 'ASK_GROUP';
+    const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
+    sess.groupList = arr(gRes);
+    const serLabel = sess.series != null ? esc(name) : 'Default';
+    return res.json({ ok:true, reply:`<div>Series: <strong>${serLabel}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${bpGroupChips(sess.groupList)}</div>`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('select_bp_group:')) {
+    const parts = msg.split(':'); sess.groupCode = Number(parts[1]); sess.groupName = parts.slice(2).join(':');
+    sess.step = 'ASK_CURRENCY';
+    const cRes = await sap.get('/Currencies', { $select:'Code,Name', $orderby:'Code', $top:200 });
+    sess.currencyList = arr(cRes);
+    return res.json({ ok:true, reply:`<div>Group <strong>${esc(sess.groupName)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Currency</strong>:</div><div style="margin-top:8px">${currencyChips(sess.currencyList)}</div>`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('select_currency:')) {
+    const [,code] = msg.split(':'); sess.currency = code; sess.step = 'ASK_TERMS';
+    const tRes = await sap.get('/PaymentTermsTypes', { $select:'GroupNumber,PaymentTermsGroupName', $orderby:'PaymentTermsGroupName', $top:200 });
+    sess.termsList = arr(tRes);
+    return res.json({ ok:true, reply:`<div>Currency: <strong>${esc(code)}</strong> ✓</div><div style="margin-top:8px">Select <strong>Payment Terms</strong>:</div><div style="margin-top:8px">${termsChips(sess.termsList)}</div>`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('select_terms:')) {
+    const parts = msg.split(':'); sess.payTerms = Number(parts[1]); sess.payTermsName = parts.slice(2).join(':');
+    sess.step = 'ASK_PHONE';
+    return res.json({ ok:true, reply:`<div>Payment Terms: <strong>${esc(sess.payTermsName)}</strong> ✓</div><div style="margin-top:8px">Enter <strong>Phone Number</strong> (or type <em>skip</em>):</div>`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('submit_address:')) {
+    const [addrName,addrType,street,city,state,zip,country] = msg.slice(15).split('|');
+    sess.addresses.push({
+      AddressName: addrName || `Address ${sess.addresses.length+1}`,
+      AddressType: addrType || 'bo_BillTo',
+      Street: street||'', City: city||'', State: state||'', ZipCode: zip||'', Country: country||'',
+    });
+    return res.json({ ok:true, reply:`<div>Address saved ✓</div><div style="margin-top:8px">${addressesTableHtml(sess.addresses)}</div><div style="margin-top:12px;font-size:13px">Do you want to add another address?</div>`, step:sess.step, sessionId:sid, quickReplies:['Add Address','Continue →'] });
+  }
+  if (msg==='Add Address'||msg==='add_more_address') {
+    return res.json({ ok:true, reply:`<div style="margin-bottom:8px">${addressesTableHtml(sess.addresses)}</div>${addressFormHtml(bpType, sess.addresses.length)}`, step:sess.step, sessionId:sid });
+  }
+  if (msg==='Continue →'||msg==='done_addresses') {
+    sess.step = 'CONFIRM';
+    return res.json({ ok:true, reply:`<div>Addresses confirmed ✓</div><div style="margin-top:10px">Review and confirm:</div>${bpSummaryHtml(sess)}`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('remove_address:')) {
+    const idx = Number(msg.split(':')[1]);
+    if (idx>=0 && idx<sess.addresses.length) sess.addresses.splice(idx,1);
+    return res.json({ ok:true, reply:`<div>Address removed.</div><div style="margin-top:8px">${addressesTableHtml(sess.addresses)}</div><div style="margin-top:12px;font-size:13px">Add another address?</div>`, step:sess.step, sessionId:sid, quickReplies:['Add Address','Continue →'] });
+  }
+  if (msg==='confirm_bp') {
+    const cardType = bpType==='customer' ? 'cCustomer' : 'cSupplier';
+    const payload = {
+      CardName: sess.cardName,
+      ...(sess.cardCode ? {CardCode:sess.cardCode} : {}),
+      CardType: cardType,
+      ...(sess.series != null ? {Series: sess.series} : {}),
+      GroupCode: sess.groupCode,
+      ...(sess.currency ? {Currency:sess.currency} : {}),
+      ...(sess.payTerms!=null ? {PayTermsGrpCode:sess.payTerms} : {}),
+      ...(sess.phone ? {Phone1:sess.phone} : {}),
+      ...(sess.email ? {EmailAddress:sess.email} : {}),
+      ...(sess.addresses.length ? {BPAddresses: sess.addresses.map((a,i)=>({...a, RowNum:i}))} : {}),
+    };
+    try {
+      const result = await sap.post('/BusinessPartners', payload);
+      sess.step = 'DONE';
+      logEntry(bpType, result.CardCode||sess.cardCode||sess.cardName, sess.cardName, payload, result, 'success', user);
+      return res.json({ ok:true, reply:`<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#065f46;margin-bottom:6px">✅ ${bpType==='customer'?'Customer':'Supplier'} Created!</div><div style="font-size:12.5px;color:#065f46">Code: <strong>${esc(result.CardCode||'Auto-assigned')}</strong> &nbsp;|&nbsp; Name: <strong>${esc(sess.cardName)}</strong></div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another'] });
+    } catch(e) {
+      logEntry(bpType, sess.cardCode||'', sess.cardName, payload, {error:e.message}, 'error', user);
+      return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
+    }
+  }
+
+  // Text input steps
+  if (step==='ASK_NAME'||step==='INIT') {
+    if (!msg.trim()) return res.json({ ok:true, reply:'<div>Please enter the name.</div>', step, sessionId:sid });
+    sess.cardName = msg.trim(); sess.step = 'ASK_CODE';
+    return res.json({ ok:true, reply:`<div>Name: <strong>${esc(sess.cardName)}</strong> ✓</div><div style="margin-top:8px">Enter a <strong>BP Code</strong>, or type <em>auto</em> to let SAP assign one:</div>`, step:sess.step, sessionId:sid });
+  }
+  if (step==='ASK_CODE') {
+    const code = msg.trim(); sess.cardCode = (!code||code.toLowerCase()==='auto') ? null : code.toUpperCase();
+    sess.step = 'ASK_SERIES';
+    try {
+      const serRes = await sap.post('/SeriesService_GetDocumentSeries', { DocumentTypeParams:{ Document:'2' } });
+      sess.seriesList = arr(serRes);
+    } catch(_) { sess.seriesList = []; }
+    let seriesContent;
+    if (sess.seriesList.length) {
+      seriesContent = seriesChips(sess.seriesList).replace(/select_series:/g,'select_bp_series:');
+    } else {
+      seriesContent = `<div style="font-size:12.5px;color:#6b7280;margin-bottom:8px">No series configured in SAP.</div>
+        <button onclick="masterSend('select_bp_series:skip:Default')" style="margin:3px;padding:6px 16px;background:#f0f9ff;border:1.5px solid #0ea5e9;border-radius:20px;cursor:pointer;font-size:12.5px;color:#0369a1;font-weight:600">Skip (use SAP default)</button>
+        <div style="margin-top:10px;font-size:12.5px;color:#6b7280">Or type a series number and press Enter.</div>`;
+    }
+    return res.json({ ok:true, reply:`<div>Code: <strong>${sess.cardCode||'Auto-generate'}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Number Series</strong>:</div><div style="margin-top:8px">${seriesContent}</div>`, step:sess.step, sessionId:sid });
+  }
+  if (step==='ASK_SERIES') {
+    const input = msg.trim();
+    sess.series = (!input || input.toLowerCase()==='skip') ? null : (isNaN(input) ? null : Number(input));
+    sess.step = 'ASK_GROUP';
+    const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
+    sess.groupList = arr(gRes);
+    const serLabel = sess.series != null ? String(sess.series) : 'Default';
+    return res.json({ ok:true, reply:`<div>Series: <strong>${esc(serLabel)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${bpGroupChips(sess.groupList)}</div>`, step:sess.step, sessionId:sid });
+  }
+  if (step==='ASK_PHONE') {
+    sess.phone = (msg.toLowerCase()==='skip') ? null : msg.trim();
+    sess.step = 'ASK_EMAIL';
+    return res.json({ ok:true, reply:`<div>Phone: <strong>${sess.phone||'—'}</strong> ✓</div><div style="margin-top:8px">Enter <strong>Email Address</strong> (or type <em>skip</em>):</div>`, step:sess.step, sessionId:sid });
+  }
+  if (step==='ASK_EMAIL') {
+    sess.email = (msg.toLowerCase()==='skip') ? null : msg.trim();
+    sess.step = 'ASK_ADDRESS';
+    return res.json({ ok:true, reply:`<div>Email: <strong>${sess.email||'—'}</strong> ✓</div><div style="margin-top:10px">Add a <strong>Bill To</strong> or <strong>Ship To</strong> address (optional):</div>${addressFormHtml(bpType, 0)}`, step:sess.step, sessionId:sid });
+  }
+  return res.json({ ok:true, reply:'<div>Please follow the wizard steps.</div>', step, sessionId:sid });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BILL OF MATERIAL
+// ─────────────────────────────────────────────────────────────────────────────
+const _bomSess = new Map();
+function bomInit() {
+  return {
+    step:'ASK_PARENT', sid:`bom_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+    parentCode:null, parentName:null, parentResults:[],
+    treeType:null, baseQty:1,
+    components:[],                  // [{itemCode,itemName,quantity,warehouse,warehouseName}]
+    pendingComp:null,               // {itemCode,itemName} being added
+    compResults:[],
+    warehouseList:[],
+  };
+}
+function bomStepBar(step) {
+  const all = ['ASK_PARENT','ASK_TREE_TYPE','ASK_BASE_QTY','ADDING_COMPONENTS','CONFIRM','DONE'];
+  const labels = ['Parent Item','Tree Type','Base Qty','Components','Confirm','Done'];
+  const idx = all.indexOf(step);
+  return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-size:11px;padding:6px 0 4px">
+    ${all.map((s,i)=>{
+      const a=i===idx,d=i<idx;
+      return `<span style="display:inline-flex;align-items:center;gap:3px;color:${a?'#fff':d?'#6ee7b7':'rgba(255,255,255,0.45)'}"><span style="width:15px;height:15px;border-radius:50%;background:${a?'rgba(255,255,255,0.3)':d?'#10b981':'rgba(255,255,255,0.15)'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">${d?'✓':(i+1)}</span>${labels[i]}${i<all.length-1?'<span style="color:rgba(255,255,255,0.3);margin-left:2px">›</span>':''}</span>`;
+    }).join('')}
+  </div>`;
+}
+function bomItemChips(list, prefix) {
+  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No items found</em>';
+  return list.map(i => `<button onclick="masterSend('${prefix}:${esc(i.ItemCode)}:${esc(i.ItemName)}')" style="margin:3px;padding:6px 14px;background:#f9fafb;border:1.5px solid #6b7280;border-radius:6px;cursor:pointer;font-size:12.5px;text-align:left"><strong>${esc(i.ItemCode)}</strong> — ${esc(i.ItemName)}</button>`).join('');
+}
+function treeTypeChips() {
+  return [
+    {v:'iProductionTree', l:'🏭 Production (Assembly)'},
+    {v:'iSalesTree',      l:'🛒 Sales Bundle'},
+    {v:'iTemplateTree',   l:'📋 Template'},
+    {v:'iDisassemblyTree',l:'🔧 Disassembly'},
+  ].map(o => `<button onclick="masterSend('select_tree_type:${o.v}')" style="margin:4px;padding:8px 16px;background:#f0fdf4;border:1.5px solid #10b981;border-radius:20px;cursor:pointer;font-size:12.5px;color:#065f46;font-weight:600">${o.l}</button>`).join('');
+}
+function bomComponentsTable(comps) {
+  if (!comps.length) return '<em style="font-size:12px;color:#6b7280">No components added yet</em>';
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0">
+    <tr style="background:#f3f4f6"><th style="padding:5px 8px;text-align:left">#</th><th style="padding:5px 8px;text-align:left">Item Code</th><th style="padding:5px 8px;text-align:left">Item Name</th><th style="padding:5px 8px;text-align:right">Qty</th><th style="padding:5px 8px;text-align:left">Warehouse</th><th style="padding:5px 8px"></th></tr>
+    ${comps.map((c,i) => `<tr style="border-bottom:1px solid #f3f4f6"><td style="padding:4px 8px">${i+1}</td><td style="padding:4px 8px;font-weight:600">${esc(c.itemCode)}</td><td style="padding:4px 8px">${esc(c.itemName)}</td><td style="padding:4px 8px;text-align:right">${c.quantity}</td><td style="padding:4px 8px">${esc(c.warehouse)}</td><td style="padding:4px 8px"><button onclick="masterSend('remove_comp:${i}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px">✕</button></td></tr>`).join('')}
+  </table>`;
+}
+function bomSummaryHtml(sess) {
+  return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13.5px;font-weight:700;color:#065f46;margin-bottom:10px">📋 Bill of Material Summary</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px">
+      <tr><td style="padding:4px 8px;color:#6b7280;width:42%">Parent Item</td><td style="padding:4px 8px;font-weight:600">${esc(sess.parentCode)} — ${esc(sess.parentName)}</td></tr>
+      <tr><td style="padding:4px 8px;color:#6b7280">Tree Type</td><td style="padding:4px 8px;font-weight:600">${esc(sess.treeType)}</td></tr>
+      <tr><td style="padding:4px 8px;color:#6b7280">Base Quantity</td><td style="padding:4px 8px;font-weight:600">${sess.baseQty}</td></tr>
+    </table>
+    <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Components (${sess.components.length}):</div>
+    ${bomComponentsTable(sess.components)}
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button onclick="masterSend('confirm_bom')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer">✅ Create BOM</button>
+      <button onclick="masterSend('add_more_comp')" style="background:#eff6ff;color:#1d4ed8;border:1px solid #3b82f6;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">+ Add More</button>
+      <button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">↺ Start Over</button>
+    </div>
+  </div>`;
+}
+
+async function searchItems(sap, q) {
+  const filter = isNaN(q) ? `contains(ItemName,'${q}')` : `ItemCode eq '${q}' or contains(ItemName,'${q}')`;
+  const res = await sap.get('/Items', { $filter: filter, $select:'ItemCode,ItemName', $top:10 });
+  return arr(res);
+}
+async function itemPickerHtml(sap, prefix, excludeExistingBom = false) {
+  try {
+    const res = await sap.get('/Items', {
+      $filter: "InventoryItem eq 'tYES'",
+      $select: 'ItemCode,ItemName',
+      $orderby: 'ItemName',
+      $top: 200,
+    });
+    let items = arr(res);
+
+    if (excludeExistingBom && items.length) {
+      try {
+        const bomRes = await sap.get('/ProductTrees', { $select: 'TreeCode', $top: 500 });
+        const existing = new Set(arr(bomRes).map(b => b.TreeCode));
+        items = items.filter(i => !existing.has(i.ItemCode));
+      } catch(_) { /* if BOM fetch fails, show all items */ }
+    }
+
+    if (!items.length) return '<em style="font-size:12px;color:#6b7280">All items already have a BOM, or none found. Type code below to search.</em>';
+    const uid = `bom_${prefix}_${Math.random().toString(36).slice(2,7)}`;
+    const btnColor = prefix === 'select_parent' ? '#0f766e' : '#1d4ed8';
+    const opts = items.map(i =>
+      `<option value="${esc(i.ItemCode)}" data-name="${esc(i.ItemName)}">${esc(i.ItemCode)} — ${esc(i.ItemName)}</option>`
+    ).join('');
+    return `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;max-width:520px">
+      <select id="${uid}" style="flex:1;padding:7px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12.5px;background:var(--bg,#fff);color:var(--text,#111);cursor:pointer;min-width:0">
+        <option value="">— Select an item —</option>
+        ${opts}
+      </select>
+      <button onclick="masterSelectBomItem('${uid}','${prefix}')" style="padding:7px 16px;background:${btnColor};color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">Select →</button>
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin-top:4px">Or type a name / code in the box below to search</div>`;
+  } catch(_) {
+    return '<em style="font-size:12px;color:#6b7280">Type item name or code below to search.</em>';
+  }
+}
+
+async function handleBOMChat(sess, msg, sap, res, user) {
+  const sid = sess.sid; const step = sess.step;
+
+  if (msg==='restart'||msg==='Create Another BOM'||msg==='Start Over') {
+    const fresh = bomInit(); fresh.sid = sid; _bomSess.set(sid, fresh);
+    const picker = await itemPickerHtml(sap, 'select_parent', true);
+    return res.json({ ok:true, reply:`<div>Starting over. Select the <strong>Parent (Finished) Item</strong>:</div>${picker}`, step:'ASK_PARENT', sessionId:sid });
+  }
+  if (msg==='add_more_comp') {
+    sess.step = 'ADDING_COMPONENTS';
+    const picker = await itemPickerHtml(sap, 'select_comp');
+    return res.json({ ok:true, reply:`<div style="margin-bottom:6px">${bomComponentsTable(sess.components)}</div><div>Select the next component:</div>${picker}`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('remove_comp:')) {
+    const idx = Number(msg.split(':')[1]);
+    if (idx>=0 && idx<sess.components.length) sess.components.splice(idx,1);
+    const picker = await itemPickerHtml(sap, 'select_comp');
+    return res.json({ ok:true, reply:`<div>Component removed.</div><div style="margin-top:8px">${bomComponentsTable(sess.components)}</div><div style="margin-top:8px">Select another component:</div>${picker}`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('select_parent:')) {
+    const parts = msg.split(':'); sess.parentCode = parts[1]; sess.parentName = parts.slice(2).join(':');
+    sess.step = 'ASK_TREE_TYPE';
+    return res.json({ ok:true, reply:`<div>Parent: <strong>${esc(sess.parentCode)}</strong> — ${esc(sess.parentName)} ✓</div><div style="margin-top:10px">Select the <strong>BOM Type</strong>:</div><div style="margin-top:8px">${treeTypeChips()}</div>`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('select_tree_type:')) {
+    const [,t] = msg.split(':'); sess.treeType = t; sess.step = 'ASK_BASE_QTY';
+    const lbl = {iProductionTree:'Production',iSalesTree:'Sales Bundle',iTemplateTree:'Template',iDisassemblyTree:'Disassembly'}[t]||t;
+    return res.json({ ok:true, reply:`<div>Tree Type: <strong>${lbl}</strong> ✓</div><div style="margin-top:8px">Enter the <strong>Base Quantity</strong> (default: 1):</div>`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('select_comp:')) {
+    const parts = msg.split(':'); sess.pendingComp = { itemCode:parts[1], itemName:parts.slice(2).join(':') };
+    sess.step = 'AWAIT_COMP_QTY';
+    return res.json({ ok:true, reply:`<div>Component: <strong>${esc(sess.pendingComp.itemCode)}</strong> — ${esc(sess.pendingComp.itemName)} ✓</div><div style="margin-top:8px">Enter <strong>Quantity</strong> for this component:</div>`, step:sess.step, sessionId:sid });
+  }
+  if (msg.startsWith('select_comp_wh:')) {
+    const parts = msg.split(':'); const whCode = parts[1]; const whName = parts.slice(2).join(':');
+    sess.components.push({ ...sess.pendingComp, quantity: sess.pendingComp._qty, warehouse: whCode, warehouseName: whName });
+    sess.pendingComp = null;
+    sess.step = 'ADDING_COMPONENTS';
+    const picker = await itemPickerHtml(sap, 'select_comp');
+    const finishBtn = `<button onclick="masterSend('done_adding')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:12.5px;font-weight:600;margin-top:8px">✓ Finish Adding</button>`;
+    return res.json({ ok:true, reply:`<div>Component added ✓</div><div style="margin-top:8px">${bomComponentsTable(sess.components)}</div><div style="margin-top:10px">Add another component or ${finishBtn}</div>${picker}`, step:sess.step, sessionId:sid });
+  }
+  if (msg==='done_adding') {
+    if (!sess.components.length) return res.json({ ok:true, reply:'<div style="color:#b91c1c">⚠️ Add at least one component.</div>', step:sess.step, sessionId:sid });
+    sess.step = 'CONFIRM';
+    return res.json({ ok:true, reply:`<div>Components saved ✓ Review the BOM:</div>${bomSummaryHtml(sess)}`, step:sess.step, sessionId:sid });
+  }
+  if (msg==='confirm_bom') {
+    const payload = {
+      TreeCode: sess.parentCode,
+      TreeType: sess.treeType,
+      Quantity: sess.baseQty,
+      ProductTreeLines: sess.components.map(c => ({ ItemCode:c.itemCode, Quantity:c.quantity, Warehouse:c.warehouse })),
+    };
+    try {
+      const result = await sap.post('/ProductTrees', payload);
+      sess.step = 'DONE';
+      logEntry('bom', sess.parentCode, sess.parentName, payload, result, 'success', user);
+      return res.json({ ok:true, reply:`<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#065f46;margin-bottom:6px">✅ BOM Created!</div><div style="font-size:12.5px;color:#065f46">Parent: <strong>${esc(sess.parentCode)}</strong> &nbsp;|&nbsp; Components: <strong>${sess.components.length}</strong></div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another BOM'] });
+    } catch(e) {
+      logEntry('bom', sess.parentCode, sess.parentName, payload, {error:e.message}, 'error', user);
+      return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
+    }
+  }
+
+  // Text input steps
+  if (step==='ASK_PARENT') {
+    if (!msg.trim()) return res.json({ ok:true, reply:'<div>Enter parent item name or code to search.</div>', step, sessionId:sid });
+    const items = await searchItems(sap, msg.trim());
+    if (!items.length) return res.json({ ok:true, reply:'<div>No items found. Try a different search.</div>', step, sessionId:sid });
+    if (items.length===1) {
+      sess.parentCode = items[0].ItemCode; sess.parentName = items[0].ItemName; sess.step = 'ASK_TREE_TYPE';
+      return res.json({ ok:true, reply:`<div>Parent: <strong>${esc(items[0].ItemCode)}</strong> — ${esc(items[0].ItemName)} ✓</div><div style="margin-top:10px">Select the <strong>BOM Type</strong>:</div><div style="margin-top:8px">${treeTypeChips()}</div>`, step:sess.step, sessionId:sid });
+    }
+    sess.parentResults = items;
+    return res.json({ ok:true, reply:`<div>Select the parent item:</div><div style="margin-top:8px">${bomItemChips(items,'select_parent')}</div>`, step, sessionId:sid });
+  }
+  if (step==='ASK_BASE_QTY') {
+    const q = parseFloat(msg.trim()||'1'); sess.baseQty = isNaN(q)?1:q; sess.step = 'ADDING_COMPONENTS';
+    if (!sess.warehouseList.length) {
+      const whRes = await sap.get('/Warehouses', { $select:'WarehouseCode,WarehouseName', $filter:"Inactive eq 'tNO'", $top:200 });
+      sess.warehouseList = arr(whRes);
+    }
+    const picker = await itemPickerHtml(sap, 'select_comp');
+    return res.json({ ok:true, reply:`<div>Base Qty: <strong>${sess.baseQty}</strong> ✓</div><div style="margin-top:10px">Select <strong>components</strong> to add:</div>${picker}`, step:sess.step, sessionId:sid });
+  }
+  if (step==='ADDING_COMPONENTS') {
+    const items = await searchItems(sap, msg.trim());
+    if (!items.length) return res.json({ ok:true, reply:'<div>No items found. Try a different search.</div>', step, sessionId:sid });
+    return res.json({ ok:true, reply:`<div>Select a component:</div><div style="margin-top:8px">${bomItemChips(items,'select_comp')}</div>`, step, sessionId:sid });
+  }
+  if (step==='AWAIT_COMP_QTY') {
+    const q = parseFloat(msg.trim()); if (isNaN(q)||q<=0) return res.json({ ok:true, reply:'<div>Enter a valid quantity.</div>', step, sessionId:sid });
+    sess.pendingComp._qty = q;
+    return res.json({ ok:true, reply:`<div>Quantity: <strong>${q}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Warehouse</strong> for this component:</div><div style="margin-top:8px">${warehouseChips(sess.warehouseList).replace(/select_wh:/g,'select_comp_wh:')}</div>`, step, sessionId:sid });
+  }
+  return res.json({ ok:true, reply:'<div>Please follow the wizard steps.</div>', step, sessionId:sid });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICE CALL AGENT
+// ─────────────────────────────────────────────────────────────────────────────
+const _scSess = new Map();
+function scInit() {
+  return {
+    step: 'ASK_MODE',
+    sid: `sc_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+    mode: null,
+    customerCode: null, customerName: null,
+    itemCode: null, itemName: null, itemManage: 'none',
+    serialNum: null,
+    subject: null, description: null, priority: null,
+    callType: null, callTypeName: null, callTypeList: [],
+    problemType: null, problemTypeName: null, problemTypeList: [],
+    technicianCode: null, technicianName: null, technicianList: [],
+    callId: null, existingCall: null,
+    newStatus: null, resolution: null,
+  };
+}
+function scStepBar(step, mode) {
+  const all    = mode==='update'
+    ? ['ASK_CALL_ID','ASK_UPDATE_ACTION','CONFIRM_UPDATE','DONE']
+    : ['ASK_BP','ASK_ITEM','ASK_SUBJECT','ASK_DESCRIPTION','ASK_PRIORITY','ASK_CALL_TYPE','ASK_TECHNICIAN','CONFIRM','DONE'];
+  const labels = mode==='update'
+    ? ['Find Call','Update','Confirm','Done']
+    : ['Customer','Item','Subject','Description','Priority','Type','Technician','Confirm','Done'];
+  const idx = all.indexOf(step);
+  return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-size:11px;padding:6px 0 4px">
+    ${all.map((s,i)=>{const a=i===idx,d=i<idx;return `<span style="display:inline-flex;align-items:center;gap:3px;color:${a?'#fff':d?'#67e8f9':'rgba(255,255,255,0.45)'}"><span style="width:15px;height:15px;border-radius:50%;background:${a?'rgba(255,255,255,0.3)':d?'#0e7490':'rgba(255,255,255,0.15)'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">${d?'✓':(i+1)}</span>${labels[i]}${i<all.length-1?'<span style="color:rgba(255,255,255,0.3);margin-left:2px">›</span>':''}</span>`;}).join('')}
+  </div>`;
+}
+function scModeButtons() {
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+    <button onclick="masterSend('sc_mode:create')" style="padding:10px 22px;background:linear-gradient(135deg,#0e7490,#155e75);color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(14,116,144,0.3)">✨ Create New Service Call</button>
+    <button onclick="masterSend('sc_mode:update')" style="padding:10px 22px;background:linear-gradient(135deg,#d97706,#92400e);color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(217,119,6,0.3)">🔄 Update Existing Call</button>
+  </div>`;
+}
+function priorityChips() {
+  return [
+    {v:'scp_Low',   l:'⬇ Low',   bg:'#f0fdf4',b:'#10b981',c:'#065f46'},
+    {v:'scp_Medium',l:'➡ Medium',bg:'#fff7ed',b:'#f97316',c:'#9a3412'},
+    {v:'scp_High',  l:'⬆ High',  bg:'#fef2f2',b:'#ef4444',c:'#991b1b'},
+  ].map(o=>`<button onclick="masterSend('select_sc_priority:${o.v}')" style="margin:4px;padding:8px 18px;background:${o.bg};border:1.5px solid ${o.b};border-radius:20px;cursor:pointer;font-size:13px;color:${o.c};font-weight:700">${o.l}</button>`).join('');
+}
+function scStatusChips() {
+  return [
+    {v:'scs_Open',   l:'🟢 Open'},
+    {v:'scs_Pending',l:'🟡 Pending'},
+    {v:'scs_Closed', l:'🔴 Closed'},
+  ].map(o=>`<button onclick="masterSend('select_sc_status:${o.v}')" style="margin:4px;padding:8px 18px;background:#f9fafb;border:1.5px solid #6b7280;border-radius:20px;cursor:pointer;font-size:13px;color:#374151;font-weight:600">${o.l}</button>`).join('');
+}
+function scCallTypeChips(list) {
+  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No types configured. Type description below or skip.</em>';
+  return list.map(t=>`<button onclick="masterSend('select_sc_type:${t.CallTypeID}:${esc(t.Name)}')" style="margin:3px;padding:6px 14px;background:#ecfdf5;border:1.5px solid #0e7490;border-radius:20px;cursor:pointer;font-size:12.5px;color:#134e4a;font-weight:600">${esc(t.Name)}</button>`).join('');
+}
+function scProblemChips(list) {
+  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No problem types found.</em>';
+  return list.map(t=>`<button onclick="masterSend('select_sc_problem:${t.ProblemTypeID}:${esc(t.Name)}')" style="margin:3px;padding:6px 14px;background:#fefce8;border:1.5px solid #ca8a04;border-radius:20px;cursor:pointer;font-size:12.5px;color:#713f12;font-weight:600">${esc(t.Name)}</button>`).join('');
+}
+function scTechChips(list) {
+  const skipBtn = `<button onclick="masterSend('sc_skip_technician')" style="margin:3px;padding:5px 12px;background:#f3f4f6;border:1.5px solid #9ca3af;border-radius:20px;cursor:pointer;font-size:12.5px;color:#6b7280">Skip (Unassigned)</button>`;
+  if (!list.length) return skipBtn;
+  return `<div style="max-height:180px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:2px">${list.map(e=>`<button onclick="masterSend('select_sc_tech:${e.EmployeeID}:${esc(e.FirstName)} ${esc(e.LastName)}')" style="margin:3px;padding:5px 12px;background:#f0f9ff;border:1.5px solid #0ea5e9;border-radius:20px;cursor:pointer;font-size:12.5px;color:#0369a1">${esc(e.FirstName)} ${esc(e.LastName)}</button>`).join('')}${skipBtn}</div>`;
+}
+function scSummaryHtml(sess) {
+  const pLbl = {scp_Low:'⬇ Low',scp_Medium:'➡ Medium',scp_High:'⬆ High'}[sess.priority]||'—';
+  const rows = [
+    ['Customer', sess.customerCode ? `${esc(sess.customerCode)} — ${esc(sess.customerName)}` : '—'],
+    ['Item', sess.itemCode ? `${esc(sess.itemCode)} — ${esc(sess.itemName)}` : '—'],
+    ...(sess.serialNum ? [['Serial / Batch', esc(sess.serialNum)]] : []),
+    ['Subject', esc(sess.subject)],
+    ['Description', `<span style="word-break:break-word">${esc(sess.description||'—')}</span>`],
+    ['Priority', pLbl],
+    ['Call Type', esc(sess.callTypeName||'—')],
+    ['Problem Type', esc(sess.problemTypeName||'—')],
+    ['Technician', esc(sess.technicianName||'Unassigned')],
+  ];
+  return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #0e7490;border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13.5px;font-weight:700;color:#0e7490;margin-bottom:10px">📋 Service Call Summary</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">${rows.map(([k,v])=>`<tr><td style="padding:4px 8px;color:#6b7280;width:38%;border-bottom:1px solid #f3f4f6;white-space:nowrap">${k}</td><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('')}</table>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button onclick="masterSend('confirm_sc_create')" style="background:#0e7490;color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer">✅ Create Service Call</button>
+      <button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">↺ Start Over</button>
+    </div>
+  </div>`;
+}
+async function scBPPickerHtml(sap) {
+  try {
+    const res = await sap.get('/BusinessPartners', { $filter:"CardType eq 'cCustomer'", $select:'CardCode,CardName', $orderby:'CardName', $top:200 });
+    const bps = arr(res);
+    if (!bps.length) return '<em>Type customer name or code below to search.</em>';
+    const uid = `sc_bp_${Math.random().toString(36).slice(2,7)}`;
+    const opts = bps.map(b=>`<option value="${esc(b.CardCode)}" data-name="${esc(b.CardName)}">${esc(b.CardCode)} — ${esc(b.CardName)}</option>`).join('');
+    return `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;max-width:520px">
+      <select id="${uid}" style="flex:1;padding:7px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12.5px;background:var(--bg,#fff);color:var(--text,#111);min-width:0">
+        <option value="">— Select a customer —</option>${opts}
+      </select>
+      <button onclick="masterSelectScBP('${uid}')" style="padding:7px 16px;background:#0e7490;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Select →</button>
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin-top:4px">Or type a name / code in the box below to search</div>`;
+  } catch(_) { return '<em>Type customer name or code below to search.</em>'; }
+}
+async function scItemPickerHtml(sap) {
+  try {
+    const res = await sap.get('/Items', { $select:'ItemCode,ItemName', $orderby:'ItemName', $top:200 });
+    const items = arr(res);
+    if (!items.length) return '<em>No items found.</em>';
+    const uid = `sc_item_${Math.random().toString(36).slice(2,7)}`;
+    const opts = items.map(i=>`<option value="${esc(i.ItemCode)}" data-name="${esc(i.ItemName)}">${esc(i.ItemCode)} — ${esc(i.ItemName)}</option>`).join('');
+    return `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;max-width:520px">
+      <select id="${uid}" style="flex:1;padding:7px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12.5px;background:var(--bg,#fff);color:var(--text,#111);min-width:0">
+        <option value="">— Select an item —</option>${opts}
+      </select>
+      <button onclick="masterSelectScItem('${uid}')" style="padding:7px 16px;background:#0e7490;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Select →</button>
+    </div>
+    <div style="margin-top:8px"><button onclick="masterSend('sc_skip_item')" style="padding:6px 14px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;font-size:12.5px;color:#6b7280;cursor:pointer">Skip (no specific item)</button></div>`;
+  } catch(_) { return '<em>Type item code below or skip.</em>'; }
+}
+
+async function handleSCChat(sess, msg, sap, res, user) {
+  const sid = sess.sid; const step = sess.step;
+
+  if (msg==='restart'||msg==='Start Over') {
+    const fresh = scInit(); fresh.sid = sid; _scSess.set(sid, fresh);
+    return res.json({ ok:true, reply:`<div>Starting fresh. What would you like to do?</div>${scModeButtons()}`, step:'ASK_MODE', sessionId:sid });
+  }
+  if (msg==='Create Another') {
+    const fresh = scInit(); fresh.sid = sid; fresh.mode='create'; fresh.step='ASK_BP'; _scSess.set(sid, fresh);
+    const picker = await scBPPickerHtml(sap);
+    return res.json({ ok:true, reply:`<div>Select the <strong>Customer</strong>:</div>${picker}`, step:'ASK_BP', sessionId:sid });
+  }
+  if (msg==='Update Another') {
+    const fresh = scInit(); fresh.sid = sid; fresh.mode='update'; fresh.step='ASK_CALL_ID'; _scSess.set(sid, fresh);
+    return res.json({ ok:true, reply:'<div>Enter the <strong>Service Call ID</strong> to update:</div>', step:'ASK_CALL_ID', sessionId:sid });
+  }
+
+  // ── Mode selection ──────────────────────────────────────────────────────────
+  if (msg.startsWith('sc_mode:')) {
+    const [,mode] = msg.split(':'); sess.mode = mode;
+    if (mode==='create') {
+      sess.step = 'ASK_BP';
+      const picker = await scBPPickerHtml(sap);
+      return res.json({ ok:true, reply:`<div>Let's create a new service call.</div><div style="margin-top:8px">Select the <strong>Customer</strong>:</div>${picker}`, step:sess.step, sessionId:sid });
+    }
+    sess.step = 'ASK_CALL_ID';
+    return res.json({ ok:true, reply:'<div>Enter the <strong>Service Call ID</strong> (numeric) to update:</div>', step:sess.step, sessionId:sid });
+  }
+
+  // ── CREATE: BP selected from combo ──────────────────────────────────────────
+  if (msg.startsWith('select_sc_bp:')) {
+    const parts = msg.split(':'); sess.customerCode = parts[1]; sess.customerName = parts.slice(2).join(':');
+    sess.step = 'ASK_ITEM';
+    const picker = await scItemPickerHtml(sap);
+    return res.json({ ok:true, reply:`<div>Customer: <strong>${esc(sess.customerCode)} — ${esc(sess.customerName)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Item</strong> related to this call (optional):</div>${picker}`, step:sess.step, sessionId:sid });
+  }
+
+  // ── CREATE: Item selected from combo ────────────────────────────────────────
+  if (msg.startsWith('select_sc_item:')) {
+    const parts = msg.split(':'); sess.itemCode = parts[1]; sess.itemName = parts.slice(2).join(':');
+    try {
+      const item = await sap.get(`/Items('${sess.itemCode}')`, { $select:'ManageSerialNumbers,ManageBatchNumbers' });
+      const isSerial = item.ManageSerialNumbers === 'tYES';
+      const isBatch  = item.ManageBatchNumbers  === 'tYES';
+      sess.itemManage = isSerial ? 'serial' : isBatch ? 'batch' : 'none';
+      if (isSerial || isBatch) {
+        sess.step = 'ASK_SERIAL';
+        return res.json({ ok:true, reply:`<div>Item: <strong>${esc(sess.itemCode)}</strong> ✓ (${isSerial?'Serialized':'Batched'} item)</div><div style="margin-top:8px">Enter the <strong>${isSerial?'Serial':'Batch'} Number</strong> (or type <em>skip</em>):</div>`, step:sess.step, sessionId:sid });
+      }
+    } catch(_) { sess.itemManage = 'none'; }
+    sess.step = 'ASK_SUBJECT';
+    return res.json({ ok:true, reply:`<div>Item: <strong>${esc(sess.itemCode)}</strong> — ${esc(sess.itemName)} ✓</div><div style="margin-top:8px">Enter the <strong>Subject</strong> of this service call:</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg==='sc_skip_item') {
+    sess.itemCode = null; sess.itemName = null; sess.step = 'ASK_SUBJECT';
+    return res.json({ ok:true, reply:'<div>No specific item ✓</div><div style="margin-top:8px">Enter the <strong>Subject</strong> of this service call:</div>', step:sess.step, sessionId:sid });
+  }
+
+  // ── CREATE: Priority ────────────────────────────────────────────────────────
+  if (msg.startsWith('select_sc_priority:')) {
+    const [,p] = msg.split(':'); sess.priority = p;
+    const lbl = {scp_Low:'Low',scp_Medium:'Medium',scp_High:'High'}[p]||p;
+    sess.step = 'ASK_CALL_TYPE';
+    try { const r2 = await sap.get('/ServiceCallTypes', { $select:'CallTypeID,Name', $top:100 }); sess.callTypeList = arr(r2); } catch(_) { sess.callTypeList = []; }
+    const typeContent = scCallTypeChips(sess.callTypeList) + `<div style="margin-top:8px"><button onclick="masterSend('sc_skip_type')" style="padding:5px 12px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:#6b7280;cursor:pointer">Skip Call Type</button></div>`;
+    return res.json({ ok:true, reply:`<div>Priority: <strong>${lbl}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Call Type</strong>:</div><div style="margin-top:8px">${typeContent}</div>`, step:sess.step, sessionId:sid });
+  }
+
+  // ── CREATE: Call Type ───────────────────────────────────────────────────────
+  if (msg.startsWith('select_sc_type:')) {
+    const parts = msg.split(':'); sess.callType = Number(parts[1]); sess.callTypeName = parts.slice(2).join(':');
+    return await _scAskProblem(sess, sap, res, sid);
+  }
+  if (msg==='sc_skip_type') {
+    sess.callType = null; sess.callTypeName = null;
+    return await _scAskProblem(sess, sap, res, sid);
+  }
+
+  // ── CREATE: Problem type ────────────────────────────────────────────────────
+  if (msg.startsWith('select_sc_problem:')) {
+    const parts = msg.split(':'); sess.problemType = Number(parts[1]); sess.problemTypeName = parts.slice(2).join(':');
+    return await _scAskTechnician(sess, sap, res, sid);
+  }
+  if (msg==='sc_skip_problem') {
+    sess.problemType = null; sess.problemTypeName = null;
+    return await _scAskTechnician(sess, sap, res, sid);
+  }
+
+  // ── CREATE: Technician ──────────────────────────────────────────────────────
+  if (msg.startsWith('select_sc_tech:')) {
+    const parts = msg.split(':'); sess.technicianCode = Number(parts[1]); sess.technicianName = parts.slice(2).join(':');
+    sess.step = 'CONFIRM';
+    return res.json({ ok:true, reply:`<div>Technician: <strong>${esc(sess.technicianName)}</strong> ✓</div><div style="margin-top:10px">Review and confirm:</div>${scSummaryHtml(sess)}`, step:sess.step, sessionId:sid });
+  }
+  if (msg==='sc_skip_technician') {
+    sess.technicianCode = null; sess.technicianName = null; sess.step = 'CONFIRM';
+    return res.json({ ok:true, reply:`<div>No technician assigned ✓</div><div style="margin-top:10px">Review and confirm:</div>${scSummaryHtml(sess)}`, step:sess.step, sessionId:sid });
+  }
+
+  // ── CREATE: Confirm & submit ────────────────────────────────────────────────
+  if (msg==='confirm_sc_create') {
+    const payload = {
+      CustomerCode: sess.customerCode,
+      Subject: sess.subject,
+      ...(sess.itemCode        ? { ItemCode: sess.itemCode }             : {}),
+      ...(sess.serialNum       ? { InternalSerialNum: sess.serialNum }   : {}),
+      ...(sess.description     ? { Description: sess.description }       : {}),
+      ...(sess.callType        ? { CallType: sess.callType }             : {}),
+      ...(sess.problemType     ? { ProblemType: sess.problemType }       : {}),
+      ...(sess.technicianCode  ? { TechnicianCode: sess.technicianCode } : {}),
+    };
+    try {
+      const result = await sap.post('/ServiceCalls', payload);
+      sess.step = 'DONE';
+      const callId = result.ServiceCallID ?? result.CallID ?? '—';
+      logEntry('service_call', String(callId), sess.subject, payload, result, 'success', user);
+      return res.json({ ok:true, reply:`<div style="background:#ecfdf5;border:1px solid #0e7490;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#0e7490;margin-bottom:6px">✅ Service Call Created!</div><div style="font-size:12.5px;color:#065f46">ID: <strong>${esc(String(callId))}</strong> &nbsp;|&nbsp; Subject: <strong>${esc(sess.subject)}</strong></div><div style="font-size:12px;color:#6b7280;margin-top:4px">Customer: ${esc(sess.customerName||'')} &nbsp;|&nbsp; Priority: ${{scp_Low:'Low',scp_Medium:'Medium',scp_High:'High'}[sess.priority]||'—'}</div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another','Update Existing'] });
+    } catch(e) {
+      logEntry('service_call','',sess.subject,payload,{error:e.message},'error',user);
+      return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
+    }
+  }
+  if (msg==='Update Existing') { sess.mode='update'; sess.step='ASK_CALL_ID'; return res.json({ ok:true, reply:'<div>Enter the <strong>Service Call ID</strong> to update:</div>', step:'ASK_CALL_ID', sessionId:sid }); }
+
+  // ── UPDATE: Status ──────────────────────────────────────────────────────────
+  if (msg.startsWith('select_sc_status:')) {
+    const [,status] = msg.split(':'); sess.newStatus = status;
+    const lbl = {scs_Open:'Open',scs_Pending:'Pending',scs_Closed:'Closed'}[status]||status;
+    if (status==='scs_Closed') {
+      sess.step = 'ASK_RESOLUTION';
+      return res.json({ ok:true, reply:`<div>Status: <strong>${lbl}</strong> ✓</div><div style="margin-top:8px">Enter <strong>Resolution</strong> text (or type <em>skip</em>):</div>`, step:sess.step, sessionId:sid });
+    }
+    sess.step = 'CONFIRM_UPDATE';
+    return res.json({ ok:true, reply:`<div>Status: <strong>${lbl}</strong> ✓</div><div style="margin-top:10px">Confirm update to Service Call <strong>#${sess.callId}</strong>?</div><div style="margin-top:8px;display:flex;gap:8px"><button onclick="masterSend('confirm_sc_update')" style="background:#0e7490;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer">✅ Update</button><button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;font-size:12.5px;cursor:pointer">↺ Start Over</button></div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (msg==='confirm_sc_update') {
+    const patch = { ...(sess.newStatus ? {Status:sess.newStatus} : {}), ...(sess.resolution ? {Resolution:sess.resolution} : {}) };
+    try {
+      await sap.patch(`/ServiceCalls(${sess.callId})`, patch);
+      sess.step = 'DONE';
+      logEntry('service_call_update',String(sess.callId),`Update SC #${sess.callId}`,patch,{},'success',user);
+      return res.json({ ok:true, reply:`<div style="background:#ecfdf5;border:1px solid #0e7490;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#0e7490;margin-bottom:6px">✅ Service Call Updated!</div><div style="font-size:12.5px;color:#065f46">Call #<strong>${sess.callId}</strong> updated successfully.</div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another','Update Another'] });
+    } catch(e) {
+      return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Update failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
+    }
+  }
+
+  // ── Text input steps ────────────────────────────────────────────────────────
+  if (step==='ASK_BP'||step==='ASK_MODE') {
+    const q = msg.trim();
+    if (!q) { const picker = await scBPPickerHtml(sap); return res.json({ ok:true, reply:`<div>Select a <strong>Customer</strong>:</div>${picker}`, step:'ASK_BP', sessionId:sid }); }
+    try {
+      const filter = isNaN(q) ? `CardType eq 'cCustomer' and contains(CardName,'${q}')` : `CardType eq 'cCustomer' and (CardCode eq '${q}' or contains(CardName,'${q}'))`;
+      const bps = arr(await sap.get('/BusinessPartners', { $filter:filter, $select:'CardCode,CardName', $top:10 }));
+      if (!bps.length) return res.json({ ok:true, reply:'<div>No customers found. Try a different name.</div>', step:'ASK_BP', sessionId:sid });
+      if (bps.length===1) {
+        sess.customerCode = bps[0].CardCode; sess.customerName = bps[0].CardName; sess.step = 'ASK_ITEM';
+        const picker = await scItemPickerHtml(sap);
+        return res.json({ ok:true, reply:`<div>Customer: <strong>${esc(bps[0].CardCode)} — ${esc(bps[0].CardName)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Item</strong> (optional):</div>${picker}`, step:sess.step, sessionId:sid });
+      }
+      return res.json({ ok:true, reply:`<div>Select a customer:</div><div style="margin-top:8px">${bps.map(b=>`<button onclick="masterSend('select_sc_bp:${esc(b.CardCode)}:${esc(b.CardName)}')" style="margin:3px;padding:6px 14px;background:#ecfdf5;border:1.5px solid #0e7490;border-radius:6px;cursor:pointer;font-size:12.5px"><strong>${esc(b.CardCode)}</strong> — ${esc(b.CardName)}</button>`).join('')}</div>`, step:'ASK_BP', sessionId:sid });
+    } catch(e) { return res.json({ ok:true, reply:`<div style="color:#b91c1c">Search failed: ${esc(e.message)}</div>`, step:'ASK_BP', sessionId:sid }); }
+  }
+
+  if (step==='ASK_ITEM') {
+    const q = msg.trim();
+    if (!q||q.toLowerCase()==='skip') { sess.step='ASK_SUBJECT'; return res.json({ ok:true, reply:'<div>No item ✓</div><div style="margin-top:8px">Enter the <strong>Subject</strong>:</div>', step:sess.step, sessionId:sid }); }
+    const items = await searchItems(sap, q);
+    if (!items.length) return res.json({ ok:true, reply:'<div>No items found. Try different search or skip.</div>', step, sessionId:sid });
+    return res.json({ ok:true, reply:`<div>Select an item:</div><div style="margin-top:8px">${items.map(i=>`<button onclick="masterSend('select_sc_item:${esc(i.ItemCode)}:${esc(i.ItemName)}')" style="margin:3px;padding:6px 14px;background:#f9fafb;border:1.5px solid #6b7280;border-radius:6px;cursor:pointer;font-size:12.5px"><strong>${esc(i.ItemCode)}</strong> — ${esc(i.ItemName)}</button>`).join('')}</div>`, step, sessionId:sid });
+  }
+
+  if (step==='ASK_SERIAL') {
+    const v = msg.trim(); sess.serialNum = (!v||v.toLowerCase()==='skip') ? null : v; sess.step = 'ASK_SUBJECT';
+    return res.json({ ok:true, reply:`<div>${sess.serialNum?`Serial/Batch: <strong>${esc(sess.serialNum)}</strong>`:'Skipped'} ✓</div><div style="margin-top:8px">Enter the <strong>Subject</strong>:</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (step==='ASK_SUBJECT') {
+    if (!msg.trim()) return res.json({ ok:true, reply:'<div>Please enter the subject.</div>', step, sessionId:sid });
+    sess.subject = msg.trim(); sess.step = 'ASK_DESCRIPTION';
+    return res.json({ ok:true, reply:`<div>Subject: <strong>${esc(sess.subject)}</strong> ✓</div><div style="margin-top:8px">Enter a <strong>Description</strong> (details of the issue — or type <em>skip</em>):</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (step==='ASK_DESCRIPTION') {
+    sess.description = (msg.toLowerCase()==='skip') ? null : msg.trim(); sess.step = 'ASK_PRIORITY';
+    return res.json({ ok:true, reply:`<div>Description saved ✓</div><div style="margin-top:8px">Select the <strong>Priority</strong>:</div><div style="margin-top:8px">${priorityChips()}</div>`, step:sess.step, sessionId:sid });
+  }
+
+  if (step==='ASK_CALL_TYPE') {
+    sess.callTypeName = msg.trim(); sess.callType = null;
+    return await _scAskProblem(sess, sap, res, sid);
+  }
+
+  if (step==='ASK_CALL_ID') {
+    const id = parseInt(msg.trim());
+    if (isNaN(id)) return res.json({ ok:true, reply:'<div>Please enter a valid numeric Service Call ID.</div>', step, sessionId:sid });
+    try {
+      const callData = await sap.get(`/ServiceCalls(${id})`);
+      sess.callId = id; sess.existingCall = callData; sess.step = 'ASK_UPDATE_ACTION';
+      const sLbl = {scs_Open:'🟢 Open',scs_Pending:'🟡 Pending',scs_Closed:'🔴 Closed'}[callData.Status]||callData.Status||'Unknown';
+      return res.json({ ok:true, reply:`<div style="background:#ecfdf5;border:1px solid #0e7490;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:700;color:#0e7490;margin-bottom:6px">📞 Service Call #${id}</div>
+        <div style="font-size:12.5px"><strong>Customer:</strong> ${esc(callData.CustomerCode||'—')}</div>
+        <div style="font-size:12.5px"><strong>Subject:</strong> ${esc(callData.Subject||'—')}</div>
+        <div style="font-size:12.5px"><strong>Status:</strong> ${sLbl}</div>
+        <div style="font-size:12.5px"><strong>Priority:</strong> ${esc(callData.Priority||'—')}</div>
+      </div>
+      <div>Update <strong>Status</strong>:</div><div style="margin-top:6px">${scStatusChips()}</div>`, step:sess.step, sessionId:sid });
+    } catch(e) { return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Service Call #${id} not found: ${esc(e.message)}</div>`, step, sessionId:sid }); }
+  }
+
+  if (step==='ASK_UPDATE_ACTION') {
+    return res.json({ ok:true, reply:`<div>Select a new <strong>Status</strong>:</div><div style="margin-top:8px">${scStatusChips()}</div>`, step, sessionId:sid });
+  }
+
+  if (step==='ASK_RESOLUTION') {
+    sess.resolution = (msg.toLowerCase()==='skip') ? null : msg.trim(); sess.step = 'CONFIRM_UPDATE';
+    return res.json({ ok:true, reply:`<div>Resolution saved ✓</div><div style="margin-top:10px">Confirm update to Service Call <strong>#${sess.callId}</strong>?</div><div style="margin-top:8px;display:flex;gap:8px"><button onclick="masterSend('confirm_sc_update')" style="background:#0e7490;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer">✅ Update</button><button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;font-size:12.5px;cursor:pointer">↺ Start Over</button></div>`, step:sess.step, sessionId:sid });
+  }
+
+  return res.json({ ok:true, reply:'<div>Please follow the wizard steps.</div>', step, sessionId:sid });
+}
+async function _scAskProblem(sess, sap, res, sid) {
+  sess.step = 'ASK_PROBLEM';
+  try { const r2 = await sap.get('/ServiceCallProblemTypes', { $select:'ProblemTypeID,Name', $top:100 }); sess.problemTypeList = arr(r2); } catch(_) { sess.problemTypeList = []; }
+  const probContent = scProblemChips(sess.problemTypeList) + `<div style="margin-top:8px"><button onclick="masterSend('sc_skip_problem')" style="padding:5px 12px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:#6b7280;cursor:pointer">Skip</button></div>`;
+  return res.json({ ok:true, reply:`<div>Call Type: <strong>${esc(sess.callTypeName||'—')}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Problem Type</strong>:</div><div style="margin-top:8px">${probContent}</div>`, step:sess.step, sessionId:sid });
+}
+async function _scAskTechnician(sess, sap, res, sid) {
+  sess.step = 'ASK_TECHNICIAN';
+  try { const r2 = await sap.get('/EmployeesInfo', { $select:'EmployeeID,FirstName,LastName', $filter:"Active eq 'tYES'", $top:100 }); sess.technicianList = arr(r2); } catch(_) { sess.technicianList = []; }
+  return res.json({ ok:true, reply:`<div>Problem Type: <strong>${esc(sess.problemTypeName||'—')}</strong> ✓</div><div style="margin-top:8px">Select a <strong>Technician</strong>:</div><div style="margin-top:8px">${scTechChips(sess.technicianList)}</div>`, step:sess.step, sessionId:sid });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROUTER FACTORY
+// ─────────────────────────────────────────────────────────────────────────────
+export function createMenuMasterRouter({ requireAuth, getActiveSap }) {
+  const router = Router();
+
+  // ── DEBUG: fetch first item's full JSON to verify field names ────────────────
+  router.get('/item/debug-fields', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const items = await sap.get('/Items', { $top: 1, $select: '' });
+      const first = Array.isArray(items) ? items[0] : (items?.value?.[0]);
+      if (!first) return res.json({ error: 'No items found in SAP' });
+      const uomFields = Object.entries(first)
+        .filter(([k]) => /uom|unit|msr|measure|buy|sal|inv|purch/i.test(k))
+        .reduce((o,[k,v]) => { o[k]=v; return o; }, {});
+      res.json({ allKeys: Object.keys(first), uomRelated: uomFields, fullItem: first });
+    } catch(e) { res.json({ error: e.message }); }
+  });
+
+  // ── ITEM MASTER ────────────────────────────────────────────────────────────
+  router.post('/item/reset', requireAuth, (req, res) => {
+    const { sessionId } = req.body;
+    if (sessionId && _itemSess.has(sessionId)) _itemSess.delete(sessionId);
+    res.json({ ok:true });
+  });
+  router.post('/item/chat', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const { message='', sessionId } = req.body;
+      const user = req.user?.username || '';
+      let sess = sessionId && _itemSess.get(sessionId);
+      if (!sess) { sess = itemInit(); _itemSess.set(sess.sid, sess); }
+      if (!sessionId || !_itemSess.has(sessionId)) {
+        const welcome = `<div style="font-size:13.5px">👋 Welcome to <strong>Item Master Wizard</strong>! I'll guide you step by step.</div><div style="margin-top:8px">What is the <strong>Item Name</strong>?</div>`;
+        return res.json({ ok:true, reply:welcome, step:sess.step, sessionId:sess.sid, stepBar:itemSteps(sess.step) });
+      }
+      const result = await handleItemChat(sess, message, sap, res, user);
+      // stepBar injected via middleware below — but we handle inline
+    } catch(e) {
+      res.json({ ok:false, error:e.message });
+    }
+  });
+
+  // ── CUSTOMER MASTER ────────────────────────────────────────────────────────
+  router.post('/customer/reset', requireAuth, (req, res) => {
+    const { sessionId } = req.body;
+    if (sessionId && _bpSess.customer.has(sessionId)) _bpSess.customer.delete(sessionId);
+    res.json({ ok:true });
+  });
+  router.post('/customer/chat', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const { message='', sessionId } = req.body;
+      const user = req.user?.username || '';
+      let sess = sessionId && _bpSess.customer.get(sessionId);
+      if (!sess) {
+        sess = bpInit('customer'); _bpSess.customer.set(sess.sid, sess);
+        return res.json({ ok:true, reply:'<div>👋 Welcome to <strong>Customer Master Wizard</strong>!</div><div style="margin-top:8px">What is the <strong>Customer Name</strong>?</div>', step:sess.step, sessionId:sess.sid });
+      }
+      await handleBPChat(sess, message, sap, res, user);
+    } catch(e) { res.json({ ok:false, error:e.message }); }
+  });
+
+  // ── SUPPLIER MASTER ────────────────────────────────────────────────────────
+  router.post('/supplier/reset', requireAuth, (req, res) => {
+    const { sessionId } = req.body;
+    if (sessionId && _bpSess.supplier.has(sessionId)) _bpSess.supplier.delete(sessionId);
+    res.json({ ok:true });
+  });
+  router.post('/supplier/chat', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const { message='', sessionId } = req.body;
+      const user = req.user?.username || '';
+      let sess = sessionId && _bpSess.supplier.get(sessionId);
+      if (!sess) {
+        sess = bpInit('supplier'); _bpSess.supplier.set(sess.sid, sess);
+        return res.json({ ok:true, reply:'<div>👋 Welcome to <strong>Supplier Master Wizard</strong>!</div><div style="margin-top:8px">What is the <strong>Supplier Name</strong>?</div>', step:sess.step, sessionId:sess.sid });
+      }
+      await handleBPChat(sess, message, sap, res, user);
+    } catch(e) { res.json({ ok:false, error:e.message }); }
+  });
+
+  // ── BILL OF MATERIAL ───────────────────────────────────────────────────────
+  router.post('/bom/reset', requireAuth, (req, res) => {
+    const { sessionId } = req.body;
+    if (sessionId && _bomSess.has(sessionId)) _bomSess.delete(sessionId);
+    res.json({ ok:true });
+  });
+  router.post('/bom/chat', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const { message='', sessionId } = req.body;
+      const user = req.user?.username || '';
+      let sess = sessionId && _bomSess.get(sessionId);
+      if (!sess) {
+        sess = bomInit(); _bomSess.set(sess.sid, sess);
+        const picker = await itemPickerHtml(sap, 'select_parent', true);
+        return res.json({ ok:true, reply:`<div>👋 Welcome to <strong>Bill of Material Wizard</strong>!</div><div style="margin-top:8px">Select the <strong>Parent (Finished) Item</strong>:</div>${picker}`, step:sess.step, sessionId:sess.sid });
+      }
+      await handleBOMChat(sess, message, sap, res, user);
+    } catch(e) { res.json({ ok:false, error:e.message }); }
+  });
+
+  // ── SERVICE CALL ───────────────────────────────────────────────────────────
+  router.post('/service-call/reset', requireAuth, (req, res) => {
+    const { sessionId } = req.body;
+    if (sessionId && _scSess.has(sessionId)) _scSess.delete(sessionId);
+    res.json({ ok:true });
+  });
+  router.post('/service-call/chat', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const { message='', sessionId } = req.body;
+      const user = req.user?.username || '';
+      let sess = sessionId && _scSess.get(sessionId);
+      if (!sess) {
+        sess = scInit(); _scSess.set(sess.sid, sess);
+        return res.json({ ok:true, reply:`<div>👋 Welcome to <strong>Service Call Agent</strong>!</div><div style="margin-top:6px;font-size:12.5px;color:#6b7280">Define your requirements — the Agent manages the entire process.<br>Supports serialized, batched &amp; non-serialized items. Creates or updates Service Calls in seconds.</div><div style="margin-top:10px">What would you like to do?</div>${scModeButtons()}`, step:sess.step, sessionId:sess.sid });
+      }
+      await handleSCChat(sess, message, sap, res, user);
+    } catch(e) { res.json({ ok:false, error:e.message }); }
+  });
+
+  return router;
+}

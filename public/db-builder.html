@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>DB Query Builder — SAP B1</title>
+
+<script>
+(function(){
+  const token = localStorage.getItem('hanny_token');
+  if (!token) { window.location.replace('/login.html'); return; }
+  fetch('/auth/me', { headers: { 'x-auth-token': token } })
+    .then(r => { if (!r.ok) { localStorage.removeItem('hanny_token'); window.location.replace('/login.html'); } })
+    .catch(() => {});
+})();
+</script>
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E; --blue:#0070F2; --blue-lt:#E8F4FF; --bg:#F5F6F7;
+  --white:#fff; --text:#32363A; --muted:#6A6D70; --border:#E0E0E0;
+  --green:#107E3E; --red:#BB0000; --orange:#E9730C; --r:4px;
+  --font:'Segoe UI',system-ui,sans-serif;
+}
+html,body{height:100%;overflow:hidden;font-family:var(--font);color:var(--text);background:var(--bg)}
+body{display:flex;flex-direction:column}
+
+/* TOP BAR */
+.topbar{
+  background:var(--shell);color:#fff;height:44px;display:flex;
+  align-items:center;padding:0 16px;gap:12px;flex-shrink:0;
+}
+.topbar a{color:rgba(255,255,255,.7);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:4px}
+.topbar a:hover{color:#fff}
+.topbar h1{font-size:14px;font-weight:700;flex:1}
+.conn-badge{font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600}
+.conn-ok{background:#107E3E;color:#fff} .conn-no{background:#BB0000;color:#fff}
+
+/* WORKSPACE */
+.workspace{display:flex;flex:1;overflow:hidden;gap:0}
+
+/* SCHEMA PANEL */
+.schema-panel{
+  width:240px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.schema-head{
+  padding:10px 12px;border-bottom:1px solid var(--border);font-size:11px;
+  font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.schema-search{padding:8px 10px;border-bottom:1px solid var(--border)}
+.schema-search input{
+  width:100%;border:1px solid var(--border);border-radius:var(--r);
+  padding:5px 8px;font-size:12px;outline:none;
+}
+.schema-search input:focus{border-color:var(--blue)}
+.table-list{flex:1;overflow-y:auto;font-size:12px}
+.tbl-item{border-bottom:1px solid #f0f0f0}
+.tbl-header{
+  display:flex;align-items:center;gap:6px;padding:7px 10px;cursor:pointer;
+  user-select:none;transition:background .1s;
+}
+.tbl-header:hover{background:#f5f8ff}
+.tbl-header.active{background:var(--blue-lt)}
+.tbl-arrow{font-size:9px;color:var(--muted);width:10px;transition:transform .15s}
+.tbl-arrow.open{transform:rotate(90deg)}
+.tbl-name{flex:1;font-weight:600;color:var(--text)}
+.tbl-count{font-size:10px;color:var(--muted);background:#f0f0f0;padding:1px 5px;border-radius:8px}
+.tbl-btn{
+  font-size:9px;padding:2px 6px;border:1px solid var(--blue);color:var(--blue);
+  background:transparent;border-radius:3px;cursor:pointer;white-space:nowrap;
+}
+.tbl-btn:hover{background:var(--blue);color:#fff}
+.col-list{padding:0 0 6px 28px;display:none}
+.col-list.open{display:block}
+.col-row{
+  display:flex;align-items:center;gap:6px;padding:2px 6px 2px 0;cursor:pointer;
+  border-radius:3px;transition:background .1s;
+}
+.col-row:hover{background:#f0f6ff}
+.col-name{flex:1;font-size:11px;color:var(--text)}
+.col-type{font-size:10px;color:var(--muted);font-family:monospace}
+.col-add{
+  font-size:9px;padding:1px 5px;border:1px solid #ccc;border-radius:3px;
+  background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap;
+}
+.col-add:hover{border-color:var(--blue);color:var(--blue)}
+
+/* MAIN PANEL */
+.main-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* TABS */
+.tab-bar{
+  display:flex;border-bottom:2px solid var(--border);background:#fff;
+  padding:0 16px;flex-shrink:0;
+}
+.tab-btn{
+  padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;
+  cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;
+}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-btn:hover:not(.active){color:var(--text)}
+
+.tab-content{display:none;flex:1;overflow:auto;padding:14px 16px}
+.tab-content.active{display:flex;flex-direction:column;gap:10px}
+
+/* QUERY BUILDER */
+.qb-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.qb-label{
+  width:88px;flex-shrink:0;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--muted);padding-top:5px;
+}
+.qb-body{flex:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select,input[type=text],input[type=number],input[type=date]{
+  border:1px solid var(--border);border-radius:var(--r);padding:5px 8px;
+  font-size:12px;font-family:inherit;outline:none;background:#fff;
+}
+select:focus,input:focus{border-color:var(--blue)}
+.col-chips{display:flex;flex-wrap:wrap;gap:5px;flex:1}
+.col-chip{
+  display:flex;align-items:center;gap:4px;background:var(--blue-lt);
+  color:var(--blue);border:1px solid #b3d4f7;border-radius:12px;
+  padding:3px 8px;font-size:11px;font-weight:600;
+}
+.col-chip button{background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;padding:0}
+.where-row{display:flex;gap:6px;align-items:center;margin-bottom:5px;width:100%}
+.where-row select{min-width:120px} .where-row input{flex:1;min-width:80px}
+.btn-del{
+  background:none;border:1px solid #ddd;color:var(--muted);border-radius:3px;
+  width:22px;height:22px;cursor:pointer;font-size:13px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+}
+.btn-del:hover{background:#ffe0e0;border-color:var(--red);color:var(--red)}
+.btn{
+  padding:6px 14px;border-radius:var(--r);font-size:12px;font-weight:600;
+  cursor:pointer;border:1px solid transparent;
+}
+.btn-outline{background:#fff;border-color:var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-primary:hover{background:#0064D9}
+.btn-success{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-success:hover{background:#0D6B35}
+.btn-sm{padding:4px 10px;font-size:11px}
+.qb-actions{display:flex;gap:8px;padding:10px 0 0}
+.all-cols-check{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer}
+.all-cols-check input{width:14px;height:14px;cursor:pointer}
+
+/* SQL EDITOR */
+#sql-editor{
+  width:100%;flex:1;min-height:160px;font-family:'Courier New',monospace;
+  font-size:12px;line-height:1.6;border:1px solid var(--border);border-radius:var(--r);
+  padding:10px;resize:vertical;outline:none;
+}
+#sql-editor:focus{border-color:var(--blue)}
+.sql-actions{display:flex;gap:8px;align-items:center}
+.sql-note{font-size:11px;color:var(--muted);flex:1}
+
+/* RESULTS */
+.results-panel{
+  border-top:2px solid var(--border);background:#fff;display:flex;
+  flex-direction:column;overflow:hidden;flex-shrink:0;
+  transition:height .2s;
+}
+.results-panel.collapsed{height:36px}
+.results-panel.expanded{height:320px}
+.results-head{
+  display:flex;align-items:center;gap:8px;padding:0 12px;height:36px;
+  cursor:pointer;user-select:none;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.results-head h3{font-size:12px;font-weight:700;flex:1}
+.res-count{font-size:11px;color:var(--muted)}
+.res-time{font-size:10px;color:var(--muted)}
+.results-body{flex:1;overflow:auto;padding:0}
+.res-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.res-table th{
+  background:var(--shell);color:#fff;padding:6px 10px;text-align:left;
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  position:sticky;top:0;white-space:nowrap;cursor:pointer;user-select:none;
+}
+.res-table th:hover{background:#2c3e50}
+.res-table td{padding:5px 10px;border-bottom:1px solid #f0f0f0;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.res-table tr:nth-child(even) td{background:#fafbfe}
+.res-table tr:hover td{background:#e8f4ff}
+.err-box{background:#fff2f2;border:1px solid #fcc;color:var(--red);padding:12px;border-radius:var(--r);font-size:12px}
+.info-box{background:#f0f8ff;border:1px solid #b3d4f7;color:var(--blue);padding:12px;border-radius:var(--r);font-size:12px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ddd;border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--muted);font-size:13px}
+.empty-state svg{opacity:.25}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <a href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Back
+  </a>
+  <h1>🗄️ DB Query Builder</h1>
+  <span id="conn-badge" class="conn-badge conn-no">Not Connected</span>
+  <button class="btn btn-outline btn-sm" onclick="loadSchema()" id="reload-btn" style="background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.3)">↺ Reload Schema</button>
+</div>
+
+<div class="workspace">
+
+  <!-- ── SCHEMA BROWSER ── -->
+  <div class="schema-panel">
+    <div class="schema-head">
+      <span id="tbl-count-label">Tables</span>
+      <span id="sap-filter-wrap">
+        <label style="font-size:10px;color:var(--blue);cursor:pointer;display:flex;align-items:center;gap:3px">
+          <input type="checkbox" id="sap-only" onchange="renderTableList()" checked style="width:12px;height:12px"> SAP only
+        </label>
+      </span>
+    </div>
+    <div class="schema-search">
+      <input type="text" id="tbl-search" placeholder="Search tables…" oninput="renderTableList()">
+    </div>
+    <div class="table-list" id="table-list">
+      <div class="empty-state" style="height:200px">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        <span>Loading schema…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MAIN PANEL ── -->
+  <div class="main-panel">
+
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('builder',this)">Query Builder</button>
+      <button class="tab-btn" onclick="switchTab('sql',this)">SQL Editor</button>
+    </div>
+
+    <!-- ── QUERY BUILDER TAB ── -->
+    <div id="tab-builder" class="tab-content active">
+
+      <!-- Table -->
+      <div class="qb-row">
+        <div class="qb-label">Table</div>
+        <div class="qb-body">
+          <select id="qb-table" onchange="qbTableChanged()" style="min-width:200px">
+            <option value="">— Select a table —</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="qbPreview()" id="qb-preview-btn" disabled>Preview 10 rows</button>
+        </div>
+      </div>
+
+      <!-- Columns -->
+      <div class="qb-row">
+        <div class="qb-label">Columns</div>
+        <div class="qb-body" style="flex-direction:column;align-items:flex-start">
+          <label class="all-cols-check">
+            <input type="checkbox" id="qb-all-cols" onchange="qbToggleAllCols()" checked> Select All Columns (*)
+          </label>
+          <div class="col-chips" id="qb-col-chips" style="margin-top:6px"></div>
+          <div id="qb-col-list" style="display:none;margin-top:6px;display:flex;flex-wrap:wrap;gap:5px"></div>
+        </div>
+      </div>
+
+      <!-- WHERE -->
+      <div class="qb-row">
+        <div class="qb-label">WHERE</div>
+        <div class="qb-body" style="flex-direction:column;align-items:flex-start">
+          <div id="qb-where-rows"></div>
+          <button class="btn btn-outline btn-sm" onclick="qbAddWhere()" id="qb-add-where-btn" style="margin-top:4px">+ Add Condition</button>
+        </div>
+      </div>
+
+      <!-- ORDER BY -->
+      <div class="qb-row">
+        <div class="qb-label">Order By</div>
+        <div class="qb-body">
+          <select id="qb-orderby" style="min-width:160px"><option value="">— None —</option></select>
+          <select id="qb-dir"><option>DESC</option><option>ASC</option></select>
+        </div>
+      </div>
+
+      <!-- TOP -->
+      <div class="qb-row">
+        <div class="qb-label">TOP rows</div>
+        <div class="qb-body">
+          <input type="number" id="qb-top" value="100" min="1" max="5000" style="width:80px">
+          <span style="font-size:11px;color:var(--muted)">max 5000 for safety</span>
+        </div>
+      </div>
+
+      <div class="qb-actions">
+        <button class="btn btn-primary" onclick="qbBuildSQL()">Build SQL →</button>
+        <button class="btn btn-success" onclick="qbExecute()">▶ Run Query</button>
+      </div>
+    </div>
+
+    <!-- ── SQL EDITOR TAB ── -->
+    <div id="tab-sql" class="tab-content">
+      <textarea id="sql-editor" placeholder="-- Write your SELECT query here
+-- Example:
+SELECT TOP 100 DocEntry, DocNum, CardCode, CardName, DocDate, DocTotal
+FROM [SBO_DB].[dbo].[OINV]
+WHERE DocumentStatus = 'O'
+ORDER BY DocDate DESC"></textarea>
+      <div class="sql-actions">
+        <span class="sql-note">Only SELECT statements are permitted.</span>
+        <button class="btn btn-outline btn-sm" onclick="clearSql()">Clear</button>
+        <button class="btn btn-success" onclick="sqlExecute()">▶ Run SQL</button>
+      </div>
+    </div>
+
+    <!-- ── RESULTS PANEL ── -->
+    <div class="results-panel collapsed" id="results-panel">
+      <div class="results-head" onclick="toggleResults()">
+        <h3>Results</h3>
+        <span class="res-count" id="res-count"></span>
+        <span class="res-time" id="res-time"></span>
+        <div style="display:flex;gap:6px;margin-left:auto" onclick="event.stopPropagation()">
+          <button class="btn btn-outline btn-sm" id="export-csv-btn" onclick="exportCSV()" style="display:none">Export CSV</button>
+        </div>
+        <span id="res-toggle" style="font-size:10px;color:var(--muted);margin-left:8px">▲ Collapse</span>
+      </div>
+      <div class="results-body" id="results-body">
+        <div class="empty-state"><span>Run a query to see results here</span></div>
+      </div>
+    </div>
+
+  </div><!-- /.main-panel -->
+</div><!-- /.workspace -->
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let _schema = [];       // [{ name, columns:[{name,type,maxLen,nullable}] }]
+let _activeTable = null;
+let _whereCount = 0;
+let _lastResults = [];
+let _resultsCols = [];
+let _sortCol = null;
+let _sortDir = 1;
+
+const tok = () => localStorage.getItem('hanny_token') || '';
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, {
+    ...opts,
+    headers: { 'x-auth-token': tok(), 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  const data = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+// ── Schema Loading ────────────────────────────────────────────────────────────
+async function loadSchema() {
+  const badge = document.getElementById('conn-badge');
+  const list  = document.getElementById('table-list');
+  list.innerHTML = '<div class="empty-state" style="height:200px"><span class="spinner"></span><span>Loading schema…</span></div>';
+  try {
+    const data = await api('/api/db/schema');
+    _schema = data.tables || [];
+    badge.textContent = `${data.db_type?.toUpperCase() || 'DB'}: ${data.database || ''}`;
+    badge.className = 'conn-badge conn-ok';
+    document.getElementById('tbl-count-label').textContent = `${_schema.length} Tables`;
+    renderTableList();
+    populateQbTable();
+  } catch (e) {
+    badge.textContent = 'Not Connected';
+    badge.className = 'conn-badge conn-no';
+    list.innerHTML = `<div style="padding:16px;font-size:12px;color:var(--red)">${e.message}</div>`;
+  }
+}
+
+// SAP B1 table name pattern: 4-char codes like OINV, ORDR, INV1, etc.
+const _sapPattern = /^[A-Z@][A-Z0-9]{2,4}[0-9]?$|^U_[A-Z]|^[A-Z]{2,4}[0-9]$/i;
+function isSapTable(name) { return _sapPattern.test(name); }
+
+function renderTableList() {
+  const q     = document.getElementById('tbl-search').value.toLowerCase();
+  const onlySap = document.getElementById('sap-only').checked;
+  const list  = document.getElementById('table-list');
+  const filtered = _schema.filter(t => {
+    if (onlySap && !isSapTable(t.name)) return false;
+    if (q && !t.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (!filtered.length) {
+    list.innerHTML = `<div style="padding:16px;font-size:12px;color:var(--muted)">No tables match "${q}"</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(t => `
+    <div class="tbl-item" id="ti-${t.name}">
+      <div class="tbl-header" onclick="toggleTable('${t.name}')">
+        <span class="tbl-arrow" id="ta-${t.name}">▶</span>
+        <span class="tbl-name">${t.name}</span>
+        <span class="tbl-count">${t.columns.length}</span>
+        <button class="tbl-btn" onclick="event.stopPropagation();selectTable('${t.name}')">Use</button>
+      </div>
+      <div class="col-list" id="cl-${t.name}">
+        ${t.columns.map(c => `
+          <div class="col-row" title="${c.type}${c.maxLen > 0 ? '('+c.maxLen+')' : ''} ${c.nullable?'NULL':'NOT NULL'}">
+            <span class="col-name">${c.name}</span>
+            <span class="col-type">${c.type}</span>
+            <button class="col-add" onclick="addColToSelect('${t.name}','${c.name}')">+ SEL</button>
+            <button class="col-add" onclick="addColToWhere('${t.name}','${c.name}')">+ WHR</button>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function toggleTable(name) {
+  const cl = document.getElementById(`cl-${name}`);
+  const ar = document.getElementById(`ta-${name}`);
+  const open = cl.classList.toggle('open');
+  ar.classList.toggle('open', open);
+}
+
+function selectTable(name) {
+  const sel = document.getElementById('qb-table');
+  sel.value = name;
+  qbTableChanged();
+  switchTab('builder', document.querySelector('.tab-btn'));
+  // highlight
+  document.querySelectorAll('.tbl-header').forEach(h => h.classList.remove('active'));
+  document.querySelector(`#ti-${name} .tbl-header`)?.classList.add('active');
+}
+
+// ── Query Builder ─────────────────────────────────────────────────────────────
+function populateQbTable() {
+  const sel = document.getElementById('qb-table');
+  const curr = sel.value;
+  const onlySap = document.getElementById('sap-only').checked;
+  const tables = onlySap ? _schema.filter(t => isSapTable(t.name)) : _schema;
+  sel.innerHTML = '<option value="">— Select a table —</option>' +
+    tables.map(t => `<option value="${t.name}" ${t.name===curr?'selected':''}>${t.name} (${t.columns.length})</option>`).join('');
+}
+
+function qbTableChanged() {
+  const name = document.getElementById('qb-table').value;
+  _activeTable = _schema.find(t => t.name === name) || null;
+  document.getElementById('qb-preview-btn').disabled = !_activeTable;
+  document.getElementById('qb-col-chips').innerHTML = '';
+  document.getElementById('qb-where-rows').innerHTML = '';
+  _whereCount = 0;
+
+  if (!_activeTable) { document.getElementById('qb-orderby').innerHTML = '<option value="">— None —</option>'; return; }
+
+  // All-cols checkbox
+  document.getElementById('qb-all-cols').checked = true;
+  qbToggleAllCols();
+
+  // ORDER BY
+  const ob = document.getElementById('qb-orderby');
+  ob.innerHTML = '<option value="">— None —</option>' +
+    _activeTable.columns.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  // Default: first date-ish column DESC
+  const dateCols = _activeTable.columns.filter(c => /date|time/i.test(c.name));
+  if (dateCols.length) ob.value = dateCols[0].name;
+}
+
+function qbToggleAllCols() {
+  const allChecked = document.getElementById('qb-all-cols').checked;
+  const chips = document.getElementById('qb-col-chips');
+  const colList = document.getElementById('qb-col-list');
+  if (allChecked) {
+    chips.innerHTML = '<span class="col-chip">* (All Columns)</span>';
+    colList.style.display = 'none';
+  } else {
+    chips.innerHTML = '';
+    colList.style.display = 'flex';
+    if (_activeTable) {
+      colList.innerHTML = _activeTable.columns.map(c =>
+        `<label class="col-chip" style="cursor:pointer">
+           <input type="checkbox" class="qb-col-check" value="${c.name}" checked style="width:12px;height:12px">
+           ${c.name}
+         </label>`).join('');
+    }
+  }
+}
+
+function addColToSelect(tableName, colName) {
+  if (tableName !== document.getElementById('qb-table').value) {
+    selectTable(tableName);
+    setTimeout(() => addColToSelect(tableName, colName), 200);
+    return;
+  }
+  // Uncheck "all"
+  const allChk = document.getElementById('qb-all-cols');
+  if (allChk.checked) { allChk.checked = false; qbToggleAllCols(); }
+  // Check the specific col
+  const chk = document.querySelector(`.qb-col-check[value="${colName}"]`);
+  if (chk) chk.checked = true;
+  switchTab('builder', document.querySelector('.tab-btn'));
+}
+
+function addColToWhere(tableName, colName) {
+  if (tableName !== document.getElementById('qb-table').value) {
+    selectTable(tableName);
+    setTimeout(() => addColToWhere(tableName, colName), 200);
+    return;
+  }
+  qbAddWhere(colName);
+  switchTab('builder', document.querySelector('.tab-btn'));
+}
+
+function qbAddWhere(preCol = '') {
+  if (!_activeTable) return;
+  const id = ++_whereCount;
+  const colOptions = _activeTable.columns.map(c =>
+    `<option value="${c.name}" ${c.name===preCol?'selected':''}>${c.name}</option>`).join('');
+  const row = document.createElement('div');
+  row.className = 'where-row';
+  row.id = `wr-${id}`;
+  row.innerHTML = `
+    <select id="wc-${id}" style="min-width:140px"><option value="">— Column —</option>${colOptions}</select>
+    <select id="wo-${id}" style="min-width:70px">
+      <option>=</option><option>!=</option><option>&gt;</option><option>&gt;=</option>
+      <option>&lt;</option><option>&lt;=</option><option>LIKE</option><option>NOT LIKE</option>
+      <option>IS NULL</option><option>IS NOT NULL</option><option>IN</option>
+    </select>
+    <input type="text" id="wv-${id}" placeholder="value" style="flex:1;min-width:90px">
+    <button class="btn-del" onclick="document.getElementById('wr-${id}').remove()" title="Remove">✕</button>`;
+  document.getElementById('qb-where-rows').appendChild(row);
+}
+
+function qbBuildSQL() {
+  const sql = buildSQLString();
+  if (!sql) return;
+  document.getElementById('sql-editor').value = sql;
+  switchTab('sql', document.querySelectorAll('.tab-btn')[1]);
+}
+
+function buildSQLString() {
+  const tbl = document.getElementById('qb-table').value;
+  if (!tbl) { alert('Please select a table first.'); return null; }
+  const top = Math.min(5000, Math.max(1, parseInt(document.getElementById('qb-top').value) || 100));
+
+  // Columns
+  let cols = '*';
+  if (!document.getElementById('qb-all-cols').checked) {
+    const checked = [...document.querySelectorAll('.qb-col-check:checked')].map(c => `[${c.value}]`);
+    if (checked.length) cols = checked.join(', ');
+  }
+
+  // Table ref — use db context if available
+  const tRef = `[${tbl}]`;
+
+  // WHERE
+  const conditions = [];
+  document.querySelectorAll('.where-row').forEach(row => {
+    const id  = row.id.replace('wr-','');
+    const col = document.getElementById(`wc-${id}`)?.value;
+    const op  = document.getElementById(`wo-${id}`)?.value;
+    const val = document.getElementById(`wv-${id}`)?.value?.trim();
+    if (!col || !op) return;
+    if ((op === 'IS NULL' || op === 'IS NOT NULL')) {
+      conditions.push(`[${col}] ${op}`);
+    } else if (op === 'IN') {
+      const items = (val || '').split(',').map(s => `'${s.trim().replace(/'/g,"''")}'`).join(', ');
+      conditions.push(`[${col}] IN (${items})`);
+    } else if (op === 'LIKE' || op === 'NOT LIKE') {
+      conditions.push(`[${col}] ${op} '${(val||'').replace(/'/g,"''")}'`);
+    } else {
+      const quoted = isNaN(Number(val)) ? `'${(val||'').replace(/'/g,"''")}'` : val;
+      conditions.push(`[${col}] ${op} ${quoted}`);
+    }
+  });
+  const where = conditions.length ? `\nWHERE ${conditions.join('\n  AND ')}` : '';
+
+  // ORDER BY
+  const ob  = document.getElementById('qb-orderby').value;
+  const dir = document.getElementById('qb-dir').value;
+  const order = ob ? `\nORDER BY [${ob}] ${dir}` : '';
+
+  return `SELECT TOP ${top} ${cols}\nFROM ${tRef}${where}${order}`;
+}
+
+async function qbExecute() {
+  const sql = buildSQLString();
+  if (sql) await runSQL(sql);
+}
+
+async function qbPreview() {
+  if (!_activeTable) return;
+  showLoading();
+  try {
+    const data = await api(`/api/db/preview/${_activeTable.name}`);
+    showResults(data.rows, Date.now());
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// ── SQL Editor ────────────────────────────────────────────────────────────────
+async function sqlExecute() {
+  const sql = document.getElementById('sql-editor').value.trim();
+  if (!sql) return;
+  await runSQL(sql);
+}
+
+function clearSql() { document.getElementById('sql-editor').value = ''; }
+
+// ── Query Execution ───────────────────────────────────────────────────────────
+async function runSQL(sql) {
+  showLoading();
+  const t0 = Date.now();
+  try {
+    const data = await api('/api/db-execute', { method: 'POST', body: JSON.stringify({ sql }) });
+    showResults(data.rows || [], t0);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function showLoading() {
+  const panel = document.getElementById('results-panel');
+  panel.className = 'results-panel expanded';
+  document.getElementById('res-toggle').textContent = '▲ Collapse';
+  document.getElementById('res-count').textContent = '';
+  document.getElementById('res-time').textContent = '';
+  document.getElementById('export-csv-btn').style.display = 'none';
+  document.getElementById('results-body').innerHTML =
+    '<div class="empty-state"><span class="spinner"></span><span>Running query…</span></div>';
+}
+
+function showError(msg) {
+  document.getElementById('res-count').textContent = 'Error';
+  document.getElementById('results-body').innerHTML = `<div class="err-box" style="margin:12px">❌ ${escHtml(msg)}</div>`;
+}
+
+function showResults(rows, t0) {
+  _lastResults = rows;
+  const elapsed = Date.now() - t0;
+  document.getElementById('res-count').textContent = `${rows.length} row${rows.length !== 1 ? 's' : ''}`;
+  document.getElementById('res-time').textContent = `${elapsed}ms`;
+  document.getElementById('export-csv-btn').style.display = rows.length ? 'block' : 'none';
+
+  if (!rows.length) {
+    document.getElementById('results-body').innerHTML =
+      '<div class="info-box" style="margin:12px">ℹ️ Query executed successfully. No rows returned.</div>';
+    return;
+  }
+
+  _resultsCols = Object.keys(rows[0]);
+  _sortCol = null;
+  renderResultsTable();
+}
+
+function renderResultsTable(col, dir) {
+  if (col !== undefined) {
+    if (_sortCol === col) { _sortDir *= -1; }
+    else { _sortCol = col; _sortDir = dir || -1; }
+  }
+  let rows = [..._lastResults];
+  if (_sortCol) {
+    rows.sort((a, b) => {
+      const av = a[_sortCol], bv = b[_sortCol];
+      if (av == null) return 1; if (bv == null) return -1;
+      const an = Number(av), bn = Number(bv);
+      if (!isNaN(an) && !isNaN(bn)) return (an - bn) * _sortDir;
+      return String(av).localeCompare(String(bv)) * _sortDir;
+    });
+  }
+
+  const ths = _resultsCols.map(c => {
+    const arrow = _sortCol === c ? (_sortDir > 0 ? ' ▲' : ' ▼') : '';
+    return `<th onclick="renderResultsTable('${c}')" title="Click to sort">${escHtml(c)}${arrow}</th>`;
+  }).join('');
+
+  const trs = rows.map(r =>
+    '<tr>' + _resultsCols.map(c => {
+      const v = r[c];
+      const s = v == null ? '<span style="color:#ccc">NULL</span>' : escHtml(String(v));
+      return `<td title="${escHtml(String(v ?? ''))}">${s}</td>`;
+    }).join('') + '</tr>'
+  ).join('');
+
+  document.getElementById('results-body').innerHTML =
+    `<table class="res-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+// ── Export CSV ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!_lastResults.length) return;
+  const cols = Object.keys(_lastResults[0]);
+  const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [cols.map(escape).join(',')];
+  _lastResults.forEach(r => lines.push(cols.map(c => escape(r[c])).join(',')));
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `query_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${tab}`)?.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function toggleResults() {
+  const panel = document.getElementById('results-panel');
+  const tog   = document.getElementById('res-toggle');
+  if (panel.classList.contains('collapsed')) {
+    panel.className = 'results-panel expanded';
+    tog.textContent = '▲ Collapse';
+  } else {
+    panel.className = 'results-panel collapsed';
+    tog.textContent = '▼ Show Results';
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Keyboard shortcut: Ctrl+Enter runs SQL
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    const active = document.querySelector('.tab-content.active')?.id;
+    if (active === 'tab-sql') sqlExecute();
+    else if (active === 'tab-builder') qbExecute();
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadSchema();
+</script>
+</body>
+</html>

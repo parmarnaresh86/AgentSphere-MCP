@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Sales Analysis Dashboard — SAP B1</title>
+
+<!-- Auth guard (runs before DOM is built) -->
+<script>
+(function(){
+  const t = localStorage.getItem('hanny_token');
+  if (!t) { window.location.replace('/login.html'); return; }
+  fetch('/auth/me', { headers: { 'x-auth-token': t } })
+    .then(r => { if (!r.ok) { localStorage.removeItem('hanny_token'); window.location.replace('/login.html'); } })
+    .catch(()=>{});
+})();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --green:#107E3E;--green-l:#E8F8F0;--red:#BB0000;--orange:#E9730C;--purple:#7B2D8B;--teal:#0B7D8A;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);display:flex;flex-direction:column}
+
+/* Shell */
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:50}
+.shell-back{display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.2);transition:background .15s}
+.shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
+.shell-divider{width:1px;height:20px;background:rgba(255,255,255,.2)}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.5);margin-left:4px}
+.shell-spacer{flex:1}
+.shell-badge{font-size:9.5px;padding:2px 8px;border-radius:10px;background:rgba(0,112,242,.5);color:#fff;font-weight:600}
+.shell-badge.loading{background:rgba(233,115,12,.55)}
+.shell-badge.ready{background:rgba(16,126,62,.55)}
+.shell-badge.error{background:rgba(187,0,0,.55)}
+.shell-btn{height:28px;padding:0 10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:var(--r);color:rgba(255,255,255,.85);font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background .15s;white-space:nowrap}
+.shell-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+.shell-btn.active{background:rgba(16,126,62,.4)}
+
+/* Filter bar */
+.filter-bar{background:var(--white);border-bottom:1px solid var(--border);padding:7px 14px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0;z-index:20}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fg input,.fg select{height:29px;padding:0 7px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);font-family:var(--font);outline:none;transition:border-color .15s}
+.fg input:focus,.fg select:focus{border-color:var(--green);background:var(--white)}
+.fg.wd input{width:118px}
+.fg.wv input,.fg.wv select{width:150px}
+.fg.wi input{width:140px}
+.fg.ws select{width:120px}
+.analyze-btn{height:29px;padding:0 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:background .15s;align-self:flex-end;white-space:nowrap}
+.analyze-btn:hover{background:#0A6A33}
+.analyze-btn:disabled{background:#94a3b8;cursor:not-allowed}
+.clear-btn{height:29px;padding:0 10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--r);font-size:11.5px;cursor:pointer;transition:all .15s;align-self:flex-end}
+.clear-btn:hover{border-color:var(--red);color:var(--red)}
+.csv-btn{height:29px;padding:0 10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--r);font-size:11.5px;cursor:pointer;transition:all .15s;align-self:flex-end}
+.csv-btn:hover{border-color:var(--green);color:var(--green)}
+
+/* Main layout */
+.main-area{display:flex;flex:1;min-height:0;overflow:hidden}
+
+/* Chat panel */
+.chat-panel{width:360px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--white)}
+.chat-topbar{border-bottom:1px solid var(--border);padding:8px 13px;display:flex;align-items:center;gap:9px;flex-shrink:0}
+.chat-avatar{width:29px;height:29px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0}
+.chat-name{font-size:12.5px;font-weight:600}
+.chat-status{font-size:11px;color:var(--green);display:flex;align-items:center;gap:4px}
+.status-dot{width:5px;height:5px;border-radius:50%;background:var(--green)}
+#messages{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:9px;background:var(--bg);scroll-behavior:smooth}
+#messages::-webkit-scrollbar{width:4px}
+#messages::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
+.msg-row{display:flex;gap:7px;align-self:flex-start}
+.msg-row.user{align-self:flex-end;flex-direction:row-reverse}
+.av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:2px;font-weight:700}
+.av.bot{background:var(--green);color:#fff}.av.user{background:var(--blue-light);color:var(--blue);border:1px solid #99CAFF}
+.bubble{padding:7px 11px;border-radius:var(--r);line-height:1.6;font-size:12.5px;max-width:90%;box-shadow:var(--shadow)}
+.bubble.bot{background:var(--white);border:1px solid var(--border);border-top-left-radius:0;color:var(--text)}
+.bubble.user{background:var(--green);color:#fff;border-top-right-radius:0}
+.bubble.bot table{border-collapse:collapse;width:100%;margin:5px 0;font-size:11px}
+.bubble.bot th{background:#F5F6F7;padding:4px 8px;font-size:10px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border)}
+.bubble.bot td{padding:3px 8px;border-bottom:1px solid #F0F0F0}
+.bubble.bot tr:hover td{background:var(--green-l)}
+.bubble.bot h2{font-size:13px;font-weight:700;color:var(--green);margin:3px 0 5px;border-bottom:1px solid var(--green-l);padding-bottom:3px}
+.bubble.bot h3{font-size:12px;font-weight:700;color:var(--green);margin:5px 0 2px}
+.bubble.bot strong{font-weight:700}.bubble.bot code{background:#F5F6F7;border-radius:2px;padding:1px 4px;font-size:11px;font-family:monospace}
+.bubble.bot ul,.bubble.bot ol{padding-left:14px;margin:2px 0}.bubble.bot li{margin:1px 0}
+.bubble.bot p{margin:2px 0}
+.bubble.bot pre{background:#1E293B;color:#E2E8F0;border-radius:4px;padding:8px;font-size:11px;overflow-x:auto;margin:4px 0}
+.qr-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;padding-left:33px}
+.qr-chip{background:var(--white);border:1px solid var(--green);color:var(--green);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.qr-chip:hover{background:var(--green);color:#fff}.qr-chip.used{opacity:.4;cursor:default;pointer-events:none}
+.typing-row{display:flex;gap:7px;align-self:flex-start}
+.typing-bubble{background:var(--white);border:1px solid var(--border);border-radius:var(--r);border-top-left-radius:0;padding:9px 13px;display:flex;align-items:center;gap:4px}
+.dot{width:6px;height:6px;border-radius:50%;background:#94a3b8;animation:bounce 1.2s infinite ease-in-out}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1);opacity:1}}
+.input-area{background:var(--white);border-top:1px solid var(--border);padding:7px 11px 9px;flex-shrink:0}
+.input-row{display:flex;align-items:flex-end;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:4px 7px;transition:border-color .15s}
+.input-row:focus-within{border-color:var(--green);background:var(--white)}
+#user-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;font-family:var(--font);resize:none;max-height:70px;line-height:1.5;min-height:20px}
+#user-input::placeholder{color:#ABABAB}
+.send-btn{width:28px;height:28px;background:var(--green);color:#fff;border:none;border-radius:var(--r);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
+.send-btn:hover{background:#0A6A33}.send-btn:disabled{background:#cbd5e1;cursor:not-allowed}
+.input-hint{font-size:10px;color:var(--muted);margin-top:3px;text-align:right}
+
+/* Analytics panel */
+.analytics-panel{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* View tabs */
+.view-tabs{background:var(--white);border-bottom:2px solid var(--border);padding:0 14px;display:flex;gap:0;flex-shrink:0;overflow-x:auto}
+.view-tabs::-webkit-scrollbar{height:3px}
+.view-tabs::-webkit-scrollbar-thumb{background:#cbd5e1}
+.vtab{padding:10px 14px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.vtab:hover{color:var(--text);background:#F8F9FA}
+.vtab.active{color:var(--green);border-bottom-color:var(--green);font-weight:700}
+
+/* Analytics scroll area — horizontal scroll kicks in (instead of squeezing/
+   clipping KPI tiles and charts unreadably small) whenever the window is
+   narrower than the dashboard's natural content width. */
+.ap-scroll{flex:1;overflow-y:auto;overflow-x:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.ap-scroll::-webkit-scrollbar{width:5px;height:5px}
+.ap-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+/* KPI row */
+.kpi-row{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:8px;min-width:700px}
+.kpi-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:10px 12px;box-shadow:var(--shadow)}
+.kpi-card.c-green{border-left:3px solid var(--green)}
+.kpi-card.c-blue{border-left:3px solid var(--blue)}
+.kpi-card.c-orange{border-left:3px solid var(--orange)}
+.kpi-card.c-teal{border-left:3px solid var(--teal)}
+.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+.kpi-value{font-size:17px;font-weight:700;color:var(--text)}
+.kpi-sub{font-size:10.5px;color:var(--muted);margin-top:1px}
+.kpi-card.c-green .kpi-value{color:var(--green)}
+.kpi-card.c-blue .kpi-value{color:var(--blue)}
+.kpi-card.c-orange .kpi-value{color:var(--orange)}
+.kpi-card.c-teal .kpi-value{color:var(--teal)}
+
+/* Chart row */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:700px}
+.chart-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:12px;box-shadow:var(--shadow)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.card-title{font-size:12px;font-weight:700;color:var(--text)}
+.card-actions{display:flex;gap:5px}
+.dim-tab{font-size:10.5px;padding:2px 8px;border-radius:12px;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg);transition:all .15s}
+.dim-tab.active{background:var(--green);color:#fff;border-color:var(--green)}
+.chart-wrap{position:relative;height:180px}
+
+/* AI insight */
+.insight-card{background:linear-gradient(135deg,var(--green-l),#F0FDF4);border:1px solid #A7F3D0;border-left:3px solid var(--green);border-radius:var(--r);padding:11px 13px;font-size:12.5px;line-height:1.65}
+.insight-card h3{font-size:11.5px;font-weight:700;color:var(--green);margin-bottom:5px}
+.insight-card h2{font-size:12.5px;font-weight:700;color:var(--green);margin:4px 0 3px}
+.insight-card p{margin:2px 0}.insight-card ul{padding-left:14px;margin:2px 0}
+
+/* Table card */
+.table-card{background:var(--white);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);overflow:hidden}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border)}
+.table-header span{font-size:12px;font-weight:700;color:var(--text)}
+.tbl-actions{display:flex;gap:6px;align-items:center}
+.tbl-btn{font-size:11px;padding:3px 9px;border-radius:var(--r);cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg);transition:all .15s}
+.tbl-btn:hover{border-color:var(--green);color:var(--green)}.tbl-btn.active{background:var(--green-l);border-color:var(--green);color:var(--green)}
+.tbl-search{padding:6px 12px;border-bottom:1px solid var(--border)}
+.tbl-search input{width:100%;height:27px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);font-size:12px;outline:none}
+.tbl-search input:focus{border-color:var(--green)}
+.table-wrap{overflow-x:auto;max-height:280px;overflow-y:auto}
+.table-wrap::-webkit-scrollbar{width:4px;height:4px}
+.table-wrap::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
+.data-table{border-collapse:collapse;width:100%;font-size:11.5px;min-width:600px}
+.data-table th{background:#F5F6F7;padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);position:sticky;top:0;cursor:pointer;user-select:none;white-space:nowrap}
+.data-table th:hover{background:#EBEBEB}
+.data-table th.sort-asc::after{content:' ▲';opacity:.7}.data-table th.sort-desc::after{content:' ▼';opacity:.7}
+.data-table td{padding:5px 10px;border-bottom:1px solid #F0F0F0;white-space:nowrap}
+.data-table tr:hover td{background:var(--green-l)}
+.data-table .amt{text-align:right;font-variant-numeric:tabular-nums}
+.data-table .tag{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600}
+.tag-green{background:var(--green-l);color:var(--green)}
+.tag-blue{background:var(--blue-light);color:var(--blue)}
+.tag-orange{background:#FFF3E5;color:var(--orange)}
+.tag-red{background:#FFE0E0;color:var(--red)}
+
+/* Dim filter chips */
+.dim-chips{display:flex;gap:6px;flex-wrap:wrap;padding:5px 14px;background:var(--white);border-bottom:1px solid var(--border);flex-shrink:0;min-height:33px;align-items:center}
+.dim-chip{font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg);transition:all .15s;white-space:nowrap}
+.dim-chip.active{background:var(--green);color:#fff;border-color:var(--green)}
+.dim-section-label{font-size:10px;color:var(--muted);font-weight:600;white-space:nowrap}
+
+/* No data */
+.no-data{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px;gap:9px;color:var(--muted);text-align:center}
+.no-data-icon{font-size:32px;opacity:.3}
+
+@media(max-width:1100px){.chat-panel{display:none}}
+@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.chart-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- Shell bar -->
+<div class="shell-bar">
+  <a class="shell-back" href="/index.html">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Back
+  </a>
+  <div class="shell-divider"></div>
+  <div class="shell-icon">📈</div>
+  <div><div class="shell-title">Sales Analysis Dashboard</div></div>
+  <span class="shell-subtitle">7 AR / Sales HANA Views</span>
+  <div class="shell-spacer"></div>
+  <button class="shell-btn" id="toggle-chat-btn" onclick="toggleChat()">⬡ Chat</button>
+  <button class="shell-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+  <span class="shell-badge" id="status-badge">READY</span>
+</div>
+
+<!-- Filter bar -->
+<div class="filter-bar">
+  <div class="fg wd"><label>From Date</label><input type="date" id="f-from"/></div>
+  <div class="fg wd"><label>To Date</label><input type="date" id="f-to"/></div>
+  <div class="fg wv"><label>Customer</label><input type="text" id="f-customer" placeholder="Code or name…"/></div>
+  <div class="fg wi"><label>Item</label><input type="text" id="f-item" placeholder="Item code or desc…"/></div>
+  <div class="fg wv"><label>Sales Person</label><input type="text" id="f-salesperson" placeholder="Name…"/></div>
+  <div class="fg ws"><label>Brand</label>
+    <select id="f-brand">
+      <option value="">All Brands</option>
+      <optgroup label="Predefined">
+        <option value="BRAND">BRAND</option><option value="OWN">OWN</option><option value="THIRD">THIRD PARTY</option>
+      </optgroup>
+      <optgroup label="From Data" id="brand-data"></optgroup>
+    </select>
+  </div>
+  <div class="fg ws"><label>Sub-Brand</label><select id="f-subbrand"><option value="">All Sub-Brands</option><optgroup label="From Data" id="subbrand-data"></optgroup></select></div>
+  <div class="fg ws"><label>Universe</label><select id="f-universe"><option value="">All Universe</option><optgroup label="From Data" id="universe-data"></optgroup></select></div>
+  <div class="fg ws" id="f-market-wrap" style="display:none"><label>Market</label><select id="f-market"><option value="">All Markets</option><optgroup label="From Data" id="market-data"></optgroup></select></div>
+  <div class="fg ws" id="f-nominal-wrap" style="display:none"><label>Nominal Type</label><select id="f-nominal"><option value="">All Types</option><optgroup label="From Data" id="nominal-data"></optgroup></select></div>
+  <div class="fg ws"><label>Territory</label><select id="f-territory"><option value="">All Territories</option><optgroup label="From Data" id="territory-data"></optgroup></select></div>
+  <div class="fg ws"><label>Branch</label><select id="f-branch"><option value="">All Branches</option><optgroup label="From Data" id="branch-data"></optgroup></select></div>
+  <button class="analyze-btn" id="analyze-btn" onclick="runAnalyze()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Analyze
+  </button>
+  <button class="clear-btn" onclick="clearFilters()">Clear</button>
+  <button class="csv-btn" onclick="exportCsv()">⬇ CSV</button>
+</div>
+
+<!-- Main area -->
+<div class="main-area">
+
+  <!-- Chat panel -->
+  <div class="chat-panel" id="chat-panel">
+    <div class="chat-topbar">
+      <div class="chat-avatar">📈</div>
+      <div style="flex:1">
+        <div class="chat-name">Sales AI Analyst</div>
+        <div class="chat-status"><span class="status-dot"></span><span id="chat-status-text">Ready</span></div>
+      </div>
+    </div>
+    <div id="messages">
+      <div class="no-data">
+        <div class="no-data-icon">📊</div>
+        <div style="font-size:12.5px">Select a view tab and click <strong>Analyze</strong></div>
+        <div style="font-size:11px;color:#aaa;margin-top:4px">I'll answer questions about your sales data</div>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="user-input" rows="1" placeholder="Ask about sales, margins, customers…" autocomplete="off"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendFromInput()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+      <div class="input-hint"><strong>Enter</strong> send · <strong>Shift+Enter</strong> new line</div>
+    </div>
+  </div>
+
+  <!-- Analytics panel -->
+  <div class="analytics-panel">
+
+    <!-- View tabs -->
+    <div class="view-tabs" id="view-tabs">
+      <div class="vtab active" data-view="sales"       onclick="switchView('sales',this)">📦 Sales Analysis</div>
+      <div class="vtab"        data-view="avgprice"    onclick="switchView('avgprice',this)">💰 Avg Selling Price</div>
+      <div class="vtab"        data-view="backorder"   onclick="switchView('backorder',this)">⚠️ Back Order</div>
+      <div class="vtab"        data-view="custbalance" onclick="switchView('custbalance',this)">🏦 Customer Balance</div>
+      <div class="vtab"        data-view="ontime"      onclick="switchView('ontime',this)">⏱ On-Time Delivery</div>
+      <div class="vtab"        data-view="bydoc"       onclick="switchView('bydoc',this)">📄 By Document</div>
+      <div class="vtab"        data-view="finance"     onclick="switchView('finance',this)">📊 Finance Report</div>
+    </div>
+
+    <!-- Dim filter chips (quick dimension filter) -->
+    <div class="dim-chips" id="dim-chips">
+      <span class="dim-section-label">Brand:</span>
+    </div>
+
+    <!-- Content scroll -->
+    <div class="ap-scroll">
+
+      <!-- KPI row -->
+      <div class="kpi-row" id="kpi-row">
+        <div class="kpi-card c-green"><div class="kpi-label" id="kpi1-label">Net Sales</div><div class="kpi-value" id="kpi1-val">—</div><div class="kpi-sub" id="kpi1-sub">—</div></div>
+        <div class="kpi-card c-blue"><div class="kpi-label" id="kpi2-label">Gross Profit</div><div class="kpi-value" id="kpi2-val">—</div><div class="kpi-sub" id="kpi2-sub">—</div></div>
+        <div class="kpi-card c-orange"><div class="kpi-label" id="kpi3-label">Customers</div><div class="kpi-value" id="kpi3-val">—</div><div class="kpi-sub" id="kpi3-sub">—</div></div>
+        <div class="kpi-card c-teal"><div class="kpi-label" id="kpi4-label">Records</div><div class="kpi-value" id="kpi4-val">—</div><div class="kpi-sub" id="kpi4-sub">—</div></div>
+      </div>
+
+      <!-- AI Insight -->
+      <div class="insight-card" id="insight-card" style="display:none">
+        <h3>🤖 AI Insight — <span id="insight-view-label"></span></h3>
+        <div id="insight-body"></div>
+      </div>
+
+      <!-- Charts -->
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title" id="chart1-title">Top Analysis</div>
+            <div class="card-actions" id="chart1-actions">
+              <div class="dim-tab active" onclick="switchGroupBy('customer',this)">Customer</div>
+              <div class="dim-tab" onclick="switchGroupBy('item',this)">Item</div>
+              <div class="dim-tab" onclick="switchGroupBy('brand',this)">Brand</div>
+              <div class="dim-tab" onclick="switchGroupBy('period',this)">Period</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart1"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title" id="chart2-title">Dimension Breakdown</div>
+            <div class="card-actions" id="chart2-actions">
+              <div class="dim-tab active" onclick="switchDimChart('brand',this)">Brand</div>
+              <div class="dim-tab" onclick="switchDimChart('subbrand',this)">Sub-Brand</div>
+              <div class="dim-tab" onclick="switchDimChart('universe',this)">Universe</div>
+              <div class="dim-tab" onclick="switchDimChart('territory',this)">Territory</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart2"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Data table -->
+      <div class="table-card">
+        <div class="table-header">
+          <span id="table-title">Customer Analysis <span id="row-count" style="font-weight:400;font-size:11px;color:var(--muted)"></span></span>
+          <div class="tbl-actions">
+            <button class="tbl-btn active" id="grp-customer-btn" onclick="setTableGroup('customer')">By Customer</button>
+            <button class="tbl-btn" id="grp-item-btn" onclick="setTableGroup('item')">By Item</button>
+            <button class="tbl-btn" id="grp-period-btn" onclick="setTableGroup('period')">By Period</button>
+            <button class="tbl-btn" id="grp-brand-btn" onclick="setTableGroup('brand')">By Brand</button>
+            <button class="tbl-btn" onclick="exportCsv()">⬇ CSV</button>
+          </div>
+        </div>
+        <div class="tbl-search"><input type="text" id="tbl-search" placeholder="Search in table…" oninput="filterTable()"/></div>
+        <div class="table-wrap">
+          <table class="data-table" id="data-table">
+            <thead id="table-head"></thead>
+            <tbody id="table-body">
+              <tr><td colspan="6" style="text-align:center;padding:28px;color:var(--muted)">Load data to see details</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- .ap-scroll -->
+  </div><!-- .analytics-panel -->
+</div><!-- .main-area -->
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const TOKEN = () => localStorage.getItem('hanny_token') || '';
+let sessionId = null, isBusy = false, currentData = null;
+let activeView = 'sales', tableGroup = 'customer', chartGroup = 'customer', dimChartKey = 'brand';
+let sortCol = null, sortDir = 'desc';
+let chart1 = null, chart2 = null;
+let dataCtxStr = '';
+let _chatVisible = true;
+
+const VIEW_META = {
+  sales:       { label:'Sales Analysis',        kpis:['NetSalesAmountLC','GrossProfitLC','customers','rowCount'] },
+  avgprice:    { label:'Average Selling Price',  kpis:['NetSalesAmountLC','AverageNetUnitPriceLC','GrossProfitPercentage','rowCount'] },
+  backorder:   { label:'Back Order Status',      kpis:['OrderedQuantityInInventoryUoM','DeliveredQuantityInInvUoM','OpenQuantityInInventoryUoM','BackOrderPercentage'] },
+  custbalance: { label:'Customer Balance',       kpis:['OpenSalesOrderBalance','AccountReceivableBalance','CustomerCreditLimit','customers'] },
+  ontime:      { label:'On-Time Delivery',       kpis:['NumberOfSalesOrder','DelayedDays','AdvanceDays','AverageDeliveryVarianceDays'] },
+  bydoc:       { label:'By Document',            kpis:['NetSalesAmountLC','AppliedNetSalesAmountLC','OpenAmountLC','customers'] },
+  finance:     { label:'Finance Report',         kpis:['NetAmountLC','EURValue','USDValue','DiscountEstimatePercent'] },
+};
+
+const KPI_LABELS = {
+  NetSalesAmountLC:'Net Sales (LC)',GrossProfitLC:'Gross Profit',QuantityInInventoryUoM:'Qty (Inv UoM)',
+  GrossProfitMarginBySalesAmount:'GP Margin %',GrossProfitMarginByBaseAmount:'GP Margin (Base) %',
+  NetSalesAmountSC:'Net Sales (SC)',SalesQuantityInInventoryUoM:'Sales Qty',
+  AverageNetUnitPriceLC:'Avg Unit Price',AverageItemCostLC:'Avg Item Cost',GrossProfitPercentage:'GP %',
+  OrderedQuantityInInventoryUoM:'Ordered Qty',DeliveredQuantityInInvUoM:'Delivered Qty',
+  OpenQuantityInInventoryUoM:'Open Qty',BackOrderPercentage:'Back Order %',
+  OpenSalesOrderBalance:'Open SO Balance',OpenDeliveryBalance:'Open Delivery Bal',
+  AccountReceivableBalance:'AR Balance',CustomerCreditLimit:'Credit Limit',CustomerBalanceTotal:'Total Balance',
+  NumberOfSalesOrder:'SO Count',DelayedDays:'Delayed Days',AdvanceDays:'Advance Days',
+  AverageDeliveryVarianceDays:'Avg Variance Days',
+  AppliedNetSalesAmountLC:'Applied Net Sales',OpenAmountLC:'Open Amount',
+  NetAmountLC:'Net Amount (LC)',EURValue:'EUR Value',USDValue:'USD Value',DiscountEstimatePercent:'Discount %',
+  customers:'Customers',rowCount:'Records',
+};
+
+const CHART_COLORS = ['#107E3E','#0070F2','#E9730C','#BB0000','#7B2D8B','#0B7D8A','#B07800','#1E40AF','#10B981','#F59E0B'];
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  document.getElementById('f-to').value   = now.toISOString().slice(0,10);
+  document.getElementById('f-from').value = `${now.getFullYear()}-01-01`;
+  if (typeof marked !== 'undefined') marked.setOptions({ breaks:true, gfm:true });
+  const inp = document.getElementById('user-input');
+  inp.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendFromInput(); } });
+  inp.addEventListener('input', ()=>{ inp.style.height='auto'; inp.style.height=Math.min(inp.scrollHeight,70)+'px'; });
+  startChat();
+});
+
+// ── Safe JSON fetch ────────────────────────────────────────────────────────────
+async function safeJson(r) {
+  const ct = r.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    if (r.status === 401) throw new Error('Session expired — please refresh the page');
+    const t = await r.text().catch(()=>'');
+    throw new Error(t.includes('<!DOCTYPE') ? `Server error (${r.status})` : t.slice(0,200) || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function renderMd(t){ if(typeof marked==='undefined') return escHtml(t).replace(/\n/g,'<br>'); try{return marked.parse(t);}catch{return escHtml(t);} }
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtN(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function fmtPct(n){ return n==null?'—':Number(n).toFixed(1)+'%'; }
+function isPct(m){ return m.toLowerCase().includes('percent')||m.toLowerCase().includes('margin')||m.toLowerCase().includes('rate'); }
+function fmtVal(m,v){ return isPct(m)?fmtPct(v):fmtN(v); }
+
+// ── View switching ─────────────────────────────────────────────────────────────
+function switchView(view, el) {
+  activeView = view;
+  document.querySelectorAll('.vtab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  sortCol = null;
+  // show/hide finance-only filters
+  const isFinance = view === 'finance';
+  document.getElementById('f-market-wrap').style.display  = isFinance ? '' : 'none';
+  document.getElementById('f-nominal-wrap').style.display = isFinance ? '' : 'none';
+}
+
+// ── Analyze ───────────────────────────────────────────────────────────────────
+async function runAnalyze() {
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  setStatus('loading','LOADING…');
+
+  const body = {
+    view:     activeView,
+    fromDate: document.getElementById('f-from').value,
+    toDate:   document.getElementById('f-to').value,
+    filters: {
+      customer:   document.getElementById('f-customer').value.trim()    || undefined,
+      item:       document.getElementById('f-item').value.trim()        || undefined,
+      salesPerson:document.getElementById('f-salesperson').value.trim() || undefined,
+      brand:      document.getElementById('f-brand').value              || undefined,
+      subBrand:   document.getElementById('f-subbrand').value           || undefined,
+      universe:   document.getElementById('f-universe').value           || undefined,
+      territory:  document.getElementById('f-territory').value          || undefined,
+      branch:     document.getElementById('f-branch').value             || undefined,
+      market:     document.getElementById('f-market').value             || undefined,
+      nominalType:document.getElementById('f-nominal').value            || undefined,
+    },
+  };
+
+  try {
+    const r = await fetch('/api/sales-analysis/analyze', {
+      method:'POST', headers:{'Content-Type':'application/json','x-auth-token':TOKEN()}, body:JSON.stringify(body),
+    });
+    const data = await safeJson(r);
+    if (!data.ok) throw new Error(data.error || 'Analysis failed');
+
+    currentData = data;
+    updateKPIs(data);
+    updateFilterOptions(data.options);
+    updateDimChips(data);
+    renderCharts(data);
+    renderTable();
+
+    if (data.aiInsight) {
+      document.getElementById('insight-card').style.display = '';
+      document.getElementById('insight-view-label').textContent = VIEW_META[activeView]?.label || activeView;
+      document.getElementById('insight-body').innerHTML = renderMd(data.aiInsight);
+    } else {
+      document.getElementById('insight-card').style.display = 'none';
+    }
+
+    dataCtxStr = buildContextStr(data);
+    sessionId = null;
+    setStatus('ready','READY');
+    const meta = VIEW_META[activeView];
+    appendMessage('bot',
+      `✅ **${meta?.label||activeView}** loaded — **${fmtN(data.rowCount)}** rows, **${fmtN(data.totals?.customers||0)}** customers.\n\nAsk me anything about this data.`,
+      ['Top 10 customers','Gross profit by brand','Monthly trend','Back order risk','Show OData query','Credit limit risk']
+    );
+  } catch(e) {
+    setStatus('error','ERROR');
+    appendMessage('bot', `❌ Failed: **${e.message}**\n\nCheck HANA connection and date range.`);
+  } finally { btn.disabled = false; }
+}
+
+// ── KPI update ────────────────────────────────────────────────────────────────
+function updateKPIs(data) {
+  const meta = VIEW_META[activeView];
+  const t = data.totals || {};
+  const kpiKeys = meta?.kpis || [];
+  const colors = ['c-green','c-blue','c-orange','c-teal'];
+
+  kpiKeys.forEach((k,i) => {
+    const lEl = document.getElementById(`kpi${i+1}-label`);
+    const vEl = document.getElementById(`kpi${i+1}-val`);
+    const sEl = document.getElementById(`kpi${i+1}-sub`);
+    if (!lEl) return;
+    lEl.textContent = KPI_LABELS[k] || k;
+    vEl.textContent = fmtVal(k, t[k]);
+    sEl.textContent = i===0 ? `${fmtN(data.rowCount)} rows` : `${fmtN(t.customers||0)} customers`;
+    const card = lEl.closest('.kpi-card');
+    if (card) { card.className = `kpi-card ${colors[i]}`; }
+  });
+}
+
+// ── Filter options ────────────────────────────────────────────────────────────
+function updateFilterOptions(opts) {
+  if (!opts) return;
+  const pop = (id, arr) => { const el=document.getElementById(id); if(!el||!arr) return; el.innerHTML=''; arr.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o);}); };
+  pop('brand-data',    opts.brands);
+  pop('subbrand-data', opts.subBrands);
+  pop('universe-data', opts.universes);
+  pop('territory-data',opts.territories);
+  pop('branch-data',   opts.branches);
+  pop('market-data',   opts.markets);
+  pop('nominal-data',  opts.nominalTypes);
+}
+
+// ── Dim chips ─────────────────────────────────────────────────────────────────
+function updateDimChips(data) {
+  const chips = document.getElementById('dim-chips');
+  chips.innerHTML = '<span class="dim-section-label">Brand:</span>';
+  const brands = (data.byBrand || []).slice(0, 12);
+  brands.forEach(b => {
+    const c = document.createElement('span');
+    c.className = 'dim-chip';
+    c.textContent = b._label || b._key;
+    c.onclick = () => {
+      const cur = document.getElementById('f-brand').value;
+      if (cur === c.textContent) {
+        document.getElementById('f-brand').value = '';
+        c.classList.remove('active');
+      } else {
+        document.getElementById('f-brand').value = c.textContent;
+        chips.querySelectorAll('.dim-chip').forEach(x=>x.classList.remove('active'));
+        c.classList.add('active');
+      }
+      runAnalyze();
+    };
+    chips.appendChild(c);
+  });
+}
+
+// ── Build context string for AI chat ─────────────────────────────────────────
+function buildContextStr(data) {
+  const meta = VIEW_META[activeView];
+  const t = data.totals || {};
+  const kpis = (meta?.kpis||[]).slice(0,3).map(k=>`${KPI_LABELS[k]}: ${fmtVal(k,t[k])}`).join(', ');
+  const topC  = (data.byCustomer||[]).slice(0,5).map(c=>`  ${c._label||c._key}: ${fmtVal(meta?.kpis?.[0]||'NetSalesAmountLC', c[meta?.kpis?.[0]||'NetSalesAmountLC'])}`).join('\n');
+  const periods = (data.byPeriod||[]).slice(-6).map(p=>`  ${p._key}: ${fmtVal(meta?.kpis?.[0]||'NetSalesAmountLC', p[meta?.kpis?.[0]||'NetSalesAmountLC'])}`).join('\n');
+  const brands  = (data.byBrand||[]).slice(0,5).map(b=>`  ${b._label}: ${fmtVal(meta?.kpis?.[0]||'NetSalesAmountLC', b[meta?.kpis?.[0]||'NetSalesAmountLC'])}`).join('\n');
+  return `VIEW: ${meta?.label||activeView} | Period: ${data.params?.fromDate} to ${data.params?.toDate}
+TOTALS: ${kpis} | Rows: ${data.rowCount} | Customers: ${t.customers}
+TOP CUSTOMERS:\n${topC}
+RECENT TREND:\n${periods}
+BRAND BREAKDOWN:\n${brands}`;
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+function renderCharts(data) {
+  buildChart1(data);
+  buildChart2(data);
+}
+
+function getFirstMeasure() {
+  return VIEW_META[activeView]?.kpis?.[0] || 'NetSalesAmountLC';
+}
+
+function buildChart1(data) {
+  if (chart1) { chart1.destroy(); chart1 = null; }
+  const m = getFirstMeasure();
+  let rows = [], label = KPI_LABELS[m]||m;
+  if (chartGroup==='customer') rows=(data.byCustomer||[]).slice(0,10);
+  else if (chartGroup==='item') rows=(data.byItem||[]).slice(0,10);
+  else if (chartGroup==='brand') rows=(data.byBrand||[]).slice(0,10);
+  else rows=(data.byPeriod||[]).slice(-12);
+
+  const ctx = document.getElementById('chart1');
+  if (!ctx || !rows.length) return;
+  chart1 = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:rows.map(r=>String(r._label||r._key||'').substring(0,22)),
+      datasets:[{label, data:rows.map(r=>Number(r[m]||0)), backgroundColor:CHART_COLORS.map(c=>c+'BB'), borderColor:CHART_COLORS, borderWidth:1, borderRadius:4}],
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>isPct(m)?v.toFixed(1)+'%':abbreviate(v)}}}},
+  });
+  document.getElementById('chart1-title').textContent = `Top 10 by ${label}`;
+}
+
+function buildChart2(data) {
+  if (chart2) { chart2.destroy(); chart2 = null; }
+  const m = getFirstMeasure();
+  let rows = [];
+  if (dimChartKey==='brand')     rows=(data.byBrand||[]).slice(0,10);
+  else if (dimChartKey==='subbrand') rows=(data.bySubBrand||[]).slice(0,10);
+  else if (dimChartKey==='universe') rows=(data.byUniverse||[]).slice(0,10);
+  else rows=(data.byTerritory||[]).slice(0,10);
+
+  const ctx = document.getElementById('chart2');
+  if (!ctx || !rows.length) { if(ctx){const c=ctx.getContext('2d');c.clearRect(0,0,ctx.width,ctx.height);} return; }
+  chart2 = new Chart(ctx, {
+    type:'doughnut',
+    data:{labels:rows.map(r=>String(r._label||r._key||'').substring(0,20)),datasets:[{data:rows.map(r=>Math.abs(Number(r[m]||0))),backgroundColor:CHART_COLORS,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:12}}}},
+  });
+}
+
+function switchGroupBy(key, el) {
+  chartGroup = key;
+  document.querySelectorAll('#chart1-actions .dim-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if (currentData) buildChart1(currentData);
+}
+
+function switchDimChart(key, el) {
+  dimChartKey = key;
+  document.querySelectorAll('#chart2-actions .dim-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if (currentData) buildChart2(currentData);
+}
+
+function abbreviate(v) {
+  if (Math.abs(v)>=1e6) return (v/1e6).toFixed(1)+'M';
+  if (Math.abs(v)>=1e3) return (v/1e3).toFixed(1)+'K';
+  return v.toFixed(0);
+}
+
+// ── Table ──────────────────────────────────────────────────────────────────────
+function renderTable() {
+  if (!currentData) return;
+  const meta = VIEW_META[activeView];
+  const measures = (meta?.kpis||[]).filter(k=>!['customers','rowCount'].includes(k));
+  const t = currentData;
+
+  let rows = [], groupLabel = '';
+  if (tableGroup==='customer') { rows=(t.byCustomer||[]).slice(0,100); groupLabel='Customer'; }
+  else if (tableGroup==='item')   { rows=(t.byItem||[]).slice(0,100);     groupLabel='Item'; }
+  else if (tableGroup==='period') { rows=(t.byPeriod||[]).slice(0,48);    groupLabel='Period'; }
+  else if (tableGroup==='brand')  { rows=(t.byBrand||[]).slice(0,50);     groupLabel='Brand'; }
+
+  document.getElementById('table-title').innerHTML =
+    `${groupLabel} Analysis <span id="row-count" style="font-weight:400;font-size:11px;color:var(--muted)">(${rows.length})</span>`;
+
+  const head = document.getElementById('table-head');
+  head.innerHTML = `<tr><th onclick="sortBy(0)">#</th><th onclick="sortBy(1)">${groupLabel}</th>${measures.map((m,i)=>`<th onclick="sortBy(${i+2})" style="text-align:right">${KPI_LABELS[m]||m}</th>`).join('')}<th onclick="sortBy(${measures.length+2})" style="text-align:right">Count</th></tr>`;
+
+  const body = document.getElementById('table-body');
+  if (!rows.length) { body.innerHTML=`<tr><td colspan="${measures.length+3}" style="text-align:center;padding:24px;color:var(--muted)">No data for this grouping</td></tr>`; return; }
+
+  body.innerHTML = rows.map((r,i) => {
+    const cells = measures.map(m => {
+      const v = fmtVal(m, r[m]);
+      const neg = Number(r[m]||0) < 0;
+      return `<td class="amt">${neg?`<span class="tag tag-red">${v}</span>`:v}</td>`;
+    }).join('');
+    return `<tr><td>${i+1}</td><td>${escHtml(String(r._label||r._key||'Unknown').substring(0,45))}</td>${cells}<td class="amt">${fmtN(r._count)}</td></tr>`;
+  }).join('');
+}
+
+let _allRows = [];
+function filterTable() {
+  const q = document.getElementById('tbl-search').value.toLowerCase();
+  const body = document.getElementById('table-body');
+  body.querySelectorAll('tr').forEach(r => {
+    const txt = Array.from(r.cells).map(c=>c.textContent).join(' ').toLowerCase();
+    r.style.display = txt.includes(q) ? '' : 'none';
+  });
+}
+
+function setTableGroup(grp) {
+  tableGroup = grp;
+  ['customer','item','period','brand'].forEach(k => {
+    const btn = document.getElementById(`grp-${k}-btn`);
+    if (btn) btn.classList.toggle('active', k===grp);
+  });
+  renderTable();
+}
+
+function sortBy(col) {
+  const tbl = document.getElementById('data-table');
+  if (!tbl) return;
+  const body = tbl.querySelector('tbody');
+  const rows = Array.from(body.querySelectorAll('tr'));
+  const asc  = sortCol===col ? sortDir==='asc' ? false : true : true;
+  sortCol = col; sortDir = asc ? 'asc' : 'desc';
+  rows.sort((a,b) => {
+    const av = a.cells[col]?.textContent.replace(/[,%\s—]/g,'') || '';
+    const bv = b.cells[col]?.textContent.replace(/[,%\s—]/g,'') || '';
+    const an = parseFloat(av), bn = parseFloat(bv);
+    if (!isNaN(an)&&!isNaN(bn)) return asc ? an-bn : bn-an;
+    return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+  rows.forEach(r=>body.appendChild(r));
+  tbl.querySelectorAll('th').forEach((th,i)=>{
+    th.classList.remove('sort-asc','sort-desc');
+    if(i===col) th.classList.add(asc?'sort-asc':'sort-desc');
+  });
+}
+
+// ── CSV export ─────────────────────────────────────────────────────────────────
+function exportCsv() {
+  if (!currentData) return alert('Load data first');
+  const meta  = VIEW_META[activeView];
+  const measures = (meta?.kpis||[]).filter(k=>!['customers','rowCount'].includes(k));
+  let rows = [];
+  if (tableGroup==='customer') rows=(currentData.byCustomer||[]);
+  else if (tableGroup==='item')   rows=(currentData.byItem||[]);
+  else if (tableGroup==='period') rows=(currentData.byPeriod||[]);
+  else if (tableGroup==='brand')  rows=(currentData.byBrand||[]);
+
+  const hdrs = ['#','Name', ...measures.map(m=>KPI_LABELS[m]||m), 'Count'];
+  const csvRows = [hdrs.join(','), ...rows.map((r,i)=>[
+    i+1, '"'+(r._label||r._key||'').replace(/"/g,'""')+'"',
+    ...measures.map(m=>Number(r[m]||0).toFixed(2)),
+    r._count,
+  ].join(','))];
+  const blob = new Blob([csvRows.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`sales-${activeView}-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+// ── Reset charts on view switch ────────────────────────────────────────────────
+function resetCharts() {
+  if(chart1){chart1.destroy();chart1=null;}
+  if(chart2){chart2.destroy();chart2=null;}
+}
+
+// ── Filter helpers ─────────────────────────────────────────────────────────────
+function clearFilters() {
+  ['f-customer','f-item','f-salesperson'].forEach(id=>document.getElementById(id).value='');
+  ['f-brand','f-subbrand','f-universe','f-territory','f-branch','f-market','f-nominal'].forEach(id=>document.getElementById(id).value='');
+  document.querySelectorAll('#dim-chips .dim-chip').forEach(c=>c.classList.remove('active'));
+}
+
+function setStatus(s,l) { const b=document.getElementById('status-badge'); b.textContent=l||s; b.className=`shell-badge ${s}`; }
+
+// ── Fullscreen & chat toggle ───────────────────────────────────────────────────
+function toggleChat() {
+  const panel = document.getElementById('chat-panel');
+  const btn   = document.getElementById('toggle-chat-btn');
+  _chatVisible = !_chatVisible;
+  panel.style.display = _chatVisible ? '' : 'none';
+  btn.textContent = _chatVisible ? '⬡ Chat' : '⬢ Chat';
+  btn.classList.toggle('active', !_chatVisible);
+}
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('fullscreen-btn').textContent = document.fullscreenElement ? '⊡' : '⛶';
+});
+
+// ── Chat ───────────────────────────────────────────────────────────────────────
+async function startChat() {
+  try {
+    const r = await fetch('/api/sales-analysis/chat', {
+      method:'POST', headers:{'Content-Type':'application/json','x-auth-token':TOKEN()},
+      body:JSON.stringify({ message:'', sessionId:null }),
+    });
+    const d = await safeJson(r);
+    if (d.ok) { sessionId=d.sessionId; appendMessage('bot',d.reply,d.quickReplies); }
+  } catch(e) { console.warn('[SalesAnalysis] startChat:', e.message); }
+}
+
+async function sendMessage(msg) {
+  if (isBusy||!msg.trim()) return;
+  isBusy=true; setChatBusy(true);
+  appendMessage('user', msg); showTyping();
+  try {
+    const r = await fetch('/api/sales-analysis/chat', {
+      method:'POST', headers:{'Content-Type':'application/json','x-auth-token':TOKEN()},
+      body:JSON.stringify({ message:msg, sessionId, dataContext:dataCtxStr, activeView }),
+    });
+    const d = await safeJson(r);
+    hideTyping();
+    if (d.ok) { sessionId=d.sessionId; appendMessage('bot',d.reply,d.quickReplies); }
+    else appendMessage('bot',`❌ ${d.error||'Unknown error'}`);
+  } catch(e) { hideTyping(); appendMessage('bot',`⚠️ ${e.message}`); }
+  finally { isBusy=false; setChatBusy(false); }
+}
+
+function sendFromInput() {
+  const inp = document.getElementById('user-input');
+  const msg = inp.value.trim(); if (!msg||isBusy) return;
+  inp.value=''; inp.style.height='auto';
+  markQRUsed(); sendMessage(msg);
+}
+
+function appendMessage(role, content, quickReplies) {
+  const msgs = document.getElementById('messages');
+  const placeholder = msgs.querySelector('.no-data'); if(placeholder) placeholder.remove();
+  const row = document.createElement('div'); row.className=`msg-row ${role}`;
+  row.innerHTML=`<div class="av ${role==='bot'?'bot':'user'}">${role==='bot'?'📈':'👤'}</div><div class="bubble ${role==='bot'?'bot':'user'}">${role==='bot'?renderMd(content):escHtml(content)}</div>`;
+  msgs.appendChild(row);
+  if (quickReplies?.length) {
+    const qrDiv=document.createElement('div'); qrDiv.className='qr-row';
+    quickReplies.forEach(qr=>{ const c=document.createElement('button'); c.className='qr-chip'; c.textContent=qr; c.onclick=()=>{markQRUsed();sendMessage(qr);}; qrDiv.appendChild(c); });
+    msgs.appendChild(qrDiv);
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function markQRUsed() { document.querySelectorAll('.qr-chip:not(.used)').forEach(c=>c.classList.add('used')); }
+function showTyping() { const msgs=document.getElementById('messages'); const r=document.createElement('div'); r.className='typing-row'; r.id='typing-indicator'; r.innerHTML='<div class="av bot">📈</div><div class="typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>'; msgs.appendChild(r); msgs.scrollTop=msgs.scrollHeight; }
+function hideTyping() { const t=document.getElementById('typing-indicator'); if(t) t.remove(); }
+function setChatBusy(b) { document.getElementById('send-btn').disabled=b; document.getElementById('user-input').disabled=b; document.getElementById('chat-status-text').textContent=b?'Thinking…':'Ready'; }
+</script>
+</body>
+</html>
