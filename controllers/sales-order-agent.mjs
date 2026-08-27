@@ -53,6 +53,20 @@ function getCacheItems() {
     FROM cache_items WHERE company_id=? AND Frozen='tNO' ORDER BY ItemName LIMIT 500`).all(cid);
 }
 
+// Default sales UoM code for a single item — cache first, live SAP fallback.
+// SAP B1 rejects DocumentLines with no UoMCode once UoM management is enabled on the item.
+async function getDefaultUoMCode(itemCode, sap) {
+  const cid = getCompanyId();
+  const cached = db.prepare(`SELECT SalesUnit FROM cache_items WHERE company_id=? AND ItemCode=?`).get(cid, itemCode);
+  if (cached?.SalesUnit) return cached.SalesUnit;
+  try {
+    const item = await sap.get(`/Items('${itemCode}')`, { $select: 'ItemCode,SalesUnit,InventoryUOM,PurchaseUnit' });
+    return item?.SalesUnit || item?.InventoryUOM || item?.PurchaseUnit || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function getCacheTaxCodes() {
   const cid = getCompanyId();
   return db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
@@ -311,19 +325,21 @@ export function createSalesOrderAgentRouter(deps) {
             reply = '❌ No lines added. Please add at least one item line before posting.';
           } else {
             try {
+              const uomCodes = await Promise.all(lines.map(l => getDefaultUoMCode(l.itemCode, sap)));
               const payload = {
                 CardCode:    session.selectedCustomer.cardCode,
                 DocDate:     sapDate(action.docDate       || today()),
                 DocDueDate:  sapDate(action.deliveryDate  || datePlusDays(7)),
                 ...(action.reference ? { NumAtCard: action.reference } : {}),
                 ...(action.comments  ? { Comments:  action.comments  } : {}),
-                DocumentLines: lines.map(l => ({
+                DocumentLines: lines.map((l, i) => ({
                   ItemCode:        l.itemCode,
                   Quantity:        Number(l.quantity  || 1),
                   UnitPrice:       Number(l.unitPrice || 0),
                   DiscountPercent: Number(l.discountPercent || 0),
                   ...(l.taxCode       ? { TaxCode: l.taxCode }             : {}),
                   ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
+                  ...(uomCodes[i]     ? { UoMCode: uomCodes[i] }           : {}),
                 })),
               };
 

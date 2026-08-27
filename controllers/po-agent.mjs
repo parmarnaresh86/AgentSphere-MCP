@@ -53,6 +53,20 @@ function getCacheItems() {
     FROM cache_items WHERE company_id=? AND Frozen='tNO' ORDER BY ItemName LIMIT 500`).all(cid);
 }
 
+// Default purchasing UoM code for a single item — cache first, live SAP fallback.
+// SAP B1 rejects DocumentLines with no UoMCode once UoM management is enabled on the item.
+async function getDefaultUoMCode(itemCode, sap) {
+  const cid = getCompanyId();
+  const cached = db.prepare(`SELECT PurchaseUnit FROM cache_items WHERE company_id=? AND ItemCode=?`).get(cid, itemCode);
+  if (cached?.PurchaseUnit) return cached.PurchaseUnit;
+  try {
+    const item = await sap.get(`/Items('${itemCode}')`, { $select: 'ItemCode,PurchaseUnit,InventoryUOM,SalesUnit' });
+    return item?.PurchaseUnit || item?.InventoryUOM || item?.SalesUnit || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function getCacheTaxCodes() {
   const cid = getCompanyId();
   return db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
@@ -314,19 +328,21 @@ export function createPurchaseOrderAgentRouter(deps) {
             quickReplies = ['Add More Items'];
           } else {
             try {
+              const uomCodes = await Promise.all(lines.map(l => getDefaultUoMCode(l.itemCode, sap)));
               const payload = {
                 CardCode:    session.selectedVendor.cardCode,
                 DocDate:     sapDate(today()),
                 DocDueDate:  sapDate(action.deliveryDate || datePlusDays(7)),
                 TaxDate:     sapDate(action.deliveryDate || datePlusDays(7)),
                 ...(action.comments ? { Comments: action.comments } : {}),
-                DocumentLines: lines.map(l => ({
+                DocumentLines: lines.map((l, i) => ({
                   ItemCode:        l.itemCode,
                   Quantity:        Number(l.quantity  || 1),
                   UnitPrice:       Number(l.unitPrice || 0),
                   DiscountPercent: Number(l.discountPercent || 0),
                   ...(l.taxCode       ? { TaxCode: l.taxCode }             : {}),
                   ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
+                  ...(uomCodes[i]     ? { UoMCode: uomCodes[i] }           : {}),
                 })),
               };
 

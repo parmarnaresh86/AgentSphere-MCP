@@ -31,6 +31,16 @@ function fmtN(n, d = 2) {
 function today()        { return new Date().toISOString().slice(0, 10); }
 function sapDate(s)     { const d = s || today(); return d.length === 10 ? `${d}T00:00:00` : d; }
 function datePlusDays(n){ const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+// Live SAP item-master fallback for UoMCode when a PR line didn't carry one —
+// mirrors the same fix applied in po-agent.mjs for the standalone PO Agent.
+async function getDefaultUoMCode(itemCode, sap) {
+  try {
+    const item = await sap.get(`/Items('${itemCode}')`, { $select: 'ItemCode,PurchaseUnit,InventoryUOM,SalesUnit' });
+    return item?.PurchaseUnit || item?.InventoryUOM || item?.SalesUnit || undefined;
+  } catch {
+    return undefined;
+  }
+}
 function parseDate(str) {
   if (!str) return null;
   const s = str.trim();
@@ -301,6 +311,7 @@ export function createPRtoPOAgentRouter(deps) {
                     itemName:      line.ItemDescription || line.ItemCode,
                     qty:           Number(line.Quantity || 1),
                     unit:          line.UoMCode || line.MeasureUnit || 'EA',
+                    uomCode:       line.UoMCode || line.MeasureUnit || '',
                     unitPrice:     Number(line.UnitPrice || line.Price || 0),
                     warehouseCode: line.WarehouseCode || '',
                     sourcePR:      full.DocNum,
@@ -422,17 +433,20 @@ export function createPRtoPOAgentRouter(deps) {
         if (/yes|post|confirm|submit|✅/i.test(msgL) && !/no|cancel/i.test(msgL)) {
           session.step = 'POSTING';
           try {
+            const uomCodes = await Promise.all(session.mergedLines.map(l =>
+              l.uomCode ? Promise.resolve(l.uomCode) : getDefaultUoMCode(l.itemCode, sap)));
             const poPayload = {
               DocDate:    sapDate(today()),
               DocDueDate: sapDate(session.dueDate || today()),
               ...(session.vendor?.cardCode ? { CardCode: session.vendor.cardCode } : {}),
               ...(session.comments         ? { Comments: session.comments }         : {}),
-              DocumentLines: session.mergedLines.map(l => ({
+              DocumentLines: session.mergedLines.map((l, i) => ({
                 ItemCode:  l.itemCode,
                 Quantity:  l.qty,
                 ShipDate:  sapDate(session.dueDate || today()),
                 ...(l.unitPrice > 0 ? { UnitPrice:     l.unitPrice     } : {}),
                 ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
+                ...(uomCodes[i]     ? { UoMCode:        uomCodes[i]     } : {}),
               })),
             };
 

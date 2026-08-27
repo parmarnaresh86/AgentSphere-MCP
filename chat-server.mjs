@@ -5954,7 +5954,7 @@ async function _createSoDirect(activeSap, { cardCode, docDate, docDueDate, numAt
 app.post("/api/workflow/po/create", requireAuth, async (req, res) => {
   const { cardCode, poNumber, poDate, deliveryDate, lines = [], notes, creditOverride } = req.body || {};
   if (!cardCode) return res.status(400).json({ error: "cardCode required" });
-  const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty) || 1, UnitPrice: parseFloat(l.unitPrice) || 0, UoMCode: l.uomCode || "Manual" }));
+  const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty) || 1, UnitPrice: parseFloat(l.unitPrice) || 0, ...(l.uomCode && l.uomCode !== "Manual" ? { UoMCode: l.uomCode } : {}) }));
   if (!docLines.length) return res.status(400).json({ error: "No valid item codes — map all items before creating order" });
   try {
     const comments = [poNumber ? `PO Ref: ${poNumber}` : "", notes || "", creditOverride ? "Credit override approved" : ""].filter(Boolean).join(" | ");
@@ -6088,6 +6088,36 @@ setInterval(() => {
   for (const [k, v] of _pdfCache) { if (v.ts < cut) _pdfCache.delete(k); }
 }, 5 * 60 * 1000);
 
+// Resolve just the default purchasing/sales UoM code for an item from SAP B1 item master —
+// used wherever a document line is built server-side without a UI-selected uomCode.
+async function getItemDefaultUoM(sap, itemCode) {
+  try {
+    const item = await sap.get(`/Items('${esc(itemCode)}')`, {
+      $select: "ItemCode,UoMGroupEntry,SalesUoMEntry,SalesUnit,InventoryUOM,PurchaseUnit"
+    });
+    const groupEntry = item.UoMGroupEntry;
+    if (groupEntry && groupEntry > 0) {
+      try {
+        const group = await sap.get(`/UnitOfMeasurementGroups(${groupEntry})`);
+        const defs = group.UoMGroupDefinitionCollection || [];
+        const resolved = (await Promise.all(defs.map(async d => {
+          try {
+            const u = await sap.get(`/UnitOfMeasurements(${d.AlternateUoM})`);
+            return { code: u.Code, absEntry: d.AlternateUoM };
+          } catch { return null; }
+        }))).filter(Boolean);
+        if (resolved.length) {
+          const salesMatch = item.SalesUoMEntry && resolved.find(u => u.absEntry === item.SalesUoMEntry);
+          return (salesMatch || resolved[0]).code;
+        }
+      } catch {}
+    }
+    return item.SalesUnit || item.InventoryUOM || item.PurchaseUnit || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // ── Fetch UoM options for an item from SAP B1 item master ───────────────────
 app.get("/api/mail-po/item-uoms", requireAuth, async (req, res) => {
   const { itemCode } = req.query;
@@ -6095,10 +6125,14 @@ app.get("/api/mail-po/item-uoms", requireAuth, async (req, res) => {
   try {
     const sap = getActiveSap();
     const item = await sap.get(`/Items('${esc(itemCode)}')`, {
-      $select: "ItemCode,ItemName,UoMGroupEntry,InventoryUoMEntry,SalesUoMEntry"
+      $select: "ItemCode,ItemName,UoMGroupEntry,InventoryUoMEntry,SalesUoMEntry,SalesUnit,InventoryUOM,PurchaseUnit"
     });
-    let uoms = [{ code: "Manual", name: "Manual" }];
-    let defaultCode = "Manual";
+    // Item master fallback (legacy Sales/Inventory/Purchase unit fields) — used when the item
+    // isn't on a UoM group, or the group fails to resolve, so we never fall back to the
+    // literal string "Manual" for an item SAP actually expects a real UoM code on.
+    const masterFallback = item.SalesUnit || item.InventoryUOM || item.PurchaseUnit || null;
+    let uoms = masterFallback ? [{ code: masterFallback, name: masterFallback }] : [{ code: "Manual", name: "Manual" }];
+    let defaultCode = masterFallback || "Manual";
     const groupEntry = item.UoMGroupEntry;
     if (groupEntry && groupEntry > 0) {
       try {
@@ -6112,11 +6146,11 @@ app.get("/api/mail-po/item-uoms", requireAuth, async (req, res) => {
         }))).filter(Boolean);
         if (resolved.length) {
           uoms = resolved;
+          defaultCode = resolved[0].code;
           if (item.SalesUoMEntry) {
             const salesMatch = resolved.find(u => u.absEntry === item.SalesUoMEntry);
             if (salesMatch) defaultCode = salesMatch.code;
           }
-          if (defaultCode === "Manual") defaultCode = resolved[0].code;
         }
       } catch {}
     }
@@ -6304,7 +6338,7 @@ app.post("/api/mail-po/create-so-mail", requireAuth, async (req, res) => {
   const { fromEmail, subject, cardCode, poNumber, poDate, deliveryDate, currency, notes, lines = [] } = req.body || {};
   if (!cardCode) return res.status(400).json({ ok: false, error: "cardCode required" });
   try {
-    const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty)||1, UnitPrice: parseFloat(l.unitPrice)||0, UoMCode: l.uomCode || "Manual" }));
+    const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty)||1, UnitPrice: parseFloat(l.unitPrice)||0, ...(l.uomCode && l.uomCode !== "Manual" ? { UoMCode: l.uomCode } : {}) }));
     if (!docLines.length) return res.json({ ok: false, error: "No valid item lines to create SO" });
     const { DocNum: docNum } = await _createSoDirect(getActiveSap(), { cardCode, docDate: poDate, docDueDate: deliveryDate, numAtCard: poNumber, currency, comments: notes || "", docLines });
 
@@ -6384,11 +6418,14 @@ ${rawText.substring(0, 8000)}`;
   }
 
   // Step 3: Create SO directly (skip credit block — mail flow is auto, flag if exceeded)
-  const docLines = lines.filter(l => l.itemCode && l.itemCode !== "null").map(l => ({
-    ItemCode:  l.itemCode,
-    Quantity:  parseFloat(l.qty)       || 1,
-    UnitPrice: parseFloat(l.unitPrice) || 0,
-    UoMCode:   l.uomCode               || "Manual",
+  const docLines = await Promise.all(lines.filter(l => l.itemCode && l.itemCode !== "null").map(async l => {
+    const uomCode = (l.uomCode && l.uomCode !== "Manual") ? l.uomCode : await getItemDefaultUoM(activeSap, l.itemCode);
+    return {
+      ItemCode:  l.itemCode,
+      Quantity:  parseFloat(l.qty)       || 1,
+      UnitPrice: parseFloat(l.unitPrice) || 0,
+      ...(uomCode ? { UoMCode: uomCode } : {}),
+    };
   }));
 
   if (!docLines.length) {
