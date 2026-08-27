@@ -841,7 +841,7 @@ ${grandTotal > 0 ? `
 </div>
 
 <div class="footer">
-  Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 Purchase Requisition #${doc.DocNum} &nbsp;|&nbsp; Powered by AgentSphere AI
+  Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 Purchase Requisition #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution
 </div>
 </body>
 </html>`;

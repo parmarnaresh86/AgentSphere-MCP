@@ -233,7 +233,7 @@ ${doc.Comments ? `<div style="border:1px solid #fde68a;border-radius:6px;padding
   <div><div class="sig-line">Received By</div></div>
   <div><div class="sig-line">Date Received</div></div>
 </div>
-<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Delivery Note #${doc.DocNum} &nbsp;|&nbsp; Powered by AgentSphere AI</div>
+<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Delivery Note #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body></html>`;
 }
 

@@ -226,7 +226,7 @@ ${doc.Comments ? `<div style="border:1px solid #bae6fd;border-radius:6px;padding
   <div class="sig-box"><div class="sig-line">Approved By</div></div>
   <div class="sig-box"><div class="sig-line">Finance Manager</div></div>
 </div>
-<div class="footer">Printed on ${escHtml(printedOn)} &nbsp;|&nbsp; ${escHtml(company)} &mdash; SAP B1 A/R Invoice #${escHtml(String(doc.DocNum))} &nbsp;|&nbsp; Powered by AgentSphere AI</div>
+<div class="footer">Printed on ${escHtml(printedOn)} &nbsp;|&nbsp; ${escHtml(company)} &mdash; SAP B1 A/R Invoice #${escHtml(String(doc.DocNum))} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body></html>`;
 }
 

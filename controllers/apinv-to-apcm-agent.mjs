@@ -211,7 +211,7 @@ ${doc.Comments ? `<div style="border:1px solid #fecaca;border-radius:6px;padding
   ${taxTotal > 0 ? `<div class="total-row">Tax: ${taxTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>` : ''}
   <div class="total-grand">Credit Total: ${grandTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
 </div>
-<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 A/P Credit Memo #${doc.DocNum} &nbsp;|&nbsp; Powered by AgentSphere AI</div>
+<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 A/P Credit Memo #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body></html>`;
 }
 

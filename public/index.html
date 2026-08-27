@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <meta http-equiv="Cache-Control" content="no-store"/>
-<title>Agentsphere AI — SAP B1 Assistant</title>
+<title>Henny AI Solution — SAP B1 Assistant</title>
 <script>
 // ── Auth guard: redirect to login if no valid token ──────────
 (function(){
@@ -1547,9 +1547,9 @@ body{font-family:var(--font);color:var(--text);display:flex}
 ═══════════════════════════════ -->
 <aside class="sidebar">
   <div class="brand">
-    <div class="brand-avatar"><img src="/assets/agentsphere-logo.svg" alt="Agentsphere"/></div>
+    <div class="brand-avatar"><img src="/assets/henny-logo.svg" alt="Henny AI Solution"/></div>
     <div>
-      <div class="brand-name">Agentsphere</div>
+      <div class="brand-name">Henny AI Solution</div>
       <div class="brand-sub">SAP B1 AI Assistant</div>
     </div>
   </div>
@@ -2091,7 +2091,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
   <!-- Top bar -->
   <div class="topbar">
     <span id="hanny-wake-hint" style="display:none;font-size:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.85);border-radius:var(--r);padding:3px 9px;font-weight:600">
-      👂 Say "Hey Agentsphere"
+      👂 Say "Hey Henny"
     </span>
 
     <!-- Mode Toggle -->
@@ -2164,7 +2164,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
     </div>
 
     <!-- Voice output toggle -->
-    <button id="voice-output-btn" title="Agentsphere Voice: OFF">
+    <button id="voice-output-btn" title="Henny Voice: OFF">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
       Voice
     </button>
@@ -2190,8 +2190,8 @@ body{font-family:var(--font);color:var(--text);display:flex}
   <div id="messages">
     <div class="welcome" id="welcome">
       <div class="welcome-avatar">🎙️</div>
-      <h2>Hi! I'm Agentsphere AI, your SAP B1 Assistant.</h2>
-      <p>Type a message or say <strong>"Hey Agentsphere"</strong> to get started.<br/>Use the sidebar menu to quickly access SAP functions.</p>
+      <h2>Hi! I'm Henny AI, your SAP B1 Assistant.</h2>
+      <p>Type a message or say <strong>"Hey Henny"</strong> to get started.<br/>Use the sidebar menu to quickly access SAP functions.</p>
     </div>
   </div>
 
@@ -2255,11 +2255,11 @@ body{font-family:var(--font);color:var(--text);display:flex}
   <!-- Hanny status bar — always in DOM, state via class -->
   <div id="listening-indicator" class="hs-idle">
     <span class="pulse-dot"></span>
-    <span id="hanny-status-label">Agentsphere is listening…</span>
+    <span id="hanny-status-label">Henny is listening…</span>
     <div class="listening-waves">
       <span></span><span></span><span></span><span></span><span></span>
     </div>
-    <span style="margin-left:auto;font-size:11px;opacity:.7">Speak your query — Agentsphere will answer</span>
+    <span style="margin-left:auto;font-size:11px;opacity:.7">Speak your query — Henny will answer</span>
   </div>
 
   <!-- Input area -->
@@ -2844,17 +2844,17 @@ document.getElementById('export-chat-btn').addEventListener('click', () => {
   _actBtn.classList.remove('open');
   const rows = document.querySelectorAll('.msg-row');
   if (!rows.length) { alert('No messages to export.'); return; }
-  let txt = `Agentsphere AI Chat Export — ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
+  let txt = `Henny AI Chat Export — ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
   rows.forEach(r => {
     const isUser = r.classList.contains('user');
     const bubble = r.querySelector('.bubble');
     if (!bubble) return;
-    txt += `[${isUser ? 'You' : 'Agentsphere AI'}]\n${bubble.innerText.trim()}\n\n`;
+    txt += `[${isUser ? 'You' : 'Henny AI'}]\n${bubble.innerText.trim()}\n\n`;
   });
   const blob = new Blob([txt], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `agentsphere-chat-${Date.now()}.txt`;
+  a.download = `henny-chat-${Date.now()}.txt`;
   a.click();
   URL.revokeObjectURL(a.href);
 });
@@ -3981,7 +3981,7 @@ function atblDownloadCSV(uid) {
   )].join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8;' }));
-  a.download = `agentsphere-${(data.question||'export').replace(/[^a-z0-9]+/gi,'-').slice(0,30)}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `henny-${(data.question||'export').replace(/[^a-z0-9]+/gi,'-').slice(0,30)}-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
 
@@ -4011,7 +4011,7 @@ function atblMail(uid) {
   const { data } = _atblStore[uid];
   const cols = Object.keys(data.rows[0] || {});
   const body = [cols.join('\t'), ...data.rows.slice(0, 25).map(r => cols.map(c => r[c] ?? '').join('\t'))].join('\n');
-  window.location.href = `mailto:?subject=${encodeURIComponent('Analytics: ' + (data.question || data.source))}&body=${encodeURIComponent(`Analytics Report - ${data.source}\n${data.rowCount} rows\n\n${body}\n\n— AgentSphere AI`)}`;
+  window.location.href = `mailto:?subject=${encodeURIComponent('Analytics: ' + (data.question || data.source))}&body=${encodeURIComponent(`Analytics Report - ${data.source}\n${data.rowCount} rows\n\n${body}\n\n— Henny AI Solution`)}`;
 }
 
 function atblSavePrompt(uid) {
@@ -5163,10 +5163,10 @@ const HANNY = {
       done:        'Done! ',
       fallback:    'Hi! Here is what I found. ',
       noResult:    'Hi! I checked, but ',
-      listening:   'Agentsphere is listening…',
-      thinking:    'Agentsphere is thinking…',
-      wake:        'Say "Hey Agentsphere" to activate…',
-      wakeHint:    '👂 Say "Hey Agentsphere"',
+      listening:   'Henny is listening…',
+      thinking:    'Henny is thinking…',
+      wake:        'Say "Hey Henny" to activate…',
+      wakeHint:    '👂 Say "Hey Henny"',
     },
     gu: {
       salesOrder:  'નમસ્તે! તમારી સેલ્સ ઓર્ડર યાદી તૈયાર છે. ',
@@ -5567,7 +5567,7 @@ speakText = function(rawText) {
   btn.addEventListener('click', () => {
     voiceOutputOn = !voiceOutputOn;
     btn.classList.toggle('active', voiceOutputOn);
-    btn.title = voiceOutputOn ? 'Agentsphere Voice: ON (click to disable)' : 'Agentsphere Voice: OFF (click to enable)';
+    btn.title = voiceOutputOn ? 'Henny Voice: ON (click to disable)' : 'Henny Voice: OFF (click to enable)';
     if (!voiceOutputOn) { window.speechSynthesis?.cancel(); document.getElementById('voice-stop-btn')?.classList.remove('speaking'); }
   });
 })();

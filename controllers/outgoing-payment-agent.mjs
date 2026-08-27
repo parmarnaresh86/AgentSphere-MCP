@@ -204,7 +204,7 @@ ${invoiceRows ? `
 <div class="totals">
   <div class="total-grand">Total Payment: ${fmtN(doc.DocTotal || doc.CashSum || doc.TransferSum || 0)}</div>
 </div>
-<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Outgoing Payment #${doc.DocNum} &nbsp;|&nbsp; Powered by AgentSphere AI</div>
+<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Outgoing Payment #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 <script>window.onload = function(){ window.print(); };</script>
 </body></html>`;
 }

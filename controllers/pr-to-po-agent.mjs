@@ -697,7 +697,7 @@ ${grandTotal > 0 ? `<div class="totals"><div class="total-grand">Total: ${grandT
   <div><div class="sig-line">Received By</div></div>
 </div>
 <div class="footer">
-  Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 Purchase Order #${doc.DocNum} &nbsp;|&nbsp; Powered by AgentSphere AI
+  Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 Purchase Order #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution
 </div>
 </body>
 </html>`;

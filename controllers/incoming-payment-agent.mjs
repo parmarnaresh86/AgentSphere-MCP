@@ -320,7 +320,7 @@ ${cards.length > 0 ? `
   <div class="total-grand">Total Payment: ${fmtN(grandTotal)}</div>
 </div>
 
-<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${escHtml(company)} &mdash; Incoming Payment Receipt #${escHtml(String(doc.DocNum || '—'))} &nbsp;|&nbsp; Powered by AgentSphere AI</div>
+<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${escHtml(company)} &mdash; Incoming Payment Receipt #${escHtml(String(doc.DocNum || '—'))} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body>
 <script>window.onload = function(){ window.print(); }</script>
 </html>`;

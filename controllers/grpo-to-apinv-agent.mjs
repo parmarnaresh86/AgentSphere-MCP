@@ -461,7 +461,7 @@ ${doc.Comments ? `<div style="border:1px solid #ddd;border-radius:6px;padding:12
   <div><div class="sig-line">Approved By</div></div>
   <div><div class="sig-line">Finance Manager</div></div>
 </div>
-<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 A/P Invoice #${doc.DocNum} &nbsp;|&nbsp; Powered by AgentSphere AI</div>
+<div class="footer">Printed on ${printedOn} &nbsp;|&nbsp; ${company} — SAP B1 A/P Invoice #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body></html>`;
 }
 
