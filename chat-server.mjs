@@ -3790,7 +3790,7 @@ app.post("/api/chat", async (req, res) => {
         if (typeof result === "object" && result.text) { reply = result.text; openForm = result.openForm; openForecastDashboard = result.openForecastDashboard; forecastData = result.forecastData; openRushDashboard = result.openRushDashboard; rushData = result.rushData; }
         else reply = result;
       } else {
-        let dbResult = null;
+        let dbResult = null, hanaAttemptError = null;
         if (isKnownAnalytics && isConnected()) {
           // Confidently classified analytics question — answer immediately via direct
           // HANA/MSSQL (no Service Layer row cap). Understands the request first
@@ -3805,6 +3805,7 @@ app.post("/api/chat", async (req, res) => {
             _logQ({ method: 'SQL', endpoint: 'Direct DB Query (GPT-4o preferred)', sql: genSql, rows: rows.length });
             console.log(`[GPT-PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
+            hanaAttemptError = dbErr.message;
             console.warn(`[GPT-PRE-INTERCEPT] HANA direct attempt failed, falling back: ${dbErr.message}`);
           }
         }
@@ -3818,6 +3819,12 @@ app.post("/api/chat", async (req, res) => {
           const result = await demoReply(gptMessage);
           if (typeof result === "object" && result.text) { reply = result.text; openForm = result.openForm; openForecastDashboard = result.openForecastDashboard; forecastData = result.forecastData; openRushDashboard = result.openRushDashboard; rushData = result.rushData; }
           else reply = result;
+          // If the Service-Layer/SMLSVC fallback ALSO failed, surface the earlier
+          // HANA-direct error too — otherwise the user only ever sees the last
+          // failure and wrongly concludes ODBC was never attempted at all.
+          if (hanaAttemptError && typeof reply === "string" && /error/i.test(reply)) {
+            reply += `\n\n<sub>⚠️ A direct HANA/ODBC query was tried first and also failed: ${hanaAttemptError}</sub>`;
+          }
         } else {
           // Everything else — write/action requests, and any free-form/ambiguous
           // question — goes to the tool-calling agent. It understands the request
@@ -3854,7 +3861,7 @@ app.post("/api/chat", async (req, res) => {
         if (typeof result === "object" && result.text) { reply = result.text; openForm = result.openForm; openForecastDashboard = result.openForecastDashboard; forecastData = result.forecastData; openRushDashboard = result.openRushDashboard; rushData = result.rushData; }
         else reply = result;
       } else {
-        let dbResult = null;
+        let dbResult = null, hanaAttemptError = null;
         if (isKnownAnalytics && isConnected()) {
           // Confidently classified analytics question — answer immediately via direct
           // HANA/MSSQL (no Service Layer row cap). Understands the request first
@@ -3869,6 +3876,7 @@ app.post("/api/chat", async (req, res) => {
             _logQ({ method: 'SQL', endpoint: 'Direct DB Query (Claude preferred)', sql: genSql, rows: rows.length });
             console.log(`[PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
+            hanaAttemptError = dbErr.message;
             console.warn(`[PRE-INTERCEPT] HANA direct attempt failed, falling back: ${dbErr.message}`);
           }
         }
@@ -3880,6 +3888,9 @@ app.post("/api/chat", async (req, res) => {
           const result = await demoReply(claudeMessage);
           if (typeof result === "object" && result.text) { reply = result.text; openForm = result.openForm; openForecastDashboard = result.openForecastDashboard; forecastData = result.forecastData; openRushDashboard = result.openRushDashboard; rushData = result.rushData; }
           else reply = result;
+          if (hanaAttemptError && typeof reply === "string" && /error/i.test(reply)) {
+            reply += `\n\n<sub>⚠️ A direct HANA/ODBC query was tried first and also failed: ${hanaAttemptError}</sub>`;
+          }
         } else {
           // Everything else — write/action requests, and any free-form/ambiguous
           // question — goes to the tool-calling agent. It understands the request
