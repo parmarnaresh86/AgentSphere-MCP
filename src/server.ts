@@ -1164,7 +1164,7 @@ async function createSalesOrder(args: unknown): Promise<ToolResponse> {
     creditLimit    = toNumber(bp.CreditLimit);
     currentBalance = toNumber(bp.CurrentAccountBalance);
     ordersBalance  = toNumber(bp.OpenDeliveryNotesBalance) + toNumber(bp.OrdersBalance);
-    orderLines = rawLines.map((line, index) => {
+    const rawItemLines = rawLines.map((line, index) => {
       const l = asObject(line, `lines[${index}]`);
       const lineObj: JsonObject = {
         ItemCode:      asString(l.itemCode ?? l.ItemCode, `lines[${index}].itemCode`),
@@ -1174,9 +1174,17 @@ async function createSalesOrder(args: unknown): Promise<ToolResponse> {
       if (l.warehouseCode ?? l.WarehouseCode) lineObj.WarehouseCode = l.warehouseCode ?? l.WarehouseCode;
       if (l.taxCode      ?? l.TaxCode)       lineObj.TaxCode        = l.taxCode      ?? l.TaxCode;
       if (l.description  ?? l.ItemDescription) lineObj.ItemDescription = l.description ?? l.ItemDescription;
+      if (l.uomCode      ?? l.UoMCode)       lineObj.UoMCode        = l.uomCode      ?? l.UoMCode;
       orderTotal += toNumber(lineObj.UnitPrice) * toNumber(lineObj.Quantity);
       return lineObj;
     });
+    const uomCodes = await Promise.all(
+      rawItemLines.map((l) => (l.UoMCode ? Promise.resolve(l.UoMCode as string) : getDefaultUoMCode(l.ItemCode as string, "sales")))
+    );
+    orderLines = rawItemLines.map((l, index) => ({
+      ...l,
+      ...(uomCodes[index] ? { UoMCode: uomCodes[index] } : {}),
+    }));
     const poRef = optionalString(input.poNumber ?? input.numAtCard, "poNumber");
     comments = buildComment(["Created from Purchase Order", poRef ? `PO Ref: ${poRef}` : ""]);
   }
@@ -3669,7 +3677,7 @@ async function createPurchaseRequest(args: unknown): Promise<ToolResponse> {
 
   const requester = optionalString(input.requester, "requester") ?? getConfig().user;
 
-  const lines = asArray(input.lines, "lines").map((line, index) => {
+  const rawLines = asArray(input.lines, "lines").map((line, index) => {
     const item = asObject(line, `lines[${index}]`);
     return {
       ItemCode:      asString(item.itemCode,   `lines[${index}].itemCode`),
@@ -3679,6 +3687,11 @@ async function createPurchaseRequest(args: unknown): Promise<ToolResponse> {
       RequiredDate:  optionalString(item.requiredDate, `lines[${index}].requiredDate`) ?? docDueDate,
     };
   });
+  const uomCodes = await Promise.all(rawLines.map((line) => getDefaultUoMCode(line.ItemCode)));
+  const lines = rawLines.map((line, index) => ({
+    ...line,
+    ...(uomCodes[index] ? { UoMCode: uomCodes[index] } : {}),
+  }));
 
   // SAP B1 rejects PurchaseRequests with no Requester on companies where the field is mandatory.
   const pr = await client.post<JsonObject>("/PurchaseRequests", {
@@ -3735,7 +3748,7 @@ async function createPurchaseQuotation(args: unknown): Promise<ToolResponse> {
     }
   } else {
     // Create from scratch
-    documentLines = asArray(input.lines, "lines").map((line, index) => {
+    const rawLines = asArray(input.lines, "lines").map((line, index) => {
       const item = asObject(line, `lines[${index}]`);
       return {
         ItemCode:      asString(item.itemCode,   `lines[${index}].itemCode`),
@@ -3745,6 +3758,11 @@ async function createPurchaseQuotation(args: unknown): Promise<ToolResponse> {
         WarehouseCode: optionalString(item.warehouseCode, `lines[${index}].warehouseCode`),
       } as JsonObject;
     });
+    const uomCodes = await Promise.all(rawLines.map((line) => getDefaultUoMCode(line.ItemCode as string)));
+    documentLines = rawLines.map((line, index) => ({
+      ...line,
+      ...(uomCodes[index] ? { UoMCode: uomCodes[index] } : {}),
+    }));
   }
 
   const pq = await client.post<JsonObject>("/PurchaseQuotations", {
@@ -3817,6 +3835,26 @@ async function createPoFromQuotation(args: unknown): Promise<ToolResponse> {
   });
 }
 
+// SAP B1 rejects DocumentLines with no UoMCode once UoM management is enabled on the item —
+// resolve the item's default purchasing/sales UoM so callers don't need to know it up front.
+async function getDefaultUoMCode(itemCode: string, kind: "purchase" | "sales" = "purchase"): Promise<string | undefined> {
+  try {
+    const item = await client.get<JsonObject>(`/Items(${encodeEntityKey(itemCode)})`, {
+      $select: "ItemCode,PurchaseUnit,InventoryUOM,SalesUnit",
+    });
+    const primary = kind === "sales" ? item.SalesUnit : item.PurchaseUnit;
+    return (
+      (primary as string | undefined) ||
+      (item.InventoryUOM as string | undefined) ||
+      (item.PurchaseUnit as string | undefined) ||
+      (item.SalesUnit as string | undefined) ||
+      undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 async function createPurchaseOrder(args: unknown): Promise<ToolResponse> {
   const input = asObject(args, "arguments");
   const cardCode = asString(input.cardCode, "cardCode");
@@ -3824,7 +3862,7 @@ async function createPurchaseOrder(args: unknown): Promise<ToolResponse> {
   const docDueDate = parseDateOrToday(input.docDueDate, "docDueDate");
   const comments = optionalString(input.comments, "comments");
 
-  const lines = asArray(input.lines, "lines").map((line, index) => {
+  const rawLines = asArray(input.lines, "lines").map((line, index) => {
     const item = asObject(line, `lines[${index}]`);
     return {
       ItemCode:      asString(item.itemCode,   `lines[${index}].itemCode`),
@@ -3834,6 +3872,12 @@ async function createPurchaseOrder(args: unknown): Promise<ToolResponse> {
       WarehouseCode: optionalString(item.warehouseCode, `lines[${index}].warehouseCode`),
     };
   });
+
+  const uomCodes = await Promise.all(rawLines.map((line) => getDefaultUoMCode(line.ItemCode)));
+  const lines = rawLines.map((line, index) => ({
+    ...line,
+    ...(uomCodes[index] ? { UoMCode: uomCodes[index] } : {}),
+  }));
 
   const po = await client.post<JsonObject>("/PurchaseOrders", {
     CardCode: cardCode,
