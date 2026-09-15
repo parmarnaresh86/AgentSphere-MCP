@@ -973,6 +973,31 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
+// preview: first user message's text, set once (not overwritten on later
+// turns) so the conversation-history sidebar can show a stable title
+// without re-parsing the full message array on every list request.
+try { db.exec(`ALTER TABLE chat_sessions ADD COLUMN preview TEXT DEFAULT ''`); } catch {}
+
+// Stored messages are the raw Claude/GPT-4o tool-calling wire format (content
+// blocks, tool_use/tool_result turns, etc.) — not something to show a human
+// directly. Pulls out just the plain-text user/assistant exchanges, in order,
+// for the conversation-history sidebar's preview and full-conversation replay.
+function extractDisplayText(messages) {
+  const out = [];
+  for (const m of messages || []) {
+    if (m.role === 'user') {
+      if (typeof m.content === 'string') out.push({ role: 'user', text: m.content });
+      // else: a tool_result turn (Claude) — internal, not user-typed, skip
+    } else if (m.role === 'assistant') {
+      let text = '';
+      if (typeof m.content === 'string') text = m.content;
+      else if (Array.isArray(m.content)) text = m.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      if (text) out.push({ role: 'assistant', text });
+    }
+    // role === 'tool' (GPT) or 'system': internal, skip
+  }
+  return out;
+}
 
 export const chatSessionRepo = {
   get(sessionId) {
@@ -981,13 +1006,31 @@ export const chatSessionRepo = {
     try { return JSON.parse(row.messages); } catch { return null; }
   },
   set(sessionId, messages) {
+    const existing = db.prepare(`SELECT session_id FROM chat_sessions WHERE session_id=?`).get(sessionId);
+    let preview = null;
+    if (!existing) {
+      const firstUser = (messages || []).find(m => m.role === 'user' && typeof m.content === 'string');
+      preview = firstUser ? firstUser.content.slice(0, 120) : '(New conversation)';
+    }
     db.prepare(`
-      INSERT INTO chat_sessions (session_id, messages, updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
+      INSERT INTO chat_sessions (session_id, messages, updated_at, preview)
+      VALUES (?,?,CURRENT_TIMESTAMP,?)
       ON CONFLICT(session_id) DO UPDATE SET messages=excluded.messages, updated_at=CURRENT_TIMESTAMP
-    `).run(sessionId, JSON.stringify(messages));
+    `).run(sessionId, JSON.stringify(messages), preview || '');
   },
   delete(sessionId) {
     db.prepare(`DELETE FROM chat_sessions WHERE session_id=?`).run(sessionId);
+  },
+  // Most-recently-active conversations, newest first, for the history sidebar.
+  list(limit = 50) {
+    return db.prepare(`SELECT session_id, preview, updated_at FROM chat_sessions ORDER BY updated_at DESC LIMIT ?`).all(limit);
+  },
+  // Full conversation as displayable {role, text} turns, for loading a past
+  // session back into the chat UI.
+  getDisplayable(sessionId) {
+    const messages = chatSessionRepo.get(sessionId);
+    if (!messages) return null;
+    return extractDisplayText(messages);
   },
   // Drop conversations untouched for maxAgeMs — call occasionally to keep the table small.
   prune(maxAgeMs) {

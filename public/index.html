@@ -524,6 +524,24 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .modal-body{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
 .modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:var(--bg)}
 
+/* Conversation history sidebar panel */
+.history-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:opacity .2s}
+.history-overlay.open{opacity:1;pointer-events:all}
+.history-panel{background:var(--white);border-radius:var(--r);width:min(440px,92vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.20);border:1px solid var(--border)}
+.history-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:2px solid var(--border);background:var(--shell)}
+.history-header h2{font-size:14px;font-weight:600;color:#fff;letter-spacing:.1px;margin:0}
+.history-close{background:none;border:none;color:rgba(255,255,255,.7);font-size:18px;cursor:pointer;line-height:1;border-radius:var(--r);padding:2px 7px}
+.history-close:hover{background:rgba(255,255,255,.15);color:#fff}
+.history-list{flex:1;overflow-y:auto;padding:8px}
+.history-item{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:var(--r);cursor:pointer;transition:background .12s}
+.history-item:hover{background:var(--bg)}
+.history-item-text{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;flex:1}
+.history-item-meta{font-size:10.5px;color:var(--muted);white-space:nowrap;margin-top:2px}
+.history-item-del{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:2px 6px;border-radius:4px;opacity:0;transition:opacity .12s}
+.history-item:hover .history-item-del{opacity:1}
+.history-item-del:hover{background:rgba(220,38,38,.1);color:#dc2626}
+.history-empty{padding:24px 18px;text-align:center;color:var(--muted);font-size:12.5px}
+
 /* Form (Fiori) */
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
@@ -2304,6 +2322,10 @@ body{font-family:var(--font);color:var(--text);display:flex}
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       New Chat
     </button>
+    <button class="logout-btn" id="history-btn" style="border-radius:var(--r);font-weight:600">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+      History
+    </button>
     <span id="ql-badge" style="display:none"></span>
     <span id="db-status-dot" style="display:none"></span>
   </div>
@@ -2712,6 +2734,18 @@ body{font-family:var(--font);color:var(--text);display:flex}
   </div>
 </div>
 
+<!-- Conversation history — server-side sessions (chatSessionRepo) that
+     otherwise persisted invisibly with no way to browse back into them. -->
+<div class="history-overlay" id="history-overlay">
+  <div class="history-panel">
+    <div class="history-header">
+      <h2>Conversation History</h2>
+      <button class="history-close" id="history-close">✕</button>
+    </div>
+    <div class="history-list" id="history-list"></div>
+  </div>
+</div>
+
 <!-- Saved Prompts panel -->
 <div id="saved-panel" style="display:none;position:fixed;bottom:130px;right:20px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px;width:260px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:500">
   <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Saved Prompts</div>
@@ -3066,6 +3100,85 @@ function doClearChat() {
 }
 document.getElementById('clear-btn').addEventListener('click', doClearChat);
 document.getElementById('new-chat-btn').addEventListener('click', doClearChat);
+
+// ── Conversation History Sidebar ────────────────────────────────────────
+// Server-side chat sessions (chatSessionRepo, db.mjs) have persisted since
+// DB-backed sessions were added, but nothing in the UI could browse back
+// into them until now — every reload was effectively a fresh start.
+function _historyAuthHdr() { return { 'x-auth-token': localStorage.getItem('hanny_token') || '' }; }
+
+async function openHistoryPanel() {
+  document.getElementById('history-overlay').classList.add('open');
+  const listEl = document.getElementById('history-list');
+  listEl.innerHTML = '<div class="history-empty">Loading…</div>';
+  try {
+    const res = await fetch('/api/chat/sessions', { headers: _historyAuthHdr() });
+    const d = await res.json();
+    if (!d.ok || !d.sessions?.length) {
+      listEl.innerHTML = '<div class="history-empty">No past conversations yet.</div>';
+      return;
+    }
+    listEl.innerHTML = '';
+    d.sessions.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      const text = document.createElement('div');
+      text.className = 'history-item-text';
+      const when = s.updated_at ? new Date(s.updated_at.replace(' ', 'T') + 'Z').toLocaleString() : '';
+      text.innerHTML = `${escHtml(s.preview || '(untitled conversation)')}<div class="history-item-meta">${when}</div>`;
+      const delBtn = document.createElement('button');
+      delBtn.className = 'history-item-del';
+      delBtn.innerHTML = '🗑';
+      delBtn.title = 'Delete this conversation';
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this conversation permanently?')) return;
+        await fetch('/api/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sessionId: s.session_id}) });
+        openHistoryPanel(); // refresh the list in place
+      };
+      item.appendChild(text);
+      item.appendChild(delBtn);
+      item.addEventListener('click', () => loadHistorySession(s.session_id));
+      listEl.appendChild(item);
+    });
+  } catch (e) {
+    listEl.innerHTML = `<div class="history-empty">Failed to load: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function closeHistoryPanel() {
+  document.getElementById('history-overlay').classList.remove('open');
+}
+
+async function loadHistorySession(id) {
+  try {
+    const res = await fetch(`/api/chat/sessions/${encodeURIComponent(id)}`, { headers: _historyAuthHdr() });
+    const d = await res.json();
+    if (!d.ok) { alert('Could not load that conversation: ' + (d.error || 'unknown error')); return; }
+    messagesEl.innerHTML = '';
+    welcomeEl.style.display = 'none';
+    let lastUserText = '';
+    (d.turns || []).forEach(t => {
+      if (t.role === 'user') {
+        lastUserText = t.text;
+        appendMsg('user', t.text);
+      } else {
+        const forRegen = lastUserText;
+        appendMsg('bot', t.text, { actions: true, onRegenerate: () => sendChatMessage(forRegen, { skipUserBubble: true }) });
+      }
+    });
+    sessionId = id;
+    closeHistoryPanel();
+  } catch (e) {
+    alert('Failed to load conversation: ' + e.message);
+  }
+}
+
+document.getElementById('history-btn').addEventListener('click', openHistoryPanel);
+document.getElementById('history-close').addEventListener('click', closeHistoryPanel);
+document.getElementById('history-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'history-overlay') closeHistoryPanel();
+});
 
 // Export chat
 document.getElementById('export-chat-btn').addEventListener('click', () => {

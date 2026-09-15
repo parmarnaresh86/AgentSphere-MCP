@@ -3893,6 +3893,29 @@ app.post("/api/chat", async (req, res) => {
 
 app.post("/api/reset", (req,res) => { chatSessionRepo.delete(req.body.sessionId); res.json({ok:true}); });
 
+// ── Conversation history sidebar ────────────────────────────────────────────
+// Conversation history has persisted in SQLite since chatSessionRepo was
+// added (DB-backed sessions) — but nothing in the UI could ever see it: no
+// endpoint listed past sessions, so every browser refresh was effectively a
+// fresh start with no way back into an earlier conversation. These two
+// routes are new (no existing behavior to preserve), so — unlike /api/chat
+// and /api/reset above, which predate this and stay as they are — they're
+// behind requireAuth from the start: listing/reading past conversation
+// content is more sensitive than a single reset action.
+app.get("/api/chat/sessions", requireAuth, (req, res) => {
+  try {
+    res.json({ ok: true, sessions: chatSessionRepo.list(50) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get("/api/chat/sessions/:id", requireAuth, (req, res) => {
+  try {
+    const turns = chatSessionRepo.getDisplayable(req.params.id);
+    if (!turns) return res.status(404).json({ ok: false, error: "Session not found" });
+    res.json({ ok: true, sessionId: req.params.id, turns });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ── Analytics AI summary ──────────────────────────────────────────────────────
 app.post("/api/summarize", requireAuth, async (req, res) => {
   const { rows = [], question = '', source = '' } = req.body;
