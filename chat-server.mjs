@@ -7,7 +7,7 @@ import { buildProfessionalInsight } from "./lib/data-insight.mjs";
 import { detectIntent as _detectIntentPure } from "./lib/detect-intent.mjs";
 import { qcol } from "./lib/sql-dialect.mjs";
 import { createProductionAgentRouter } from "./controllers/production-agent.mjs";
-import { createMrpAgentRouter } from "./controllers/mrp-agent.mjs";
+import { createMrpAgentRouter, OITM_FIELD_CANDIDATES, mrpFetchVendorsViaDB, mrpFetchPricesViaDB } from "./controllers/mrp-agent.mjs";
 import { createPricingAgentRouter } from "./controllers/pricing-agent.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";

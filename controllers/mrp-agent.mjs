@@ -30,7 +30,7 @@ function mrpLog(action, details = {}) {
 // resolved (or the SQL/DB call itself fails), the read falls back to the
 // Service Layer path below rather than risking a wrong quantity/vendor on a
 // PO that gets auto-posted.
-const OITM_FIELD_CANDIDATES = {
+export const OITM_FIELD_CANDIDATES = {
   itemCode:     ['ItemCode'],
   itemName:     ['ItemName'],
   onHand:       ['OnHand'],
@@ -92,7 +92,7 @@ const OITM_PRICE_FIELD_CANDIDATES = {
   buyUnitMsr: ['BuyUnitMsr'], invntryUom: ['InvntryUom'],
 };
 
-async function mrpFetchVendorsViaDB(vendorCodes) {
+export async function mrpFetchVendorsViaDB(vendorCodes) {
   const cfg = getActiveConfig();
   const isHana = getActiveType() === 'hana';
   const q = n => qcol(n, isHana);
@@ -120,7 +120,7 @@ async function mrpFetchPaymentTermsViaDB() {
   return executeSQL(sql);
 }
 
-async function mrpFetchPricesViaDB(itemCodes) {
+export async function mrpFetchPricesViaDB(itemCodes) {
   const cfg = getActiveConfig();
   const isHana = getActiveType() === 'hana';
   const q = n => qcol(n, isHana);
