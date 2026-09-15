@@ -6666,10 +6666,17 @@ setTimeout(() => {
 // ════════════════════════════════════════════════════════════════
 let _connections = [];
 
+// All /api/connections* routes require auth server-side (requireAuth) but
+// every fetch() in this block was sent with no headers at all, so they were
+// silently 401ing for every user — the company/connection switcher never
+// actually worked. _connAuthHdr() matches the 'hanny_token' pattern used
+// everywhere else in this file.
+function _connAuthHdr() { return { 'x-auth-token': localStorage.getItem('hanny_token') || '' }; }
+
 // ── Load all connections and render selector + modal table ──────
 async function loadConnections() {
   try {
-    const res = await fetch('/api/connections');
+    const res = await fetch('/api/connections', { headers: _connAuthHdr() });
     if (!res.ok) return;
     _connections = await res.json();
     renderCompanyDropdown();
@@ -6744,7 +6751,7 @@ async function switchCompany(id) {
   appendMsg('bot', `⏳ Switching to **${conn.name}** (${conn.company})…`);
 
   try {
-    const res = await fetch(`/api/connections/${id}/switch`, { method: 'POST' });
+    const res = await fetch(`/api/connections/${id}/switch`, { method: 'POST', headers: _connAuthHdr() });
     const data = await res.json();
     if (!res.ok) {
       appendMsg('bot', `❌ Switch failed: ${data.error}`);
@@ -6823,7 +6830,7 @@ async function deleteConn(id) {
   const c = _connections.find(x => x.id === id);
   if (!c) return;
   if (!confirm(`Delete connection "${c.name}"?`)) return;
-  const res = await fetch(`/api/connections/${id}`, { method: 'DELETE' });
+  const res = await fetch(`/api/connections/${id}`, { method: 'DELETE', headers: _connAuthHdr() });
   if (res.ok) { await loadConnections(); }
   else { const d = await res.json(); alert(d.error || 'Delete failed'); }
 }
@@ -6872,7 +6879,7 @@ document.getElementById('conn-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = 'Saving…';
   try {
-    const res  = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const res  = await fetch(url, { method, headers:{'Content-Type':'application/json', ..._connAuthHdr()}, body:JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Save failed'); return; }
     resetConnForm();
@@ -18512,6 +18519,7 @@ setInterval(() => {
       <div style="font-size:10px;opacity:.65">Scan supplier quotation/PO → match vendor &amp; items → post Purchase Order</div>
     </div>
     <span id="ocrpo-step-badge" style="background:rgba(99,102,241,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="showChatPanel()" title="Back to Chat" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">← Back</button>
     <button onclick="ocrpoResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Restart
@@ -18555,6 +18563,7 @@ setInterval(() => {
       <div style="font-size:10px;opacity:.65">Scan expense invoice → select GL account &amp; tax code → post A/P Invoice</div>
     </div>
     <span id="ocrexp-step-badge" style="background:rgba(245,158,11,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="showChatPanel()" title="Back to Chat" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">← Back</button>
     <button onclick="ocrexpResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Restart
@@ -18598,6 +18607,7 @@ setInterval(() => {
       <div style="font-size:10px;opacity:.65">Scan delivery challan / inward slip → local audit register (no SAP posting)</div>
     </div>
     <span id="ocrinw-step-badge" style="background:rgba(22,163,74,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="showChatPanel()" title="Back to Chat" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">← Back</button>
     <button onclick="ocrinwResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Restart
