@@ -13,6 +13,7 @@ import { createProcurementAgentRouter, createPurchaseThreeWayMatchRouter } from 
 import { createPoWorkflowAgentRouter } from "./controllers/po-workflow-agent.mjs";
 import { createMailPoAgentRouter } from "./controllers/mail-po-agent.mjs";
 import { createLookupApiRouter } from "./controllers/lookup-api.mjs";
+import { createBrandingRouter } from "./controllers/branding.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -4920,50 +4921,8 @@ app.use('/api/workflow/po', createPoWorkflowAgentRouter({ requireAuth, getActive
   }
 })();
 
-// ── Branding (Company Setup / Developer Settings) ──────────────────────────
-// Lets one deployed instance be re-skinned per client (product/company/developer
-// name + logo) without code changes. GET is unauthenticated on purpose — the
-// login page needs it before a session exists. PUT is admin-only.
-function brandingToJson(row) {
-  return {
-    companyName:     row.company_name      || "",
-    companyLogo:     row.company_logo      || "",
-    developedBy:     row.developed_by      || "",
-    developedByLogo: row.developed_by_logo || "",
-    productName:     row.product_name      || "",
-    productLogo:     row.product_logo      || "",
-  };
-}
-function isValidLogoValue(v) {
-  if (v == null || v === "") return true;
-  if (typeof v !== "string") return false;
-  return v.startsWith("data:image/") || v.startsWith("/assets/");
-}
-
-app.get("/api/branding", (_req, res) => {
-  try {
-    res.json(brandingToJson(brandingRepo.get()));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put("/api/branding", requireAuth, (req, res) => {
-  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
-  const { companyName, companyLogo, developedBy, developedByLogo, productName, productLogo } = req.body || {};
-  for (const [label, v] of [["companyLogo", companyLogo], ["developedByLogo", developedByLogo], ["productLogo", productLogo]]) {
-    if (!isValidLogoValue(v)) return res.status(400).json({ error: `${label} must be an uploaded image or empty` });
-  }
-  try {
-    const fields = {};
-    if (companyName      !== undefined) fields.company_name      = String(companyName).slice(0, 200);
-    if (companyLogo      !== undefined) fields.company_logo      = companyLogo;
-    if (developedBy      !== undefined) fields.developed_by      = String(developedBy).slice(0, 200);
-    if (developedByLogo  !== undefined) fields.developed_by_logo = developedByLogo;
-    if (productName      !== undefined) fields.product_name      = String(productName).slice(0, 200);
-    if (productLogo      !== undefined) fields.product_logo      = productLogo;
-    const saved = brandingRepo.save(fields, req.user.username || req.user.email || "");
-    res.json({ ok: true, branding: brandingToJson(saved) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// ── Branding routes — extracted to controllers/branding.mjs ──
+app.use('/api/branding', createBrandingRouter({ requireAuth }));
 
 // ── Mail-PO→SO Agent routes — extracted to controllers/mail-po-agent.mjs ──
 app.use('/api/mail-po', createMailPoAgentRouter({ requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER }));
