@@ -3529,9 +3529,35 @@ function extractSuggestions(text) {
 
 // ── Chat ──
 app.post("/api/chat", async (req, res) => {
-  let { message, sessionId, engine } = req.body;
+  let { message, sessionId, engine, stream } = req.body;
   if (!message) return res.status(400).json({ error: "message required" });
   const sid = sessionId || crypto.randomUUID();
+
+  // Optional SSE streaming — wraps the EXISTING handler's logic/branches
+  // (write-confirmation, multi-tab reports, clarification flows, per-engine
+  // routing) completely unchanged; only how the final payload leaves the
+  // server differs. sendReply()/sendErrorReply() replace every res.json()/
+  // res.status().json() exit point below so both modes share one code path
+  // — no duplicated branch logic, so nothing about those already-verified
+  // flows had to be touched to add this.
+  const isStreaming = !!stream;
+  if (isStreaming) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    res.write(`data: ${JSON.stringify({ type: "step", text: "Understanding your question…" })}\n\n`);
+  }
+  const sendReply = (payload) => {
+    if (isStreaming) { res.write(`data: ${JSON.stringify({ type: "result", ...payload })}\n\n`); res.end(); }
+    else res.json(payload);
+  };
+  const sendErrorReply = (status, payload) => {
+    if (isStreaming) { res.write(`data: ${JSON.stringify({ type: "error", ...payload })}\n\n`); res.end(); }
+    else res.status(status).json(payload);
+  };
+  const sendStep = (text) => { if (isStreaming) res.write(`data: ${JSON.stringify({ type: "step", text })}\n\n`); };
 
   // "1" / "2." / "3)" → resolve against the suggestions shown last turn.
   const suggestionPick = /^\s*(\d{1,2})\s*[.):]?\s*$/.exec(message);
@@ -3551,7 +3577,7 @@ app.post("/api/chat", async (req, res) => {
     _pendingWrites.delete(sid);
     const trimmed = message.trim();
     if (CANCEL_RE.test(trimmed)) {
-      return res.json({ reply: "Cancelled — nothing was sent to SAP.", sessionId: sid, mode: "write-cancelled" });
+      return sendReply({ reply: "Cancelled — nothing was sent to SAP.", sessionId: sid, mode: "write-cancelled" });
     }
     if (CONFIRM_RE.test(trimmed)) {
       try {
@@ -3573,9 +3599,9 @@ app.post("/api/chat", async (req, res) => {
         }
         chatSessionRepo.set(sid, resumed.messages);
         const note = failures.length ? `\n\n⚠️ ${failures.length} of ${writeResults.length} action(s) failed — see above.` : "";
-        return res.json({ reply: resumed.text + note, sessionId: sid, mode: pendingWrite.engine === "claude" ? "ai" : "gpt4o" });
+        return sendReply({ reply: resumed.text + note, sessionId: sid, mode: pendingWrite.engine === "claude" ? "ai" : "gpt4o" });
       } catch (err) {
-        return res.status(500).json({ error: `Confirmed action failed: ${err.message}` });
+        return sendErrorReply(500, { error: `Confirmed action failed: ${err.message}` });
       }
     }
     // Anything else: silently drop the stale pending write and fall through
@@ -3604,7 +3630,7 @@ app.post("/api/chat", async (req, res) => {
   if (ambiguousFilter) {
     const origQuestion = ambiguousFilter[1];
     _pendingClarification.set(sid, { question: origQuestion });
-    return res.json({
+    return sendReply({
       reply: `Which would you like to filter *"${origQuestion}"* by — a **customer**, an **item**, or a **warehouse**? Tell me the specific one (name or code) and I'll rerun it filtered to just that.`,
       sessionId: sid,
       mode: "clarify",
@@ -3629,9 +3655,9 @@ app.post("/api/chat", async (req, res) => {
         ? `\n\n⚠️ ${failed.length} tab${failed.length > 1 ? "s" : ""} couldn't be built: ${failed.map(f => f.name).join(", ")}`
         : "";
       const reply = `📊 **Multi-tab Excel report ready** — ${built.length} tab${built.length > 1 ? "s" : ""} built:\n${tabLines}${failLines}\n\n📥 **[Download Report](${url})**`;
-      return res.json({ reply, sessionId: sid, mode: "excel-report" });
+      return sendReply({ reply, sessionId: sid, mode: "excel-report" });
     } catch (err) {
-      return res.status(500).json({ error: `Report generation failed: ${err.message}` });
+      return sendErrorReply(500, { error: `Report generation failed: ${err.message}` });
     }
   }
 
@@ -3652,10 +3678,10 @@ app.post("/api/chat", async (req, res) => {
         const saved = dbConnRepo.getActive();
         if (saved) {
           try { await connectDB(saved); } catch (e) {
-            return res.status(503).json({ error: `DB connection failed: ${e.message}. Please re-configure in Settings → DB Connection.` });
+            return sendErrorReply(503, { error: `DB connection failed: ${e.message}. Please re-configure in Settings → DB Connection.` });
           }
         } else {
-          return res.status(503).json({ error: "No DB connection configured. Go to Settings → DB Connection to add one." });
+          return sendErrorReply(503, { error: "No DB connection configured. Go to Settings → DB Connection to add one." });
         }
       }
       let generatedSQL = "", rows = [], dbType = getActiveType(), presentation = null;
@@ -3663,7 +3689,7 @@ app.post("/api/chat", async (req, res) => {
         const result = await generateAndRunDirectSql(message);
         generatedSQL = result.sql; rows = result.rows; dbType = result.dbType; presentation = result.presentation;
       } catch (err) {
-        if (!err.sql) return res.status(500).json({ error: `SQL generation failed: ${err.message}` });
+        if (!err.sql) return sendErrorReply(500, { error: `SQL generation failed: ${err.message}` });
         generatedSQL = err.sql;
         reply = `⚠️ **SQL Error**\n\n\`\`\`sql\n${generatedSQL}\n\`\`\`\n\n**Error:** ${err.message}`;
       }
@@ -3684,7 +3710,7 @@ app.post("/api/chat", async (req, res) => {
       if (generatedSQL) _logQ({ method: 'SQL', endpoint: 'Direct DB Query', sql: generatedSQL, rows: rows.length });
       const dbSuggestions = extractSuggestions(reply);
       if (dbSuggestions.length) _lastSuggestions.set(sid, dbSuggestions); else _lastSuggestions.delete(sid);
-      return res.json({ reply, sessionId: sid, mode: "db", sql: generatedSQL, rowCount: rows.length, cacheHit: false, queryLog: _reqQueryLog });
+      return sendReply({ reply, sessionId: sid, mode: "db", sql: generatedSQL, rowCount: rows.length, cacheHit: false, queryLog: _reqQueryLog });
 
     } else if (useGPT) {
       // ── Pre-intercept analytics queries — same as Claude mode.
@@ -3727,6 +3753,7 @@ app.post("/api/chat", async (req, res) => {
               dbResult += `\n\n📥 **[Download Excel (${rows.length} rows)](${excelUrl})**`;
             }
             _logQ({ method: 'SQL', endpoint: 'Direct DB Query (GPT-4o preferred)', sql: genSql, rows: rows.length });
+            sendStep("Querying live data…");
             console.log(`[GPT-PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
             hanaAttemptError = dbErr.message;
@@ -3755,6 +3782,7 @@ app.post("/api/chat", async (req, res) => {
           // through natural conversation (asking a clarifying question itself when
           // genuinely ambiguous, per the system prompt), then calls query_hana_direct
           // (ODBC, no row cap) or a Service Layer tool as appropriate.
+          sendStep("Thinking through your request…");
           console.log(`[GPT-PRE-INTERCEPT] falling through to GPT agent`);
           let msgs = chatSessionRepo.get(sid) || [];
           msgs.push({ role: "user", content: gptMessage });
@@ -3807,6 +3835,7 @@ app.post("/api/chat", async (req, res) => {
               dbResult += `\n\n📥 **[Download Excel (${rows.length} rows)](${excelUrl})**`;
             }
             _logQ({ method: 'SQL', endpoint: 'Direct DB Query (Claude preferred)', sql: genSql, rows: rows.length });
+            sendStep("Querying live data…");
             console.log(`[PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
             hanaAttemptError = dbErr.message;
@@ -3830,6 +3859,7 @@ app.post("/api/chat", async (req, res) => {
           // through natural conversation (asking a clarifying question itself when
           // genuinely ambiguous, per the system prompt), then calls query_hana_direct
           // (ODBC, no row cap) or a Service Layer tool as appropriate.
+          sendStep("Thinking through your request…");
           console.log(`[PRE-INTERCEPT] falling through to AI agent`);
 
           let msgs = chatSessionRepo.get(sid) || [];
@@ -3884,10 +3914,10 @@ app.post("/api/chat", async (req, res) => {
     const mode = useGPT ? "gpt4o" : useAI ? "ai" : "standard";
     const suggestions = extractSuggestions(reply);
     if (suggestions.length) _lastSuggestions.set(sid, suggestions); else _lastSuggestions.delete(sid);
-    res.json({ reply, sessionId: sid, mode, cacheHit, cacheSource, queryLog: _reqQueryLog, ...(openForm ? { openForm } : {}), ...(openForecastDashboard ? { openForecastDashboard: true, forecastData } : {}), ...(openRushDashboard ? { openRushDashboard: true, rushData } : {}) });
+    sendReply({ reply, sessionId: sid, mode, cacheHit, cacheSource, queryLog: _reqQueryLog, ...(openForm ? { openForm } : {}), ...(openForecastDashboard ? { openForecastDashboard: true, forecastData } : {}), ...(openRushDashboard ? { openRushDashboard: true, rushData } : {}) });
   } catch(err) {
     console.error(err.message);
-    res.status(500).json({ error: err.message });
+    sendErrorReply(500, { error: err.message });
   }
 });
 

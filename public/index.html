@@ -409,6 +409,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:bounce 1.2s infinite ease-in-out}
 .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
 @keyframes bounce{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1);opacity:1}}
+.typing-status{font-size:12px;color:var(--muted);margin-right:2px}
 
 /* ═══════════════════════════════
    FIORI BOTTOM / FOOTER BAR
@@ -3515,6 +3516,39 @@ async function sendMessage() {
   await sendChatMessage(text);
 }
 
+// POST /api/chat with stream:true and read the SSE response, calling
+// onStep(text) for each progress update along the way and resolving with
+// the same {reply, sessionId, mode, ...} shape the old plain-JSON response
+// had — so every existing consumer of the result (sendChatMessage's success
+// path, cache badges, form-opening, forecast dashboards, ...) needed zero
+// changes. Falls back to a plain JSON response if the server ever answers
+// non-streamed (e.g. an error before headers, or a proxy that buffers SSE).
+async function fetchChatStreamed(payload, onStep) {
+  const resp = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!resp.body || !(resp.headers.get('content-type') || '').includes('text/event-stream')) {
+    return resp.json();
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', result = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop();
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith('data: ')) continue;
+      let event;
+      try { event = JSON.parse(line.slice(6)); } catch { continue; }
+      if (event.type === 'step') onStep?.(event.text);
+      else if (event.type === 'result' || event.type === 'error') { const { type, ...rest } = event; result = rest; }
+    }
+  }
+  return result || { error: 'No response received from server.' };
+}
+
 // Core chat-mode send, factored out of sendMessage() so Retry/Regenerate can
 // call it directly without re-triggering easter eggs/form-mode/etc., and
 // without re-adding a duplicate user bubble (skipUserBubble).
@@ -3525,9 +3559,9 @@ async function sendChatMessage(text, { skipUserBubble = false } = {}) {
   if (!skipUserBubble) { appendMsg('user', text); inputEl.value = ''; inputEl.style.height = 'auto'; }
   const typing = appendTyping();
   try {
-    const chatPayload = { message:text, sessionId, engine:chatEngine };
+    const chatPayload = { message:text, sessionId, engine:chatEngine, stream:true };
     if (chatEngine === 'v2') chatPayload.v2History = v2History.slice(-12); // send last 6 exchanges
-    const d = await api('/api/chat', { method:'POST', body:JSON.stringify(chatPayload) });
+    const d = await fetchChatStreamed(chatPayload, (statusText) => typing.setStatus(statusText));
     typing.remove();
     if (d.error) {
       appendMsg('bot', `**Error:** ${d.error}`, { actions: true, isError: true, onRetry: () => sendChatMessage(text, { skipUserBubble: true }) });
@@ -3954,9 +3988,15 @@ function appendTyping() {
   const row=document.createElement('div'); row.className='typing-row';
   const av=document.createElement('div'); av.className='av bot'; av.textContent='B1';
   const b=document.createElement('div'); b.className='typing-bubble';
-  b.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  b.innerHTML='<span class="typing-status"></span><div class="dot"></div><div class="dot"></div><div class="dot"></div>';
   row.appendChild(av); row.appendChild(b);
-  messagesEl.appendChild(row); messagesEl.scrollTop=messagesEl.scrollHeight; return row;
+  messagesEl.appendChild(row); messagesEl.scrollTop=messagesEl.scrollHeight;
+  // Optional live status text (used by the streaming /api/chat path to show
+  // real progress — "Understanding your question…", "Querying live data…" —
+  // instead of just dots for the entire wait. Callers that never call this
+  // (every other appendTyping() use in the file) get the plain dots as before.
+  row.setStatus = (text) => { const s = b.querySelector('.typing-status'); if (s) s.textContent = text ? text : ''; };
+  return row;
 }
 
 function postResult(formatted) {
