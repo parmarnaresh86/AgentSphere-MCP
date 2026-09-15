@@ -306,6 +306,14 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .code-block-copy{background:transparent;border:none;color:#9ca3af;font-size:11px;font-weight:600;cursor:pointer;padding:3px 9px;border-radius:6px;font-family:inherit;transition:background .12s,color .12s}
 .code-block-copy:hover{background:rgba(255,255,255,.1);color:#e5e7eb}
 .code-block-copy.copied{color:#34d399}
+.msg-actions{display:flex;gap:4px;margin-top:4px;padding-left:2px}
+.msg-row.bot:hover .msg-actions{opacity:1}
+.msg-actions{opacity:0;transition:opacity .12s}
+.msg-action-btn{display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#9ca3af;font-size:11px;font-weight:600;cursor:pointer;padding:4px 8px;border-radius:6px;font-family:inherit;transition:background .12s,color .12s}
+.msg-action-btn:hover{background:rgba(0,0,0,.06);color:#374151}
+.msg-action-btn.copied{color:#059669}
+.msg-action-btn.retry{color:#dc2626}
+.msg-action-btn.retry:hover{background:rgba(220,38,38,.08)}
 .bubble.bot .code-block pre,.gp-bubble.bot .code-block pre{margin:0;padding:12px 14px;overflow-x:auto;background:transparent;border:none;border-radius:0}
 .bubble.bot .code-block pre code,.gp-bubble.bot .code-block pre code{background:none;padding:0;border:none;color:#e5e7eb;font-family:'Cascadia Code','Courier New',monospace;font-size:12.5px;line-height:1.6;white-space:pre}
 .code-block .jk{color:#7dd3fc}
@@ -3391,17 +3399,26 @@ async function sendMessage() {
   if (chatEngine === 'v2') { await sendV2Message(text); return; }
 
   // ── CHAT MODE ──────────────────────────────────────
+  await sendChatMessage(text);
+}
+
+// Core chat-mode send, factored out of sendMessage() so Retry/Regenerate can
+// call it directly without re-triggering easter eggs/form-mode/etc., and
+// without re-adding a duplicate user bubble (skipUserBubble).
+let _lastChatMessage = null; // text of the last message actually sent to /api/chat, for retry/regenerate
+async function sendChatMessage(text, { skipUserBubble = false } = {}) {
   isLoading = true; sendBtn.disabled = true;
-  appendMsg('user', text);
-  inputEl.value = ''; inputEl.style.height = 'auto';
+  _lastChatMessage = text;
+  if (!skipUserBubble) { appendMsg('user', text); inputEl.value = ''; inputEl.style.height = 'auto'; }
   const typing = appendTyping();
   try {
     const chatPayload = { message:text, sessionId, engine:chatEngine };
     if (chatEngine === 'v2') chatPayload.v2History = v2History.slice(-12); // send last 6 exchanges
     const d = await api('/api/chat', { method:'POST', body:JSON.stringify(chatPayload) });
     typing.remove();
-    if (d.error) appendMsg('bot', `**Error:** ${d.error}`);
-    else {
+    if (d.error) {
+      appendMsg('bot', `**Error:** ${d.error}`, { actions: true, isError: true, onRetry: () => sendChatMessage(text, { skipUserBubble: true }) });
+    } else {
       sessionId = d.sessionId;
       // Update V2 conversation history for follow-up context
       if (chatEngine === 'v2' && d.reply) {
@@ -3416,7 +3433,7 @@ async function sendMessage() {
         badge.innerHTML = `<span>📋</span> Answered from Query Library &nbsp;<span style="opacity:.7;font-weight:400">${d.cacheSource}</span>`;
         chatEl.appendChild(badge);
       }
-      const botRow = appendMsg('bot', d.reply);
+      const botRow = appendMsg('bot', d.reply, { actions: true, onRegenerate: () => sendChatMessage(text, { skipUserBubble: true }) });
       if (d.queryLog?.length) injectQueryLog(botRow, d.queryLog);
       speakText(d.reply);
       // Refresh Query Library badge count after every AI response (new entries may have been cached)
@@ -3457,7 +3474,10 @@ async function sendMessage() {
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
     }
-  } catch(e) { typing.remove(); appendMsg('bot', `**Network error:** ${e.message}`); }
+  } catch(e) {
+    typing.remove();
+    appendMsg('bot', `**Network error:** ${e.message}`, { actions: true, isError: true, onRetry: () => sendChatMessage(text, { skipUserBubble: true }) });
+  }
   finally { isLoading = false; sendBtn.disabled = false; inputEl.focus(); }
 }
 
@@ -3705,7 +3725,47 @@ function wireSuggestionClicks(bubbleEl, fullText) {
   });
 }
 
-function appendMsg(role, text) {
+const _msgTextStore = {};
+let _msgActionUid = 0;
+
+// Copying a message with a data-table card should copy something a human
+// can paste somewhere useful — not the internal __ATBL__{...json...}__/ATBL__
+// wire-format sentinel used to hand the table to renderAnalyticsCard().
+function cleanTextForCopy(text) {
+  const m = text.match(/__ATBL__([\s\S]+?)__\/ATBL__/);
+  if (!m) return text;
+  let summary = `[${'Data table'}]`;
+  try {
+    const data = JSON.parse(m[1]);
+    const rows = data.rows || [];
+    summary = `[Data table — ${(data.rowCount ?? rows.length).toLocaleString()} rows from ${data.source || 'query'}]`;
+    if (rows.length) {
+      const cols = Object.keys(rows[0]);
+      const header = cols.join('\t');
+      const body = rows.slice(0, 200).map(r => cols.map(c => r[c] ?? '').join('\t')).join('\n');
+      summary += `\n${header}\n${body}`;
+      if (rows.length > 200) summary += `\n... and ${rows.length - 200} more rows`;
+    }
+  } catch { /* keep the fallback placeholder */ }
+  const before = text.slice(0, text.indexOf('__ATBL__')).trim();
+  const after  = text.slice(text.indexOf('__/ATBL__') + 9).trim();
+  return [before, summary, after].filter(Boolean).join('\n\n');
+}
+
+function copyMessage(id, btn) {
+  const text = _msgTextStore[id] || '';
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ Copied'; btn.classList.add('copied');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 1500);
+  }).catch(() => {});
+}
+
+// role: 'user' | 'bot'. opts (bot messages only):
+//   actions: true → show a hover action bar under the bubble
+//   isError: true → action bar shows "Retry" instead of "Regenerate"
+//   onRetry / onRegenerate: () => void, wired to those buttons
+function appendMsg(role, text, opts = {}) {
   const row = document.createElement('div');
   row.className = `msg-row ${role}`;
   const av = document.createElement('div');
@@ -3734,7 +3794,44 @@ function appendMsg(role, text) {
   }
   b.querySelectorAll('a[href*="/api/print/"]').forEach(a => { a.className='print-link'; a.target='_blank'; });
   if (role === 'bot') wireSuggestionClicks(b, text);
-  row.appendChild(av); row.appendChild(b);
+  row.appendChild(av);
+
+  if (role === 'bot' && opts.actions && text) {
+    // .msg-row is a flex ROW (avatar beside bubble) — the bubble + action bar
+    // need their own column wrapper so the actions render under the bubble,
+    // not as a third item beside it.
+    const col = document.createElement('div');
+    col.style.cssText = 'display:flex;flex-direction:column;min-width:0;flex:1';
+    col.appendChild(b);
+
+    const uid = 'msgact_' + (_msgActionUid++);
+    _msgTextStore[uid] = cleanTextForCopy(text);
+    const bar = document.createElement('div');
+    bar.className = 'msg-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-action-btn';
+    copyBtn.innerHTML = '⧉ Copy';
+    copyBtn.onclick = () => copyMessage(uid, copyBtn);
+    bar.appendChild(copyBtn);
+    if (opts.isError && opts.onRetry) {
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'msg-action-btn retry';
+      retryBtn.innerHTML = '↻ Retry';
+      retryBtn.onclick = opts.onRetry;
+      bar.appendChild(retryBtn);
+    } else if (!opts.isError && opts.onRegenerate) {
+      const regenBtn = document.createElement('button');
+      regenBtn.className = 'msg-action-btn';
+      regenBtn.innerHTML = '⟳ Regenerate';
+      regenBtn.onclick = opts.onRegenerate;
+      bar.appendChild(regenBtn);
+    }
+    col.appendChild(bar);
+    row.appendChild(col);
+  } else {
+    row.appendChild(b);
+  }
+
   messagesEl.appendChild(row);
   messagesEl.scrollTop=messagesEl.scrollHeight;
   return row;
