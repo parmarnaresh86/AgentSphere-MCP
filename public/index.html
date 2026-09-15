@@ -819,16 +819,11 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .conn-divider{border:none;border-top:1px solid var(--border);margin:14px 0}
 .conn-section-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px}
 
-/* ── Schema Registry modal ──────────────────────────────────────── */
-#sr-modal-overlay{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;
-  align-items:center;justify-content:center;
-}
-#sr-modal-overlay.open{display:flex}
+/* ── Schema Registry panel ──────────────────────────────────────── */
+#schema-registry-panel{display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa}
 #sr-modal{
-  background:var(--white);border-radius:var(--r);width:100%;max-width:860px;
-  box-shadow:0 8px 32px rgba(0,0,0,.20);overflow:hidden;
-  border:1px solid var(--border);max-height:94vh;display:flex;flex-direction:column;
+  background:var(--white);flex:1;overflow:hidden;
+  display:flex;flex-direction:column;min-height:0;
 }
 #sr-modal .conn-modal-hdr button{
   background:none;border:none;color:rgba(255,255,255,.7);font-size:20px;
@@ -857,16 +852,11 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .sr-form input,.sr-form select,.sr-form textarea{width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--white);color:var(--text);box-sizing:border-box}
 .sr-form textarea{resize:vertical;font-family:monospace;font-size:11px;line-height:1.5;min-height:72px}
 .sr-empty{text-align:center;color:var(--muted);padding:32px 0;font-size:13px}
-/* ── Query Library modal ────────────────────────────────────────── */
-#ql-modal-overlay{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;
-  align-items:center;justify-content:center;
-}
-#ql-modal-overlay.open{display:flex}
+/* ── Query Library panel ────────────────────────────────────────── */
+#query-library-panel{display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa}
 #ql-modal{
-  background:var(--white);border-radius:var(--r);width:100%;max-width:720px;
-  box-shadow:0 8px 32px rgba(0,0,0,.20);overflow:hidden;
-  border:1px solid var(--border);max-height:90vh;display:flex;flex-direction:column;
+  background:var(--white);flex:1;overflow:hidden;
+  display:flex;flex-direction:column;min-height:0;
 }
 #ql-modal .conn-modal-hdr button{
   background:none;border:none;color:rgba(255,255,255,.7);font-size:20px;
@@ -923,17 +913,11 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .fc-ask-btn{background:#F1F5F9;color:#374151;border:1px solid #E2E8F0;}
 .fc-open-btn:hover,.fc-ask-btn:hover{opacity:.88;transform:translateY(-1px);}
 
-/* ── User Management modal (reuses conn-modal patterns) ────────── */
-#user-modal-overlay{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;
-  align-items:center;justify-content:center;
-}
-#user-modal-overlay.open{display:flex}
+/* ── User Management panel (reuses conn-modal patterns) ────────── */
+#user-management-panel{display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa}
 #user-modal{
-  background:var(--white);border-radius:var(--r);width:100%;max-width:580px;
-  box-shadow:0 8px 32px rgba(0,0,0,.20);overflow:hidden;
-  border:1px solid var(--border);
-  max-height:90vh;display:flex;flex-direction:column;
+  background:var(--white);flex:1;overflow:hidden;
+  display:flex;flex-direction:column;min-height:0;
 }
 #user-modal .conn-modal-hdr button{
   background:none;border:none;color:rgba(255,255,255,.7);font-size:20px;
@@ -1353,17 +1337,10 @@ body{font-family:var(--font);color:var(--text);display:flex}
 /* ═══════════════════════════════
    UDT WIZARD MODAL
 ═══════════════════════════════ */
-#udt-modal-overlay{
-  display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.55);z-index:1300;
-  align-items:center;justify-content:center;
-}
-#udt-modal-overlay.open{display:flex}
+#udt-panel{display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa}
 #udt-modal{
-  background:var(--white);border-radius:8px;
-  width:660px;max-width:96vw;max-height:90vh;
-  display:flex;flex-direction:column;
-  box-shadow:0 8px 32px rgba(0,0,0,.25);overflow:hidden;
+  background:var(--white);flex:1;
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
 }
 .udt-hdr{
   background:var(--shell);
@@ -2351,14 +2328,14 @@ body{font-family:var(--font);color:var(--text);display:flex}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-dev-tools">
-        <div class="nav-subitem" onclick="window.open('/db-builder.html','_blank')" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>DB Query Builder</div>
+        <div class="nav-subitem" id="nav-db-builder" onclick="showDbBuilderPanel()" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>DB Query Builder</div>
         <div class="nav-subitem" onclick="openUdtWizard()" id="nav-create-udt" style="cursor:pointer"><span class="dot-icon" style="background:#107E3E"></span>Create UDT</div>
         <div class="nav-subitem" data-prompt="List all user defined tables (UDTs) in SAP B1 — show table name, description and type"><span class="dot-icon" style="background:#107E3E"></span>View UDTs</div>
-        <div class="nav-subitem" onclick="openQueryLibrary()" style="cursor:pointer">
+        <div class="nav-subitem" id="nav-query-library" onclick="openQueryLibrary()" style="cursor:pointer">
           <span class="dot-icon" style="background:#6A1DE8"></span>Query Library
           <span id="ql-nav-badge" style="font-size:9px;background:var(--blue,#0070F2);color:#fff;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:auto">0</span>
         </div>
-        <div class="nav-subitem" onclick="openSchemaRegistry()" style="cursor:pointer">
+        <div class="nav-subitem" id="nav-schema-registry" onclick="openSchemaRegistry()" style="cursor:pointer">
           <span class="dot-icon" style="background:#8B5CF6"></span>Schema Registry
         </div>
         <div class="nav-subitem" onclick="openReportsPanel()" style="cursor:pointer">
@@ -2390,12 +2367,12 @@ body{font-family:var(--font);color:var(--text);display:flex}
       User Rights
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
     </div>
-    <div class="nav-item" id="nav-company-setup" onclick="window.open('/company-setup.html','_blank')" style="cursor:pointer">
+    <div class="nav-item" id="nav-company-setup" onclick="showCompanySetupPanel()" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>
       Company Setup
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
     </div>
-    <div class="nav-item" id="nav-developer-settings" onclick="window.open('/developer-settings.html','_blank')" style="cursor:pointer">
+    <div class="nav-item" id="nav-developer-settings" onclick="showDeveloperSettingsPanel()" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
       Developer Settings
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
@@ -6697,14 +6674,14 @@ setTimeout(() => {
 <!-- ═══════════════════════════════════════════════════════════════
      USER MANAGEMENT MODAL
 ════════════════════════════════════════════════════════════════ -->
-<div id="user-modal-overlay">
+<div id="user-management-panel">
   <div id="user-modal">
     <div class="conn-modal-hdr">
       <h3>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         User Management
       </h3>
-      <button id="user-modal-close">×</button>
+      <button id="user-modal-close" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
     </div>
     <div class="conn-modal-body">
 
@@ -7146,8 +7123,7 @@ let _users = [];
     if (!has('ai.crm'))     hideGroup('ai-agents-crm');
     if (!has('forecast'))   hideGroup('forecast-tools');
     if (!has('tools.builder')) {
-      const el = document.querySelector('[onclick*="db-builder.html"]');
-      if (el) el.style.display = 'none';
+      hideEl('nav-db-builder');
     }
     if (!has('tools.udt')) {
       hideEl('nav-create-udt');
@@ -7425,24 +7401,30 @@ async function loadRolesIntoSelect() {
 
 // Open / close
 function openUserManager() {
-  document.getElementById('user-modal-overlay').classList.add('open');
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-user-management')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('user-management-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
   loadRolesIntoSelect();
   loadUsers();
 }
-document.getElementById('user-modal-close').addEventListener('click', () => {
-  document.getElementById('user-modal-overlay').classList.remove('open');
-});
-document.getElementById('user-modal-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('user-modal-overlay')) {
-    document.getElementById('user-modal-overlay').classList.remove('open');
-  }
-});
+function closeUserManager() {
+  document.getElementById('user-management-panel').style.display = 'none';
+  showChatPanel();
+}
+document.getElementById('user-modal-close').addEventListener('click', closeUserManager);
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      QUERY LIBRARY MODAL
 ════════════════════════════════════════════════════════════════ -->
-<div id="ql-modal-overlay">
+<div id="query-library-panel">
   <div id="ql-modal">
     <div class="conn-modal-hdr">
       <h3>
@@ -7452,7 +7434,7 @@ document.getElementById('user-modal-overlay').addEventListener('click', (e) => {
       </h3>
       <div style="display:flex;gap:6px;align-items:center">
         <button id="ql-clear-all" style="font-size:11px;padding:3px 10px;border-radius:var(--r);border:1px solid rgba(187,0,0,.5);background:rgba(187,0,0,.2);color:#FFBABA;cursor:pointer;font-weight:600;display:none">Clear All</button>
-        <button id="ql-modal-close">×</button>
+        <button id="ql-modal-close" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
       </div>
     </div>
     <div class="conn-modal-body">
@@ -7548,14 +7530,24 @@ document.getElementById('ql-clear-all').addEventListener('click', async () => {
 });
 
 // Open / close
-function openQueryLibrary() { document.getElementById('ql-modal-overlay').classList.add('open'); loadQueryCache(); }
-document.getElementById('ql-modal-close').addEventListener('click', () => {
-  document.getElementById('ql-modal-overlay').classList.remove('open');
-});
-document.getElementById('ql-modal-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('ql-modal-overlay'))
-    document.getElementById('ql-modal-overlay').classList.remove('open');
-});
+function openQueryLibrary() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-query-library')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('query-library-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  loadQueryCache();
+}
+function closeQueryLibrary() {
+  document.getElementById('query-library-panel').style.display = 'none';
+  showChatPanel();
+}
+document.getElementById('ql-modal-close').addEventListener('click', closeQueryLibrary);
 
 // Load count on startup
 loadQueryCache();
@@ -7719,7 +7711,8 @@ loadQueryCache();
     });
 
     document.getElementById('sr-modal-close').addEventListener('click', () => {
-      document.getElementById('sr-modal-overlay').classList.remove('open');
+      document.getElementById('schema-registry-panel').style.display = 'none';
+      showChatPanel();
     });
 
     // Sync UDFs from live DB
@@ -7748,7 +7741,16 @@ loadQueryCache();
   }
 
   window.openSchemaRegistry = function() {
-    document.getElementById('sr-modal-overlay').classList.add('open');
+    showChatPanel();
+    document.getElementById('messages').style.display = 'none';
+    const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+    const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+    document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+    document.getElementById('nav-schema-registry')?.classList.add('active');
+    const main = document.querySelector('.main');
+    const panel = document.getElementById('schema-registry-panel');
+    if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+    if (panel) panel.style.display = 'flex';
     srLoad();
   };
 })();
@@ -7932,7 +7934,7 @@ function updateDbStatusDot(connected) {
 <!-- ═══════════════════════════════════════════════════════════════
      SCHEMA REGISTRY MODAL
 ════════════════════════════════════════════════════════════════ -->
-<div id="sr-modal-overlay">
+<div id="schema-registry-panel">
   <div id="sr-modal">
     <div class="conn-modal-hdr">
       <div style="display:flex;align-items:center;gap:10px">
@@ -7940,7 +7942,7 @@ function updateDbStatusDot(connected) {
         <h3 style="font-size:14px;font-weight:600;color:#fff;letter-spacing:.1px">Schema Registry</h3>
         <span id="sr-company-badge" class="sr-company-badge" style="margin-left:4px"></span>
       </div>
-      <button id="sr-modal-close">×</button>
+      <button id="sr-modal-close" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
     </div>
 
     <!-- Tabs: UDF | Table | View | Query -->
@@ -8002,7 +8004,7 @@ function updateDbStatusDot(connected) {
 <!-- ═══════════════════════════════════════════════════════════════
      UDT CREATION WIZARD MODAL
 ════════════════════════════════════════════════════════════════ -->
-<div id="udt-modal-overlay">
+<div id="udt-panel">
   <div id="udt-modal">
 
     <!-- Header -->
@@ -8011,7 +8013,7 @@ function updateDbStatusDot(connected) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
         Create SAP B1 User Defined Table (UDT)
       </h3>
-      <button class="udt-hdr-close" onclick="closeUdtWizard()">✕</button>
+      <button class="udt-hdr-close" onclick="closeUdtWizard()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
     </div>
 
     <!-- Step indicators -->
@@ -8154,7 +8156,7 @@ function updateDbStatusDot(connected) {
     </div>
 
   </div><!-- /udt-modal -->
-</div><!-- /udt-modal-overlay -->
+</div><!-- /udt-panel -->
 
 <script>
 // ══════════════════════════════════════════════════════
@@ -8197,16 +8199,22 @@ function openUdtWizard() {
   document.getElementById('udt-success-3').style.display = 'none';
   document.getElementById('udt-review-content').style.display = 'block';
   udtGoToStep(1);
-  document.getElementById('udt-modal-overlay').classList.add('open');
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-create-udt')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('udt-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
 }
 
 function closeUdtWizard() {
-  document.getElementById('udt-modal-overlay').classList.remove('open');
+  document.getElementById('udt-panel').style.display = 'none';
+  showChatPanel();
 }
-
-document.getElementById('udt-modal-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('udt-modal-overlay')) closeUdtWizard();
-});
 
 function udtSelectType(card) {
   document.querySelectorAll('.udt-type-card').forEach(c => c.classList.remove('selected'));
@@ -8415,7 +8423,9 @@ function showChatPanel() {
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel',
-    'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel'];
+    'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
+    'company-setup-panel','developer-settings-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
+    'query-library-panel','schema-registry-panel'];
   ALL_PANELS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('messages').style.display = 'flex';
   const bb = document.querySelector('.bottom-bar');
@@ -8441,10 +8451,69 @@ document.addEventListener('keydown', e => {
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel',
-    'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel']
+    'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
+    'company-setup-panel','developer-settings-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
+    'query-library-panel','schema-registry-panel']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   if (anyOpen) showChatPanel();
 });
+
+function hideEmbeddedTopbar(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc || doc.location.href === 'about:blank') return;
+    if (doc.getElementById('__embed-hide-topbar')) return;
+    const style = doc.createElement('style');
+    style.id = '__embed-hide-topbar';
+    style.textContent = '.topbar{display:none!important}';
+    doc.head.appendChild(style);
+  } catch {}
+}
+
+function showCompanySetupPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-company-setup')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('company-setup-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('company-setup-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/company-setup.html';
+}
+
+function showDeveloperSettingsPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-developer-settings')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('developer-settings-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('developer-settings-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/developer-settings.html';
+}
+
+function showDbBuilderPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-db-builder')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('db-builder-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('db-builder-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/db-builder.html';
+}
 
 function wfReset() {
   wfData = {};
@@ -19164,6 +19233,30 @@ setInterval(() => {
 <!-- ════════════════════════════════════════════════════════
      USER RIGHTS PANEL
 ════════════════════════════════════════════════════════ -->
+<div id="company-setup-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <div style="background:var(--shell,#1a2535);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2)">
+    <div style="font-size:14.5px;font-weight:700;color:#fff">🏢 Company Setup</div>
+    <button onclick="showChatPanel()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
+  </div>
+  <iframe id="company-setup-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff" onload="hideEmbeddedTopbar(this)"></iframe>
+</div><!-- /#company-setup-panel -->
+
+<div id="developer-settings-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <div style="background:var(--shell,#1a2535);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2)">
+    <div style="font-size:14.5px;font-weight:700;color:#fff">🛠️ Developer Settings</div>
+    <button onclick="showChatPanel()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
+  </div>
+  <iframe id="developer-settings-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff" onload="hideEmbeddedTopbar(this)"></iframe>
+</div><!-- /#developer-settings-panel -->
+
+<div id="db-builder-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <div style="background:var(--shell,#1a2535);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2)">
+    <div style="font-size:14.5px;font-weight:700;color:#fff">🗄️ DB Query Builder</div>
+    <button onclick="showChatPanel()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
+  </div>
+  <iframe id="db-builder-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff" onload="hideEmbeddedTopbar(this)"></iframe>
+</div><!-- /#db-builder-panel -->
+
 <div id="user-rights-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
 
   <!-- Header -->
@@ -29397,10 +29490,9 @@ window.roAskFollowUp = function() {
 ══════════════════════════════════════════════════════════════════ -->
 <!-- Roles & Permissions Modal -->
 <style>
-#rp-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1300;align-items:center;justify-content:center}
-#rp-overlay.open{display:flex}
-#rp-modal{background:#f8f9fa;border-radius:10px;width:960px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:hidden}
-.rp-hdr{background:var(--shell,#1a2535);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+#roles-perms-panel{display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa}
+#rp-modal{background:#f8f9fa;flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.rp-hdr{background:var(--shell,#1a2535);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 .rp-hdr-title{font-size:15px;font-weight:700;color:#fff}
 .rp-hdr-sub{font-size:11.5px;color:rgba(255,255,255,.5);margin-top:2px}
 .rp-close{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1}
@@ -29445,7 +29537,7 @@ window.roAskFollowUp = function() {
 .rp-saved-msg{color:#065f46;font-size:12.5px;font-weight:600;display:none}
 </style>
 
-<div id="rp-overlay">
+<div id="roles-perms-panel">
   <div id="rp-modal">
     <!-- Header -->
     <div class="rp-hdr">
@@ -29454,8 +29546,8 @@ window.roAskFollowUp = function() {
         <div class="rp-hdr-sub">Create roles and assign menu access rights to each role</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="closeRolesModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer">← Back</button>
         <button onclick="rpLoad()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:5px;padding:4px 12px;font-size:12px;cursor:pointer" title="Reload roles">↺ Refresh</button>
-        <button class="rp-close" onclick="closeRolesModal()">✕</button>
       </div>
     </div>
 
@@ -29521,12 +29613,22 @@ const ROLE_COLORS = { superadmin:'#7c3aed', admin:'#1d4ed8', user:'#059669' };
 const ROLE_ICONS  = { superadmin:'👑', admin:'🔑', user:'👤' };
 
 async function openRolesModal() {
-  document.getElementById('rp-overlay').classList.add('open');
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-roles-perms')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('roles-perms-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
   await rpLoad();
 }
 function closeRolesModal() {
-  document.getElementById('rp-overlay').classList.remove('open');
+  document.getElementById('roles-perms-panel').style.display = 'none';
   _rpSelId = null;
+  showChatPanel();
 }
 
 async function rpLoad() {
