@@ -52,7 +52,7 @@ import { createDeliveryToARInvRouter }      from './controllers/delivery-to-arin
 import { createARInvToARCMRouter }          from './controllers/arinv-to-arcm-agent.mjs';
 import { createIncomingPaymentRouter }      from './controllers/incoming-payment-agent.mjs';
 import { createOutgoingPaymentRouter }      from './controllers/outgoing-payment-agent.mjs';
-import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo } from "./db.mjs";
+import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo, chatSessionRepo } from "./db.mjs";
 import { createDataSyncRouter } from './controllers/data-sync.mjs';
 import { createFinancialAgentRouter } from './controllers/financial-agent.mjs';
 import { createActivityAgentRouter } from './controllers/activity-agent.mjs';
@@ -3312,7 +3312,9 @@ app.put("/api/users/:id/permissions", requireAuth, (req, res) => {
   res.json({ ok: true, count: overrides.length });
 });
 
-const sessions = new Map();
+// Conversation history persists in SQLite (chatSessionRepo, db.mjs) instead
+// of an in-memory Map — a server restart no longer silently drops an open
+// conversation's context.
 
 // Intents that must always go to the real statistical forecasting engine
 // (runForecastCore via demoReply) — never to AI-generated SQL. A SELECT query
@@ -3618,10 +3620,10 @@ app.post("/api/chat", async (req, res) => {
           // genuinely ambiguous, per the system prompt), then calls query_hana_direct
           // (ODBC, no row cap) or a Service Layer tool as appropriate.
           console.log(`[GPT-PRE-INTERCEPT] falling through to GPT agent`);
-          let msgs = sessions.get(sid) || [];
+          let msgs = chatSessionRepo.get(sid) || [];
           msgs.push({ role: "user", content: gptMessage });
           const { text, messages } = await runGptAgentLoop(msgs);
-          sessions.set(sid, messages);
+          chatSessionRepo.set(sid, messages);
           reply = text;
         }
       }
@@ -3689,10 +3691,10 @@ app.post("/api/chat", async (req, res) => {
           // (ODBC, no row cap) or a Service Layer tool as appropriate.
           console.log(`[PRE-INTERCEPT] falling through to AI agent`);
 
-          let msgs = sessions.get(sid) || [];
+          let msgs = chatSessionRepo.get(sid) || [];
           msgs.push({ role:"user", content:claudeMessage });
           const { text, messages, toolCalls } = await runAgentLoop(msgs);
-          sessions.set(sid, messages);
+          chatSessionRepo.set(sid, messages);
           reply = text;
 
           // ── Save tool calls to prompt cache ────────────────────────
@@ -3742,7 +3744,7 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-app.post("/api/reset", (req,res) => { sessions.delete(req.body.sessionId); res.json({ok:true}); });
+app.post("/api/reset", (req,res) => { chatSessionRepo.delete(req.body.sessionId); res.json({ok:true}); });
 
 // ── Analytics AI summary ──────────────────────────────────────────────────────
 app.post("/api/summarize", requireAuth, async (req, res) => {

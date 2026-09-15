@@ -961,7 +961,43 @@ export const cacheRepo = {
   },
 };
 
+// ── Chat conversation history ───────────────────────────────────────────────
+// Was an in-memory Map in chat-server.mjs — every server restart (common
+// during normal dev/deploy work) silently wiped every open conversation with
+// no warning to the user. Persisted here instead so a restart doesn't lose
+// mid-conversation context.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id TEXT PRIMARY KEY,
+    messages   TEXT NOT NULL DEFAULT '[]',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+export const chatSessionRepo = {
+  get(sessionId) {
+    const row = db.prepare(`SELECT messages FROM chat_sessions WHERE session_id=?`).get(sessionId);
+    if (!row) return null;
+    try { return JSON.parse(row.messages); } catch { return null; }
+  },
+  set(sessionId, messages) {
+    db.prepare(`
+      INSERT INTO chat_sessions (session_id, messages, updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(session_id) DO UPDATE SET messages=excluded.messages, updated_at=CURRENT_TIMESTAMP
+    `).run(sessionId, JSON.stringify(messages));
+  },
+  delete(sessionId) {
+    db.prepare(`DELETE FROM chat_sessions WHERE session_id=?`).run(sessionId);
+  },
+  // Drop conversations untouched for maxAgeMs — call occasionally to keep the table small.
+  prune(maxAgeMs) {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    db.prepare(`DELETE FROM chat_sessions WHERE updated_at < ?`).run(cutoff);
+  },
+};
+
 // Purge stale sessions on startup
 sessionRepo.purgeExpired();
+chatSessionRepo.prune(30 * 24 * 60 * 60 * 1000); // drop conversations idle > 30 days
 
 export default db;
