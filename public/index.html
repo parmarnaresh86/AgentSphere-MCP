@@ -308,7 +308,14 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .code-block-copy.copied{color:#34d399}
 .msg-actions{display:flex;gap:4px;margin-top:4px;padding-left:2px}
 .msg-row.bot:hover .msg-actions{opacity:1}
+.msg-row.user:hover .msg-actions{opacity:1}
+.msg-row.user .msg-actions{justify-content:flex-end;padding-left:0;padding-right:2px}
 .msg-actions{opacity:0;transition:opacity .12s}
+.msg-edit-box{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:8px;min-width:240px}
+.msg-edit-box textarea{width:100%;min-height:44px;resize:vertical;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:var(--font);font-size:13px;box-sizing:border-box}
+.msg-edit-box-actions{display:flex;gap:6px;justify-content:flex-end}
+.msg-edit-box-actions button{padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--border);background:#fff}
+.msg-edit-box-actions button.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
 .msg-action-btn{display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#9ca3af;font-size:11px;font-weight:600;cursor:pointer;padding:4px 8px;border-radius:6px;font-family:inherit;transition:background .12s,color .12s}
 .msg-action-btn:hover{background:rgba(0,0,0,.06);color:#374151}
 .msg-action-btn.copied{color:#059669}
@@ -3176,6 +3183,44 @@ function doClearChat() {
 document.getElementById('clear-btn').addEventListener('click', doClearChat);
 document.getElementById('new-chat-btn').addEventListener('click', doClearChat);
 
+// ── Keyboard shortcuts (main chat only) ─────────────────────────────────
+// Guarded to the main chat surface (messagesEl visible, no other wizard
+// panel open) so they don't fire while a user is typing in one of the many
+// other panels' own inputs across this SPA.
+document.addEventListener('keydown', (e) => {
+  const mainChatVisible = messagesEl.offsetParent !== null;
+
+  // Esc — always safe: stop an in-flight response regardless of focus;
+  // otherwise, if the composer is focused and has text, clear it (matches
+  // ChatGPT's Esc-to-clear-draft behaviour); otherwise close the history
+  // panel if it's open.
+  if (e.key === 'Escape') {
+    if (isLoading) { stopGeneration(); e.preventDefault(); return; }
+    if (document.activeElement === inputEl && inputEl.value) {
+      inputEl.value = ''; inputEl.style.height = 'auto'; e.preventDefault(); return;
+    }
+    const historyOverlay = document.getElementById('history-overlay');
+    if (historyOverlay?.classList.contains('open')) { closeHistoryPanel(); e.preventDefault(); }
+    return;
+  }
+
+  if (!mainChatVisible) return;
+  const mod = e.ctrlKey || e.metaKey;
+
+  // Ctrl/Cmd+K — open conversation history (ChatGPT's search-chats binding).
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    openHistoryPanel();
+    return;
+  }
+  // Ctrl/Cmd+Shift+O — start a new chat (ChatGPT's binding for this).
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    doClearChat();
+    inputEl.focus();
+  }
+});
+
 // ── Conversation History Sidebar ────────────────────────────────────────
 // Server-side chat sessions (chatSessionRepo, db.mjs) have persisted since
 // DB-backed sessions were added, but nothing in the UI could browse back
@@ -3321,7 +3366,7 @@ const V2_ICONS = {
 
 async function sendV2Message(text) {
   setBusyUI(true);
-  appendMsg('user', text);
+  appendMsg('user', text, { actions: true, onEdit: (newText) => sendV2Message(newText) });
   inputEl.value = ''; inputEl.style.height = 'auto';
 
   const row = document.createElement('div');
@@ -3635,7 +3680,7 @@ let _lastChatMessage = null; // text of the last message actually sent to /api/c
 async function sendChatMessage(text, { skipUserBubble = false } = {}) {
   setBusyUI(true);
   _lastChatMessage = text;
-  if (!skipUserBubble) { appendMsg('user', text); inputEl.value = ''; inputEl.style.height = 'auto'; }
+  if (!skipUserBubble) { appendMsg('user', text, { actions: true, onEdit: (newText) => sendChatMessage(newText, { skipUserBubble: true }) }); inputEl.value = ''; inputEl.style.height = 'auto'; }
   const typing = appendTyping();
   const controller = new AbortController();
   _activeChatAbort = controller;
@@ -3993,10 +4038,12 @@ function copyMessage(id, btn) {
   }).catch(() => {});
 }
 
-// role: 'user' | 'bot'. opts (bot messages only):
+// role: 'user' | 'bot'. opts:
 //   actions: true → show a hover action bar under the bubble
-//   isError: true → action bar shows "Retry" instead of "Regenerate"
-//   onRetry / onRegenerate: () => void, wired to those buttons
+//   isError: true (bot only) → action bar shows "Retry" instead of "Regenerate"
+//   onRetry / onRegenerate: () => void, wired to those buttons (bot only)
+//   onEdit: (newText) => void (user only) → shows a hover Edit action; edits
+//     in place (a textarea inline in the bubble) and calls onEdit on save
 function appendMsg(role, text, opts = {}) {
   const row = document.createElement('div');
   row.className = `msg-row ${role}`;
@@ -4060,6 +4107,20 @@ function appendMsg(role, text, opts = {}) {
     }
     col.appendChild(bar);
     row.appendChild(col);
+  } else if (role === 'user' && opts.actions && opts.onEdit && text) {
+    const col = document.createElement('div');
+    col.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;min-width:0;flex:1';
+    col.appendChild(b);
+
+    const bar = document.createElement('div');
+    bar.className = 'msg-actions';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'msg-action-btn';
+    editBtn.innerHTML = '✎ Edit';
+    editBtn.onclick = () => startEditMsg(b, text, opts.onEdit);
+    bar.appendChild(editBtn);
+    col.appendChild(bar);
+    row.appendChild(col);
   } else {
     row.appendChild(b);
   }
@@ -4067,6 +4128,42 @@ function appendMsg(role, text, opts = {}) {
   messagesEl.appendChild(row);
   messagesEl.scrollTop=messagesEl.scrollHeight;
   return row;
+}
+
+// Swaps a user bubble for an inline textarea (ChatGPT-style edit-in-place).
+// Save resends the edited text via onEdit (the same send function that
+// produced this bubble); it does not retroactively touch the bot replies
+// already shown below or the server-side session history — editing is
+// equivalent to sending a corrected follow-up, not rewriting the past.
+function startEditMsg(bubbleEl, originalText, onEdit) {
+  const box = document.createElement('div');
+  box.className = 'msg-edit-box';
+  const ta = document.createElement('textarea');
+  ta.value = originalText;
+  const actions = document.createElement('div');
+  actions.className = 'msg-edit-box-actions';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = () => box.replaceWith(bubbleEl);
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'primary';
+  saveBtn.textContent = 'Save & Send';
+  saveBtn.onclick = () => {
+    const val = ta.value.trim();
+    if (!val) return;
+    bubbleEl.innerHTML = escHtml(val);
+    box.replaceWith(bubbleEl);
+    onEdit(val);
+  };
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
+  });
+  actions.appendChild(cancelBtn); actions.appendChild(saveBtn);
+  box.appendChild(ta); box.appendChild(actions);
+  bubbleEl.replaceWith(box);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 function appendTyping() {
