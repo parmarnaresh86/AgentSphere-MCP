@@ -497,6 +497,8 @@ body{font-family:var(--font);color:var(--text);display:flex}
 }
 #send-btn:hover{background:var(--blue-mid)}
 #send-btn:disabled{opacity:.4;cursor:not-allowed}
+#send-btn.is-stop{background:#dc2626}
+#send-btn.is-stop:hover{background:#b91c1c}
 
 /* ═══════════════════════════════
    MODAL (Fiori Dialog)
@@ -2528,7 +2530,9 @@ body{font-family:var(--font);color:var(--text);display:flex}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </button>
         <button id="send-btn" title="Send">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <span id="send-btn-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </span>
         </button>
       </div>
     </div>
@@ -2759,6 +2763,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
 // State
 // ════════════════════════════════════════════════════
 let sessionId = null, isLoading = false, warehouses = [];
+let _activeChatAbort = null; // AbortController for the in-flight /api/chat request, if any — lets the Stop button cancel it
 let currentMode   = 'chat';      // 'chat' | 'form'
 let chatEngine    = 'standard';  // 'standard' | 'ai' | 'gpt4o' | 'db' | 'v2'
 let aiAvailable   = false;       // set from /api/tools response
@@ -2990,7 +2995,23 @@ const sendBtn    = document.getElementById('send-btn');
 
 inputEl.addEventListener('input', () => { inputEl.style.height='auto'; inputEl.style.height=Math.min(inputEl.scrollHeight,120)+'px'; });
 inputEl.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } });
-sendBtn.addEventListener('click', sendMessage);
+
+// send-btn doubles as Stop while a response is generating — mirrors ChatGPT's
+// send/stop toggle. It stays enabled during loading (unlike the old plain
+// `disabled=true`) so it can be clicked to abort.
+const SEND_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+const STOP_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
+const sendBtnIcon = document.getElementById('send-btn-icon');
+function setBusyUI(busy) {
+  isLoading = busy;
+  sendBtn.title = busy ? 'Stop generating' : 'Send';
+  sendBtn.classList.toggle('is-stop', busy);
+  if (sendBtnIcon) sendBtnIcon.innerHTML = busy ? STOP_ICON : SEND_ICON;
+}
+function stopGeneration() {
+  if (_activeChatAbort) { _activeChatAbort.abort(); _activeChatAbort = null; }
+}
+sendBtn.addEventListener('click', () => { if (isLoading) stopGeneration(); else sendMessage(); });
 
 // ── Attach button (main chat) — upload a document/image, OCR-extract it,
 // and hand the extracted data to the normal AI chat pipeline as context so
@@ -3013,7 +3034,7 @@ async function handleChatFileUpload(file) {
   appendMsg('user', `📎 Uploaded: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
   const typing = appendTyping();
   typing.setStatus?.(`Reading ${file.name}…`);
-  isLoading = true; sendBtn.disabled = true;
+  setBusyUI(true);
   try {
     const fd = new FormData();
     fd.append('file', file);
@@ -3026,7 +3047,7 @@ async function handleChatFileUpload(file) {
     typing.remove();
     if (!resp.ok || !data.ok) {
       appendMsg('bot', `❌ Couldn't read that file: ${data.error || 'Unknown error'}`, { actions: true, isError: true, onRetry: () => handleChatFileUpload(file) });
-      isLoading = false; sendBtn.disabled = false; inputEl.focus();
+      setBusyUI(false); inputEl.focus();
       return;
     }
     const d = data.ocrData || {};
@@ -3040,7 +3061,7 @@ async function handleChatFileUpload(file) {
   } catch (e) {
     typing.remove();
     appendMsg('bot', `❌ Upload error: ${e.message}`, { actions: true, isError: true, onRetry: () => handleChatFileUpload(file) });
-    isLoading = false; sendBtn.disabled = false; inputEl.focus();
+    setBusyUI(false); inputEl.focus();
   }
 }
 
@@ -3299,7 +3320,7 @@ const V2_ICONS = {
 };
 
 async function sendV2Message(text) {
-  isLoading = true; sendBtn.disabled = true;
+  setBusyUI(true);
   appendMsg('user', text);
   inputEl.value = ''; inputEl.style.height = 'auto';
 
@@ -3347,12 +3368,15 @@ async function sendV2Message(text) {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  const controller = new AbortController();
+  _activeChatAbort = controller;
   try {
     const token = (document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('token='))?.split('=')[1]) || localStorage.getItem('auth_token') || '';
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ message: text, sessionId, engine: 'v2', v2History: v2History.slice(-12) })
+      body: JSON.stringify({ message: text, sessionId, engine: 'v2', v2History: v2History.slice(-12) }),
+      signal: controller.signal,
     });
     if (!resp.ok || !resp.body) throw new Error('Server error: ' + resp.status);
 
@@ -3415,10 +3439,12 @@ async function sendV2Message(text) {
     }
   } catch (err) {
     if (liveBadge) liveBadge.style.display = 'none';
-    upsertStep('net', 'fail', 'Network error: ' + err.message, 'fail');
+    if (err.name === 'AbortError') upsertStep('net', 'fail', 'Stopped.', 'fail');
+    else upsertStep('net', 'fail', 'Network error: ' + err.message, 'fail');
     messagesEl.scrollTop = messagesEl.scrollHeight;
   } finally {
-    isLoading = false; sendBtn.disabled = false; inputEl.focus();
+    _activeChatAbort = null;
+    setBusyUI(false); inputEl.focus();
   }
 }
 
@@ -3526,7 +3552,7 @@ async function sendMessage() {
   // ── Forecast Follow-up — route to forecasting chat if context is available ──
   const _fcFollowUp = window.__lastForecast && /\bitem\b|which|stockout|risk|trend|grow|declin|forecast|reorder|stock|recommend|suggest|quantity|order|best|worst|top|analys/.test(_textNorm);
   if (_fcFollowUp) {
-    isLoading = true; sendBtn.disabled = true;
+    setBusyUI(true);
     appendMsg('user', text);
     inputEl.value = ''; inputEl.style.height = 'auto';
     const _fcTyping = appendTyping();
@@ -3557,7 +3583,7 @@ async function sendMessage() {
       _fcTyping.remove();
       appendMsg('bot', `**Network error:** ${e.message}`);
     } finally {
-      isLoading = false; sendBtn.disabled = false; inputEl.focus();
+      setBusyUI(false); inputEl.focus();
     }
     return;
   }
@@ -3576,8 +3602,8 @@ async function sendMessage() {
 // path, cache badges, form-opening, forecast dashboards, ...) needed zero
 // changes. Falls back to a plain JSON response if the server ever answers
 // non-streamed (e.g. an error before headers, or a proxy that buffers SSE).
-async function fetchChatStreamed(payload, onStep) {
-  const resp = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+async function fetchChatStreamed(payload, onStep, signal) {
+  const resp = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal });
   if (!resp.body || !(resp.headers.get('content-type') || '').includes('text/event-stream')) {
     return resp.json();
   }
@@ -3607,14 +3633,16 @@ async function fetchChatStreamed(payload, onStep) {
 // without re-adding a duplicate user bubble (skipUserBubble).
 let _lastChatMessage = null; // text of the last message actually sent to /api/chat, for retry/regenerate
 async function sendChatMessage(text, { skipUserBubble = false } = {}) {
-  isLoading = true; sendBtn.disabled = true;
+  setBusyUI(true);
   _lastChatMessage = text;
   if (!skipUserBubble) { appendMsg('user', text); inputEl.value = ''; inputEl.style.height = 'auto'; }
   const typing = appendTyping();
+  const controller = new AbortController();
+  _activeChatAbort = controller;
   try {
     const chatPayload = { message:text, sessionId, engine:chatEngine, stream:true };
     if (chatEngine === 'v2') chatPayload.v2History = v2History.slice(-12); // send last 6 exchanges
-    const d = await fetchChatStreamed(chatPayload, (statusText) => typing.setStatus(statusText));
+    const d = await fetchChatStreamed(chatPayload, (statusText) => typing.setStatus(statusText), controller.signal);
     typing.remove();
     if (d.error) {
       appendMsg('bot', `**Error:** ${d.error}`, { actions: true, isError: true, onRetry: () => sendChatMessage(text, { skipUserBubble: true }) });
@@ -3676,9 +3704,13 @@ async function sendChatMessage(text, { skipUserBubble = false } = {}) {
     }
   } catch(e) {
     typing.remove();
-    appendMsg('bot', `**Network error:** ${e.message}`, { actions: true, isError: true, onRetry: () => sendChatMessage(text, { skipUserBubble: true }) });
+    if (e.name === 'AbortError') {
+      appendMsg('bot', '⏹️ Stopped.', { actions: true, isError: true, onRetry: () => sendChatMessage(text, { skipUserBubble: true }) });
+    } else {
+      appendMsg('bot', `**Network error:** ${e.message}`, { actions: true, isError: true, onRetry: () => sendChatMessage(text, { skipUserBubble: true }) });
+    }
   }
-  finally { isLoading = false; sendBtn.disabled = false; inputEl.focus(); }
+  finally { _activeChatAbort = null; setBusyUI(false); inputEl.focus(); }
 }
 
 // ── Query Log Panel ──────────────────────────────────
