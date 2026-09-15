@@ -14,6 +14,7 @@ import { createPoWorkflowAgentRouter } from "./controllers/po-workflow-agent.mjs
 import { createMailPoAgentRouter } from "./controllers/mail-po-agent.mjs";
 import { createLookupApiRouter } from "./controllers/lookup-api.mjs";
 import { createBrandingRouter } from "./controllers/branding.mjs";
+import { isWriteTool, describeWriteActions, CONFIRM_RE, CANCEL_RE } from "./lib/write-confirm.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -2920,7 +2921,10 @@ function trimToTokenBudget(messages, budget = GPT_MSG_TOKEN_BUDGET) {
   return msgs;
 }
 
-async function runGptAgentLoop(messages) {
+// resume (optional): { assistantMessage, results } — continues a turn that
+// previously paused for write-action confirmation. See runAgentLoop's
+// matching comment; same idea, OpenAI function-calling message shape.
+async function runGptAgentLoop(messages, resume = null) {
   const dbConnected = isConnected();
   const systemPrompt = buildSapSystemPrompt();
   const availableMcpTools = dbConnected
@@ -2932,32 +2936,54 @@ async function runGptAgentLoop(messages) {
   // Trim history to fit within context budget before every API call
   const safe = () => trimToTokenBudget(messages);
 
-  let response = await gptChatComplete({
-    messages: [{ role: "system", content: systemPrompt }, ...safe()],
-    tools: gptTools,
-    tool_choice: gptTools ? "auto" : undefined,
-    max_tokens: 8096,
-  });
+  const execCall = async (tc) => {
+    try {
+      const args = JSON.parse(tc.function.arguments);
+      _logQ({ method: 'MCP Tool', tool: tc.function.name, params: args });
+      const raw = tc.function.name === 'query_hana_direct'
+        ? await callDirectSqlTool(args.question)
+        : (r => Array.isArray(r.content) ? r.content.map(c => c.text).join("\n") : JSON.stringify(r))(await mcpClient.callTool({ name: tc.function.name, arguments: args }));
+      _reqQueryLog[_reqQueryLog.length - 1].rows = (raw.match(/\n/g)||[]).length;
+      // Truncate large payloads (e.g. full stock list, ABC-XYZ with 300 items) before adding to history
+      return { role: "tool", tool_call_id: tc.id, content: truncateToolContent(raw) };
+    } catch (e) {
+      return { role: "tool", tool_call_id: tc.id, content: `Error: ${e.message}` };
+    }
+  };
+
+  let response;
+  if (resume) {
+    messages.push(resume.assistantMessage);
+    messages.push(...resume.results);
+    response = await gptChatComplete({
+      messages: [{ role: "system", content: systemPrompt }, ...safe()],
+      tools: gptTools, tool_choice: gptTools ? "auto" : undefined, max_tokens: 4096,
+    });
+  } else {
+    response = await gptChatComplete({
+      messages: [{ role: "system", content: systemPrompt }, ...safe()],
+      tools: gptTools, tool_choice: gptTools ? "auto" : undefined, max_tokens: 8096,
+    });
+  }
 
   while (response.choices[0].finish_reason === "tool_calls") {
     const msg = response.choices[0].message;
+    const allCalls = msg.tool_calls || [];
+    const writeCalls = allCalls.filter(tc => isWriteTool(tc.function.name));
+
+    if (writeCalls.length) {
+      const readResults = await Promise.all(allCalls.filter(tc => !isWriteTool(tc.function.name)).map(execCall));
+      return {
+        needsConfirmation: true,
+        pendingCalls: writeCalls.map(tc => ({ id: tc.id, name: tc.function.name, args: JSON.parse(tc.function.arguments) })),
+        assistantMessage: msg,
+        readResults,
+        messages,
+      };
+    }
+
     messages.push(msg);
-
-    const toolResults = await Promise.all((msg.tool_calls || []).map(async tc => {
-      try {
-        const args = JSON.parse(tc.function.arguments);
-        _logQ({ method: 'MCP Tool', tool: tc.function.name, params: args });
-        const raw = tc.function.name === 'query_hana_direct'
-          ? await callDirectSqlTool(args.question)
-          : (r => Array.isArray(r.content) ? r.content.map(c => c.text).join("\n") : JSON.stringify(r))(await mcpClient.callTool({ name: tc.function.name, arguments: args }));
-        _reqQueryLog[_reqQueryLog.length - 1].rows = (raw.match(/\n/g)||[]).length;
-        // Truncate large payloads (e.g. full stock list, ABC-XYZ with 300 items) before adding to history
-        return { role: "tool", tool_call_id: tc.id, content: truncateToolContent(raw) };
-      } catch (e) {
-        return { role: "tool", tool_call_id: tc.id, content: `Error: ${e.message}` };
-      }
-    }));
-
+    const toolResults = await Promise.all(allCalls.map(execCall));
     messages.push(...toolResults);
     response = await gptChatComplete({
       messages: [{ role: "system", content: systemPrompt }, ...safe()],
@@ -3001,7 +3027,13 @@ function findCacheMatch(prompt, threshold = 0.55) {
   return bestScore >= threshold ? { row: best, score: bestScore } : null;
 }
 
-async function runAgentLoop(messages) {
+// resume (optional): { assistantContent, results } — continues a turn that
+// previously paused for write-action confirmation, picking up exactly where
+// it left off (assistantContent is the original response.content that
+// included the now-confirmed write tool_use block(s); results is
+// readResults from the pause plus the real write result(s), executed by the
+// caller after the user said yes).
+async function runAgentLoop(messages, resume = null) {
   const primaryModel = process.env.AZURE_CLAUDE_MODEL ||
     (AI_PROVIDER === "azure" ? "claude-3-5-sonnet-20241022" : "claude-sonnet-4-6");
   const systemPrompt = buildSapSystemPrompt();
@@ -3017,21 +3049,48 @@ async function runAgentLoop(messages) {
   const claudeToolsArr = [...mcpTools, ...(isConnected() ? [DIRECT_SQL_TOOL_CLAUDE] : [])];
   const claudeTools = claudeToolsArr.length ? claudeToolsArr : undefined;
 
-  let response = await callAI({ model:primaryModel, max_tokens:8096, system:systemPrompt, tools: claudeTools, messages });
+  const execBlock = async (b) => {
+    try {
+      _logQ({ method: 'MCP Tool', tool: b.name, params: b.input });
+      const raw = b.name === 'query_hana_direct'
+        ? await callDirectSqlTool(b.input.question)
+        : (r => Array.isArray(r.content)?r.content.map(c=>c.text).join("\n"):JSON.stringify(r))(await mcpClient.callTool({ name:b.name, arguments:b.input }));
+      _reqQueryLog[_reqQueryLog.length - 1].rows = (raw.match(/\n/g)||[]).length;
+      toolCallsRecorded.push({ name: b.name, input: b.input, preview: raw.slice(0, 300) });
+      return { type:"tool_result", tool_use_id:b.id, content: truncateToolContent(raw) };
+    } catch(e) { return { type:"tool_result", tool_use_id:b.id, content:`Error: ${e.message}`, is_error:true }; }
+  };
+
+  let response;
+  if (resume) {
+    messages.push({ role: "assistant", content: resume.assistantContent });
+    messages.push({ role: "user", content: resume.results });
+    response = await callAI({ model:primaryModel, max_tokens:4096, system:systemPrompt, tools:claudeTools, messages });
+  } else {
+    response = await callAI({ model:primaryModel, max_tokens:8096, system:systemPrompt, tools: claudeTools, messages });
+  }
+
   while (response.stop_reason === "tool_use") {
     const blocks = response.content.filter(b=>b.type==="tool_use");
+    const writeBlocks = blocks.filter(b => isWriteTool(b.name));
+
+    if (writeBlocks.length) {
+      // Don't execute the write(s) yet — run any read tools requested in the
+      // same turn (so multi-step reasoning still works), then pause and hand
+      // control back to /api/chat to ask the user for confirmation.
+      const readResults = await Promise.all(blocks.filter(b => !isWriteTool(b.name)).map(execBlock));
+      return {
+        needsConfirmation: true,
+        pendingCalls: writeBlocks.map(b => ({ id: b.id, name: b.name, args: b.input })),
+        assistantContent: response.content,
+        readResults,
+        messages,
+        toolCalls: toolCallsRecorded,
+      };
+    }
+
     messages.push({ role:"assistant", content:response.content });
-    const results = await Promise.all(blocks.map(async b => {
-      try {
-        _logQ({ method: 'MCP Tool', tool: b.name, params: b.input });
-        const raw = b.name === 'query_hana_direct'
-          ? await callDirectSqlTool(b.input.question)
-          : (r => Array.isArray(r.content)?r.content.map(c=>c.text).join("\n"):JSON.stringify(r))(await mcpClient.callTool({ name:b.name, arguments:b.input }));
-        _reqQueryLog[_reqQueryLog.length - 1].rows = (raw.match(/\n/g)||[]).length;
-        toolCallsRecorded.push({ name: b.name, input: b.input, preview: raw.slice(0, 300) });
-        return { type:"tool_result", tool_use_id:b.id, content: truncateToolContent(raw) };
-      } catch(e) { return { type:"tool_result", tool_use_id:b.id, content:`Error: ${e.message}`, is_error:true }; }
-    }));
+    const results = await Promise.all(blocks.map(execBlock));
     messages.push({ role:"user", content:results });
     response = await callAI({ model:primaryModel, max_tokens:4096, system:systemPrompt, tools:claudeTools, messages });
   }
@@ -3425,6 +3484,29 @@ const _lastSuggestions = new Map();
 // message from that session is treated as the missing answer and merged back
 // into the original question rather than run as a disconnected new query.
 const _pendingClarification = new Map();
+
+// sid -> { engine, assistantContent|assistantMessage, readResults, pendingCalls, messages }
+// A write tool (create_sales_order, create_purchase_order, ...) the agent
+// wants to call, paused before execution. The next message from that
+// session either confirms it (CONFIRM_RE → actually call the tool(s), then
+// resume the agent loop with the real result) or cancels it (CANCEL_RE →
+// discard, no SAP call ever made) — anything else is treated as the user
+// having moved on, so the stale pending write is dropped silently rather
+// than accidentally executed later.
+const _pendingWrites = new Map();
+
+async function executeConfirmedWrite(call) {
+  try {
+    _logQ({ method: 'MCP Tool (confirmed write)', tool: call.name, params: call.args });
+    const raw = (r => Array.isArray(r.content) ? r.content.map(c => c.text).join("\n") : JSON.stringify(r))(
+      await mcpClient.callTool({ name: call.name, arguments: call.args })
+    );
+    return { ...call, raw, error: null };
+  } catch (e) {
+    return { ...call, raw: `Error: ${e.message}`, error: e.message };
+  }
+}
+
 function extractSuggestions(text) {
   if (!text) return [];
   const m = text.match(/💡[^\n]*\n((?:\s*(?:\d+[.)]|[•\-])[^\n]*\n?)+)/);
@@ -3444,6 +3526,47 @@ app.post("/api/chat", async (req, res) => {
     const stored = _lastSuggestions.get(sid);
     const picked = stored && stored[parseInt(suggestionPick[1], 10) - 1];
     if (picked) message = picked;
+  }
+
+  // We previously paused before calling a write tool (create_sales_order,
+  // create_purchase_order, ...) and asked the user to confirm it. This
+  // message is that answer — actually call SAP now (only on explicit yes),
+  // or drop the pending action entirely (on no, or on an unrelated reply —
+  // never execute a stale write the user may have moved on from).
+  const pendingWrite = !suggestionPick && _pendingWrites.get(sid);
+  if (pendingWrite) {
+    _pendingWrites.delete(sid);
+    const trimmed = message.trim();
+    if (CANCEL_RE.test(trimmed)) {
+      return res.json({ reply: "Cancelled — nothing was sent to SAP.", sessionId: sid, mode: "write-cancelled" });
+    }
+    if (CONFIRM_RE.test(trimmed)) {
+      try {
+        const writeResults = await Promise.all(pendingWrite.pendingCalls.map(executeConfirmedWrite));
+        const failures = writeResults.filter(r => r.error);
+        let resumed;
+        if (pendingWrite.engine === "claude") {
+          const results = [
+            ...pendingWrite.readResults,
+            ...writeResults.map(r => ({ type: "tool_result", tool_use_id: r.id, content: truncateToolContent(r.raw), ...(r.error ? { is_error: true } : {}) })),
+          ];
+          resumed = await runAgentLoop(pendingWrite.messages, { assistantContent: pendingWrite.assistantContent, results });
+        } else {
+          const results = [
+            ...pendingWrite.readResults,
+            ...writeResults.map(r => ({ role: "tool", tool_call_id: r.id, content: truncateToolContent(r.raw) })),
+          ];
+          resumed = await runGptAgentLoop(pendingWrite.messages, { assistantMessage: pendingWrite.assistantMessage, results });
+        }
+        chatSessionRepo.set(sid, resumed.messages);
+        const note = failures.length ? `\n\n⚠️ ${failures.length} of ${writeResults.length} action(s) failed — see above.` : "";
+        return res.json({ reply: resumed.text + note, sessionId: sid, mode: pendingWrite.engine === "claude" ? "ai" : "gpt4o" });
+      } catch (err) {
+        return res.status(500).json({ error: `Confirmed action failed: ${err.message}` });
+      }
+    }
+    // Anything else: silently drop the stale pending write and fall through
+    // to handle this message normally (don't block the conversation on it).
   }
 
   // We previously asked "which customer/item/warehouse?" for this session —
@@ -3622,9 +3745,14 @@ app.post("/api/chat", async (req, res) => {
           console.log(`[GPT-PRE-INTERCEPT] falling through to GPT agent`);
           let msgs = chatSessionRepo.get(sid) || [];
           msgs.push({ role: "user", content: gptMessage });
-          const { text, messages } = await runGptAgentLoop(msgs);
-          chatSessionRepo.set(sid, messages);
-          reply = text;
+          const result = await runGptAgentLoop(msgs);
+          if (result.needsConfirmation) {
+            _pendingWrites.set(sid, { engine: "gpt", assistantMessage: result.assistantMessage, readResults: result.readResults, pendingCalls: result.pendingCalls, messages: result.messages });
+            reply = `Before I proceed, please confirm this action:\n\n${describeWriteActions(result.pendingCalls)}\n\n**Reply "yes" to confirm, or "cancel" to discard.**`;
+          } else {
+            chatSessionRepo.set(sid, result.messages);
+            reply = result.text;
+          }
         }
       }
 
@@ -3693,17 +3821,23 @@ app.post("/api/chat", async (req, res) => {
 
           let msgs = chatSessionRepo.get(sid) || [];
           msgs.push({ role:"user", content:claudeMessage });
-          const { text, messages, toolCalls } = await runAgentLoop(msgs);
-          chatSessionRepo.set(sid, messages);
-          reply = text;
+          const result = await runAgentLoop(msgs);
 
-          // ── Save tool calls to prompt cache ────────────────────────
-          if (toolCalls && toolCalls.length > 0) {
-            const norm = normPrompt(claudeMessage);
-            for (const tc of toolCalls) {
-              try {
-                queryCacheRepo.upsert(norm, claudeMessage, tc.name, JSON.stringify(tc.input || {}), tc.preview || "");
-              } catch {}
+          if (result.needsConfirmation) {
+            _pendingWrites.set(sid, { engine: "claude", assistantContent: result.assistantContent, readResults: result.readResults, pendingCalls: result.pendingCalls, messages: result.messages });
+            reply = `Before I proceed, please confirm this action:\n\n${describeWriteActions(result.pendingCalls)}\n\n**Reply "yes" to confirm, or "cancel" to discard.**`;
+          } else {
+            chatSessionRepo.set(sid, result.messages);
+            reply = result.text;
+
+            // ── Save tool calls to prompt cache ────────────────────────
+            if (result.toolCalls && result.toolCalls.length > 0) {
+              const norm = normPrompt(claudeMessage);
+              for (const tc of result.toolCalls) {
+                try {
+                  queryCacheRepo.upsert(norm, claudeMessage, tc.name, JSON.stringify(tc.input || {}), tc.preview || "");
+                } catch {}
+              }
             }
           }
         }
