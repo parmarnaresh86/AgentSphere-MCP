@@ -1613,6 +1613,71 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .v2-txt.fail{color:#ef9a9a}
 .v2-dot-anim::after{content:'';animation:v2dots 1.2s steps(4,end) infinite}
 @keyframes v2dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE / NARROW VIEWPORT — first pass, main chat view only.
+   The sidebar (252px fixed) plus a many-item topbar were never
+   designed for phone width; this section makes the core chat
+   screen usable there without touching the desktop layout.
+═══════════════════════════════════════════════════════════════ */
+.mobile-menu-btn{display:none}
+@media (max-width:640px){
+  /* Sidebar becomes an off-canvas drawer instead of a permanent
+     252px-wide flex sibling — reusing the desktop icon-rail/collapsed
+     state here would still permanently eat ~64px of a ~370px screen,
+     so this is a separate toggle (body.mobile-sidebar-open) rather
+     than reusing .collapsed, which stays purely a desktop concept. */
+  .sidebar{
+    position:fixed;inset:0 auto 0 0;z-index:500;
+    transform:translateX(-100%);transition:transform .22s ease;
+    box-shadow:2px 0 24px rgba(0,0,0,.35);
+  }
+  body.mobile-sidebar-open .sidebar{transform:translateX(0)}
+  /* Always show full nav content in the mobile drawer, even if the
+     desktop "collapsed" icon-rail preference is set in localStorage —
+     a phone was never using that rail, so ignore it here. */
+  body.mobile-sidebar-open .sidebar.collapsed{width:var(--sidebar-w)}
+  body.mobile-sidebar-open .sidebar.collapsed .brand-text,
+  body.mobile-sidebar-open .sidebar.collapsed #brand-company-row{display:flex}
+  body.mobile-sidebar-open .sidebar.collapsed .nav-section{display:block}
+  body.mobile-sidebar-open .sidebar.collapsed .sidebar-bottom{display:flex}
+  body.mobile-sidebar-open .sidebar.collapsed .sidebar-icon-rail{display:none}
+
+  #mobile-sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:499}
+  body.mobile-sidebar-open #mobile-sidebar-backdrop{display:block}
+
+  .mobile-menu-btn{
+    display:flex;align-items:center;justify-content:center;
+    width:30px;height:30px;flex-shrink:0;border-radius:var(--r);
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);
+    color:#fff;cursor:pointer;
+  }
+
+  /* Topbar: keep it usable without a full redesign — hide the least
+     essential controls and let the rest scroll horizontally within
+     its own strip (never the page) as a safety net for whatever's left. */
+  .topbar{overflow-x:auto;overflow-y:hidden;gap:6px;padding:0 8px}
+  .topbar::-webkit-scrollbar{display:none}
+  #hanny-wake-hint,.mode-hint,.topbar-tools-count,#lang-select,
+  #voice-output-btn,#voice-stop-btn,#user-pill{display:none!important}
+  #logout-btn span{display:none}
+
+  #company-dropdown{max-width:88vw}
+
+  /* Bottom filter bar: keep the essentials (SAP Agent, actions menu),
+     drop the module/sub-module/saved-prompts row — it's a filter aid,
+     not core to sending a message, and doesn't fit at this width. */
+  #module-sel,#submodule-sel,.bottom-select-label,#saved-prompts-btn{display:none}
+
+  #messages{padding:12px}
+  .msg-row{max-width:100%}
+  .welcome{padding:20px 16px}
+  .welcome p{max-width:100%}
+
+  .input-area{padding:8px}
+  .input-row{gap:6px}
+  #user-input{font-size:16px} /* prevents iOS Safari auto-zoom on focus */
+}
 </style>
 </head>
 <body>
@@ -1652,6 +1717,23 @@ body{font-family:var(--font);color:var(--text);display:flex}
     if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
     if (collapsed) window.buildIconRail();
   };
+
+  // Mobile off-canvas drawer — separate from the desktop collapse/icon-rail
+  // state above (a phone never uses the icon rail; the drawer always shows
+  // the full nav). Only has any visual effect under the
+  // @media(max-width:640px) rules in the main <style> block.
+  window.toggleMobileSidebar = function(open) {
+    const isOpen = open === undefined ? !document.body.classList.contains('mobile-sidebar-open') : !!open;
+    document.body.classList.toggle('mobile-sidebar-open', isOpen);
+  };
+  // Tapping an actual nav destination closes the drawer; tapping the
+  // collapse toggle or a group header (which just expands a submenu) should not.
+  document.getElementById('app-sidebar')?.addEventListener('click', (e) => {
+    if (!document.body.classList.contains('mobile-sidebar-open')) return;
+    if (e.target.closest('.nav-item, .nav-subitem, #new-chat-btn, #history-btn')) {
+      window.toggleMobileSidebar(false);
+    }
+  });
 
   // Builds the collapsed-state icon rail from the full menu markup below,
   // so it always stays in sync (including admin/dev items toggled at runtime).
@@ -2341,6 +2423,10 @@ body{font-family:var(--font);color:var(--text);display:flex}
   </div>
 </aside>
 
+<!-- Mobile-only sidebar drawer backdrop — see the @media(max-width:640px)
+     block in the main <style>; clicking it closes the drawer. -->
+<div id="mobile-sidebar-backdrop" onclick="toggleMobileSidebar(false)"></div>
+
 <!-- ═══════════════════════════════
      MAIN
 ═══════════════════════════════ -->
@@ -2348,6 +2434,9 @@ body{font-family:var(--font);color:var(--text);display:flex}
 
   <!-- Top bar -->
   <div class="topbar">
+    <button class="mobile-menu-btn" id="mobile-menu-btn" title="Menu" onclick="toggleMobileSidebar()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
     <span id="hanny-wake-hint" style="display:none;font-size:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.85);border-radius:var(--r);padding:3px 9px;font-weight:600">
       👂 Say "Hey Henny"
     </span>
@@ -2439,7 +2528,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
     </div>
     <button id="logout-btn" title="Sign out" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r);font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(187,0,0,.5);background:rgba(187,0,0,.2);color:#FFBABA;flex-shrink:0;transition:all .15s;height:28px">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      Logout
+      <span>Logout</span>
     </button>
   </div>
 
@@ -3421,7 +3510,11 @@ async function sendV2Message(text) {
   const controller = new AbortController();
   _activeChatAbort = controller;
   try {
-    const token = (document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('token='))?.split('=')[1]) || localStorage.getItem('auth_token') || '';
+    // /api/chat doesn't require auth server-side, so this was harmless, but
+    // it read a cookie/localStorage key ('auth_token') this app never sets —
+    // the real session token is 'hanny_token' (see login.html) — fixed for
+    // correctness/consistency, same bug as the Schema Registry panel.
+    const token = localStorage.getItem('hanny_token') || '';
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -7489,11 +7582,12 @@ loadQueryCache();
     query: ['',          'Query Name',   'SQL',          'Description', ''],
   };
 
-  function getToken() {
-    return document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('token='))?.split('=')[1]
-      || localStorage.getItem('auth_token') || '';
-  }
-  function authHdr() { return { 'Content-Type':'application/json', 'Authorization':'Bearer '+getToken() }; }
+  // Previously read a 'token=' cookie and a localStorage key ('auth_token')
+  // that are never actually set anywhere in this app — the real session
+  // token lives at localStorage 'hanny_token' (see login.html), so every
+  // request from this panel sent 'Bearer ' (empty) and 401'd server-side.
+  function getToken() { return localStorage.getItem('hanny_token') || ''; }
+  function authHdr() { return { 'Content-Type':'application/json', 'x-auth-token':getToken() }; }
 
   async function srLoad() {
     // detect active company from the page
