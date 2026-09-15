@@ -18,7 +18,7 @@ import {
 import { BASE_SCHEMA, buildSqlContext } from './company-context.mjs';
 import { sqlCacheRepo } from './db.mjs';
 import { matchTemplate } from './query-templates.mjs';
-import { isExcelExportRequest, isMultiTabReportRequest, generateExcelExport, generateMultiTabExcelReport } from './lib/excel-export.mjs';
+import { isExcelExportRequest, generateExcelExport, generateMultiTabExcelReport } from './lib/excel-export.mjs';
 import { buildProfessionalInsight } from './lib/data-insight.mjs';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -542,6 +542,28 @@ MANDATORY syntax rules:
     throw new Error(`AI returned non-SELECT content: "${sql.slice(0, 120)}"`);
   }
   return { sql, presentation };
+}
+
+// Decides single-sheet vs multi-tab BEFORE any SQL runs, so the caller knows
+// which pipeline to route into. This used to be a keyword regex ("multiple
+// tabs", "multi chart", "trend...item wise"...) — the same class of guess
+// that proved fragile for chart/insight/table detection (missed "chart" and
+// "analysis" the first time, mishandled "insight" the second). Real
+// reasoning instead: one cheap, focused AI call, not a pattern match.
+export async function decideReportShape(question) {
+  const prompt =
+    `A user asked for an Excel export of SAP Business One data: "${question}"\n\n` +
+    `Does this need MULTIPLE worksheet tabs/views (e.g. asks for more than one kind of ` +
+    `breakdown — a trend AND an item-level split, several charts, explicit "tabs"), or ` +
+    `is it really just ONE flat table of rows in a single sheet?\n\n` +
+    `Respond with ONLY one word, no punctuation, no explanation: "multi" or "single".`;
+  try {
+    const raw = await callAI([{ role: 'user', content: prompt }], 10);
+    return /multi/i.test(raw.trim()) ? 'multi' : 'single';
+  } catch (e) {
+    console.warn(`[Excel Report] shape decision failed, defaulting to single: ${e.message}`);
+    return 'single';
+  }
 }
 
 // ── MULTI-TAB EXCEL REPORT PLANNER ──────────────────────────────────────────

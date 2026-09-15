@@ -2,7 +2,7 @@ import express from "express";
 import axios from "axios";
 import https from "node:https";
 import { appendFileSync, readFileSync, existsSync } from "node:fs";
-import { EXPORTS_DIR, isExcelExportRequest, isMultiTabReportRequest, generateExcelExport } from "./lib/excel-export.mjs";
+import { EXPORTS_DIR, isExcelExportRequest, generateExcelExport } from "./lib/excel-export.mjs";
 import { buildProfessionalInsight } from "./lib/data-insight.mjs";
 import { detectIntent as _detectIntentPure } from "./lib/detect-intent.mjs";
 import { qcol } from "./lib/sql-dialect.mjs";
@@ -62,7 +62,7 @@ import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mj
 import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap } from "./db-connector.mjs";
 import { loadCompanyContext, buildSqlContext, buildAiSummary, buildDimBlock, buildRegistryBlock, getDimMap, invalidateCache as invalidateContextCache, BASE_SCHEMA } from "./company-context.mjs";
 import { REPORT_CATEGORIES, listReports, getReport, runReport as runReportSQL } from "./reports-engine.mjs";
-import { handleV2Chat, classifyIntent, generateSQL, lintSql, buildMultiTabExcelReport } from "./analytics-v2.mjs";
+import { handleV2Chat, classifyIntent, generateSQL, lintSql, buildMultiTabExcelReport, decideReportShape } from "./analytics-v2.mjs";
 import { matchTemplate } from "./query-templates.mjs";
 
 dotenv.config();
@@ -3477,7 +3477,11 @@ app.post("/api/chat", async (req, res) => {
   // multiple tabs, multi chart" → a structured multi-view report, not a single
   // flat table. Engine-agnostic (works regardless of db/ai/gpt) and bypasses
   // the normal single-query flow entirely since there's no one table to show.
-  if (isMultiTabReportRequest(message) && isConnected()) {
+  // isExcelExportRequest is a cheap keyword gate ("does this want a file at
+  // all"); single-vs-multi-tab is then an actual AI decision, not a second
+  // regex guess — that's the part that used to misfire on wording like
+  // "multi chart" vs "multi-line item".
+  if (isExcelExportRequest(message) && isConnected() && await decideReportShape(message) === "multi") {
     try {
       const { url, built, failed } = await buildMultiTabExcelReport(message);
       const tabLines = built.map((t, i) =>
