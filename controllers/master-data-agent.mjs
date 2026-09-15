@@ -3,7 +3,13 @@
  * Agents: Item Master | Customer Master | Supplier Master | Bill of Material
  */
 import { Router } from 'express';
+import axios from 'axios';
 import db from '../db.mjs';
+
+// ── GSTIN Check (gstinapi.in) ──────────────────────────────────────────────────
+const GSTIN_API_BASE = 'https://www.gstinapi.in';
+const GSTIN_API_KEY = process.env.GSTIN_API_KEY || 'gak_b5c5a3c19a214e50874653b8f7254e30';
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
 db.exec(`CREATE TABLE IF NOT EXISTS master_data_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -243,6 +249,85 @@ async function handleItemChat(sess, msg, sap, res, user) {
 // CUSTOMER / SUPPLIER MASTER  (shared logic, different CardType)
 // ─────────────────────────────────────────────────────────────────────────────
 const _bpSess = { customer: new Map(), supplier: new Map() };
+// ── Duplicate-name check against SAP BusinessPartners (case & whitespace insensitive) ──
+const normBpName = s => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
+const CARD_TYPE_LABEL = { cCustomer:'Customer', cSupplier:'Supplier', cLid:'Lead' };
+const BP_STOPWORDS = new Set(['and','the','of','pvt','ltd','private','limited','co','corp','inc','llp','llc','company','industries','industry','trading','traders','enterprise','enterprises']);
+const nameTokens = s => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !BP_STOPWORDS.has(w));
+const MATCH_RANK = { exact:0, similar:1, partial:2 };
+
+async function checkDuplicateBP(sap, name) {
+  const target = normBpName(name);
+  if (!target) return { exists:false, matches:[], partialMatches:[] };
+  const targetTokens = nameTokens(name);
+  const searchTokens = (targetTokens.length ? targetTokens : [String(name).trim().split(/\s+/)[0]]).slice(0, 4);
+
+  let candidates = [];
+  try {
+    const filter = searchTokens
+      .map(w => `contains(tolower(CardName),'${w.toLowerCase().replace(/'/g, "''")}')`)
+      .join(' or ');
+    const r = await sap.get('/BusinessPartners', {
+      $filter: filter,
+      $select: 'CardCode,CardName,CardType,Phone1,EmailAddress,Valid',
+      $top: 200,
+    });
+    candidates = arr(r);
+  } catch(_) { candidates = []; }
+
+  const seen = new Set();
+  const all = candidates
+    .map(c => {
+      if (seen.has(c.CardCode)) return null;
+      const cNorm = normBpName(c.CardName);
+      const cTokens = nameTokens(c.CardName);
+      let matchType = null;
+      if (cNorm === target) matchType = 'exact';
+      else if (cNorm.includes(target) || target.includes(cNorm)) matchType = 'similar';
+      else if (targetTokens.some(t => cTokens.includes(t))) matchType = 'partial';
+      if (!matchType) return null;
+      seen.add(c.CardCode);
+      return {
+        CardCode: c.CardCode, CardName: c.CardName,
+        CardType: CARD_TYPE_LABEL[c.CardType] || c.CardType,
+        Phone1: c.Phone1 || '', EmailAddress: c.EmailAddress || '', Valid: c.Valid, matchType,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => MATCH_RANK[a.matchType] - MATCH_RANK[b.matchType]);
+
+  const matches = all.filter(m => m.matchType !== 'partial');
+  const partialMatches = all.filter(m => m.matchType === 'partial');
+  return { exists: matches.some(m => m.matchType === 'exact'), matches, partialMatches };
+}
+function dupWarningHtml(dup) {
+  const hasMatches = dup.matches.length > 0;
+  const hasPartial = (dup.partialMatches || []).length > 0;
+  if (!hasMatches && !hasPartial) return '<div style="margin-top:8px;font-size:12px;color:#059669">✅ No matching Business Partner found in SAP.</div>';
+  let html = '';
+  if (hasMatches) {
+    const rows = dup.matches.slice(0, 6).map(m => `<div style="padding:4px 0;border-bottom:1px solid #fee2e2;font-size:12px">
+      <strong>${esc(m.CardCode)}</strong> — ${esc(m.CardName)} <span style="color:#9ca3af">(${esc(m.CardType)})</span>
+      ${m.matchType==='exact' ? '<span style="color:#dc2626;font-weight:700;margin-left:6px">EXACT MATCH</span>' : '<span style="color:#d97706;margin-left:6px">similar</span>'}
+    </div>`).join('');
+    html += `<div style="margin-top:8px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">
+      <div style="font-size:12.5px;font-weight:700;color:#991b1b">⚠️ ${dup.matches.length} possible duplicate${dup.matches.length>1?'s':''} found in SAP (matched ignoring case &amp; spacing):</div>
+      <div style="margin-top:6px">${rows}</div>
+    </div>`;
+  }
+  if (hasPartial) {
+    const prows = dup.partialMatches.slice(0, 6).map(m => `<div style="padding:4px 0;border-bottom:1px solid #fde68a;font-size:12px">
+      <strong>${esc(m.CardCode)}</strong> — ${esc(m.CardName)} <span style="color:#9ca3af">(${esc(m.CardType)})</span>
+      <span style="color:#b45309;margin-left:6px">partial match</span>
+    </div>`).join('');
+    html += `<div style="margin-top:8px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px">
+      <div style="font-size:12.5px;font-weight:700;color:#92400e">🔎 ${dup.partialMatches.length} name(s) share a word with this Business Partner:</div>
+      <div style="margin-top:6px">${prows}</div>
+    </div>`;
+  }
+  return html;
+}
+
 function bpInit(bpType) {
   return {
     step:'ASK_NAME', sid:`${bpType.slice(0,3)}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
@@ -253,6 +338,7 @@ function bpInit(bpType) {
     currency:null, currencyList:[],
     payTerms:null, payTermsName:null, termsList:[],
     phone:null, email:null,
+    gstin:null,
     addresses:[],
   };
 }
@@ -339,6 +425,7 @@ function bpSummaryHtml(sess) {
     ['Payment Terms', esc(sess.payTermsName||'—')],
     ['Phone', esc(sess.phone||'—')],
     ['Email', esc(sess.email||'—')],
+    ...(sess.gstin ? [['GSTIN', esc(sess.gstin)]] : []),
   ];
   return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
     <div style="font-size:13.5px;font-weight:700;color:#065f46;margin-bottom:10px">📋 ${sess.bpType==='customer'?'Customer':'Supplier'} Master Summary</div>
@@ -421,6 +508,7 @@ async function handleBPChat(sess, msg, sap, res, user) {
       ...(sess.payTerms!=null ? {PayTermsGrpCode:sess.payTerms} : {}),
       ...(sess.phone ? {Phone1:sess.phone} : {}),
       ...(sess.email ? {EmailAddress:sess.email} : {}),
+      ...(sess.gstin ? {FederalTaxID:sess.gstin} : {}),
       ...(sess.addresses.length ? {BPAddresses: sess.addresses.map((a,i)=>({...a, RowNum:i}))} : {}),
     };
     try {
@@ -438,7 +526,8 @@ async function handleBPChat(sess, msg, sap, res, user) {
   if (step==='ASK_NAME'||step==='INIT') {
     if (!msg.trim()) return res.json({ ok:true, reply:'<div>Please enter the name.</div>', step, sessionId:sid });
     sess.cardName = msg.trim(); sess.step = 'ASK_CODE';
-    return res.json({ ok:true, reply:`<div>Name: <strong>${esc(sess.cardName)}</strong> ✓</div><div style="margin-top:8px">Enter a <strong>BP Code</strong>, or type <em>auto</em> to let SAP assign one:</div>`, step:sess.step, sessionId:sid });
+    const dup = await checkDuplicateBP(sap, sess.cardName);
+    return res.json({ ok:true, reply:`<div>Name: <strong>${esc(sess.cardName)}</strong> ✓</div>${dupWarningHtml(dup)}<div style="margin-top:8px">Enter a <strong>BP Code</strong>, or type <em>auto</em> to let SAP assign one:</div>`, step:sess.step, sessionId:sid });
   }
   if (step==='ASK_CODE') {
     const code = msg.trim(); sess.cardCode = (!code||code.toLowerCase()==='auto') ? null : code.toUpperCase();
@@ -474,7 +563,8 @@ async function handleBPChat(sess, msg, sap, res, user) {
   if (step==='ASK_EMAIL') {
     sess.email = (msg.toLowerCase()==='skip') ? null : msg.trim();
     sess.step = 'ASK_ADDRESS';
-    return res.json({ ok:true, reply:`<div>Email: <strong>${sess.email||'—'}</strong> ✓</div><div style="margin-top:10px">Add a <strong>Bill To</strong> or <strong>Ship To</strong> address (optional):</div>${addressFormHtml(bpType, 0)}`, step:sess.step, sessionId:sid });
+    const existing = sess.addresses.length ? `<div style="margin-bottom:8px">${addressesTableHtml(sess.addresses)}</div>` : '';
+    return res.json({ ok:true, reply:`<div>Email: <strong>${sess.email||'—'}</strong> ✓</div><div style="margin-top:10px">Add a <strong>Bill To</strong> or <strong>Ship To</strong> address (optional):</div>${existing}${addressFormHtml(bpType, sess.addresses.length)}`, step:sess.step, sessionId:sid, quickReplies: sess.addresses.length ? ['Continue →'] : [] });
   }
   return res.json({ ok:true, reply:'<div>Please follow the wizard steps.</div>', step, sessionId:sid });
 }
@@ -1058,6 +1148,86 @@ export function createMenuMasterRouter({ requireAuth, getActiveSap }) {
         .reduce((o,[k,v]) => { o[k]=v; return o; }, {});
       res.json({ allKeys: Object.keys(first), uomRelated: uomFields, fullItem: first });
     } catch(e) { res.json({ error: e.message }); }
+  });
+
+  // ── GSTIN CHECK (Supplier Master) ─────────────────────────────────────────
+  router.get('/gstin/:gstin', requireAuth, async (req, res) => {
+    const gstin = String(req.params.gstin || '').trim().toUpperCase();
+    if (!GSTIN_RE.test(gstin)) {
+      return res.json({ ok:false, error: 'Invalid GSTIN format. Expected a 15-character GSTIN (e.g. 22AAAAA0000A1Z5).' });
+    }
+    try {
+      const r = await axios.get(`${GSTIN_API_BASE}/v1/gstin/${gstin}`, {
+        headers: { 'x-api-key': GSTIN_API_KEY },
+        timeout: 15000,
+        validateStatus: () => true,
+      });
+      if (r.status !== 200 || !r.data?.success) {
+        const msg = r.data?.error
+          || (r.status === 404 ? 'GSTIN not registered in the GST database.'
+            : r.status === 402 ? 'GSTIN API is out of credits.'
+            : r.status === 401 ? 'GSTIN API key is missing or invalid.'
+            : `GSTIN lookup failed (HTTP ${r.status}).`);
+        return res.json({ ok:false, error: msg });
+      }
+      res.json({ ok:true, data: r.data.data, credits_remaining: r.data.credits_remaining });
+    } catch(e) {
+      res.json({ ok:false, error: e.message || 'GSTIN lookup failed.' });
+    }
+  });
+
+  // ── BP CHECK — standalone "does this name already exist in SAP?" lookup ────
+  router.get('/bp-check', requireAuth, async (req, res) => {
+    const rawName = String(req.query.name || '').trim();
+    if (!rawName) return res.json({ ok:false, error: 'Please enter a name to check.' });
+    try {
+      const sap = getActiveSap();
+      const dup = await checkDuplicateBP(sap, rawName);
+      res.json({ ok:true, query: rawName, exists: dup.exists, matches: dup.matches, partialMatches: dup.partialMatches });
+    } catch(e) {
+      res.json({ ok:false, error: e.message || 'BP check failed.' });
+    }
+  });
+
+  // ── Post GSTIN lookup result into the Customer/Supplier Master wizard ───────
+  router.post('/bp/init-from-gstin', requireAuth, async (req, res) => {
+    try {
+      const { bpType, name, gstin, address } = req.body || {};
+      if (bpType !== 'customer' && bpType !== 'supplier') return res.json({ ok:false, error:'Invalid BP type.' });
+      if (!name || !String(name).trim()) return res.json({ ok:false, error:'Missing business partner name.' });
+
+      const sap = getActiveSap();
+      const sess = bpInit(bpType);
+      sess.cardName = String(name).trim();
+      sess.gstin = gstin ? String(gstin).trim().toUpperCase() : null;
+      if (address && (address.Street || address.City)) {
+        sess.addresses.push({
+          AddressName: address.AddressName || 'GSTIN Registered Address',
+          AddressType: address.AddressType === 'bo_ShipTo' ? 'bo_ShipTo' : 'bo_BillTo',
+          Street: address.Street || '', City: address.City || '',
+          State: address.State || '', ZipCode: address.ZipCode || '',
+          Country: address.Country || 'IN',
+        });
+      }
+      sess.step = 'ASK_CODE';
+      _bpSess[bpType].set(sess.sid, sess);
+
+      const dup = await checkDuplicateBP(sap, sess.cardName);
+      const addrLine = sess.addresses[0]
+        ? `${sess.addresses[0].Street}${sess.addresses[0].City ? ', '+sess.addresses[0].City : ''}${sess.addresses[0].State ? ', '+sess.addresses[0].State : ''}${sess.addresses[0].ZipCode ? ' '+sess.addresses[0].ZipCode : ''}`
+        : null;
+      const reply = `<div>📋 Pre-filled from <strong>GSTIN Check</strong>:</div>
+        <div style="margin-top:6px;padding:10px 12px;background:var(--card-bg,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:8px;font-size:12.5px">
+          <div><strong>Name:</strong> ${esc(sess.cardName)}</div>
+          ${sess.gstin ? `<div style="margin-top:3px"><strong>GSTIN:</strong> ${esc(sess.gstin)}</div>` : ''}
+          ${addrLine ? `<div style="margin-top:3px"><strong>Address:</strong> ${esc(addrLine)}</div>` : ''}
+        </div>
+        ${dupWarningHtml(dup)}
+        <div style="margin-top:10px">Enter a <strong>BP Code</strong>, or type <em>auto</em> to let SAP assign one:</div>`;
+      res.json({ ok:true, sessionId: sess.sid, step: sess.step, reply });
+    } catch(e) {
+      res.json({ ok:false, error: e.message || 'Failed to start wizard from GSTIN.' });
+    }
   });
 
   // ── ITEM MASTER ────────────────────────────────────────────────────────────

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Developer Settings — SAP B1</title>
+
+<script>
+(function(){
+  const token = localStorage.getItem('hanny_token');
+  if (!token) { window.location.replace('/login.html'); return; }
+  fetch('/auth/me', { headers: { 'x-auth-token': token } })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(u => {
+      if (u.role !== 'admin' && u.role !== 'superadmin') {
+        alert('Developer Settings is available to admin users only.');
+        window.location.replace('/');
+      }
+    })
+    .catch(() => { localStorage.removeItem('hanny_token'); window.location.replace('/login.html'); });
+})();
+</script>
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E; --blue:#0070F2; --blue-lt:#E8F4FF; --bg:#F5F6F7;
+  --white:#fff; --text:#32363A; --muted:#6A6D70; --border:#E0E0E0;
+  --green:#107E3E; --red:#BB0000; --r:6px;
+  --font:'Segoe UI',system-ui,sans-serif;
+}
+html,body{height:100%;font-family:var(--font);color:var(--text);background:var(--bg)}
+body{display:flex;flex-direction:column}
+
+.topbar{
+  background:var(--shell);color:#fff;height:44px;display:flex;
+  align-items:center;padding:0 16px;gap:12px;flex-shrink:0;
+}
+.topbar a{color:rgba(255,255,255,.7);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:4px}
+.topbar a:hover{color:#fff}
+.topbar h1{font-size:14px;font-weight:700;flex:1}
+
+.wrap{flex:1;overflow-y:auto;display:flex;justify-content:center;padding:32px 16px}
+.card{
+  width:100%;max-width:560px;background:var(--white);border:1px solid var(--border);
+  border-radius:8px;padding:28px;height:fit-content;
+}
+.card h2{font-size:16px;margin-bottom:4px}
+.card p.hint{font-size:12px;color:var(--muted);margin-bottom:22px}
+.section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 12px;border-top:1px solid var(--border);padding-top:18px}
+.section-label:first-of-type{margin-top:0;border-top:none;padding-top:0}
+
+.field{margin-bottom:18px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.field input[type=text]{
+  width:100%;border:1.5px solid var(--border);border-radius:var(--r);
+  padding:9px 11px;font-size:13.5px;outline:none;
+}
+.field input[type=text]:focus{border-color:var(--blue)}
+
+.logo-row{display:flex;align-items:center;gap:14px}
+.logo-preview{
+  width:64px;height:64px;border-radius:8px;border:1.5px dashed var(--border);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;background:var(--bg);
+}
+.logo-preview img{width:100%;height:100%;object-fit:contain}
+.logo-preview.empty{font-size:10px;color:var(--muted);text-align:center}
+.logo-actions{display:flex;flex-direction:column;gap:6px}
+.logo-actions input[type=file]{font-size:12px}
+.btn-clear-logo{
+  font-size:11px;color:var(--red);background:none;border:none;cursor:pointer;
+  text-align:left;padding:0;width:fit-content;
+}
+
+.actions{display:flex;gap:10px;margin-top:24px}
+.btn{
+  border:none;border-radius:var(--r);padding:10px 20px;font-size:13px;font-weight:700;
+  cursor:pointer;
+}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#0058C7}
+.btn-primary:disabled{background:#9CA3AF;cursor:not-allowed}
+
+.status{font-size:12.5px;margin-top:14px;padding:8px 12px;border-radius:var(--r);display:none}
+.status.ok{display:block;background:#E3F5E9;color:var(--green)}
+.status.err{display:block;background:#FDECEC;color:var(--red)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Back
+  </a>
+  <h1>🛠️ Developer Settings</h1>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Product &amp; Developer Identity</h2>
+    <p class="hint">The software product itself and who built it — shown on the login screen and inside the app. Admin only.</p>
+
+    <div class="section-label">Product</div>
+    <div class="field">
+      <label for="ds-product-name">Product Name</label>
+      <input type="text" id="ds-product-name" placeholder="e.g. Heeny AI Agentic" maxlength="200"/>
+    </div>
+    <div class="field">
+      <label>Product Logo</label>
+      <div class="logo-row">
+        <div class="logo-preview empty" id="ds-product-logo-preview">No logo</div>
+        <div class="logo-actions">
+          <input type="file" id="ds-product-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp"/>
+          <button type="button" class="btn-clear-logo" id="ds-product-logo-clear" style="display:none">Remove logo</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Developed By</div>
+    <div class="field">
+      <label for="ds-dev-name">Developed By</label>
+      <input type="text" id="ds-dev-name" placeholder="e.g. Henny AI Solution" maxlength="200"/>
+    </div>
+    <div class="field">
+      <label>Developed-By Logo</label>
+      <div class="logo-row">
+        <div class="logo-preview empty" id="ds-dev-logo-preview">No logo</div>
+        <div class="logo-actions">
+          <input type="file" id="ds-dev-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp"/>
+          <button type="button" class="btn-clear-logo" id="ds-dev-logo-clear" style="display:none">Remove logo</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="ds-save-btn" onclick="dsSave()">Save Changes</button>
+    </div>
+    <div class="status" id="ds-status"></div>
+  </div>
+</div>
+
+<script>
+const tok = () => localStorage.getItem('hanny_token') || '';
+let dsProductLogo = '';
+let dsDevLogo = '';
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, {
+    ...opts,
+    headers: { 'x-auth-token': tok(), 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  const data = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+function dsRenderLogo(kind) {
+  const data = kind === 'product' ? dsProductLogo : dsDevLogo;
+  const preview = document.getElementById(`ds-${kind}-logo-preview`);
+  const clearBtn = document.getElementById(`ds-${kind}-logo-clear`);
+  if (data) {
+    preview.className = 'logo-preview';
+    preview.innerHTML = `<img src="${data}" alt="${kind} logo"/>`;
+    clearBtn.style.display = '';
+  } else {
+    preview.className = 'logo-preview empty';
+    preview.textContent = 'No logo';
+    clearBtn.style.display = 'none';
+  }
+}
+
+function wireLogoInput(kind) {
+  document.getElementById(`ds-${kind}-logo-file`).addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert('Logo must be under 2MB.'); e.target.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (kind === 'product') dsProductLogo = reader.result; else dsDevLogo = reader.result;
+      dsRenderLogo(kind);
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById(`ds-${kind}-logo-clear`).addEventListener('click', () => {
+    if (kind === 'product') dsProductLogo = ''; else dsDevLogo = '';
+    document.getElementById(`ds-${kind}-logo-file`).value = '';
+    dsRenderLogo(kind);
+  });
+}
+wireLogoInput('product');
+wireLogoInput('dev');
+
+async function dsLoad() {
+  try {
+    const b = await api('/api/branding');
+    document.getElementById('ds-product-name').value = b.productName || '';
+    document.getElementById('ds-dev-name').value = b.developedBy || '';
+    dsProductLogo = b.productLogo || '';
+    dsDevLogo = b.developedByLogo || '';
+    dsRenderLogo('product');
+    dsRenderLogo('dev');
+  } catch (e) { console.error(e); }
+}
+
+async function dsSave() {
+  const btn = document.getElementById('ds-save-btn');
+  const status = document.getElementById('ds-status');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  status.className = 'status';
+  try {
+    await api('/api/branding', {
+      method: 'PUT',
+      body: JSON.stringify({
+        productName: document.getElementById('ds-product-name').value.trim(),
+        productLogo: dsProductLogo,
+        developedBy: document.getElementById('ds-dev-name').value.trim(),
+        developedByLogo: dsDevLogo,
+      }),
+    });
+    status.className = 'status ok';
+    status.textContent = '✓ Saved — the login page and main app will pick this up on next load.';
+  } catch (e) {
+    status.className = 'status err';
+    status.textContent = '✗ ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Changes';
+  }
+}
+
+dsLoad();
+</script>
+</body>
+</html>

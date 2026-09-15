@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>AgentSphere Chat</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#1a2535;
+  --blue:#0070F2;
+  --blue-light:#E8F4FF;
+  --blue-mid:#0064D9;
+  --bg:#F5F6F7;
+  --white:#FFFFFF;
+  --text:#32363A;
+  --muted:#6A6D70;
+  --border:#E5E5E5;
+  --font:'Inter','72','Segoe UI',system-ui,-apple-system,sans-serif;
+  --r:6px;
+  --shadow:0 2px 12px rgba(0,0,0,.10);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);display:flex;flex-direction:column}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.app{flex:1;display:flex;flex-direction:column;min-width:0;height:100vh;min-height:0;position:relative}
+
+/* Header */
+.cw-header{
+  background:var(--shell);height:48px;flex-shrink:0;
+  display:flex;align-items:center;gap:10px;padding:0 14px;
+  box-shadow:0 2px 4px rgba(0,0,0,.2);
+}
+.cw-avatar{
+  width:28px;height:28px;border-radius:7px;flex-shrink:0;
+  background:linear-gradient(135deg,#3b82f6,#1d4ed8);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;padding:3px;
+  box-shadow:0 2px 8px rgba(59,130,246,.4);
+}
+.cw-avatar img{width:100%;height:100%;object-fit:contain}
+.cw-title{font-size:13.5px;font-weight:700;color:#fff;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cw-sub{font-size:9.5px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.4px}
+.cw-reset-btn{
+  flex-shrink:0;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+  color:rgba(255,255,255,.8);border-radius:var(--r);padding:5px 11px;font-size:11.5px;
+  cursor:pointer;font-family:inherit;transition:background .15s,color .15s;
+}
+.cw-reset-btn:hover{background:rgba(255,255,255,.18);color:#fff}
+.cw-logout-btn{
+  flex-shrink:0;background:transparent;border:none;color:rgba(255,255,255,.55);
+  font-size:10.5px;cursor:pointer;font-family:inherit;text-decoration:underline;
+  padding:0;margin-left:2px;
+}
+.cw-logout-btn:hover{color:#fff}
+
+/* Login gate — shown until a valid session exists, then removed */
+.cw-login-overlay{
+  position:absolute;inset:0;z-index:50;
+  background:var(--bg);
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.cw-login-overlay.show{display:flex}
+.cw-login-card{
+  width:100%;max-width:300px;background:var(--white);
+  border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 4px 20px rgba(0,0,0,.08);padding:24px 22px;
+}
+.cw-login-avatar{
+  width:44px;height:44px;border-radius:8px;margin:0 auto 12px;
+  background:var(--blue);display:flex;align-items:center;justify-content:center;
+  overflow:hidden;padding:6px;box-shadow:0 4px 12px rgba(0,112,242,.3);
+}
+.cw-login-avatar img{width:100%;height:100%;object-fit:contain}
+.cw-login-card h3{font-size:15px;font-weight:700;color:var(--text);text-align:center;margin-bottom:2px}
+.cw-login-card p{font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:16px}
+.cw-login-field{margin-bottom:10px}
+.cw-login-field label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.cw-login-field input{
+  width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r);
+  font-size:13px;font-family:var(--font);outline:none;transition:border-color .15s;
+}
+.cw-login-field input:focus{border-color:var(--blue)}
+.cw-login-err{font-size:11.5px;color:#BB0000;min-height:14px;margin:4px 0 8px;text-align:center}
+.cw-login-btn{
+  width:100%;background:var(--blue);color:#fff;border:none;border-radius:var(--r);
+  padding:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:background .15s;
+}
+.cw-login-btn:hover{background:var(--blue-mid)}
+.cw-login-btn:disabled{opacity:.6;cursor:not-allowed}
+
+/* Messages */
+#messages{flex:1;overflow-y:auto;padding:16px 16px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth;min-height:0}
+.welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px}
+.welcome-avatar{width:48px;height:48px;border-radius:8px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 12px rgba(0,112,242,.30)}
+.welcome h2{font-size:16px;font-weight:600;color:var(--text)}
+.welcome p{color:var(--muted);max-width:420px;line-height:1.6;font-size:12.5px}
+
+.msg-row{display:flex;gap:8px;max-width:100%;width:100%;align-self:flex-start}
+.msg-row.user{align-self:flex-end;flex-direction:row-reverse;max-width:90%}
+.av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:2px}
+.av.bot{background:var(--blue);color:#fff;font-weight:700;font-size:11px}
+.av.user{background:#E8F4FF;color:var(--blue);border:1px solid #99CAFF;font-size:11px}
+
+.bubble{padding:10px 14px;border-radius:var(--r);line-height:1.6;font-size:13px;max-width:100%;box-shadow:var(--shadow)}
+.bubble.bot{background:var(--white);border:1px solid var(--border);border-top-left-radius:0;color:var(--text)}
+.bubble.user{background:var(--blue);color:#fff;border-top-right-radius:0}
+
+.bubble.bot table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
+.bubble.bot th{background:#F5F6F7;padding:6px 9px;text-align:left;font-size:10.5px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);border-right:1px solid var(--border)}
+.bubble.bot td{padding:6px 9px;border-bottom:1px solid #F0F0F0;border-right:1px solid #F0F0F0;color:var(--text)}
+.bubble.bot tr:last-child td{border-bottom:none}
+.bubble.bot tr:hover td{background:var(--blue-light)}
+.bubble.bot code{background:#F5F6F7;border-radius:2px;padding:1px 5px;font-size:11.5px;font-family:'Courier New',monospace;color:#32363A;border:1px solid var(--border)}
+.bubble.bot pre{background:#F5F6F7;border:1px solid var(--border);border-radius:var(--r);padding:12px;overflow-x:auto;margin:8px 0}
+.bubble.bot pre code{background:none;padding:0;border:none}
+.bubble.bot ul,.bubble.bot ol{padding-left:18px;margin:5px 0}
+.bubble.bot li{margin:3px 0}
+.bubble.bot strong{font-weight:700;color:var(--text)}
+.bubble.bot h3{font-size:13px;font-weight:700;margin:10px 0 5px;color:var(--blue)}
+.bubble.bot a{color:var(--blue);text-decoration:none}
+.bubble.bot a:hover{text-decoration:underline}
+
+/* Dark code / JSON block — ChatGPT-style */
+.code-block{background:#1e1e2e;border-radius:10px;overflow:hidden;margin:8px 0;border:1px solid rgba(0,0,0,.2);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.code-block-hdr{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:#14141f;color:#9ca3af;font-size:11px;font-weight:700;letter-spacing:.3px}
+.code-block-hdr-left{display:flex;align-items:center;gap:10px}
+.code-block-lang{text-transform:lowercase}
+.code-block-tabs{display:flex;gap:2px}
+.cb-tab{background:transparent;border:none;color:#9ca3af;font-size:10.5px;font-weight:700;cursor:pointer;padding:3px 9px;border-radius:6px;font-family:inherit;transition:background .12s,color .12s}
+.cb-tab:hover{color:#e5e7eb}
+.cb-tab.active{background:rgba(255,255,255,.14);color:#e5e7eb}
+.code-block-copy{background:transparent;border:none;color:#9ca3af;font-size:11px;font-weight:600;cursor:pointer;padding:3px 9px;border-radius:6px;font-family:inherit;transition:background .12s,color .12s}
+.code-block-copy:hover{background:rgba(255,255,255,.1);color:#e5e7eb}
+.code-block-copy.copied{color:#34d399}
+.bubble.bot .code-block pre{margin:0;padding:12px 14px;overflow-x:auto;background:transparent;border:none;border-radius:0}
+.bubble.bot .code-block pre code{background:none;padding:0;border:none;color:#e5e7eb;font-family:'Cascadia Code','Courier New',monospace;font-size:12px;line-height:1.6;white-space:pre}
+.code-block .jk{color:#7dd3fc}
+.code-block .js{color:#a5d6a7}
+.code-block .jn{color:#f0b37e}
+.code-block .jb{color:#c792ea}
+.code-block .jz{color:#f07178}
+.code-block .cb-view[data-view="table"]{max-height:320px;overflow:auto}
+.bubble.bot .code-block table{width:100%;border-collapse:collapse;font-size:11.5px;color:#e5e7eb;margin:0}
+.bubble.bot .code-block th{background:#14141f;color:#9ca3af;text-align:left;padding:7px 10px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.1);border-right:none;white-space:nowrap;position:sticky;top:0}
+.bubble.bot .code-block td{padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.06);border-right:none;color:#e5e7eb}
+.bubble.bot .code-block tr:last-child td{border-bottom:none}
+.bubble.bot .code-block tr:hover td{background:rgba(255,255,255,.05)}
+
+/* Typing indicator */
+.typing-row{display:flex;gap:8px;align-self:flex-start}
+.typing-bubble{background:var(--white);border:1px solid var(--border);border-radius:var(--r);border-top-left-radius:0;padding:12px 16px;display:flex;align-items:center;gap:5px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:bounce 1.2s infinite ease-in-out}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1);opacity:1}}
+
+/* Input area */
+.input-area{background:var(--white);border-top:1px solid var(--border);padding:8px 12px 6px;flex-shrink:0}
+.input-row{display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:6px 10px;transition:border-color .15s,box-shadow .15s}
+.input-row:focus-within{border-color:var(--blue);box-shadow:0 0 0 2px rgba(0,112,242,.15);background:var(--white)}
+#user-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5}
+#user-input::placeholder{color:#ABABAB}
+#send-btn{width:30px;height:30px;background:var(--blue);border:none;border-radius:var(--r);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s;flex-shrink:0}
+#send-btn:hover{background:var(--blue-mid)}
+#send-btn:disabled{opacity:.4;cursor:not-allowed}
+.cw-footer{text-align:center;font-size:9.5px;color:#9ca3af;padding:4px 0 2px}
+
+/* Auth notice (shown only if not logged in and chat needs it) */
+.cw-auth-note{margin:10px 14px;padding:10px 12px;background:#FFF7EE;border:1px solid #F7C88C;border-radius:var(--r);font-size:12px;color:#9A5B00;display:none}
+.cw-auth-note a{color:var(--blue);font-weight:600}
+
+/* Scrollbar */
+#messages::-webkit-scrollbar{width:6px}
+#messages::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="cw-header">
+    <div class="cw-avatar"><img id="cw-logo" src="/assets/henny-agentic-logo.png" alt="Logo"/></div>
+    <div style="flex:1;min-width:0">
+      <div class="cw-title" id="cw-title">AgentSphere</div>
+      <div class="cw-sub">SAP B1 AI Chat</div>
+    </div>
+    <button class="cw-reset-btn" id="cw-reset-btn" title="Start a new conversation">↺ New Chat</button>
+    <button class="cw-logout-btn" id="cw-logout-btn" title="Log out" style="display:none">Log out</button>
+  </div>
+
+  <div class="cw-login-overlay" id="cw-login-overlay">
+    <div class="cw-login-card">
+      <div class="cw-login-avatar"><img id="cw-login-logo" src="/assets/henny-agentic-logo.png" alt="Logo"/></div>
+      <h3 id="cw-login-title">Sign in to AgentSphere</h3>
+      <p>Log in to start chatting with your SAP B1 assistant.</p>
+      <form id="cw-login-form">
+        <div class="cw-login-field">
+          <label for="cw-login-user">Username</label>
+          <input id="cw-login-user" type="text" autocomplete="username" required/>
+        </div>
+        <div class="cw-login-field">
+          <label for="cw-login-pass">Password</label>
+          <input id="cw-login-pass" type="password" autocomplete="current-password" required/>
+        </div>
+        <div class="cw-login-err" id="cw-login-err"></div>
+        <button type="submit" class="cw-login-btn" id="cw-login-btn">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="messages">
+    <div class="welcome" id="welcome">
+      <div class="welcome-avatar">🎙️</div>
+      <h2 id="welcome-title">Hi! I'm AgentSphere AI, your SAP B1 Assistant.</h2>
+      <p>Ask about stock, sales orders, customers, invoices and more — I'll query SAP B1 directly.</p>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="user-input" rows="1" placeholder="Type a message…" autocomplete="off"></textarea>
+      <button id="send-btn" title="Send">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+    <div class="cw-footer" id="cw-footer">Powered by AgentSphere</div>
+  </div>
+</div>
+
+<script>
+// ── Auth: fetch wrapper attaches the token to every same-origin request ────
+// A `?token=` query param lets a caller (e.g. an iframe host that already
+// authenticated the user and just wants to hand in a session) skip the login
+// form entirely. Otherwise the widget shows its own login form on first load
+// and stores the resulting token in localStorage — since an iframe's script
+// runs in *this* page's origin, that localStorage is scoped to this app's
+// domain and persists across reloads/embeds, i.e. "log in once, stay logged
+// in" even though the parent page may be on a different origin/app.
+(function() {
+  const _origFetch = window.fetch;
+  window.fetch = function(url, opts = {}) {
+    const token = localStorage.getItem('hanny_token');
+    if (token && typeof url === 'string' && url.startsWith('/')) {
+      opts.headers = Object.assign({ 'x-auth-token': token }, opts.headers || {});
+    }
+    return _origFetch(url, opts);
+  };
+})();
+
+const loginOverlay = document.getElementById('cw-login-overlay');
+const loginForm    = document.getElementById('cw-login-form');
+const loginErr     = document.getElementById('cw-login-err');
+const loginBtn     = document.getElementById('cw-login-btn');
+const logoutBtn    = document.getElementById('cw-logout-btn');
+
+function showLoginGate() {
+  loginOverlay.classList.add('show');
+  logoutBtn.style.display = 'none';
+  document.getElementById('cw-login-user')?.focus();
+}
+function hideLoginGate() {
+  loginOverlay.classList.remove('show');
+  logoutBtn.style.display = '';
+  inputEl.focus();
+}
+
+async function checkExistingSession() {
+  const params = new URLSearchParams(location.search);
+  const qsToken = params.get('token');
+  if (qsToken) localStorage.setItem('hanny_token', qsToken);
+
+  const token = localStorage.getItem('hanny_token');
+  if (!token) { showLoginGate(); return; }
+  try {
+    const r = await fetch('/auth/me', { headers: { 'x-auth-token': token } });
+    if (r.ok) { hideLoginGate(); return; }
+  } catch (_) { /* network error — fall through to login gate */ }
+  localStorage.removeItem('hanny_token');
+  localStorage.removeItem('hanny_user');
+  showLoginGate();
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginErr.textContent = '';
+  const username = document.getElementById('cw-login-user').value.trim();
+  const password = document.getElementById('cw-login-pass').value;
+  if (!username || !password) return;
+  loginBtn.disabled = true; loginBtn.textContent = 'Signing in…';
+  try {
+    const res = await fetch('/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { loginErr.textContent = data.error || 'Login failed'; return; }
+    localStorage.setItem('hanny_token', data.token);
+    localStorage.setItem('hanny_user', JSON.stringify({ id: data.id, username: data.username, fullName: data.fullName, role: data.role }));
+    document.getElementById('cw-login-pass').value = '';
+    hideLoginGate();
+  } catch (e) {
+    loginErr.textContent = 'Network error: ' + e.message;
+  } finally {
+    loginBtn.disabled = false; loginBtn.textContent = 'Sign In';
+  }
+});
+
+logoutBtn.addEventListener('click', async () => {
+  const token = localStorage.getItem('hanny_token');
+  try { await fetch('/auth/logout', { method: 'POST', headers: { 'x-auth-token': token || '' } }); } catch (_) {}
+  localStorage.removeItem('hanny_token');
+  localStorage.removeItem('hanny_user');
+  sessionId = null;
+  messagesEl.innerHTML = '';
+  messagesEl.appendChild(welcomeEl);
+  welcomeEl.style.display = 'flex';
+  showLoginGate();
+});
+
+// ── Branding — pulls the same dynamic product name/logo as the main app ────
+(function() {
+  fetch('/api/branding').then(r => r.ok ? r.json() : null).then(b => {
+    if (!b) return;
+    const name = (b.productName || '').trim();
+    if (name) {
+      document.title = `${name} Chat`;
+      const t = document.getElementById('cw-title'); if (t) t.textContent = name;
+      const wt = document.getElementById('welcome-title'); if (wt) wt.textContent = `Hi! I'm ${name} AI, your SAP B1 Assistant.`;
+      const lt = document.getElementById('cw-login-title'); if (lt) lt.textContent = `Sign in to ${name}`;
+    }
+    if (b.productLogo) {
+      const l = document.getElementById('cw-logo'); if (l) l.src = b.productLogo;
+      const ll = document.getElementById('cw-login-logo'); if (ll) ll.src = b.productLogo;
+    }
+    const devBy = (b.developedBy || '').trim();
+    const f = document.getElementById('cw-footer');
+    if (f) f.textContent = `Powered by ${name || devBy || 'AgentSphere'}`;
+  }).catch(() => {});
+})();
+
+// ── Chat ─────────────────────────────────────────────────────────────────
+let sessionId = null, isLoading = false;
+const ENGINE = new URLSearchParams(location.search).get('engine') || 'standard';
+
+const messagesEl = document.getElementById('messages');
+const welcomeEl  = document.getElementById('welcome');
+const inputEl    = document.getElementById('user-input');
+const sendBtn    = document.getElementById('send-btn');
+
+async function api(url, opts = {}) {
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  return res.json();
+}
+function escHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Code / JSON block rendering (same behaviour as the main chat UI) ───────
+const _codeBlockStore = {};
+let _codeBlockSeq = 0;
+
+function highlightJson(prettyJson) {
+  return prettyJson.replace(
+    /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)|\b(true|false)\b|\b(null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
+    (m, str, _inner, colon) => {
+      const esc = escHtml(m);
+      if (str) return `<span class="${colon ? 'jk' : 'js'}">${esc}</span>`;
+      if (/true|false/.test(m)) return `<span class="jb">${esc}</span>`;
+      if (m === 'null') return `<span class="jz">${esc}</span>`;
+      return `<span class="jn">${esc}</span>`;
+    }
+  );
+}
+function jsonToTableHtml(parsed) {
+  const isPlainObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const cellVal = v => {
+    if (v === null || v === undefined) return '';
+    if (isPlainObj(v) || Array.isArray(v)) return escHtml(JSON.stringify(v));
+    return escHtml(String(v));
+  };
+  if (Array.isArray(parsed) && parsed.length && parsed.every(isPlainObj)) {
+    const cols  = Array.from(parsed.reduce((s, r) => { Object.keys(r).forEach(k => s.add(k)); return s; }, new Set()));
+    const thead = cols.map(c => `<th>${escHtml(c)}</th>`).join('');
+    const rows  = parsed.map(r => `<tr>${cols.map(c => `<td>${cellVal(r[c])}</td>`).join('')}</tr>`).join('');
+    return `<table><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  if (isPlainObj(parsed) && Object.keys(parsed).length) {
+    const rows = Object.entries(parsed).map(([k, v]) => `<tr><th>${escHtml(k)}</th><td>${cellVal(v)}</td></tr>`).join('');
+    return `<table><tbody>${rows}</tbody></table>`;
+  }
+  return null;
+}
+window.cbSwitchView = function(id, view) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.querySelectorAll('.cb-view').forEach(v => v.style.display = v.dataset.view === view ? '' : 'none');
+  el.querySelectorAll('.cb-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+};
+window.copyCodeBlock = function(id, btn) {
+  const text = _codeBlockStore[id] || '';
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+  }).catch(() => {});
+};
+function renderCodeBlock(rawCode, lang) {
+  const code = rawCode.replace(/^\n/, '').replace(/\n$/, '');
+  let displayLang = (lang || '').toLowerCase();
+  let isJson = displayLang === 'json';
+  if (!isJson && !displayLang && /^[\[{]/.test(code.trim())) {
+    try { JSON.parse(code.trim()); isJson = true; } catch { /* not JSON */ }
+  }
+  const id = 'cb_' + (++_codeBlockSeq);
+  _codeBlockStore[id] = code;
+
+  if (isJson) {
+    let parsed;
+    try { parsed = JSON.parse(code); } catch { parsed = undefined; }
+    if (parsed !== undefined) {
+      const jsonHtml  = highlightJson(JSON.stringify(parsed, null, 2));
+      const tableHtml = jsonToTableHtml(parsed);
+      if (tableHtml) {
+        return `<div class="code-block" id="${id}">`
+          + `<div class="code-block-hdr">`
+          +   `<div class="code-block-hdr-left"><span class="code-block-lang">json</span>`
+          +     `<span class="code-block-tabs">`
+          +       `<button class="cb-tab active" data-view="table" onclick="cbSwitchView('${id}','table')">Table</button>`
+          +       `<button class="cb-tab" data-view="json" onclick="cbSwitchView('${id}','json')">JSON</button>`
+          +     `</span></div>`
+          +   `<button class="code-block-copy" onclick="copyCodeBlock('${id}',this)">Copy</button>`
+          + `</div>`
+          + `<div class="cb-view" data-view="table">${tableHtml}</div>`
+          + `<div class="cb-view" data-view="json" style="display:none"><pre><code>${jsonHtml}</code></pre></div>`
+          + `</div>`;
+      }
+      return `<div class="code-block" id="${id}">`
+        + `<div class="code-block-hdr"><span class="code-block-lang">json</span>`
+        + `<button class="code-block-copy" onclick="copyCodeBlock('${id}',this)">Copy</button></div>`
+        + `<pre><code>${jsonHtml}</code></pre></div>`;
+    }
+  }
+  return `<div class="code-block" id="${id}">`
+    + `<div class="code-block-hdr"><span class="code-block-lang">${escHtml(displayLang || 'text')}</span>`
+    + `<button class="code-block-copy" onclick="copyCodeBlock('${id}',this)">Copy</button></div>`
+    + `<pre><code>${escHtml(code)}</code></pre></div>`;
+}
+
+function renderMd(text) {
+  const raw = String(text || '');
+  const trimmedWhole = raw.trim();
+  if (/^[\[{][\s\S]*[\]}]$/.test(trimmedWhole)) {
+    try { JSON.parse(trimmedWhole); return renderCodeBlock(trimmedWhole, 'json'); } catch { /* fall through */ }
+  }
+  const blocks = [];
+  const working = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    blocks.push(renderCodeBlock(code, lang));
+    return ` CB${blocks.length - 1} `;
+  });
+  let h = escHtml(working);
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  h = h.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">');
+  h = h.replace(/((?:\|.+\|\n?)+)/g, block => {
+    const rows = block.trim().split('\n').filter(r => r.trim());
+    if (rows.length < 2) return block;
+    const isSep = r => /^\|[-| :]+\|$/.test(r.trim());
+    let out = '<table>', inH = true;
+    for (const row of rows) {
+      if (isSep(row)) { inH = false; continue; }
+      const cells = row.split('|').slice(1, -1).map(c => c.trim());
+      const tag = inH ? 'th' : 'td';
+      out += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+      if (inH) inH = false;
+    }
+    return out + '</table>';
+  });
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)(\{[^}]*\})?/g, (_, txt, href, extra) => `<a href="${href}" ${/target/.test(extra || '') ? 'target="_blank"' : ''}>${txt}</a>`);
+  h = h.replace(/((?:^[•\-\*] .+\n?)+)/gm, block => `<ul>${block.trim().split('\n').map(l => `<li>${l.replace(/^[•\-\*] /, '')}</li>`).join('')}</ul>`);
+  h = h.replace(/((?:^\d+\. .+\n?)+)/gm, block => `<ol>${block.trim().split('\n').map(l => `<li>${l.replace(/^\d+\. /, '')}</li>`).join('')}</ol>`);
+  h = h.replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>');
+  let result = `<p>${h}</p>`.replace(/<p>\s*<\/p>/g, '');
+  result = result.replace(/\bCB(\d+)\b/g, (_, i) => blocks[Number(i)] ?? '');
+  return result;
+}
+
+function appendMsg(role, text) {
+  welcomeEl.style.display = 'none';
+  const row = document.createElement('div');
+  row.className = `msg-row ${role}`;
+  const av = document.createElement('div');
+  av.className = `av ${role}`;
+  av.textContent = role === 'user' ? '👤' : 'B1';
+  const b = document.createElement('div');
+  b.className = `bubble ${role}`;
+  b.innerHTML = role === 'bot' ? renderMd(text) : escHtml(text);
+  row.appendChild(av); row.appendChild(b);
+  messagesEl.appendChild(row);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return row;
+}
+function appendTyping() {
+  const row = document.createElement('div'); row.className = 'typing-row';
+  const av = document.createElement('div'); av.className = 'av bot'; av.textContent = 'B1';
+  const b = document.createElement('div'); b.className = 'typing-bubble';
+  b.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  row.appendChild(av); row.appendChild(b);
+  messagesEl.appendChild(row); messagesEl.scrollTop = messagesEl.scrollHeight;
+  return row;
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text || isLoading) return;
+  isLoading = true; sendBtn.disabled = true;
+  appendMsg('user', text);
+  inputEl.value = ''; inputEl.style.height = 'auto';
+  const typing = appendTyping();
+  try {
+    const d = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text, sessionId, engine: ENGINE }) });
+    typing.remove();
+    if (d.error) {
+      appendMsg('bot', `**Error:** ${d.error}`);
+    } else {
+      sessionId = d.sessionId;
+      if (d.cacheHit && d.cacheSource) {
+        const badge = document.createElement('div');
+        badge.style.cssText = 'font-size:10.5px;color:#6A6D70;padding:2px 4px;display:flex;align-items:center;gap:4px';
+        badge.innerHTML = `<span>📋</span> Answered from Query Library <span style="opacity:.7">${escHtml(d.cacheSource)}</span>`;
+        messagesEl.appendChild(badge);
+      }
+      appendMsg('bot', d.reply);
+    }
+  } catch (e) {
+    typing.remove();
+    appendMsg('bot', `**Network error:** ${e.message}`);
+  } finally {
+    isLoading = false; sendBtn.disabled = false; inputEl.focus();
+  }
+}
+
+sendBtn.addEventListener('click', sendMessage);
+inputEl.addEventListener('input', () => { inputEl.style.height = 'auto'; inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px'; });
+inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+
+document.getElementById('cw-reset-btn').addEventListener('click', () => {
+  sessionId = null;
+  messagesEl.innerHTML = '';
+  messagesEl.appendChild(welcomeEl);
+  welcomeEl.style.display = 'flex';
+  inputEl.focus();
+});
+
+// Gate the chat behind login — shows the login form on first load unless a
+// valid session already exists (localStorage token, or ?token= handed in).
+checkExistingSession();
+</script>
+</body>
+</html>

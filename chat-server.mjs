@@ -1,7 +1,9 @@
 import express from "express";
 import axios from "axios";
 import https from "node:https";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync, existsSync } from "node:fs";
+import { EXPORTS_DIR, isExcelExportRequest, isMultiTabReportRequest, generateExcelExport } from "./lib/excel-export.mjs";
+import { buildProfessionalInsight } from "./lib/data-insight.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -23,6 +25,11 @@ import { createSalesOrderAgentRouter } from './controllers/sales-order-agent.mjs
 import { createPRtoPOAgentRouter } from './controllers/pr-to-po-agent.mjs';
 import { createPOtoGRPOAgentRouter } from './controllers/po-to-grpo-agent.mjs';
 import { createGRPOtoAPInvAgentRouter } from './controllers/grpo-to-apinv-agent.mjs';
+import { createOcrPoScanAgentRouter }   from './controllers/ocr-po-scan-agent.mjs';
+import { createOcrExpenseAgentRouter }  from './controllers/ocr-expense-agent.mjs';
+import { createOcrInwardAgentRouter }   from './controllers/ocr-inward-agent.mjs';
+import { createOcrGatePassAgentRouter } from './controllers/ocr-gatepass-agent.mjs';
+import { createOcrDocumentAgentRouter } from './controllers/ocr-document-agent.mjs';
 import { createThreeWayMatchRouter }    from './controllers/three-way-match-agent.mjs';
 import { createMenuMasterRouter }        from './controllers/master-data-agent.mjs';
 import { createScViewRouter }            from './controllers/sc-view-agent.mjs';
@@ -43,7 +50,7 @@ const _require = createRequire(import.meta.url);
 // pdf-parse is CJS — use createRequire to avoid ES module interop issues
 let pdfParse;
 try { pdfParse = _require("pdf-parse"); } catch(e) { console.warn("pdf-parse load failed:", e.message); pdfParse = null; }
-import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo } from "./db.mjs";
+import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo } from "./db.mjs";
 import { createDataSyncRouter } from './controllers/data-sync.mjs';
 import { createFinancialAgentRouter } from './controllers/financial-agent.mjs';
 import { createActivityAgentRouter } from './controllers/activity-agent.mjs';
@@ -53,13 +60,16 @@ import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mj
 import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap } from "./db-connector.mjs";
 import { loadCompanyContext, buildSqlContext, buildAiSummary, buildDimBlock, buildRegistryBlock, getDimMap, invalidateCache as invalidateContextCache, BASE_SCHEMA } from "./company-context.mjs";
 import { REPORT_CATEGORIES, listReports, getReport, runReport as runReportSQL } from "./reports-engine.mjs";
-import { handleV2Chat, classifyIntent, generateSQL, lintSql } from "./analytics-v2.mjs";
+import { handleV2Chat, classifyIntent, generateSQL, lintSql, buildMultiTabExcelReport } from "./analytics-v2.mjs";
 import { matchTemplate } from "./query-templates.mjs";
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.CHAT_PORT || 3000;
+const HTTPS_PORT = process.env.CHAT_HTTPS_PORT || 3443;
+const TLS_KEY_PATH = path.join(__dirname, "certs", "localhost-key.pem");
+const TLS_CERT_PATH = path.join(__dirname, "certs", "localhost-cert.pem");
 const AI_PROVIDER = (process.env.AI_PROVIDER || "anthropic").toLowerCase();
 const GPT_AVAILABLE = !!(
   process.env.DEMO_MODE !== "true" &&
@@ -3344,7 +3354,8 @@ ${doc.Comments?`<div class="comments-box"><strong>Comments / Remarks:</strong><b
 // Express app
 // ---------------------------------------------------------------------------
 const app = express();
-app.use(express.json());
+// Raised from the 100kb default so branding-logo uploads (base64 data URIs in JSON) fit.
+app.use(express.json({ limit: "8mb" }));
 
 // Attach per-session SAP client to request context
 app.use((req, _res, next) => {
@@ -3372,6 +3383,9 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static(path.join(__dirname, "public")));
+// Generated Excel exports — a real file on disk, served statically, so a
+// chat reply can link to it directly. Not committed (gitignored).
+app.use("/exports", express.static(EXPORTS_DIR));
 
 // ═══════════════════════════════════════════════════════════════
 // AUTH helpers
@@ -3646,16 +3660,16 @@ async function generateAndRunDirectSql(message) {
     }
   }
 
-  let lastError = null, generatedSQL = "";
+  let lastError = null, generatedSQL = "", presentation = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      generatedSQL = await generateSQL(message, intent, [], attempt > 1 ? lastError : null);
+      ({ sql: generatedSQL, presentation } = await generateSQL(message, intent, [], attempt > 1 ? lastError : null));
       const lintError = lintSql(generatedSQL, dbType);
       if (lintError) throw new Error(lintError);
 
       const rows = await executeSQL(generatedSQL);
       sqlCacheRepo.set(cacheKey, schema, message, generatedSQL, rows);
-      return { sql: generatedSQL, rows, dbType, cacheHit: false };
+      return { sql: generatedSQL, rows, dbType, cacheHit: false, presentation };
     } catch (err) {
       lastError = err.message;
       if (attempt === 2) {
@@ -3676,28 +3690,46 @@ function unwrapSuggestionText(q) {
   return m ? m[1] : q;
 }
 
+// isExcelExportRequest / generateExcelExport now live in ./lib/excel-export.mjs
+// (shared with analytics-v2.mjs) — see the RESPONSE FORMAT rules above for why:
+// models trained on ChatGPT's Code Interpreter will otherwise invent a
+// plausible-looking "sandbox:/file.xlsx" link that goes nowhere.
+
 // ChatGPT-style wrap-up appended after a direct-SQL fast-path answer — the
 // tool-calling agent already does this itself via the RESPONSE FORMAT rules in
 // buildSapSystemPrompt (INSIGHT + FOLLOW-UPS), but the fast path below skips the
 // agent entirely for speed, so it needs its own lightweight version.
+// "Summary"-style wording ("give me an overview", "summarize sales", "at a
+// glance"...) means the user wants the picture, not the rows — the frontend
+// opens straight into the Chart + AI Summary tabs instead of the raw table.
+function isSummaryStyleQuestion(question) {
+  return /\b(summary|summarize|summarise|overview|insight|snapshot|at a glance|highlight|recap|chart|graph|plot|trend|analysis|analyse|analyze|visuali[sz]e)\b/i.test(question || "");
+}
+
 function buildDirectSqlWrapup(question, rows) {
   if (!rows || !rows.length) return "";
   const q = unwrapSuggestionText(question);
-  const n = rows.length;
+  // Real computed stats (total/avg/max/min/trend) from the actual rows —
+  // not the AI eyeballing the table and describing it in free text.
+  const insight = buildProfessionalInsight(q, rows);
   // Each numbered item re-embeds the original question so it's self-contained —
   // this fast path doesn't go through the agent's conversation history, so a
   // picked suggestion needs to carry its own context rather than relying on "this".
   // Numbered (not bulleted) so the user can just reply "1"/"2"/"3" to pick one.
-  return `\n\n📊 **Insight:** Found **${n}** result${n === 1 ? "" : "s"} for *"${q}"* — pulled directly from the database, no row limit.\n\n💡 **You can also ask** (reply with the number):\n1. Break down "${q}" by month or a date range\n2. Filter "${q}" to a specific customer, item, or warehouse\n3. Export "${q}" as a report`;
+  return `\n\n${insight}\n💡 **You can also ask** (reply with the number):\n1. Break down "${q}" by month or a date range\n2. Filter "${q}" to a specific customer, item, or warehouse\n3. Export "${q}" as a report`;
 }
 
 // Numbered-suggestion selection — sid -> the "💡 You can also ask" bullets from
 // the last reply, so a bare "1"/"2"/"3" reply picks that suggestion instead of
-// the user having to retype it. If the picked suggestion is itself vague (needs
-// a specific value like a customer name), the normal pre-intercept/agent flow
-// already asks for it — the agent's IDENTITY & BEHAVIOR rule is to ask ONE
-// clarifying question before proceeding, so no separate machinery is needed.
+// the user having to retype it.
 const _lastSuggestions = new Map();
+
+// sid -> { question } for a follow-up we had to ask a clarifying question about
+// (e.g. "Filter ... to a specific customer, item, or warehouse" names no value).
+// The direct-SQL fast path has no multi-turn memory of its own, so the *next*
+// message from that session is treated as the missing answer and merged back
+// into the original question rather than run as a disconnected new query.
+const _pendingClarification = new Map();
 function extractSuggestions(text) {
   if (!text) return [];
   const m = text.match(/💡[^\n]*\n((?:\s*(?:\d+[.)]|[•\-])[^\n]*\n?)+)/);
@@ -3717,6 +3749,55 @@ app.post("/api/chat", async (req, res) => {
     const stored = _lastSuggestions.get(sid);
     const picked = stored && stored[parseInt(suggestionPick[1], 10) - 1];
     if (picked) message = picked;
+  }
+
+  // We previously asked "which customer/item/warehouse?" for this session —
+  // this message is that answer. The reply usually names just the value
+  // ("STRIPE TIKTOK") without saying which of the three it is, so don't guess
+  // a single column (that silently picked the wrong dimension before, e.g.
+  // matching a Brand field instead of the customer name) — ask the SQL
+  // generator to match the value against all three possible fields instead.
+  const pendingClarification = !suggestionPick && _pendingClarification.get(sid);
+  if (pendingClarification) {
+    const answer = message.trim();
+    message = `${pendingClarification.question}, filtered to "${answer}" (match against customer name, item code/description, or warehouse code/name — whichever one it actually is, do not assume)`;
+    _pendingClarification.delete(sid);
+  }
+
+  // The "Filter ... to a specific customer, item, or warehouse" follow-up we
+  // ourselves generate (buildDirectSqlWrapup) names no actual value — sending
+  // it straight to SQL generation used to silently return every customer/item/
+  // warehouse ungrouped-down instead of filtering to one. Ask the missing
+  // question instead of guessing, same as the tool-agent's own clarification rule.
+  const ambiguousFilter = /^filter\s+"([\s\S]+?)"\s+to a specific customer,\s*item,\s*or warehouse\.?$/i.exec(message.trim());
+  if (ambiguousFilter) {
+    const origQuestion = ambiguousFilter[1];
+    _pendingClarification.set(sid, { question: origQuestion });
+    return res.json({
+      reply: `Which would you like to filter *"${origQuestion}"* by — a **customer**, an **item**, or a **warehouse**? Tell me the specific one (name or code) and I'll rerun it filtered to just that.`,
+      sessionId: sid,
+      mode: "clarify",
+    });
+  }
+
+  // "prepare excel ... with trend analysis and item wise month wise analysis,
+  // multiple tabs, multi chart" → a structured multi-view report, not a single
+  // flat table. Engine-agnostic (works regardless of db/ai/gpt) and bypasses
+  // the normal single-query flow entirely since there's no one table to show.
+  if (isMultiTabReportRequest(message) && isConnected()) {
+    try {
+      const { url, built, failed } = await buildMultiTabExcelReport(message);
+      const tabLines = built.map((t, i) =>
+        `${i + 1}. **${t.name}**${t.chartType !== "none" ? ` (${t.chartType} chart)` : ""} — ${t.rows.length.toLocaleString()} rows`
+      ).join("\n");
+      const failLines = failed.length
+        ? `\n\n⚠️ ${failed.length} tab${failed.length > 1 ? "s" : ""} couldn't be built: ${failed.map(f => f.name).join(", ")}`
+        : "";
+      const reply = `📊 **Multi-tab Excel report ready** — ${built.length} tab${built.length > 1 ? "s" : ""} built:\n${tabLines}${failLines}\n\n📥 **[Download Report](${url})**`;
+      return res.json({ reply, sessionId: sid, mode: "excel-report" });
+    } catch (err) {
+      return res.status(500).json({ error: `Report generation failed: ${err.message}` });
+    }
   }
 
   // ── Analytics V2: AI generates SQL → runs on HANA/MSSQL directly ──────────
@@ -3742,10 +3823,10 @@ app.post("/api/chat", async (req, res) => {
           return res.status(503).json({ error: "No DB connection configured. Go to Settings → DB Connection to add one." });
         }
       }
-      let generatedSQL = "", rows = [], dbType = getActiveType();
+      let generatedSQL = "", rows = [], dbType = getActiveType(), presentation = null;
       try {
         const result = await generateAndRunDirectSql(message);
-        generatedSQL = result.sql; rows = result.rows; dbType = result.dbType;
+        generatedSQL = result.sql; rows = result.rows; dbType = result.dbType; presentation = result.presentation;
       } catch (err) {
         if (!err.sql) return res.status(500).json({ error: `SQL generation failed: ${err.message}` });
         generatedSQL = err.sql;
@@ -3757,8 +3838,12 @@ app.post("/api/chat", async (req, res) => {
           reply = `✅ **Query executed — no records found**\n\n\`\`\`sql\n${generatedSQL}\n\`\`\``;
         } else {
           // Emit structured block — frontend renders rich tabbed analytics card
-          const payload = { rows: rows.slice(0, 500), sql: generatedSQL, source: `DB Direct · ${dbType.toUpperCase()}`, rowCount: rows.length, question: message };
+          const payload = { rows: rows.slice(0, 500), sql: generatedSQL, source: `DB Direct · ${dbType.toUpperCase()}`, rowCount: rows.length, question: message, displayMode: presentation || (isSummaryStyleQuestion(message) ? "chart" : "table") };
           reply = `__ATBL__${JSON.stringify(payload)}__/ATBL__${buildDirectSqlWrapup(message, rows)}`;
+          if (isExcelExportRequest(message)) {
+            const excelUrl = await generateExcelExport(message, rows);
+            reply += `\n\n📥 **[Download Excel (${rows.length} rows)](${excelUrl})**`;
+          }
         }
       }
       if (generatedSQL) _logQ({ method: 'SQL', endpoint: 'Direct DB Query', sql: generatedSQL, rows: rows.length });
@@ -3797,11 +3882,15 @@ app.post("/api/chat", async (req, res) => {
           // (intent classification + schema-focused SQL generation + lint/retry)
           // before ever querying — never a blind guess.
           try {
-            const { sql: genSql, rows, dbType } = await generateAndRunDirectSql(gptMessage);
-            const payload = { rows: rows.slice(0, 500), sql: genSql, source: `HANA Direct (GPT-4o) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: gptMessage };
+            const { sql: genSql, rows, dbType, presentation } = await generateAndRunDirectSql(gptMessage);
+            const payload = { rows: rows.slice(0, 500), sql: genSql, source: `HANA Direct (GPT-4o) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: gptMessage, displayMode: presentation || (isSummaryStyleQuestion(gptMessage) ? "chart" : "table") };
             dbResult = rows.length
               ? `__ATBL__${JSON.stringify(payload)}__/ATBL__${buildDirectSqlWrapup(gptMessage, rows)}`
               : `✅ **Query executed — no records found**\n\n\`\`\`sql\n${genSql}\n\`\`\``;
+            if (rows.length && isExcelExportRequest(gptMessage)) {
+              const excelUrl = await generateExcelExport(gptMessage, rows);
+              dbResult += `\n\n📥 **[Download Excel (${rows.length} rows)](${excelUrl})**`;
+            }
             _logQ({ method: 'SQL', endpoint: 'Direct DB Query (GPT-4o preferred)', sql: genSql, rows: rows.length });
             console.log(`[GPT-PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
@@ -3868,11 +3957,15 @@ app.post("/api/chat", async (req, res) => {
           // (intent classification + schema-focused SQL generation + lint/retry)
           // before ever querying — never a blind guess.
           try {
-            const { sql: genSql, rows, dbType } = await generateAndRunDirectSql(claudeMessage);
-            const payload = { rows: rows.slice(0, 500), sql: genSql, source: `HANA Direct (Claude) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: claudeMessage };
+            const { sql: genSql, rows, dbType, presentation } = await generateAndRunDirectSql(claudeMessage);
+            const payload = { rows: rows.slice(0, 500), sql: genSql, source: `HANA Direct (Claude) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: claudeMessage, displayMode: presentation || (isSummaryStyleQuestion(claudeMessage) ? "chart" : "table") };
             dbResult = rows.length
               ? `__ATBL__${JSON.stringify(payload)}__/ATBL__${buildDirectSqlWrapup(claudeMessage, rows)}`
               : `✅ **Query executed — no records found**\n\n\`\`\`sql\n${genSql}\n\`\`\``;
+            if (rows.length && isExcelExportRequest(claudeMessage)) {
+              const excelUrl = await generateExcelExport(claudeMessage, rows);
+              dbResult += `\n\n📥 **[Download Excel (${rows.length} rows)](${excelUrl})**`;
+            }
             _logQ({ method: 'SQL', endpoint: 'Direct DB Query (Claude preferred)', sql: genSql, rows: rows.length });
             console.log(`[PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
@@ -6018,6 +6111,51 @@ app.post("/api/workflow/po/create", requireAuth, async (req, res) => {
     console.log(`[MAIL] Loaded config from DB for ${cfg.mail_user}`);
   }
 })();
+
+// ── Branding (Company Setup / Developer Settings) ──────────────────────────
+// Lets one deployed instance be re-skinned per client (product/company/developer
+// name + logo) without code changes. GET is unauthenticated on purpose — the
+// login page needs it before a session exists. PUT is admin-only.
+function brandingToJson(row) {
+  return {
+    companyName:     row.company_name      || "",
+    companyLogo:     row.company_logo      || "",
+    developedBy:     row.developed_by      || "",
+    developedByLogo: row.developed_by_logo || "",
+    productName:     row.product_name      || "",
+    productLogo:     row.product_logo      || "",
+  };
+}
+function isValidLogoValue(v) {
+  if (v == null || v === "") return true;
+  if (typeof v !== "string") return false;
+  return v.startsWith("data:image/") || v.startsWith("/assets/");
+}
+
+app.get("/api/branding", (_req, res) => {
+  try {
+    res.json(brandingToJson(brandingRepo.get()));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/branding", requireAuth, (req, res) => {
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
+  const { companyName, companyLogo, developedBy, developedByLogo, productName, productLogo } = req.body || {};
+  for (const [label, v] of [["companyLogo", companyLogo], ["developedByLogo", developedByLogo], ["productLogo", productLogo]]) {
+    if (!isValidLogoValue(v)) return res.status(400).json({ error: `${label} must be an uploaded image or empty` });
+  }
+  try {
+    const fields = {};
+    if (companyName      !== undefined) fields.company_name      = String(companyName).slice(0, 200);
+    if (companyLogo      !== undefined) fields.company_logo      = companyLogo;
+    if (developedBy      !== undefined) fields.developed_by      = String(developedBy).slice(0, 200);
+    if (developedByLogo  !== undefined) fields.developed_by_logo = developedByLogo;
+    if (productName      !== undefined) fields.product_name      = String(productName).slice(0, 200);
+    if (productLogo      !== undefined) fields.product_logo      = productLogo;
+    const saved = brandingRepo.save(fields, req.user.username || req.user.email || "");
+    res.json({ ok: true, branding: brandingToJson(saved) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── Mail-PO→SO routes ─────────────────────────────────────────────────────
 app.get("/api/mail-po/status", requireAuth, (_req, res) => {
@@ -8221,6 +8359,24 @@ app.use('/api/grpo-apinv', createGRPOtoAPInvAgentRouter({
   requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 
+// ── OCR Processing suite routes ─────────────────────────────────────────────
+const getActiveCompanyId = () => connRepo.getActive()?.company || 'default';
+app.use('/api/ocr-po-scan', createOcrPoScanAgentRouter({
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+}));
+app.use('/api/ocr-expense', createOcrExpenseAgentRouter({
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, cacheRepo, getActiveCompanyId,
+}));
+app.use('/api/ocr-inward', createOcrInwardAgentRouter({
+  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+}));
+app.use('/api/ocr-gatepass', createOcrGatePassAgentRouter({
+  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+}));
+app.use('/api/ocr-document', createOcrDocumentAgentRouter({
+  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+}));
+
 // ── Three-Way Match Agent routes ────────────────────────────────────────────
 app.use('/api/three-way-match', createThreeWayMatchRouter({
   requireAuth, getActiveSap,
@@ -8370,3 +8526,12 @@ await startMcpClient();
 
 console.log(`Mode: ${USE_AI ? (AI_PROVIDER === "gpt" ? "AI (GPT-4o)" : "AI (Claude)") : "Standard (direct MCP)"}`);
 app.listen(PORT, () => console.log(`\nSAP B1 Chat UI → http://localhost:${PORT}\n`));
+
+if (existsSync(TLS_KEY_PATH) && existsSync(TLS_CERT_PATH)) {
+  https
+    .createServer({ key: readFileSync(TLS_KEY_PATH), cert: readFileSync(TLS_CERT_PATH) }, app)
+    .on("error", (e) => console.warn(`[HTTPS] Failed to start on port ${HTTPS_PORT}: ${e.message}`))
+    .listen(HTTPS_PORT, () => console.log(`SAP B1 Chat UI (HTTPS) → https://localhost:${HTTPS_PORT}\n`));
+} else {
+  console.log(`[HTTPS] Skipped — certs not found at ${TLS_KEY_PATH}. Run the cert generation step to enable it.\n`);
+}

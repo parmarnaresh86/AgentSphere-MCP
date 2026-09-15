@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <meta http-equiv="Cache-Control" content="no-store"/>
-<title>Heeny AI Agentic — SAP B1 Assistant</title>
+<title>AgentSphere — SAP B1 Assistant</title>
 <script>
 // ── Auth guard: redirect to login if no valid token ──────────
 (function(){
@@ -29,6 +29,7 @@ window.addEventListener('unhandledrejection', function(e) {
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --sidebar-w:252px;
+  --sidebar-w-collapsed:64px;
   /* SAP Fiori palette */
   --shell:#1a2535;
   --shell-brand:#111d2c;
@@ -64,17 +65,47 @@ body{font-family:var(--font);color:var(--text);display:flex}
   width:var(--sidebar-w);flex-shrink:0;
   background:var(--shell);
   display:flex;flex-direction:column;
-  height:100vh;overflow-y:auto;
+  height:100vh;overflow-y:auto;overflow-x:hidden;
   border-right:1px solid rgba(255,255,255,.06);
   box-shadow:2px 0 12px rgba(0,0,0,.25);
+  transition:width .2s ease;
 }
 .sidebar::-webkit-scrollbar{width:3px}
 .sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
 .sidebar::-webkit-scrollbar-track{background:transparent}
 
+/* Collapsed rail: logo + toggle + icon-only main menu, full nav content hidden */
+.sidebar.collapsed{width:var(--sidebar-w-collapsed)}
+.sidebar.collapsed .brand{padding:0 10px;justify-content:center}
+.sidebar.collapsed .brand-text,
+.sidebar.collapsed #brand-company-row,
+.sidebar.collapsed .nav-section,
+.sidebar.collapsed .sidebar-bottom{display:none}
+.sidebar.collapsed .sidebar-toggle-btn{transform:rotate(180deg)}
+
+.sidebar-icon-rail{
+  display:none;flex-direction:column;align-items:center;
+  gap:4px;padding:10px 0 14px;
+}
+.sidebar.collapsed .sidebar-icon-rail{display:flex}
+.icon-rail-btn{
+  width:38px;height:38px;flex-shrink:0;border-radius:10px;
+  background:transparent;border:1px solid transparent;
+  color:rgba(255,255,255,.65);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s,color .15s,border-color .15s,transform .1s;
+}
+.icon-rail-btn svg{width:17px;height:17px;flex-shrink:0}
+.icon-rail-btn:hover{
+  background:rgba(59,130,246,.18);color:#fff;
+  border-color:rgba(59,130,246,.35);
+}
+.icon-rail-btn:active{transform:scale(.92)}
+.icon-rail-divider{width:22px;height:1px;background:rgba(255,255,255,.1);margin:6px 0}
+
 /* Brand / Logo bar */
 .brand{
-  padding:0 16px;height:52px;
+  padding:0 10px 0 16px;height:52px;
   background:var(--shell-brand);
   border-bottom:1px solid rgba(255,255,255,.08);
   display:flex;align-items:center;gap:12px;flex-shrink:0;
@@ -88,8 +119,18 @@ body{font-family:var(--font);color:var(--text);display:flex}
   overflow:hidden;padding:4px;
 }
 .brand-avatar img{width:100%;height:100%;object-fit:contain}
+.brand-text{flex:1;min-width:0}
 .brand-name{font-size:14.5px;font-weight:700;color:#fff;line-height:1.2;letter-spacing:.2px}
 .brand-sub{font-size:9.5px;color:rgba(255,255,255,.45);letter-spacing:.6px;text-transform:uppercase;margin-top:1px}
+.sidebar-toggle-btn{
+  flex-shrink:0;width:24px;height:24px;border-radius:6px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+  color:rgba(255,255,255,.75);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s,color .15s,transform .2s ease;
+}
+.sidebar-toggle-btn:hover{background:rgba(255,255,255,.18);color:#fff}
+.sidebar-toggle-btn svg{width:13px;height:13px;flex-shrink:0}
 
 /* Sidebar footer: powered-by company logo */
 .sidebar-powered-by{
@@ -1545,14 +1586,162 @@ body{font-family:var(--font);color:var(--text);display:flex}
 <!-- ═══════════════════════════════
      SIDEBAR
 ═══════════════════════════════ -->
-<aside class="sidebar">
+<aside class="sidebar" id="app-sidebar">
   <div class="brand">
-    <div class="brand-avatar"><img src="/assets/henny-agentic-logo.png" alt="Heeny AI Agentic"/></div>
-    <div>
-      <div class="brand-name">Heeny AI Agentic</div>
+    <div class="brand-avatar"><img id="brand-product-logo" src="/assets/henny-agentic-logo.png" alt="Product logo"/></div>
+    <div class="brand-text">
+      <div class="brand-name" id="brand-product-name">AgentSphere</div>
       <div class="brand-sub">SAP B1 AI Assistant</div>
     </div>
+    <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Collapse sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
   </div>
+  <div id="brand-company-row" style="display:none;align-items:center;gap:8px;padding:0 16px 10px;margin-top:-6px">
+    <img id="brand-company-logo" src="" alt="Company logo" style="width:20px;height:20px;object-fit:contain;border-radius:3px;display:none"/>
+    <span id="brand-company-name" style="font-size:11px;color:rgba(255,255,255,.55);font-weight:600"></span>
+  </div>
+  <script>
+  // Collapsible sidebar — state persisted per browser, applied immediately to avoid a flash of the wrong state.
+  (function(){
+    const sb = document.getElementById('app-sidebar');
+    if (sb && localStorage.getItem('hanny_sidebar_collapsed') === '1') sb.classList.add('collapsed');
+  })();
+  window.toggleSidebar = function() {
+    const sb = document.getElementById('app-sidebar');
+    if (!sb) return;
+    const collapsed = sb.classList.toggle('collapsed');
+    localStorage.setItem('hanny_sidebar_collapsed', collapsed ? '1' : '0');
+    const btn = document.getElementById('sidebar-toggle-btn');
+    if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    if (collapsed) window.buildIconRail();
+  };
+
+  // Builds the collapsed-state icon rail from the full menu markup below,
+  // so it always stays in sync (including admin/dev items toggled at runtime).
+  window.buildIconRail = function() {
+    const rail = document.getElementById('sidebar-icon-rail');
+    const sidebar = document.getElementById('app-sidebar');
+    if (!rail || !sidebar) return;
+    rail.innerHTML = '';
+
+    function addBtn(svgEl, label, onClick) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'icon-rail-btn';
+      btn.title = label;
+      btn.innerHTML = svgEl ? svgEl.outerHTML : '<span style="width:8px;height:8px;border-radius:50%;background:#94a3b8;display:block"></span>';
+      btn.addEventListener('click', onClick);
+      rail.appendChild(btn);
+    }
+
+    sidebar.querySelectorAll(':scope > .nav-section').forEach(section => {
+      if (section.style.display === 'none') return;
+      let addedAny = false;
+      Array.from(section.children).forEach(child => {
+        if (child.classList.contains('nav-item')) {
+          if (child.style.display === 'none') return;
+          const svg = child.querySelector('svg');
+          const label = (child.textContent || '').trim().split('\n')[0].trim() || 'Menu';
+          addBtn(svg, label, () => child.click());
+          addedAny = true;
+        } else if (child.classList.contains('nav-group')) {
+          const hdr = child.querySelector(':scope > .nav-group-header');
+          if (!hdr || hdr.style.display === 'none') return;
+          const svg = hdr.querySelector('svg:not(.chevron)');
+          const label = (hdr.textContent || '').trim();
+          addBtn(svg, label, () => {
+            window.expandSidebarTo(hdr);
+          });
+          addedAny = true;
+        }
+      });
+      if (addedAny) {
+        const divider = document.createElement('div');
+        divider.className = 'icon-rail-divider';
+        rail.appendChild(divider);
+      }
+    });
+    // Drop a trailing divider if the last section added one
+    if (rail.lastElementChild && rail.lastElementChild.classList.contains('icon-rail-divider')) {
+      rail.lastElementChild.remove();
+    }
+  };
+
+  // Expands the sidebar and opens the given accordion group (used from the icon rail).
+  window.expandSidebarTo = function(headerEl) {
+    const sb = document.getElementById('app-sidebar');
+    if (sb) sb.classList.remove('collapsed');
+    localStorage.setItem('hanny_sidebar_collapsed', '0');
+    const btn = document.getElementById('sidebar-toggle-btn');
+    if (btn) btn.title = 'Collapse sidebar';
+    if (headerEl && !headerEl.classList.contains('open')) headerEl.click();
+    setTimeout(() => headerEl && headerEl.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+  };
+  </script>
+  <script>
+  // Applies Company Setup / Developer Settings values (set by admins) over the
+  // hardcoded defaults above, so one deployed instance can be re-skinned per client.
+  (function(){
+    fetch('/api/branding').then(r => r.ok ? r.json() : null).then(b => {
+      if (!b) return;
+      if (b.productName) {
+        document.title = `${b.productName} — SAP B1 Assistant`;
+        const n = document.getElementById('brand-product-name'); if (n) n.textContent = b.productName;
+      }
+      if (b.productLogo) {
+        const l = document.getElementById('brand-product-logo'); if (l) l.src = b.productLogo;
+      }
+      if (b.developedBy) {
+        const n = document.getElementById('brand-developedby-name'); if (n) n.textContent = b.developedBy;
+      }
+      if (b.developedByLogo) {
+        const l = document.getElementById('brand-developedby-logo'); if (l) l.src = b.developedByLogo;
+      }
+      if (b.companyName || b.companyLogo) {
+        const row = document.getElementById('brand-company-row'); if (row) row.style.display = 'flex';
+        if (b.companyName) { const n = document.getElementById('brand-company-name'); if (n) n.textContent = b.companyName; }
+        if (b.companyLogo) { const l = document.getElementById('brand-company-logo'); if (l) { l.src = b.companyLogo; l.style.display = ''; } }
+      }
+
+      // Make the voice assistant's spoken/displayed name follow the configured product
+      // name too (was hardcoded to "Henny" everywhere) — welcome message, wake-word hint,
+      // status labels, voice button title, chat export headers.
+      const agentName = (b.productName || '').trim();
+      if (agentName) {
+        window.AGENT_NAME = agentName;
+        const wt = document.getElementById('welcome-title'); if (wt) wt.textContent = `Hi! I'm ${agentName} AI, your SAP B1 Assistant.`;
+        const ww = document.getElementById('welcome-wake');  if (ww) ww.textContent = `"Hey ${agentName}"`;
+        const wh = document.getElementById('hanny-wake-hint'); if (wh) wh.textContent = `👂 Say "Hey ${agentName}"`;
+        const sl = document.getElementById('hanny-status-label'); if (sl) sl.textContent = `${agentName} is listening…`;
+        const vb = document.getElementById('voice-output-btn'); if (vb) vb.title = `${agentName} Voice: OFF (click to enable)`;
+        // HANNY is a `const` declared later in the page (voice-assistant script), not
+        // a window property — referencing it before that line runs throws (TDZ), so
+        // guard with try/catch and retry until it's ready.
+        const patchHanny = () => {
+          let H;
+          try { H = HANNY; } catch(_) { setTimeout(patchHanny, 50); return; }
+          if (!H) { setTimeout(patchHanny, 50); return; }
+          H.name = agentName;
+          const lower = agentName.toLowerCase();
+          if (H.wakeWords?.en && !H.wakeWords.en.includes(lower)) {
+            H.wakeWords.en.push(`hey ${lower}`, `hi ${lower}`, `okay ${lower}`, `ok ${lower}`, lower);
+          }
+          if (H.intros?.en) {
+            H.intros.en.listening = `${agentName} is listening…`;
+            H.intros.en.thinking  = `${agentName} is thinking…`;
+            H.intros.en.wake      = `Say "Hey ${agentName}" to activate…`;
+            H.intros.en.wakeHint  = `👂 Say "Hey ${agentName}"`;
+          }
+        };
+        patchHanny();
+      }
+    }).catch(() => {});
+  })();
+  </script>
+
+  <!-- Collapsed-state icon rail — built from the full menu below, see buildIconRail() -->
+  <div class="sidebar-icon-rail" id="sidebar-icon-rail"></div>
 
   <!-- ══ 1. HOME ════════════════════════════════════════════════ -->
   <div class="nav-section" style="display:none">
@@ -1582,6 +1771,8 @@ body{font-family:var(--font);color:var(--text);display:flex}
         <div class="nav-subitem" onclick="showMasterPanel('item')" id="nav-master-item" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Item Master</div>
         <div class="nav-subitem" onclick="showMasterPanel('customer')" id="nav-master-customer" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>Customer Master</div>
         <div class="nav-subitem" onclick="showMasterPanel('supplier')" id="nav-master-supplier" style="cursor:pointer"><span class="dot-icon" style="background:#7c3aed"></span>Supplier Master</div>
+        <div class="nav-subitem" onclick="showGstinCheckPanel()" id="nav-gstin-check" style="cursor:pointer"><span class="dot-icon" style="background:#059669"></span>GSTIN Check</div>
+        <div class="nav-subitem" onclick="showBpCheckPanel()" id="nav-bp-check" style="cursor:pointer"><span class="dot-icon" style="background:#db2777"></span>BP Duplicate Check</div>
         <div class="nav-subitem" onclick="showMasterPanel('bom')" id="nav-master-bom" style="cursor:pointer"><span class="dot-icon" style="background:#d97706"></span>Bill of Material</div>
         <div class="nav-subitem" onclick="showMasterPanel('service_call')" id="nav-master-service-call" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>Service Call</div>
       </div>
@@ -1799,6 +1990,23 @@ body{font-family:var(--font);color:var(--text);display:flex}
         <div class="nav-subitem" onclick="showPurchasingAgent()" id="nav-purchasing-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Purchase Recommendation</div>
         <div class="nav-subitem" onclick="showRushOrderAgent()" id="nav-rush-orders" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Rush Orders</div>
         <div class="nav-subitem" onclick="showShipmentDelay()" id="nav-shipment-delay" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Shipment Delays</div>
+      </div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-header" data-group="ai-agents-ocr">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          OCR Processing
+        </span>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="nav-group-body" id="grp-ai-agents-ocr">
+        <div class="nav-subitem" onclick="showOcrPoScanPanel()" id="nav-ocr-po-scan" style="cursor:pointer"><span class="dot-icon" style="background:#6366f1"></span>Scan Purchase Order</div>
+        <div class="nav-subitem" onclick="showOcrExpensePanel()" id="nav-ocr-expense" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Scan Expense Invoice</div>
+        <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-ocr-apinv" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>Scan A/P Invoice</div>
+        <div class="nav-subitem" onclick="showOcrInwardPanel()" id="nav-ocr-inward" style="cursor:pointer"><span class="dot-icon" style="background:#16a34a"></span>Scan Inward</div>
+        <div class="nav-subitem" onclick="showOcrGatePassPanel()" id="nav-ocr-gatepass" style="cursor:pointer"><span class="dot-icon" style="background:#0891b2"></span>Scan Gate Pass</div>
+        <div class="nav-subitem" onclick="showOcrDocumentPanel()" id="nav-ocr-document" style="cursor:pointer"><span class="dot-icon" style="background:#64748b"></span>Scan Document Mode</div>
       </div>
     </div>
     <div class="nav-group">
@@ -2064,11 +2272,21 @@ body{font-family:var(--font);color:var(--text);display:flex}
       User Rights
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
     </div>
+    <div class="nav-item" id="nav-company-setup" onclick="window.open('/company-setup.html','_blank')" style="cursor:pointer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>
+      Company Setup
+      <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
+    </div>
+    <div class="nav-item" id="nav-developer-settings" onclick="window.open('/developer-settings.html','_blank')" style="cursor:pointer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      Developer Settings
+      <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
+    </div>
   </div>
 
   <div class="sidebar-bottom">
     <div class="sidebar-powered-by">
-      Powered by <img src="/assets/henny-ai-logo.png" alt="Henny AI Solution"/> Henny AI Solution
+      Powered by <img id="brand-developedby-logo" src="/assets/henny-ai-logo.png" alt="Developed-by logo"/> <span id="brand-developedby-name">Henny AI Solution</span>
     </div>
     <a href="/USER_MANUAL.html" target="_blank" class="logout-btn" style="text-decoration:none;margin-bottom:4px">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -2190,8 +2408,8 @@ body{font-family:var(--font);color:var(--text);display:flex}
   <div id="messages">
     <div class="welcome" id="welcome">
       <div class="welcome-avatar">🎙️</div>
-      <h2>Hi! I'm Henny AI, your SAP B1 Assistant.</h2>
-      <p>Type a message or say <strong>"Hey Henny"</strong> to get started.<br/>Use the sidebar menu to quickly access SAP functions.</p>
+      <h2 id="welcome-title">Hi! I'm Henny AI, your SAP B1 Assistant.</h2>
+      <p>Type a message or say <strong id="welcome-wake">"Hey Henny"</strong> to get started.<br/>Use the sidebar menu to quickly access SAP functions.</p>
     </div>
   </div>
 
@@ -2766,6 +2984,9 @@ document.querySelectorAll('.nav-group-header').forEach(hdr => {
   });
 });
 
+// Sidebar may start collapsed (restored from localStorage) — build its icon rail now that the full menu exists.
+if (document.getElementById('app-sidebar')?.classList.contains('collapsed')) window.buildIconRail();
+
 // Analytics sub-items — switch to AI mode then send prompt
 function sendAiPrompt(prompt) {
   if (aiAvailable) setEngine('ai');
@@ -2844,17 +3065,18 @@ document.getElementById('export-chat-btn').addEventListener('click', () => {
   _actBtn.classList.remove('open');
   const rows = document.querySelectorAll('.msg-row');
   if (!rows.length) { alert('No messages to export.'); return; }
-  let txt = `Henny AI Chat Export — ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
+  const agentName = window.AGENT_NAME || 'Henny';
+  let txt = `${agentName} AI Chat Export — ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
   rows.forEach(r => {
     const isUser = r.classList.contains('user');
     const bubble = r.querySelector('.bubble');
     if (!bubble) return;
-    txt += `[${isUser ? 'You' : 'Henny AI'}]\n${bubble.innerText.trim()}\n\n`;
+    txt += `[${isUser ? 'You' : agentName + ' AI'}]\n${bubble.innerText.trim()}\n\n`;
   });
   const blob = new Blob([txt], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `henny-chat-${Date.now()}.txt`;
+  a.download = `${agentName.toLowerCase()}-chat-${Date.now()}.txt`;
   a.click();
   URL.revokeObjectURL(a.href);
 });
@@ -3700,7 +3922,7 @@ function renderMd(text) {
 const _atblStore = {};
 
 function renderAnalyticsCard(data) {
-  const { rows = [], sql = '', source = '', rowCount = 0, question = '' } = data;
+  const { rows = [], sql = '', source = '', rowCount = 0, question = '', displayMode = 'table' } = data;
   const uid = 'atbl_' + (Date.now() % 1e9).toString(36) + Math.random().toString(36).slice(2, 5);
   _atblStore[uid] = { data, chart: null };
 
@@ -3729,6 +3951,10 @@ function renderAnalyticsCard(data) {
     `<th onclick="atblSort('${uid}','${c.replace(/'/g,"\\'")}',this)" title="Sort by ${escHtml(c)}" data-col="${escHtml(c)}">${escHtml(c)}</th>`
   ).join('');
 
+  // Which tab opens by default: 'chart' → visual-first, 'insight' → the AI
+  // narrative is the point (chart still pre-warmed below), else the raw table.
+  const activeTab = displayMode === 'insight' ? 'summary' : displayMode === 'chart' ? 'chart' : 'table';
+
   const card = document.createElement('div');
   card.className = 'atbl-card';
   card.id = uid;
@@ -3739,11 +3965,11 @@ function renderAnalyticsCard(data) {
       <span class="atbl-question" title="${escHtml(question)}">${escHtml(question)}</span>
     </div>
     <div class="atbl-tabs">
-      <button class="atbl-tab active" onclick="atblTab('${uid}','table',this)">📊 Table</button>
-      <button class="atbl-tab" onclick="atblTab('${uid}','chart',this)">📈 Charts</button>
-      <button class="atbl-tab" onclick="atblTab('${uid}','summary',this)">🤖 AI Summary</button>
+      <button class="atbl-tab${activeTab === 'table' ? ' active' : ''}" onclick="atblTab('${uid}','table',this)">📊 Table</button>
+      <button class="atbl-tab${activeTab === 'chart' ? ' active' : ''}" onclick="atblTab('${uid}','chart',this)">📈 Charts</button>
+      <button class="atbl-tab${activeTab === 'summary' ? ' active' : ''}" onclick="atblTab('${uid}','summary',this)">🤖 AI Summary</button>
     </div>
-    <div class="atbl-pane active" id="${uid}_table">
+    <div class="atbl-pane${activeTab === 'table' ? ' active' : ''}" id="${uid}_table">
       <div class="atbl-table-toolbar">
         <span class="atbl-page-info" id="${uid}_pginfo"></span>
         <span class="atbl-page-size">
@@ -3765,7 +3991,7 @@ function renderAnalyticsCard(data) {
       </div>
       <div class="atbl-pagination" id="${uid}_pgbar"></div>
     </div>
-    <div class="atbl-pane" id="${uid}_chart">
+    <div class="atbl-pane${activeTab === 'chart' ? ' active' : ''}" id="${uid}_chart">
       <div class="atbl-chart-pane">
         <div class="atbl-chart-types">
           <span class="atbl-chart-label">Chart type:</span>
@@ -3776,7 +4002,7 @@ function renderAnalyticsCard(data) {
         <div class="atbl-chart-canvas-wrap"><canvas id="${uid}_canvas"></canvas></div>
       </div>
     </div>
-    <div class="atbl-pane" id="${uid}_summary">
+    <div class="atbl-pane${activeTab === 'summary' ? ' active' : ''}" id="${uid}_summary">
       <div class="atbl-sum-pane">
         <button class="atbl-sum-btn" id="${uid}_sumbtn" onclick="atblSummarize('${uid}')">✨ Generate AI Summary</button>
         <div class="atbl-sum-out" id="${uid}_sumout"></div>
@@ -3793,6 +4019,17 @@ function renderAnalyticsCard(data) {
 
   // Render first page after element is in DOM
   setTimeout(() => atblRenderPage(uid), 0);
+
+  // AI decided this needs more than a raw table → pre-warm whichever parts
+  // aren't the active tab so switching between Chart/AI Summary is instant,
+  // and auto-run the AI summary itself instead of waiting for a manual click.
+  if (displayMode === 'chart' || displayMode === 'insight') {
+    setTimeout(() => {
+      initAtblChart(uid, 'bar');
+      atblSummarize(uid);
+    }, 50);
+  }
+
   return card;
 }
 
@@ -5567,7 +5804,8 @@ speakText = function(rawText) {
   btn.addEventListener('click', () => {
     voiceOutputOn = !voiceOutputOn;
     btn.classList.toggle('active', voiceOutputOn);
-    btn.title = voiceOutputOn ? 'Henny Voice: ON (click to disable)' : 'Henny Voice: OFF (click to enable)';
+    const agentName = window.AGENT_NAME || 'Henny';
+    btn.title = voiceOutputOn ? `${agentName} Voice: ON (click to disable)` : `${agentName} Voice: OFF (click to enable)`;
     if (!voiceOutputOn) { window.speechSynthesis?.cancel(); document.getElementById('voice-stop-btn')?.classList.remove('speaking'); }
   });
 })();
@@ -7634,7 +7872,8 @@ function showChatPanel() {
   const ALL_PANELS = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel',
@@ -7659,7 +7898,8 @@ document.addEventListener('keydown', e => {
   const anyOpen = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel',
@@ -17828,6 +18068,226 @@ setInterval(() => {
 </div><!-- /#grpo-apinv-panel -->
 
 <!-- ════════════════════════════════════════════════════════
+     OCR PROCESSING SUITE — 5 PANELS
+     (Scan A/P Invoice reuses grpo-apinv-panel above)
+════════════════════════════════════════════════════════ -->
+
+<div id="ocr-po-scan-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+  <div style="background:#6366f1;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📦</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Purchase Order Scan Agent</div>
+      <div style="font-size:10px;opacity:.65">Scan supplier quotation/PO → match vendor &amp; items → post Purchase Order</div>
+    </div>
+    <span id="ocrpo-step-badge" style="background:rgba(99,102,241,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="ocrpoResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+  <div style="flex:1;display:flex;overflow:hidden">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="ocrpo-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="ocrpo-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div id="ocrpo-upload-zone" style="display:none;margin:0 16px 10px;border:2px dashed #d1d5db;border-radius:8px;padding:18px;text-align:center;background:#fafafa;cursor:pointer" onclick="ocrpoTriggerUpload()">
+        <div style="font-size:28px;margin-bottom:6px">📎</div>
+        <div style="font-size:13px;font-weight:600;color:#374151">Drop PO / quotation document here or click to browse</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:3px">PDF, JPG, PNG, WEBP — max 15 MB</div>
+        <div id="ocrpo-upload-status" style="font-size:11px;color:#4f46e5;margin-top:6px;font-weight:600"></div>
+        <input type="file" id="ocrpo-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff" style="display:none" onchange="ocrpoHandleFileChange(this)">
+      </div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px" id="ocrpo-input-row">
+          <textarea id="ocrpo-input" rows="1" placeholder="Type a vendor name to search…" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="ocrpo-send-btn" onclick="ocrpoSendFromInput()" style="width:34px;height:34px;background:#6366f1;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#6366f1;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        📦 PO Summary
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Vendor &amp; item match details</div>
+      </div>
+      <div id="ocrpo-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+  </div>
+</div><!-- /#ocr-po-scan-panel -->
+
+<div id="ocr-expense-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+  <div style="background:#f59e0b;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🧾</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Expense Invoice Agent</div>
+      <div style="font-size:10px;opacity:.65">Scan expense invoice → select GL account &amp; tax code → post A/P Invoice</div>
+    </div>
+    <span id="ocrexp-step-badge" style="background:rgba(245,158,11,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="ocrexpResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+  <div style="flex:1;display:flex;overflow:hidden">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="ocrexp-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="ocrexp-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div id="ocrexp-upload-zone" style="display:none;margin:0 16px 10px;border:2px dashed #d1d5db;border-radius:8px;padding:18px;text-align:center;background:#fafafa;cursor:pointer" onclick="ocrexpTriggerUpload()">
+        <div style="font-size:28px;margin-bottom:6px">📎</div>
+        <div style="font-size:13px;font-weight:600;color:#374151">Drop expense invoice here or click to browse</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:3px">PDF, JPG, PNG, WEBP — max 15 MB</div>
+        <div id="ocrexp-upload-status" style="font-size:11px;color:#b45309;margin-top:6px;font-weight:600"></div>
+        <input type="file" id="ocrexp-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff" style="display:none" onchange="ocrexpHandleFileChange(this)">
+      </div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px" id="ocrexp-input-row">
+          <textarea id="ocrexp-input" rows="1" placeholder="Type a vendor name to search…" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="ocrexp-send-btn" onclick="ocrexpSendFromInput()" style="width:34px;height:34px;background:#f59e0b;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#f59e0b;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        🧾 Expense Summary
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Account &amp; tax selection</div>
+      </div>
+      <div id="ocrexp-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+  </div>
+</div><!-- /#ocr-expense-panel -->
+
+<div id="ocr-inward-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+  <div style="background:#16a34a;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📥</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Inward Register Agent</div>
+      <div style="font-size:10px;opacity:.65">Scan delivery challan / inward slip → local audit register (no SAP posting)</div>
+    </div>
+    <span id="ocrinw-step-badge" style="background:rgba(22,163,74,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="ocrinwResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+  <div style="flex:1;display:flex;overflow:hidden">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="ocrinw-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="ocrinw-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div id="ocrinw-upload-zone" style="display:none;margin:0 16px 10px;border:2px dashed #d1d5db;border-radius:8px;padding:18px;text-align:center;background:#fafafa;cursor:pointer" onclick="ocrinwTriggerUpload()">
+        <div style="font-size:28px;margin-bottom:6px">📎</div>
+        <div style="font-size:13px;font-weight:600;color:#374151">Drop inward slip / delivery challan here or click to browse</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:3px">PDF, JPG, PNG, WEBP — max 15 MB</div>
+        <div id="ocrinw-upload-status" style="font-size:11px;color:#15803d;margin-top:6px;font-weight:600"></div>
+        <input type="file" id="ocrinw-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff" style="display:none" onchange="ocrinwHandleFileChange(this)">
+      </div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px" id="ocrinw-input-row">
+          <textarea id="ocrinw-input" rows="1" placeholder="Type a message…" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="ocrinw-send-btn" onclick="ocrinwSendFromInput()" style="width:34px;height:34px;background:#16a34a;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#16a34a;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        📥 Register Info
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Local audit log — no SAP posting</div>
+      </div>
+      <div id="ocrinw-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+  </div>
+</div><!-- /#ocr-inward-panel -->
+
+<div id="ocr-gatepass-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+  <div style="background:#0891b2;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🪪</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Gate Pass Register Agent</div>
+      <div style="font-size:10px;opacity:.65">Scan visitor/vehicle/material gate pass → local security register (no SAP posting)</div>
+    </div>
+    <span id="ocrgp-step-badge" style="background:rgba(8,145,178,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="ocrgpResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+  <div style="flex:1;display:flex;overflow:hidden">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="ocrgp-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="ocrgp-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div id="ocrgp-upload-zone" style="display:none;margin:0 16px 10px;border:2px dashed #d1d5db;border-radius:8px;padding:18px;text-align:center;background:#fafafa;cursor:pointer" onclick="ocrgpTriggerUpload()">
+        <div style="font-size:28px;margin-bottom:6px">📎</div>
+        <div style="font-size:13px;font-weight:600;color:#374151">Drop gate pass slip here or click to browse</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:3px">PDF, JPG, PNG, WEBP — max 15 MB</div>
+        <div id="ocrgp-upload-status" style="font-size:11px;color:#0e7490;margin-top:6px;font-weight:600"></div>
+        <input type="file" id="ocrgp-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff" style="display:none" onchange="ocrgpHandleFileChange(this)">
+      </div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px" id="ocrgp-input-row">
+          <textarea id="ocrgp-input" rows="1" placeholder="Type a message…" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="ocrgp-send-btn" onclick="ocrgpSendFromInput()" style="width:34px;height:34px;background:#0891b2;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#0891b2;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        🪪 Register Info
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Local security log — no SAP posting</div>
+      </div>
+      <div id="ocrgp-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+  </div>
+</div><!-- /#ocr-gatepass-panel -->
+
+<div id="ocr-document-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+  <div style="background:#64748b;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📄</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">Document Mode Agent</div>
+      <div style="font-size:10px;opacity:.65">Scan any document → OCR summary → choose which workflow it belongs to</div>
+    </div>
+    <span id="ocrdoc-step-badge" style="background:rgba(100,116,139,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="ocrdocResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+  <div style="flex:1;display:flex;overflow:hidden">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+      <div id="ocrdoc-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+      <div id="ocrdoc-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+      <div id="ocrdoc-upload-zone" style="display:none;margin:0 16px 10px;border:2px dashed #d1d5db;border-radius:8px;padding:18px;text-align:center;background:#fafafa;cursor:pointer" onclick="ocrdocTriggerUpload()">
+        <div style="font-size:28px;margin-bottom:6px">📎</div>
+        <div style="font-size:13px;font-weight:600;color:#374151">Drop any document here or click to browse</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:3px">PDF, JPG, PNG, WEBP — max 15 MB</div>
+        <div id="ocrdoc-upload-status" style="font-size:11px;color:#475569;margin-top:6px;font-weight:600"></div>
+        <input type="file" id="ocrdoc-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff" style="display:none" onchange="ocrdocHandleFileChange(this)">
+      </div>
+      <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px" id="ocrdoc-input-row">
+          <textarea id="ocrdoc-input" rows="1" placeholder="Type a message…" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+          <button id="ocrdoc-send-btn" onclick="ocrdocSendFromInput()" style="width:34px;height:34px;background:#64748b;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="background:#64748b;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
+        📄 Classification
+        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Route to a workflow</div>
+      </div>
+      <div id="ocrdoc-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
+    </div>
+  </div>
+</div><!-- /#ocr-document-panel -->
+
+<!-- ════════════════════════════════════════════════════════
      THREE-WAY MATCH AGENT PANEL
 ════════════════════════════════════════════════════════ -->
 <div id="three-way-match-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
@@ -17904,6 +18364,8 @@ setInterval(() => {
 <div id="master-supplier-panel" class="master-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative"></div>
 <div id="master-bom-panel"          class="master-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative"></div>
 <div id="master-service-call-panel" class="master-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative"></div>
+<div id="gstin-check-panel"         class="master-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative"></div>
+<div id="bp-check-panel"            class="master-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative"></div>
 <div id="svc-call-panel" class="master-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative"></div>
 
 <!-- ════════════════════════════════════════════════════════
@@ -20366,7 +20828,8 @@ setInterval(() => {
     ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
      'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
      'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-     'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
+     'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar'), ia = document.querySelector('.input-area');
     if (bb) bb.style.display = 'none';
@@ -21242,7 +21705,8 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -23225,6 +23689,339 @@ window.roAskFollowUp = function() {
 </script>
 
 <!-- ════════════════════════════════════════════════════════
+     OCR PROCESSING SUITE — shared panel controller
+════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+  const tok = () => localStorage.getItem('hanny_token') || '';
+  const escapeHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function createOcrPanel(cfg) {
+    let sessionId = null, busy = false;
+    const ids = {
+      messages: `${cfg.key}-messages`, qr: `${cfg.key}-qr-area`, uploadZone: `${cfg.key}-upload-zone`,
+      uploadStatus: `${cfg.key}-upload-status`, fileInput: `${cfg.key}-file-input`, input: `${cfg.key}-input`,
+      sendBtn: `${cfg.key}-send-btn`, summary: `${cfg.key}-summary`, stepBadge: `${cfg.key}-step-badge`,
+      typing: `${cfg.key}-typing`,
+    };
+    const $ = id => document.getElementById(id);
+
+    function summaryClear() {
+      const s = $(ids.summary);
+      if (s) s.innerHTML = `<div style="padding:20px 12px;text-align:center;color:#9ca3af;font-size:12px">
+        <div style="font-size:28px;margin-bottom:8px">${cfg.icon}</div><div>${cfg.emptyHint}</div></div>`;
+    }
+
+    function summaryUpdate(data) {
+      const s = $(ids.summary);
+      if (!s) return;
+      if (data.meta && (data.meta.docNum || data.meta.id)) {
+        const openBtn = data.meta.openFn
+          ? `<button onclick="window['${data.meta.openFn}']()" style="margin-top:8px;padding:6px 12px;background:${cfg.color};color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:600">Open Target Panel →</button>`
+          : '';
+        s.innerHTML = `<div style="background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:10px 12px;font-size:12px;color:#166534">
+          <div style="font-weight:700;margin-bottom:4px">✅ ${data.meta.docNum ? 'Posted to SAP' : 'Saved'}</div>
+          ${data.meta.docNum ? `<div>Doc #${escapeHtml(String(data.meta.docNum))}</div>` : ''}
+          ${data.meta.id ? `<div>Record #${escapeHtml(String(data.meta.id))}</div>` : ''}
+          ${openBtn}
+        </div>`;
+      } else if (data.step && data.step !== 'INIT') {
+        s.innerHTML = `<div style="font-size:12px;color:#6b7280;padding:8px 4px">Step: <strong>${escapeHtml((data.step||'').replace(/_/g,' '))}</strong></div>`;
+      } else {
+        summaryClear();
+      }
+    }
+
+    function updateStep(step) { const b = $(ids.stepBadge); if (b) b.textContent = (step || '').replace(/_/g, ' '); }
+
+    function showTyping() {
+      const msgs = $(ids.messages);
+      if (!msgs || $(ids.typing)) return;
+      const d = document.createElement('div');
+      d.id = ids.typing;
+      d.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin-bottom:4px';
+      d.innerHTML = `<div style="width:28px;height:28px;background:${cfg.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${cfg.icon}</div>
+        <div style="background:#fff;border:1px solid var(--border);border-radius:0 10px 10px 10px;padding:10px 14px;font-size:12.5px;color:#9ca3af">
+          <span style="display:inline-flex;gap:3px"><span style="animation:bounce .8s infinite">.</span><span style="animation:bounce .8s infinite .2s">.</span><span style="animation:bounce .8s infinite .4s">.</span></span>
+        </div>`;
+      msgs.appendChild(d);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+    function hideTyping() { $(ids.typing)?.remove(); }
+
+    function setBusy(b) {
+      const btn = $(ids.sendBtn);
+      if (btn) { btn.disabled = b; btn.style.opacity = b ? '.5' : '1'; }
+      if (b) showTyping(); else hideTyping();
+    }
+
+    function addMsg(role, text) {
+      hideTyping();
+      const msgs = $(ids.messages);
+      if (!msgs) return;
+      const isBot = role === 'bot';
+      const d = document.createElement('div');
+      d.style.cssText = `display:flex;gap:8px;align-items:flex-start;${isBot ? '' : 'flex-direction:row-reverse'}`;
+      const avatar = isBot
+        ? `<div style="width:28px;height:28px;background:${cfg.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${cfg.icon}</div>` : '';
+      const parsed = (typeof marked !== 'undefined') ? marked.parse(text) : text;
+      const bubble = `<div style="max-width:78%;background:${isBot?'#fff':'var(--user-bg)'};border:1px solid ${isBot?'var(--border)':'#bfdbfe'};border-radius:${isBot?'0 10px 10px 10px':'10px 0 10px 10px'};padding:10px 14px;font-size:12.5px;line-height:1.6;color:var(--text)">${parsed}</div>`;
+      d.innerHTML = avatar + bubble;
+      msgs.appendChild(d);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function addRawHTML(html) {
+      hideTyping();
+      const msgs = $(ids.messages);
+      if (!msgs) return;
+      const d = document.createElement('div');
+      d.style.cssText = 'display:flex;gap:8px;align-items:flex-start';
+      d.innerHTML = `<div style="width:28px;height:28px;background:${cfg.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${cfg.icon}</div>
+        <div style="max-width:92%;background:#fff;border:1px solid var(--border);border-radius:0 10px 10px 10px;padding:12px 14px;font-size:12px;line-height:1.6;overflow-x:auto"></div>`;
+      d.lastElementChild.innerHTML = html; // trusted server-rendered fragment
+      msgs.appendChild(d);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function addVendorList(list, onPick) {
+      hideTyping();
+      const msgs = $(ids.messages);
+      if (!msgs || !list?.length) return;
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;gap:8px;align-items:flex-start';
+      const avatar = document.createElement('div');
+      avatar.style.cssText = `width:28px;height:28px;background:${cfg.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0`;
+      avatar.textContent = cfg.icon;
+      const bubble = document.createElement('div');
+      bubble.style.cssText = 'max-width:92%;background:#fff;border:1px solid var(--border);border-radius:0 10px 10px 10px;padding:6px;font-size:12px;overflow-x:auto';
+      const table = document.createElement('table');
+      table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
+      list.forEach(v => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'cursor:pointer';
+        tr.onmouseover = () => tr.style.background = '#f3f4f6';
+        tr.onmouseout  = () => tr.style.background = '';
+        tr.innerHTML = `<td style="padding:6px 8px;font-weight:700;color:${cfg.color}">${escapeHtml(v.cardCode)}</td><td style="padding:6px 8px">${escapeHtml(v.cardName)}</td>`;
+        tr.addEventListener('click', () => onPick(v));
+        table.appendChild(tr);
+      });
+      bubble.appendChild(table);
+      wrap.appendChild(avatar); wrap.appendChild(bubble);
+      msgs.appendChild(wrap);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function addAccountTaxPicker(data, onConfirm) {
+      hideTyping();
+      const msgs = $(ids.messages);
+      if (!msgs) return;
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;gap:8px;align-items:flex-start';
+      const avatar = document.createElement('div');
+      avatar.style.cssText = `width:28px;height:28px;background:${cfg.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0`;
+      avatar.textContent = cfg.icon;
+      const bubble = document.createElement('div');
+      bubble.style.cssText = 'max-width:92%;background:#fff;border:1px solid var(--border);border-radius:0 10px 10px 10px;padding:12px 14px;font-size:12px;line-height:1.8';
+      const selStyle = 'width:100%;padding:6px;margin-bottom:8px;border:1px solid var(--border);border-radius:4px;font-family:var(--font);font-size:12px';
+      const accSel = document.createElement('select'); accSel.style.cssText = selStyle;
+      accSel.innerHTML = '<option value="">Select Expense Account…</option>' +
+        (data.accounts || []).map(a => `<option value="${escapeHtml(a.code)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.code)} — ${escapeHtml(a.name)}</option>`).join('');
+      const taxSel = document.createElement('select'); taxSel.style.cssText = selStyle;
+      taxSel.innerHTML = '<option value="">Select Tax Code…</option>' +
+        (data.taxCodes || []).map(t => `<option value="${escapeHtml(t.Code)}" data-name="${escapeHtml(t.Name)}">${escapeHtml(t.Code)} — ${escapeHtml(t.Name)} (${t.Rate || 0}%)</option>`).join('');
+      const btn = document.createElement('button');
+      btn.textContent = 'Confirm Account & Tax';
+      btn.style.cssText = `padding:7px 16px;background:${cfg.color};color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600`;
+      btn.addEventListener('click', () => {
+        if (!accSel.value || !taxSel.value) { addMsg('bot', '⚠️ Please select both an account and a tax code.'); return; }
+        const accOpt = accSel.selectedOptions[0], taxOpt = taxSel.selectedOptions[0];
+        onConfirm(accSel.value, accOpt?.dataset.name || '', taxSel.value, taxOpt?.dataset.name || '');
+      });
+      bubble.appendChild(accSel); bubble.appendChild(taxSel); bubble.appendChild(btn);
+      wrap.appendChild(avatar); wrap.appendChild(bubble);
+      msgs.appendChild(wrap);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function renderQuickReplies(list) {
+      const qr = $(ids.qr);
+      if (!qr) return;
+      qr.innerHTML = '';
+      (list || []).forEach(q => {
+        const btn = document.createElement('button');
+        btn.textContent = q;
+        btn.style.cssText = `padding:5px 14px;background:#fff;color:${cfg.color};border:1px solid ${cfg.color};border-radius:16px;font-size:12px;cursor:pointer;font-family:var(--font);transition:all .15s`;
+        btn.addEventListener('mouseover', () => { btn.style.background = cfg.color; btn.style.color = '#fff'; });
+        btn.addEventListener('mouseout',  () => { btn.style.background = '#fff'; btn.style.color = cfg.color; });
+        btn.addEventListener('click', () => send(q));
+        qr.appendChild(btn);
+      });
+    }
+
+    async function send(msg) {
+      if (busy) return;
+      busy = true; setBusy(true);
+      const isJsonAction = msg.trim().startsWith('{');
+      if (msg.trim() && !isJsonAction) addMsg('user', msg);
+      try {
+        const resp = await fetch(cfg.api + '/chat', {
+          method: 'POST',
+          headers: { 'x-auth-token': tok(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, sessionId }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Server error');
+        if (data.sessionId) sessionId = data.sessionId;
+        if (data.step) updateStep(data.step);
+        if (data.reply) addMsg('bot', data.reply);
+        if (data.matchHTML) addRawHTML(data.matchHTML);
+        if (data.reviewHTML) addRawHTML(data.reviewHTML);
+        if (data.vendorList?.length) {
+          addVendorList(data.vendorList, v => send(JSON.stringify({ action: 'select_vendor', cardCode: v.cardCode, cardName: v.cardName })));
+        }
+        if (data.accountsData) {
+          addAccountTaxPicker(data.accountsData, (accountCode, accountName, taxCode, taxName) =>
+            send(JSON.stringify({ action: 'select_account', accountCode, accountName, taxCode, taxName })));
+        }
+        const uz = $(ids.uploadZone);
+        if (uz) uz.style.display = data.uploadReady ? 'block' : 'none';
+        renderQuickReplies(data.quickReplies);
+        summaryUpdate(data);
+      } catch (e) {
+        addMsg('bot', `❌ Error: ${e.message}`);
+      } finally {
+        busy = false; setBusy(false);
+      }
+    }
+
+    async function handleFileChange(input) {
+      const file = input.files?.[0];
+      if (!file) return;
+      input.value = '';
+      const allowed = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/tiff'];
+      if (!allowed.includes(file.type)) { addMsg('bot', '❌ Please upload a PDF or image file (JPG, PNG, WEBP, PDF).'); return; }
+      const statusEl = $(ids.uploadStatus);
+      if (statusEl) statusEl.textContent = `⏳ Processing ${file.name}…`;
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        addMsg('user', `📎 Uploaded: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+        setBusy(true);
+        const resp = await fetch(cfg.api + '/upload', { method: 'POST', headers: { 'x-auth-token': tok() }, body: fd });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) { addMsg('bot', `❌ Upload failed: ${data.error || 'Unknown error'}`); if (statusEl) statusEl.textContent = ''; return; }
+        if (statusEl) statusEl.textContent = `✅ Scanned — processing…`;
+        await send(JSON.stringify({ action: 'ocr_result', ocrData: data.ocrData, fileName: data.fileName }));
+        const uz = $(ids.uploadZone);
+        if (uz) uz.style.display = 'none';
+        if (statusEl) statusEl.textContent = '';
+      } catch (e) {
+        addMsg('bot', `❌ Upload error: ${e.message}`);
+        if (statusEl) statusEl.textContent = '';
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function start() {
+      sessionId = null; busy = false;
+      const msgs = $(ids.messages); if (msgs) msgs.innerHTML = '';
+      const qr = $(ids.qr); if (qr) qr.innerHTML = '';
+      const uz = $(ids.uploadZone); if (uz) uz.style.display = 'none';
+      summaryClear();
+      updateStep('INIT');
+      send('');
+    }
+
+    async function resetSession() {
+      if (sessionId) {
+        try {
+          await fetch(cfg.api + '/reset', {
+            method: 'POST', headers: { 'x-auth-token': tok(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId }),
+          });
+        } catch {}
+      }
+      start();
+    }
+
+    function show() {
+      if (window.showChatPanel) window.showChatPanel();
+      const msgsMain = document.getElementById('messages'); if (msgsMain) msgsMain.style.display = 'none';
+      const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+      const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+      const main = document.querySelector('.main');
+      const panel = $(cfg.panelId);
+      if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+      if (panel) panel.style.display = 'flex';
+      document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+      $(cfg.navId)?.classList.add('active');
+      if (!sessionId) start();
+    }
+
+    function sendFromInput() {
+      const el = $(ids.input);
+      if (!el) return;
+      const v = el.value.trim();
+      if (!v) return;
+      el.value = '';
+      send(v);
+    }
+
+    // Enter (without Shift) sends
+    const inputEl = $(ids.input);
+    if (inputEl) {
+      inputEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
+      });
+    }
+
+    window[cfg.showFnName]   = show;
+    window[cfg.sendFnName]   = send;
+    window[cfg.resetFnName]  = resetSession;
+    window[cfg.triggerFnName] = () => $(ids.fileInput)?.click();
+    window[cfg.fileChangeFnName] = handleFileChange;
+    window[cfg.sendFromInputFnName] = sendFromInput;
+
+    return { show, send, resetSession };
+  }
+
+  createOcrPanel({
+    key: 'ocrpo', api: '/api/ocr-po-scan', panelId: 'ocr-po-scan-panel', navId: 'nav-ocr-po-scan',
+    color: '#6366f1', icon: '📦', emptyHint: 'Upload a supplier PO / quotation to begin',
+    showFnName: 'showOcrPoScanPanel', sendFnName: 'ocrpoSend', resetFnName: 'ocrpoResetSession',
+    triggerFnName: 'ocrpoTriggerUpload', fileChangeFnName: 'ocrpoHandleFileChange', sendFromInputFnName: 'ocrpoSendFromInput',
+  });
+  createOcrPanel({
+    key: 'ocrexp', api: '/api/ocr-expense', panelId: 'ocr-expense-panel', navId: 'nav-ocr-expense',
+    color: '#f59e0b', icon: '🧾', emptyHint: 'Upload an expense invoice to begin',
+    showFnName: 'showOcrExpensePanel', sendFnName: 'ocrexpSend', resetFnName: 'ocrexpResetSession',
+    triggerFnName: 'ocrexpTriggerUpload', fileChangeFnName: 'ocrexpHandleFileChange', sendFromInputFnName: 'ocrexpSendFromInput',
+  });
+  createOcrPanel({
+    key: 'ocrinw', api: '/api/ocr-inward', panelId: 'ocr-inward-panel', navId: 'nav-ocr-inward',
+    color: '#16a34a', icon: '📥', emptyHint: 'Upload an inward slip / delivery challan to begin',
+    showFnName: 'showOcrInwardPanel', sendFnName: 'ocrinwSend', resetFnName: 'ocrinwResetSession',
+    triggerFnName: 'ocrinwTriggerUpload', fileChangeFnName: 'ocrinwHandleFileChange', sendFromInputFnName: 'ocrinwSendFromInput',
+  });
+  createOcrPanel({
+    key: 'ocrgp', api: '/api/ocr-gatepass', panelId: 'ocr-gatepass-panel', navId: 'nav-ocr-gatepass',
+    color: '#0891b2', icon: '🪪', emptyHint: 'Upload a gate pass slip to begin',
+    showFnName: 'showOcrGatePassPanel', sendFnName: 'ocrgpSend', resetFnName: 'ocrgpResetSession',
+    triggerFnName: 'ocrgpTriggerUpload', fileChangeFnName: 'ocrgpHandleFileChange', sendFromInputFnName: 'ocrgpSendFromInput',
+  });
+  createOcrPanel({
+    key: 'ocrdoc', api: '/api/ocr-document', panelId: 'ocr-document-panel', navId: 'nav-ocr-document',
+    color: '#64748b', icon: '📄', emptyHint: 'Upload any document to begin classification',
+    showFnName: 'showOcrDocumentPanel', sendFnName: 'ocrdocSend', resetFnName: 'ocrdocResetSession',
+    triggerFnName: 'ocrdocTriggerUpload', fileChangeFnName: 'ocrdocHandleFileChange', sendFromInputFnName: 'ocrdocSendFromInput',
+  });
+})(); // end OCR Processing Suite IIFE
+</script>
+
+<!-- ════════════════════════════════════════════════════════
      THREE-WAY MATCH AGENT SCRIPT
 ════════════════════════════════════════════════════════ -->
 <script>
@@ -23636,14 +24433,15 @@ window.roAskFollowUp = function() {
     }
   }
 
-  window.showMasterPanel = function(type) {
+  function activateMasterPanel(type) {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+      'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
-      'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel'];
+      'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','gstin-check-panel','bp-check-panel'];
     HIDE_ALL.forEach(id => { const el = document.getElementById(id); if (el) el.style.display='none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -23656,7 +24454,22 @@ window.roAskFollowUp = function() {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById(MASTER_AGENTS[type].navId)?.classList.add('active');
     _activeAgent = type;
+  }
+
+  window.showMasterPanel = function(type) {
+    activateMasterPanel(type);
     startMasterAgent(type);
+  };
+
+  // Opens the Customer/Supplier Master wizard against a session already
+  // initialised server-side (e.g. pre-filled from the GSTIN Check panel).
+  window.masterOpenWithSession = function(type, sessionId, reply, step, quickReplies) {
+    buildPanel(type);
+    _sess[type] = sessionId;
+    activateMasterPanel(type);
+    if (reply) masterAppendMsg(type, reply, 'agent');
+    if (step) masterUpdateStep(type, step);
+    masterSetQR(type, quickReplies || []);
   };
 
   window.masterClose = function(type) {
@@ -23683,6 +24496,380 @@ window.roAskFollowUp = function() {
 </script>
 
 <!-- ════════════════════════════════════════════════════════
+     GSTIN CHECK AGENT SCRIPT  (Supplier Master → GSTIN Check)
+════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+  const tok = () => localStorage.getItem('hanny_token') || '';
+  const GST_COLOR = '#059669';
+  let _lastGstinRecord = null;
+
+  function buildGstinPanel() {
+    const el = document.getElementById('gstin-check-panel');
+    if (!el || el.children.length) return;
+    el.innerHTML = `
+      <div style="background:linear-gradient(135deg,#059669,#065f46);color:#fff;padding:0 16px;min-height:44px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.2)">
+        <button onclick="closeGstinCheckPanel()" title="Back to Chat" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back
+        </button>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">GSTIN Check</div>
+          <div style="font-size:11px;opacity:.8">Verify a supplier's GSTIN &amp; view business partner details</div>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px 10%">
+        <div style="max-width:640px;margin:0 auto">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Enter GSTIN Number</label>
+          <div style="display:flex;gap:8px">
+            <input id="gstin-input" type="text" maxlength="15" placeholder="e.g. 22AAAAA0000A1Z5" autocomplete="off"
+              style="flex:1;box-sizing:border-box;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;letter-spacing:.5px;text-transform:uppercase;outline:none"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();gstinCheckLookup();}">
+            <button id="gstin-check-btn" onclick="gstinCheckLookup()"
+              style="padding:10px 20px;background:${GST_COLOR};color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Check GSTIN</button>
+          </div>
+          <div id="gstin-check-msg" style="margin-top:10px;font-size:12.5px"></div>
+          <div id="gstin-check-result" style="margin-top:18px"></div>
+        </div>
+      </div>`;
+  }
+
+  const GST_STATE_CODES = {
+    '01':'Jammu and Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh','05':'Uttarakhand',
+    '06':'Haryana','07':'Delhi','08':'Rajasthan','09':'Uttar Pradesh','10':'Bihar','11':'Sikkim',
+    '12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur','15':'Mizoram','16':'Tripura','17':'Meghalaya',
+    '18':'Assam','19':'West Bengal','20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh',
+    '24':'Gujarat','25':'Daman and Diu','26':'Dadra and Nagar Haveli','27':'Maharashtra','28':'Andhra Pradesh (Old)',
+    '29':'Karnataka','30':'Goa','31':'Lakshadweep','32':'Kerala','33':'Tamil Nadu','34':'Puducherry',
+    '35':'Andaman and Nicobar Islands','36':'Telangana','37':'Andhra Pradesh','38':'Ladakh',
+  };
+
+  function bpRow(label, value) {
+    return `<div style="display:flex;padding:7px 0;border-bottom:1px solid #f1f5f9">
+      <div style="width:170px;flex-shrink:0;font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase">${label}</div>
+      <div style="font-size:13px;color:#111827">${value == null || value === '' ? '<span style="color:#9ca3af">—</span>' : String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+    </div>`;
+  }
+
+  function renderResult(data, creditsRemaining) {
+    const box = document.getElementById('gstin-check-result');
+    if (!box) return;
+    const statusColor = /active/i.test(data.status||'') ? '#059669' : '#dc2626';
+    const ad = data.address_details || {};
+    const building = [ad.building_number, ad.building_name, ad.floor].filter(Boolean).join(', ') || null;
+    const blockStreet = [ad.street, ad.locality].filter(Boolean).join(', ') || null;
+    const address1 = [ad.building_number, ad.building_name].filter(Boolean).join(', ') || null;
+    const address2 = [ad.floor, ad.street, ad.landmark, ad.district].filter(Boolean).join(', ') || null;
+    const city = ad.city || ad.locality || data.city || null;
+    const pinCode = data.pincode || ad.pincode || null;
+    const zip = data.pincode || ad.pincode || null;
+    const state = ad.state || GST_STATE_CODES[data.state_code] || null;
+    const country = 'India';
+
+    _lastGstinRecord = {
+      name: data.legal_name || data.trade_name || '',
+      gstin: data.gstin || '',
+      address: {
+        AddressName: 'GSTIN Registered Address',
+        AddressType: 'bo_BillTo',
+        Street: [blockStreet, address1, address2].filter(Boolean).join(', '),
+        City: city || '', State: state || '', ZipCode: pinCode || zip || '', Country: 'IN',
+      },
+    };
+
+    box.innerHTML = `
+      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="padding:14px 18px;background:#ecfdf5;border-bottom:1px solid #d1fae5;display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#065f46">${(data.legal_name||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>
+            <div style="font-size:12px;color:#047857;margin-top:2px">${(data.trade_name||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>
+          </div>
+          <span style="background:${statusColor};color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap">${data.status||'Unknown'}</span>
+        </div>
+        <div style="padding:6px 18px 14px">
+          ${bpRow('GSTIN', data.gstin)}
+          ${bpRow('Taxpayer Type', data.taxpayer_type)}
+          ${bpRow('Registration Date', data.registration_date)}
+          ${bpRow('Block Status', data.block_status)}
+        </div>
+        <div style="padding:10px 18px 4px;background:#f8fafc;border-top:1px solid #e5e7eb;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px">Address (SAP B1 format)</div>
+        <div style="padding:6px 18px 14px">
+          ${bpRow('Building', building)}
+          ${bpRow('Block / Street', blockStreet)}
+          ${bpRow('Address 1', address1)}
+          ${bpRow('Address 2', address2)}
+          ${bpRow('City', city)}
+          ${bpRow('Pin Code', pinCode)}
+          ${bpRow('Zip', zip)}
+          ${bpRow('State', state)}
+          ${bpRow('Country', country)}
+          ${bpRow('GSTIN Number', data.gstin)}
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:14px 16px;border:1.5px dashed #a7f3d0;border-radius:10px;background:#f0fdf4">
+        <div style="font-size:12.5px;font-weight:700;color:#065f46;margin-bottom:8px">Post to SAP Business One</div>
+        <div style="font-size:11.5px;color:#374151;margin-bottom:10px">Create a Business Partner using this name, address &amp; GSTIN — you'll still choose the code, series, group, currency, terms and Bill To / Ship To in the wizard.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="gstinPostToSap('customer')" style="padding:8px 16px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer">👤 Add as Customer</button>
+          <button onclick="gstinPostToSap('supplier')" style="padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer">🏭 Add as Supplier</button>
+        </div>
+      </div>
+      ${creditsRemaining != null ? `<div style="margin-top:8px;font-size:11px;color:#9ca3af;text-align:right">Credits remaining: ${creditsRemaining}</div>` : ''}`;
+  }
+
+  window.gstinPostToSap = async function(bpType) {
+    const msg = document.getElementById('gstin-check-msg');
+    if (!_lastGstinRecord || !_lastGstinRecord.name) {
+      if (msg) msg.innerHTML = '<span style="color:#dc2626">Look up a GSTIN first.</span>';
+      return;
+    }
+    try {
+      const r = await fetch('/api/master/bp/init-from-gstin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': tok() },
+        body: JSON.stringify({ bpType, name: _lastGstinRecord.name, gstin: _lastGstinRecord.gstin, address: _lastGstinRecord.address }),
+      });
+      const data = await r.json();
+      if (!data.ok) {
+        if (msg) msg.innerHTML = `<span style="color:#dc2626">⚠️ ${(data.error||'Could not start wizard').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
+        return;
+      }
+      window.masterOpenWithSession(bpType, data.sessionId, data.reply, data.step, data.quickReplies);
+    } catch(e) {
+      if (msg) msg.innerHTML = `<span style="color:#dc2626">⚠️ ${e.message}</span>`;
+    }
+  };
+
+  window.gstinCheckLookup = async function() {
+    const inp = document.getElementById('gstin-input');
+    const msg = document.getElementById('gstin-check-msg');
+    const btn = document.getElementById('gstin-check-btn');
+    const resultBox = document.getElementById('gstin-check-result');
+    const gstin = (inp?.value || '').trim().toUpperCase();
+    if (msg) msg.innerHTML = '';
+    if (resultBox) resultBox.innerHTML = '';
+    if (!gstin) { if (msg) msg.innerHTML = '<span style="color:#dc2626">Please enter a GSTIN number.</span>'; return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+    try {
+      const r = await fetch(`/api/master/gstin/${encodeURIComponent(gstin)}`, {
+        headers: { 'x-auth-token': tok() },
+      });
+      const data = await r.json();
+      if (!data.ok) {
+        if (msg) msg.innerHTML = `<span style="color:#dc2626">⚠️ ${(data.error||'Lookup failed').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
+        return;
+      }
+      renderResult(data.data, data.credits_remaining);
+    } catch(e) {
+      if (msg) msg.innerHTML = `<span style="color:#dc2626">⚠️ ${e.message}</span>`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Check GSTIN'; }
+    }
+  };
+
+  window.showGstinCheckPanel = function() {
+    buildGstinPanel();
+    const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
+      'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
+      'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
+      'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+      'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
+      'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
+      'inpmt-panel','outpmt-panel','three-way-match-panel',
+      'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','bp-check-panel'];
+    HIDE_ALL.forEach(id => { const el = document.getElementById(id); if (el) el.style.display='none'; });
+    const bb = document.querySelector('.bottom-bar');
+    const ia = document.querySelector('.input-area');
+    if (bb) bb.style.display = 'none';
+    if (ia) ia.style.display = 'none';
+    const main = document.querySelector('.main');
+    const panel = document.getElementById('gstin-check-panel');
+    if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+    if (panel) panel.style.display = 'flex';
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('nav-gstin-check')?.classList.add('active');
+    setTimeout(() => document.getElementById('gstin-input')?.focus(), 50);
+  };
+
+  window.closeGstinCheckPanel = function() {
+    const el = document.getElementById('gstin-check-panel');
+    if (el) el.style.display = 'none';
+    document.getElementById('nav-gstin-check')?.classList.remove('active');
+    if (window.showChatPanel) window.showChatPanel();
+  };
+
+  const _origShowChatGstin = window.showChatPanel;
+  window.showChatPanel = function() {
+    const el = document.getElementById('gstin-check-panel');
+    if (el) el.style.display = 'none';
+    if (_origShowChatGstin) _origShowChatGstin();
+  };
+})(); // end GSTIN Check IIFE
+</script>
+
+<!-- ════════════════════════════════════════════════════════
+     BP DUPLICATE CHECK AGENT SCRIPT
+     (Check if a Customer/Supplier name already exists in SAP
+      before creating it — case & whitespace insensitive)
+════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+  const tok = () => localStorage.getItem('hanny_token') || '';
+  const BP_COLOR = '#db2777';
+
+  function buildBpCheckPanel() {
+    const el = document.getElementById('bp-check-panel');
+    if (!el || el.children.length) return;
+    el.innerHTML = `
+      <div style="background:linear-gradient(135deg,#db2777,#831843);color:#fff;padding:0 16px;min-height:44px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.2)">
+        <button onclick="closeBpCheckPanel()" title="Back to Chat" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back
+        </button>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">BP Duplicate Check</div>
+          <div style="font-size:11px;opacity:.8">Check if a Customer/Supplier name already exists in SAP before adding it</div>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px 10%">
+        <div style="max-width:640px;margin:0 auto">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Enter Business Partner Name</label>
+          <div style="display:flex;gap:8px">
+            <input id="bp-check-input" type="text" placeholder="e.g. ABC Traders" autocomplete="off"
+              style="flex:1;box-sizing:border-box;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();bpCheckLookup();}">
+            <button id="bp-check-btn" onclick="bpCheckLookup()"
+              style="padding:10px 20px;background:${BP_COLOR};color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Check Name</button>
+          </div>
+          <div style="margin-top:6px;font-size:11px;color:#9ca3af">Matching ignores case and extra spaces — "abc traders", "ABC  Traders" and "ABCTraders" are treated as the same name.</div>
+          <div id="bp-check-msg" style="margin-top:10px;font-size:12.5px"></div>
+          <div id="bp-check-result" style="margin-top:18px"></div>
+        </div>
+      </div>`;
+  }
+
+  function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function bpMatchTable(rowsData) {
+    const rows = rowsData.map(m => `<tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:6px 8px;font-weight:700">${esc(m.CardCode)}</td>
+      <td style="padding:6px 8px">${esc(m.CardName)}</td>
+      <td style="padding:6px 8px">${esc(m.CardType)}</td>
+      <td style="padding:6px 8px">${esc(m.Phone1)||'<span style="color:#9ca3af">—</span>'}</td>
+      <td style="padding:6px 8px">${esc(m.EmailAddress)||'<span style="color:#9ca3af">—</span>'}</td>
+      <td style="padding:6px 8px;text-align:center">${m.matchType==='exact'
+        ? '<span style="background:#fee2e2;color:#991b1b;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px">EXACT</span>'
+        : m.matchType==='similar'
+        ? '<span style="background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px">SIMILAR</span>'
+        : '<span style="background:#f3f4f6;color:#374151;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px">PARTIAL</span>'}</td>
+    </tr>`).join('');
+    return `<div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <tr style="background:#f9fafb"><th style="padding:6px 8px;text-align:left">Code</th><th style="padding:6px 8px;text-align:left">Name</th><th style="padding:6px 8px;text-align:left">Type</th><th style="padding:6px 8px;text-align:left">Phone</th><th style="padding:6px 8px;text-align:left">Email</th><th style="padding:6px 8px;text-align:center">Match</th></tr>
+        ${rows}
+      </table>
+    </div>`;
+  }
+
+  function renderBpResult(query, exists, matches, partialMatches) {
+    const box = document.getElementById('bp-check-result');
+    if (!box) return;
+    partialMatches = partialMatches || [];
+    if (!matches.length && !partialMatches.length) {
+      box.innerHTML = `<div style="padding:14px 16px;background:#f0fdf4;border:1.5px solid #10b981;border-radius:10px">
+        <div style="font-size:13.5px;font-weight:700;color:#065f46">✅ No match found</div>
+        <div style="font-size:12.5px;color:#065f46;margin-top:4px">No Business Partner named like "<strong>${esc(query)}</strong>" exists in SAP — safe to create.</div>
+      </div>`;
+      return;
+    }
+    let html = '';
+    if (matches.length) {
+      html += `<div style="padding:12px 16px;background:${exists?'#fef2f2':'#fffbeb'};border:1.5px solid ${exists?'#fecaca':'#fde68a'};border-radius:10px;margin-bottom:12px">
+        <div style="font-size:13.5px;font-weight:700;color:${exists?'#991b1b':'#92400e'}">${exists?'⚠️ Exact match already exists in SAP':'⚠️ Similar name(s) found — review before creating'}</div>
+        <div style="font-size:12.5px;color:#374151;margin-top:4px">${matches.length} possible match${matches.length>1?'es':''} for "<strong>${esc(query)}</strong>":</div>
+      </div>
+      ${bpMatchTable(matches)}`;
+    }
+    if (partialMatches.length) {
+      html += `<div style="margin-top:${matches.length?'18px':'0'}">
+        <div style="padding:12px 16px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px 10px 0 0;border-bottom:none">
+          <div style="font-size:13px;font-weight:700;color:#374151">🔎 Partial matches — share a word with "<strong>${esc(query)}</strong>"</div>
+          <div style="font-size:11.5px;color:#6b7280;margin-top:2px">Not the same name, but worth a quick look before creating a new record.</div>
+        </div>
+        ${bpMatchTable(partialMatches)}
+      </div>`;
+    }
+    box.innerHTML = html;
+  }
+
+  window.bpCheckLookup = async function() {
+    const inp = document.getElementById('bp-check-input');
+    const msg = document.getElementById('bp-check-msg');
+    const btn = document.getElementById('bp-check-btn');
+    const resultBox = document.getElementById('bp-check-result');
+    const name = (inp?.value || '').trim();
+    if (msg) msg.innerHTML = '';
+    if (resultBox) resultBox.innerHTML = '';
+    if (!name) { if (msg) msg.innerHTML = '<span style="color:#dc2626">Please enter a name to check.</span>'; return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+    try {
+      const r = await fetch(`/api/master/bp-check?name=${encodeURIComponent(name)}`, {
+        headers: { 'x-auth-token': tok() },
+      });
+      const data = await r.json();
+      if (!data.ok) {
+        if (msg) msg.innerHTML = `<span style="color:#dc2626">⚠️ ${esc(data.error||'Check failed')}</span>`;
+        return;
+      }
+      renderBpResult(data.query, data.exists, data.matches || [], data.partialMatches || []);
+    } catch(e) {
+      if (msg) msg.innerHTML = `<span style="color:#dc2626">⚠️ ${e.message}</span>`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Check Name'; }
+    }
+  };
+
+  window.showBpCheckPanel = function() {
+    buildBpCheckPanel();
+    const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
+      'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
+      'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
+      'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+      'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
+      'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
+      'inpmt-panel','outpmt-panel','three-way-match-panel',
+      'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','gstin-check-panel'];
+    HIDE_ALL.forEach(id => { const el = document.getElementById(id); if (el) el.style.display='none'; });
+    const bb = document.querySelector('.bottom-bar');
+    const ia = document.querySelector('.input-area');
+    if (bb) bb.style.display = 'none';
+    if (ia) ia.style.display = 'none';
+    const main = document.querySelector('.main');
+    const panel = document.getElementById('bp-check-panel');
+    if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+    if (panel) panel.style.display = 'flex';
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('nav-bp-check')?.classList.add('active');
+    setTimeout(() => document.getElementById('bp-check-input')?.focus(), 50);
+  };
+
+  window.closeBpCheckPanel = function() {
+    const el = document.getElementById('bp-check-panel');
+    if (el) el.style.display = 'none';
+    document.getElementById('nav-bp-check')?.classList.remove('active');
+    if (window.showChatPanel) window.showChatPanel();
+  };
+
+  const _origShowChatBp = window.showChatPanel;
+  window.showChatPanel = function() {
+    const el = document.getElementById('bp-check-panel');
+    if (el) el.style.display = 'none';
+    if (_origShowChatBp) _origShowChatBp();
+  };
+})(); // end BP Duplicate Check IIFE
+</script>
+
+<!-- ════════════════════════════════════════════════════════
      SERVICE CALL VIEW AGENT SCRIPT
 ════════════════════════════════════════════════════════ -->
 <script>
@@ -23703,7 +24890,8 @@ window.roAskFollowUp = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
     'product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel',
@@ -24434,7 +25622,8 @@ window.roAskFollowUp = function() {
     'demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel',
     'dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel',
@@ -28011,7 +29200,8 @@ window.showUserRightsPanel = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel'];
@@ -28814,7 +30004,8 @@ window.showPromptActivity = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel',
@@ -29022,7 +30213,8 @@ window.showActivityAgent = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','apcm-panel',
+    'po-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel',
+    'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel',

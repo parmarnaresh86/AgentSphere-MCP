@@ -217,6 +217,59 @@ export const mailConfigRepo = {
   },
 };
 
+// ── Branding (dynamic company / product / developer identity) ────────────────
+// Lets one deployed instance be re-skinned per client without touching code —
+// product name/logo (the app itself), developed-by name/logo (the vendor who
+// built it), and company name/logo (the client this instance is deployed for).
+// Logos are stored as data: URIs so the login page (pre-auth) can render them
+// with a single unauthenticated GET, no separate file serving needed.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS branding_settings (
+    id                 INTEGER PRIMARY KEY DEFAULT 1,
+    company_name       TEXT DEFAULT '',
+    company_logo       TEXT DEFAULT '',
+    developed_by       TEXT DEFAULT '',
+    developed_by_logo  TEXT DEFAULT '',
+    product_name       TEXT DEFAULT '',
+    product_logo       TEXT DEFAULT '',
+    updated_at         TEXT DEFAULT '',
+    updated_by         TEXT DEFAULT ''
+  )
+`);
+
+const BRANDING_DEFAULTS = {
+  company_name:      '',
+  company_logo:      '',
+  developed_by:      'Henny AI Solution',
+  developed_by_logo: '/assets/henny-ai-logo.png',
+  product_name:      'AgentSphere',
+  product_logo:      '/assets/henny-agentic-logo.png',
+};
+
+export const brandingRepo = {
+  get() {
+    const row = db.prepare('SELECT * FROM branding_settings WHERE id=1').get();
+    return { ...BRANDING_DEFAULTS, ...(row || {}) };
+  },
+  save(fields = {}, updatedBy = '') {
+    const current = this.get();
+    const merged = { ...current, ...fields };
+    const has = db.prepare('SELECT id FROM branding_settings WHERE id=1').get();
+    const vals = [
+      merged.company_name, merged.company_logo,
+      merged.developed_by, merged.developed_by_logo,
+      merged.product_name, merged.product_logo,
+      new Date().toISOString(), updatedBy,
+    ];
+    if (has) {
+      db.prepare(`UPDATE branding_settings SET company_name=?,company_logo=?,developed_by=?,developed_by_logo=?,product_name=?,product_logo=?,updated_at=?,updated_by=? WHERE id=1`).run(...vals);
+    } else {
+      db.prepare(`INSERT INTO branding_settings (id,company_name,company_logo,developed_by,developed_by_logo,product_name,product_logo,updated_at,updated_by) VALUES (1,?,?,?,?,?,?,?,?)`).run(...vals);
+    }
+    return this.get();
+  },
+};
+
 // ── Direct DB connections (MSSQL / HANA) ─────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS db_connections (
@@ -685,10 +738,81 @@ db.exec(`
     error_msg  TEXT DEFAULT '',
     synced_at  DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS ocr_documents (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id     TEXT DEFAULT '',
+    doc_type       TEXT NOT NULL,
+    session_id     TEXT DEFAULT '',
+    file_name      TEXT DEFAULT '',
+    mime_type      TEXT DEFAULT '',
+    uploaded_by    TEXT DEFAULT '',
+    uploaded_at    TEXT DEFAULT (datetime('now')),
+    extracted_json TEXT DEFAULT '',
+    match_json     TEXT DEFAULT '',
+    status         TEXT DEFAULT 'pending',
+    sap_doc_type   TEXT DEFAULT '',
+    sap_doc_entry  INTEGER,
+    sap_doc_num    INTEGER,
+    notes          TEXT DEFAULT ''
+  );
   CREATE INDEX IF NOT EXISTS idx_cache_items_name    ON cache_items(company_id, ItemName);
   CREATE INDEX IF NOT EXISTS idx_cache_bp_name       ON cache_business_partners(company_id, CardName, CardType);
   CREATE INDEX IF NOT EXISTS idx_cache_sync_company  ON cache_sync_log(company_id, entity);
+  CREATE INDEX IF NOT EXISTS idx_ocr_documents_type   ON ocr_documents(company_id, doc_type, uploaded_at);
 `);
+
+export const ocrDocumentsRepo = {
+  insert(row) {
+    const stmt = db.prepare(`INSERT INTO ocr_documents
+      (company_id, doc_type, session_id, file_name, mime_type, uploaded_by, extracted_json, match_json, status, sap_doc_type, sap_doc_entry, sap_doc_num, notes)
+      VALUES (@company_id,@doc_type,@session_id,@file_name,@mime_type,@uploaded_by,@extracted_json,@match_json,@status,@sap_doc_type,@sap_doc_entry,@sap_doc_num,@notes)`);
+    const info = stmt.run({
+      company_id:     row.company_id || '',
+      doc_type:       row.doc_type,
+      session_id:     row.session_id || '',
+      file_name:      row.file_name || '',
+      mime_type:      row.mime_type || '',
+      uploaded_by:    row.uploaded_by || '',
+      extracted_json: row.extracted_json ? JSON.stringify(row.extracted_json) : '',
+      match_json:     row.match_json ? JSON.stringify(row.match_json) : '',
+      status:         row.status || 'pending',
+      sap_doc_type:   row.sap_doc_type || '',
+      sap_doc_entry:  row.sap_doc_entry ?? null,
+      sap_doc_num:    row.sap_doc_num ?? null,
+      notes:          row.notes || '',
+    });
+    return info.lastInsertRowid;
+  },
+  updateStatus(id, status, extra = {}) {
+    const fields = { status };
+    if (extra.sap_doc_entry != null) fields.sap_doc_entry = extra.sap_doc_entry;
+    if (extra.sap_doc_num != null)   fields.sap_doc_num   = extra.sap_doc_num;
+    if (extra.sap_doc_type != null)  fields.sap_doc_type  = extra.sap_doc_type;
+    if (extra.match_json != null)    fields.match_json    = JSON.stringify(extra.match_json);
+    if (extra.notes != null)         fields.notes         = extra.notes;
+    const cols = Object.keys(fields);
+    db.prepare(`UPDATE ocr_documents SET ${cols.map(c => `${c}=@${c}`).join(', ')} WHERE id=@id`)
+      .run({ ...fields, id });
+  },
+  getById(id) {
+    const row = db.prepare(`SELECT * FROM ocr_documents WHERE id=?`).get(id);
+    return row ? deserializeOcrRow(row) : null;
+  },
+  list(companyId, docType, limit = 50) {
+    const rows = docType
+      ? db.prepare(`SELECT * FROM ocr_documents WHERE company_id=? AND doc_type=? ORDER BY uploaded_at DESC LIMIT ?`).all(companyId || '', docType, limit)
+      : db.prepare(`SELECT * FROM ocr_documents WHERE company_id=? ORDER BY uploaded_at DESC LIMIT ?`).all(companyId || '', limit);
+    return rows.map(deserializeOcrRow);
+  },
+};
+
+function deserializeOcrRow(row) {
+  return {
+    ...row,
+    extracted_json: row.extracted_json ? JSON.parse(row.extracted_json) : null,
+    match_json:     row.match_json ? JSON.parse(row.match_json) : null,
+  };
+}
 
 export const cacheRepo = {
   // Items

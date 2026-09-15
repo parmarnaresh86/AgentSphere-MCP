@@ -24,3 +24,9 @@ releases/
 
 # Local dev config containing plaintext credentials
 .vscode/mcp.json
+
+# Self-signed local dev TLS certs
+certs/
+
+# Generated Excel exports served at /exports — runtime output, not source
+exports/

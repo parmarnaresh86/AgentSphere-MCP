@@ -18,6 +18,8 @@ import {
 import { BASE_SCHEMA, buildSqlContext } from './company-context.mjs';
 import { sqlCacheRepo } from './db.mjs';
 import { matchTemplate } from './query-templates.mjs';
+import { isExcelExportRequest, isMultiTabReportRequest, generateExcelExport, generateMultiTabExcelReport } from './lib/excel-export.mjs';
+import { buildProfessionalInsight } from './lib/data-insight.mjs';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -496,19 +498,41 @@ MANDATORY syntax rules:
 
   const userContent =
     `User question: "${question}"\n\n` +
-    `RULES â€” follow exactly:\n` +
-    `1. Return ONLY the raw SQL â€” no explanation, no markdown fences (\`\`\`), no comments (--)\n` +
-    `2. Only SELECT â€” never INSERT/UPDATE/DELETE/DROP/EXEC/CREATE/ALTER/TRUNCATE\n` +
+    `FIRST, decide how this answer should be presented and output it as the very\n` +
+    `first line, exactly in this format (nothing else on that line):\n` +
+    `PRESENTATION: chart | insight | table\n` +
+    `  - chart   → user wants a visual/trend/comparison (mentions chart, graph, plot,\n` +
+    `              trend, "by month/quarter/year", compare, breakdown, visualize)\n` +
+    `  - insight → user wants a narrative/business analysis, not just numbers\n` +
+    `              (mentions insight, analysis, detail analysis, explain, why, summary)\n` +
+    `  - table   → user wants a plain list/lookup of records (default — no chart or\n` +
+    `              analysis wording, e.g. "show me...", "list...", "find...")\n` +
+    `Then leave one blank line, then output ONLY the raw SQL — RULES for the SQL, follow exactly:\n` +
+    `1. Return ONLY the raw SQL — no explanation, no markdown fences (\`\`\`), no comments (--)\n` +
+    `2. Only SELECT — never INSERT/UPDATE/DELETE/DROP/EXEC/CREATE/ALTER/TRUNCATE\n` +
     `3. NEVER add TOP, LIMIT, FETCH FIRST, or ROWNUM — return ALL matching rows. Only add a limit if user says "top N" or "show me N".\n` +
     `4. Use meaningful column aliases: AS "Customer Name", AS "Sales Amount", AS "Month"\n` +
     `5. ${isHana ? 'ALL identifiers must be double-quoted: "SCHEMA"."TABLE"."COLUMN"' : 'Use square brackets: [DB].[dbo].[TABLE]'}\n` +
     `6. For totals: SUM(LineTotal) for sales, COUNT(DISTINCT DocEntry) for document count\n` +
-    `7. Always ORDER BY the main metric DESC unless user specifies otherwise`;
+    `7. Always ORDER BY the main metric DESC unless user specifies otherwise\n` +
+    `8. Include the standard SAP B1 business fields a professional report on this topic would have —\n` +
+    `   not just the bare aggregate. E.g. for sales/purchase transactions also include DocNum,\n` +
+    `   DocDate, and the relevant code (ItemCode/CardCode) alongside its description/name — enough\n` +
+    `   that the sheet reads as a real business report, not a 2-column summary. Only trim fields the\n` +
+    `   user explicitly asked to exclude or that don't apply (e.g. no need for WarehouseCode on a\n` +
+    `   pure customer-level rollup).`;
 
   const raw = await callAI([{ role: 'user', content: systemContent + '\n' + userContent }], 1500);
 
+  // First line carries the AI's presentation decision — peel it off before the
+  // usual SQL cleanup so a model that ignores the format doesn't break SQL parsing.
+  const rawLines = raw.trim().split('\n');
+  const presMatch = rawLines[0].match(/^PRESENTATION:\s*(chart|insight|table)/i);
+  const presentation = presMatch ? presMatch[1].toLowerCase() : null;
+  const sqlSource = presMatch ? rawLines.slice(1).join('\n') : raw;
+
   // Strip markdown fences if AI added them despite instructions
-  let sql = raw.trim()
+  let sql = sqlSource.trim()
     .replace(/^```[\w]*\s*/i, '')
     .replace(/\s*```\s*$/i, '')
     .trim();
@@ -517,10 +541,89 @@ MANDATORY syntax rules:
   if (!/^SELECT\b/i.test(sql)) {
     throw new Error(`AI returned non-SELECT content: "${sql.slice(0, 120)}"`);
   }
-  return sql;
+  return { sql, presentation };
 }
 
-// â”€â”€ RESPONSE FORMATTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── MULTI-TAB EXCEL REPORT PLANNER ──────────────────────────────────────────
+// "prepare excel ... with trend analysis and item wise month wise analysis,
+// multiple tabs, multi chart" → one AI call decides the shape of the report
+// (which tabs, what each is about, whether it needs a chart), then each tab
+// gets its own independently-generated, lint-checked, real SQL query — same
+// engine as a normal question, just run N times instead of once.
+async function planExcelReport(question) {
+  // Without an explicit date anchor, the model falls back to a stale year
+  // from its training data (verified: it wrote "2023" for "this year" even
+  // though generateSQL's own date context — used below per-tab — would have
+  // resolved it correctly). Every sqlQuestion must inherit the true today.
+  const today = new Date().toISOString().slice(0, 10);
+  const thisYear = new Date().getFullYear();
+  const lastYear = thisYear - 1;
+
+  const prompt =
+    `You are planning a multi-tab Excel report for a SAP Business One analytics request.\n` +
+    `User request: "${question}"\n\n` +
+    `=== DATE CONTEXT — use these, do not guess a year from memory ===\n` +
+    `Today: ${today} | This year: ${thisYear} | Last year: ${lastYear}\n\n` +
+    `Decide 2-4 worksheet tabs that together fully answer this. For each tab specify:\n` +
+    `- name: short Excel-safe tab name, max 25 characters, no : \\ / ? * [ ] characters\n` +
+    `- sqlQuestion: one precise, FULLY SELF-CONTAINED natural-language question describing exactly\n` +
+    `  what this tab's data should contain. It will be turned into SQL independently of the other\n` +
+    `  tabs and of the original request, so restate the date range/entity explicitly — never say\n` +
+    `  "this" or "the same as above". If the original request says "this year"/"this month"/etc,\n` +
+    `  write out the actual year/date from the DATE CONTEXT above (e.g. "${thisYear}"), never a\n` +
+    `  year from memory or a prior conversation.\n` +
+    `- chartType: "line" for a trend over time, "bar" for a ranking/comparison, "none" for a\n` +
+    `  detail/pivot table that doesn't need a chart\n\n` +
+    `Respond with ONLY raw JSON, no markdown fences, no explanation:\n` +
+    `{"tabs":[{"name":"...","sqlQuestion":"...","chartType":"..."}]}`;
+
+  const raw = await callAI([{ role: 'user', content: prompt }], 800);
+  const cleaned = raw.trim().replace(/^```[\w]*\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed?.tabs) && parsed.tabs.length) {
+      return parsed.tabs.slice(0, 5).map((t, i) => ({
+        name: String(t.name || `Tab ${i + 1}`).slice(0, 25).replace(/[:\\/?*[\]]/g, ''),
+        sqlQuestion: String(t.sqlQuestion || question),
+        chartType: ['line', 'bar', 'pie', 'none'].includes(t.chartType) ? t.chartType : 'none',
+      }));
+    }
+  } catch (e) {
+    console.warn(`[Excel Report] plan parse failed, falling back to single tab: ${e.message}`);
+  }
+  return [{ name: 'Data', sqlQuestion: question, chartType: 'bar' }];
+}
+
+// Runs the plan: each tab's SQL is generated, linted, and executed
+// independently — one tab failing (bad SQL, no matching data) doesn't sink
+// the whole report, it's just dropped and reported back as a failure.
+export async function buildMultiTabExcelReport(question) {
+  const plan = await planExcelReport(question);
+  const intent = classifyIntent(question);
+  const dbType = getActiveType();
+  const built = [], failed = [];
+
+  for (const tab of plan) {
+    try {
+      const { sql } = await generateSQL(tab.sqlQuestion, intent, [], null);
+      const lintError = lintSql(sql, dbType);
+      if (lintError) throw new Error(lintError);
+      const rows = await executeSQL(sql);
+      built.push({ name: tab.name, rows, chartType: tab.chartType, sql });
+    } catch (err) {
+      failed.push({ name: tab.name, error: err.message });
+    }
+  }
+
+  if (!built.length) {
+    throw new Error(`Could not build any tab: ${failed.map((f) => `${f.name} (${f.error})`).join('; ')}`);
+  }
+
+  const url = await generateMultiTabExcelReport(question, built);
+  return { url, built, failed };
+}
+
+// ── RESPONSE FORMATTER ──────────────────────────────────────────────────────
 function buildMarkdownTable(rows) {
   if (!rows.length) return '';
   const cols     = Object.keys(rows[0]);
@@ -545,7 +648,14 @@ function buildResultSummary(rows) {
   return `${rows.length} rows. Columns: [${cols.join(', ')}]. Preview: ${preview}`;
 }
 
-function formatResponse(question, rows, sql) {
+// "Summary"-style wording ("give me an overview", "summarize sales", "at a
+// glance"...) means the user wants the picture, not the rows — the frontend
+// opens straight into the Chart + AI Summary tabs instead of the raw table.
+function isSummaryStyleQuestion(question) {
+  return /\b(summary|summarize|summarise|overview|insight|snapshot|at a glance|highlight|recap|chart|graph|plot|trend|analysis|analyse|analyze|visuali[sz]e)\b/i.test(question || "");
+}
+
+function formatResponse(question, rows, sql, presentation = null) {
   const dbLabel = getActiveType()?.toUpperCase() || 'DB';
 
   if (!rows.length) {
@@ -559,11 +669,19 @@ function formatResponse(question, rows, sql) {
     );
   }
 
+  // presentation comes from the AI's own read of the question (set alongside
+  // the generated SQL) — only missing on a cache/template hit, where no AI
+  // call ran this turn, so fall back to the keyword heuristic.
+  const displayMode = presentation || (isSummaryStyleQuestion(question) ? "chart" : "table");
+
   // Emit structured block — frontend renders rich tabbed analytics card
   // rowCount = true total from DB; rows = up to 2000 sent to client
   const MAX_ROWS = 2000;
-  const payload = { rows: rows.slice(0, MAX_ROWS), sql, source: dbLabel, rowCount: rows.length, question };
-  return `__ATBL__${JSON.stringify(payload)}__/ATBL__`;
+  const payload = { rows: rows.slice(0, MAX_ROWS), sql, source: dbLabel, rowCount: rows.length, question, displayMode };
+  // Real computed stats (total/avg/max/min/trend) from the actual rows —
+  // shown on screen right under the card, same as the DB Direct fast path.
+  const insight = buildProfessionalInsight(question, rows);
+  return `__ATBL__${JSON.stringify(payload)}__/ATBL__\n\n${insight}`;
 }
 
 // â”€â”€ MAIN V2 HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -616,7 +734,7 @@ export async function handleV2Chat(body, res) {
     // call and the DB round-trip entirely and answers instantly.
     const cacheKey = schema + '::' + normQuestion(message);
     const cached = v2History.length === 0 ? sqlCacheRepo.get(cacheKey, SQL_CACHE_TTL_MS) : null; // skip cache on follow-ups (they depend on conversation context)
-    let sql = null, rows = null, lastError = null;
+    let sql = null, rows = null, lastError = null, presentation = null;
 
     // Query Template Library \u2014 hand-written SQL for the highest-frequency questions
     // (top sellers, low stock, AR/AP aging, open orders, ...). Skips the LLM entirely
@@ -653,7 +771,7 @@ export async function handleV2Chat(body, res) {
 
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          sql = await generateSQL(message, intent, v2History, attempt > 1 ? lastError : null);
+          ({ sql, presentation } = await generateSQL(message, intent, v2History, attempt > 1 ? lastError : null));
           const lineCount = sql.split('\n').length;
           console.log('[V2] SQL (' + lineCount + 'L): ' + sql.slice(0, 150));
 
@@ -688,7 +806,11 @@ export async function handleV2Chat(body, res) {
 
     // Stage 4: Format
     emit({ type: 'step', id: 'fmt', icon: 'table', text: 'Preparing results...', status: 'active' });
-    const reply   = formatResponse(message, rows, sql);
+    let reply = formatResponse(message, rows, sql, presentation);
+    if (rows.length && isExcelExportRequest(message)) {
+      const excelUrl = await generateExcelExport(message, rows);
+      reply += `\n\n📥 **[Download Excel (${rows.length} rows)](${excelUrl})**`;
+    }
     const summary = buildResultSummary(rows);
     emit({ type: 'step', id: 'fmt', icon: 'check', text: rows.length > 0 ? 'Complete \u2014 ' + rows.length + ' rows ready' : 'Complete \u2014 no data found', status: 'done' });
     emit({ type: 'result', reply, sessionId, v2SQL: sql, v2Summary: summary });

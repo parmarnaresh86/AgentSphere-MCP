@@ -191,22 +191,22 @@ body{
 
   <div class="splash-top">
     <div class="splash-top-left">
-      <div class="splash-logo"><img src="/assets/henny-agentic-logo.png" alt="Heeny AI Agentic logo"/></div>
+      <div class="splash-logo"><img id="brand-product-logo" src="/assets/henny-agentic-logo.png" alt="Product logo"/></div>
       <div>
-        <div class="splash-brand">Heeny AI Agentic</div>
+        <div class="splash-brand" id="brand-product-name">Heeny AI Agentic</div>
         <div class="splash-brand-sub">SAP B1 Assistant</div>
       </div>
     </div>
     <div class="splash-company-logo-wrap">
       <div class="powered-by-badge">
-        <img src="/assets/henny-ai-logo.png" alt="Henny AI Solution"/>
-        <span>Powered by<br/><strong>Henny AI Solution</strong></span>
+        <img id="brand-developedby-logo" src="/assets/henny-ai-logo.png" alt="Developed-by logo"/>
+        <span>Powered by<br/><strong id="brand-developedby-name">Henny AI Solution</strong></span>
       </div>
     </div>
   </div>
 
   <div class="splash-mid">
-    <div class="splash-title" style="white-space:nowrap">Run SAP Business One <em>with Heeny AI Agentic</em></div>
+    <div class="splash-title" style="white-space:nowrap">Run SAP Business One <em>with <span id="brand-product-name-inline">Heeny AI Agentic</span></em></div>
     <div class="splash-desc">One assistant for sales, purchasing, and finance — talk to your SAP data, automate documents, and get answers in seconds.</div>
 
     <div class="feature-list">
@@ -290,6 +290,10 @@ body{
   <div class="form-card">
     <div class="form-heading">Welcome back</div>
     <div class="form-subheading">Sign in to continue to your workspace</div>
+    <div id="brand-company-row" style="display:none;align-items:center;gap:8px;margin:-8px 0 18px">
+      <img id="brand-company-logo" src="" alt="Company logo" style="width:22px;height:22px;object-fit:contain;border-radius:4px;display:none"/>
+      <span id="brand-company-name" style="font-size:12.5px;color:var(--muted);font-weight:600"></span>
+    </div>
 
     <div class="alert alert-error" id="err-alert"></div>
     <div class="alert alert-success" id="ok-alert"></div>
@@ -327,11 +331,36 @@ body{
       </button>
     </form>
 
-    <div class="form-footer">Henny AI Solution &copy; 2026 &nbsp;·&nbsp; SAP B1 Service Layer</div>
+    <div class="form-footer"><span id="brand-developedby-footer">Henny AI Solution</span> &copy; 2026 &nbsp;·&nbsp; SAP B1 Service Layer</div>
   </div>
 </div>
 
 <script>
+// ── Apply Company Setup / Developer Settings branding (admin-configurable) ──
+(function(){
+  fetch('/api/branding').then(r => r.ok ? r.json() : null).then(b => {
+    if (!b) return;
+    if (b.productName) {
+      document.title = `${b.productName} — Login`;
+      document.querySelectorAll('#brand-product-name, #brand-product-name-inline').forEach(el => el.textContent = b.productName);
+    }
+    if (b.productLogo) {
+      const l = document.getElementById('brand-product-logo'); if (l) l.src = b.productLogo;
+    }
+    if (b.developedBy) {
+      document.querySelectorAll('#brand-developedby-name, #brand-developedby-footer').forEach(el => el.textContent = b.developedBy);
+    }
+    if (b.developedByLogo) {
+      const l = document.getElementById('brand-developedby-logo'); if (l) l.src = b.developedByLogo;
+    }
+    if (b.companyName || b.companyLogo) {
+      document.querySelectorAll('#brand-company-row').forEach(row => row.style.display = 'flex');
+      if (b.companyName) document.querySelectorAll('#brand-company-name').forEach(el => el.textContent = b.companyName);
+      if (b.companyLogo) document.querySelectorAll('#brand-company-logo').forEach(l => { l.src = b.companyLogo; l.style.display = ''; });
+    }
+  }).catch(() => {});
+})();
+
 // ── Load active connection info ──────────────────────────────
 (async () => {
   try {
