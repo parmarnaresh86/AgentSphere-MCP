@@ -2520,7 +2520,8 @@ body{font-family:var(--font);color:var(--text);display:flex}
       </div>
       <textarea id="user-input" placeholder="Type Something… (use natural language)" rows="1"></textarea>
       <div class="input-actions">
-        <button class="icon-btn" title="Attach">
+        <input type="file" id="chat-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff,image/*,application/pdf" style="display:none">
+        <button class="icon-btn" id="attach-btn" title="Attach a document or image (OCR)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
         <button class="icon-btn" id="voice-btn" title="Voice Input — click to speak">
@@ -2990,6 +2991,58 @@ const sendBtn    = document.getElementById('send-btn');
 inputEl.addEventListener('input', () => { inputEl.style.height='auto'; inputEl.style.height=Math.min(inputEl.scrollHeight,120)+'px'; });
 inputEl.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } });
 sendBtn.addEventListener('click', sendMessage);
+
+// ── Attach button (main chat) — upload a document/image, OCR-extract it,
+// and hand the extracted data to the normal AI chat pipeline as context so
+// the assistant can summarise it and, on confirmation, act on it (create a
+// PO/AP Invoice/etc.) through the existing write-confirmation-gated tools.
+const attachBtn = document.getElementById('attach-btn');
+const chatFileInput = document.getElementById('chat-file-input');
+attachBtn?.addEventListener('click', () => { if (!isLoading) chatFileInput.click(); });
+chatFileInput?.addEventListener('change', () => {
+  const file = chatFileInput.files?.[0];
+  chatFileInput.value = '';
+  if (file) handleChatFileUpload(file);
+});
+
+async function handleChatFileUpload(file) {
+  const allowed = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/tiff'];
+  if (!allowed.includes(file.type)) { appendMsg('bot', '❌ Please attach a PDF or image file (JPG, PNG, WEBP, TIFF, PDF).'); return; }
+  if (file.size > 15 * 1024 * 1024) { appendMsg('bot', '❌ File is too large — please attach a file under 15 MB.'); return; }
+  welcomeEl.style.display = 'none';
+  appendMsg('user', `📎 Uploaded: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+  const typing = appendTyping();
+  typing.setStatus?.(`Reading ${file.name}…`);
+  isLoading = true; sendBtn.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch('/api/ocr-document/upload', {
+      method: 'POST',
+      headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' },
+      body: fd,
+    });
+    const data = await resp.json();
+    typing.remove();
+    if (!resp.ok || !data.ok) {
+      appendMsg('bot', `❌ Couldn't read that file: ${data.error || 'Unknown error'}`, { actions: true, isError: true, onRetry: () => handleChatFileUpload(file) });
+      isLoading = false; sendBtn.disabled = false; inputEl.focus();
+      return;
+    }
+    const d = data.ocrData || {};
+    const contextMsg =
+      `[Attached document: "${file.name}". OCR extraction result (JSON): ${JSON.stringify(d)}]\n\n` +
+      `Give me a short, clear summary of this document (title/number/date/parties/amounts and the AI-suggested type), ` +
+      `then ask what I'd like to do with it — for example create a Purchase Order, Purchase Request, AP Invoice, or ` +
+      `just log it. If I confirm an action that writes to SAP, follow the normal confirmation flow before posting anything.`;
+    isLoading = false; // let sendChatMessage manage its own loading state
+    await sendChatMessage(contextMsg, { skipUserBubble: true });
+  } catch (e) {
+    typing.remove();
+    appendMsg('bot', `❌ Upload error: ${e.message}`, { actions: true, isError: true, onRetry: () => handleChatFileUpload(file) });
+    isLoading = false; sendBtn.disabled = false; inputEl.focus();
+  }
+}
 
 // Nav items
 document.querySelectorAll('.nav-item[data-prompt]').forEach(el =>
