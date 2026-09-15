@@ -230,21 +230,34 @@ const NAMESPACE_MAP = {
 // Reset each time a new brand analysis runs; keyed per session via _lastSAContext.
 let _lastSAContext = null; // { dimField, dimName, brands: Set, fromDate, toDate }
 
-let _cachedNamespace = process.env.SL_NAMESPACE || null;
-const _activeCompany  = process.env.SL_COMPANY || process.env.SAP_B1_COMPANY || "";
+// Cached PER COMPANY (not a single scalar) — the previous version resolved
+// once at process start into a bare `let`, keyed off a `const` snapshot of
+// process.env.SL_COMPANY taken at module load. Switching the active company
+// (POST /api/connections/:id/switch) correctly updates process.env and the
+// SAP session, but that const never re-read it and the cache never expired
+// — so every SMLSVC-backed analytics query after a switch kept using the
+// FIRST company's namespace, same bug class as the hoisting issues found
+// elsewhere in this file, just via a stale cache instead of a missing
+// definition. Fixed by keying the cache by company (same pattern
+// db-connector.mjs's _udfCache already uses correctly) and reading the
+// active company fresh on every call instead of a frozen snapshot.
+const _namespaceCache = new Map(); // company -> namespace string
+function _activeCompany() { return process.env.SL_COMPANY || process.env.SAP_B1_COMPANY || ""; }
 
 async function getNamespace() {
-  if (_cachedNamespace) return _cachedNamespace;
-  if (NAMESPACE_MAP[_activeCompany]) return (_cachedNamespace = NAMESPACE_MAP[_activeCompany]);
+  const company = _activeCompany();
+  if (_namespaceCache.has(company)) return _namespaceCache.get(company);
+  if (NAMESPACE_MAP[company]) { _namespaceCache.set(company, NAMESPACE_MAP[company]); return NAMESPACE_MAP[company]; }
   // Auto-discover from sml.svc service document
   try {
     const res = await getActiveSap().get("/sml.svc/");
     const queries = Array.isArray(res.value) ? res.value : [];
     const match   = queries.find(q => q.QueryName?.includes("SalesAnalysis"));
     if (match?.QueryName) {
-      _cachedNamespace = match.QueryName.split(".ar.case")[0];
-      NAMESPACE_MAP[_activeCompany] = _cachedNamespace;
-      return _cachedNamespace;
+      const ns = match.QueryName.split(".ar.case")[0];
+      _namespaceCache.set(company, ns);
+      NAMESPACE_MAP[company] = ns;
+      return ns;
     }
   } catch { /* ignore — will fall back to GET */ }
   return null;
