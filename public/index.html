@@ -2984,8 +2984,13 @@ boot();
 // ════════════════════════════════════════════════════
 // Helpers
 // ════════════════════════════════════════════════════
+// Some routes called through this helper require auth server-side
+// (requireAuth) — e.g. /api/db-connections* — so every request needs the
+// token by default. Same fix as the per-panel duplicates found and applied
+// elsewhere in this file; routes that don't require auth just ignore the
+// extra header.
 async function api(url, opts={}) {
-  const res = await fetch(url, { headers:{'Content-Type':'application/json'}, ...opts });
+  const res = await fetch(url, { headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''}, ...opts });
   return res.json();
 }
 function escHtml(s) {
