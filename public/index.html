@@ -7204,7 +7204,7 @@ let _users = [];
 
 async function loadUsers() {
   try {
-    const res = await fetch('/api/users');
+    const res = await fetch('/api/users', { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } });
     if (!res.ok) return;
     _users = await res.json();
     renderUserTable();
@@ -7249,7 +7249,7 @@ function renderUserTable() {
 async function deleteUser(id, username) {
   if (!confirm(`Delete user "${username}"?\n\nThis cannot be undone.`)) return;
   try {
-    const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/users/${id}`, { method: 'DELETE', headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } });
     if (res.ok) {
       await loadUsers();
     } else {
@@ -7286,7 +7286,7 @@ document.getElementById('user-create-form').addEventListener('submit', async (e)
   try {
     const res  = await fetch('/api/users', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('hanny_token') || '' },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -7379,7 +7379,7 @@ let _queryCache = [];
 
 async function loadQueryCache() {
   try {
-    const res = await fetch('/api/query-cache');
+    const res = await fetch('/api/query-cache', { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } });
     if (!res.ok) return;
     _queryCache = await res.json();
     renderQueryTable();
@@ -7438,14 +7438,14 @@ function renderQueryTable() {
 }
 
 async function deleteQuery(id) {
-  const res = await fetch(`/api/query-cache/${id}`, { method: 'DELETE' });
+  const res = await fetch(`/api/query-cache/${id}`, { method: 'DELETE', headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } });
   if (res.ok) await loadQueryCache();
 }
 
 // Clear all (admin)
 document.getElementById('ql-clear-all').addEventListener('click', async () => {
   if (!confirm('Clear ALL saved queries? This cannot be undone.')) return;
-  const res = await fetch('/api/query-cache', { method: 'DELETE' });
+  const res = await fetch('/api/query-cache', { method: 'DELETE', headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } });
   if (res.ok) await loadQueryCache();
 });
 
@@ -8244,7 +8244,7 @@ async function udtCreate() {
     // Use raw fetch so we can check HTTP status before parsing JSON
     const fetchRes = await fetch('/api/sap/udt', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('hanny_token') || '' },
       body: JSON.stringify({
         tableName: name,
         description: desc,
@@ -8464,7 +8464,7 @@ async function wfRunWorkflow() {
   wfSetStep('s2','running','Searching SAP B1…');
   try {
     const po = wfData.po;
-    const res = await fetch('/api/workflow/po/customer', { method:'POST', headers:{'Content-Type':'application/json'},
+    const res = await fetch('/api/workflow/po/customer', { method:'POST', headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''},
       body: JSON.stringify({ name: po.customerName, code: po.customerRef }) });
     const cust = await res.json();
     if (!res.ok || cust.error) throw new Error(cust.error||`HTTP ${res.status}`);
@@ -8512,7 +8512,7 @@ async function wfSearchCustomer() {
   const el = document.getElementById('wf-cust-results');
   if (el) el.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-top:6px">Searching…</div>';
   // pass as both name and code — backend tries name first, then exact-code fallback
-  const res = await fetch('/api/workflow/po/customer',{ method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:q, code:q}) });
+  const res = await fetch('/api/workflow/po/customer',{ method:'POST',headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''},body:JSON.stringify({name:q, code:q}) });
   const d = await res.json();
   if (!el) return;
   if (!d.found || !d.candidates.length) {
@@ -8545,7 +8545,7 @@ async function wfContinueFromCustomer() {
   // ─ Step 3: Credit ─
   wfSetStep('s3','running',`Checking credit for ${customer.CardCode}…`);
   try {
-    const res = await fetch('/api/workflow/po/credit',{ method:'POST',headers:{'Content-Type':'application/json'},
+    const res = await fetch('/api/workflow/po/credit',{ method:'POST',headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''},
       body:JSON.stringify({ cardCode: customer.CardCode, orderTotal: total }) });
     const cr = await res.json();
     if (!res.ok||cr.error) throw new Error(cr.error||`HTTP ${res.status}`);
@@ -8617,7 +8617,7 @@ async function wfRunAtp() {
   const lines = po.lines || [];
   wfSetStep('s4','running',`Checking ${lines.length} item(s)…`);
   try {
-    const res = await fetch('/api/workflow/po/atp',{ method:'POST',headers:{'Content-Type':'application/json'}, body:JSON.stringify({ lines }) });
+    const res = await fetch('/api/workflow/po/atp',{ method:'POST',headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''}, body:JSON.stringify({ lines }) });
     const atp = await res.json();
     if (!res.ok||atp.error) throw new Error(atp.error||`HTTP ${res.status}`);
     wfData.atp = atp;
@@ -8667,7 +8667,7 @@ function wfMapItem(lineIdx, inputId) {
   const cell = document.getElementById(`wf-map-${lineIdx}`);
   if (cell) cell.innerHTML = `<span style="font-size:11px;color:var(--green)">✓ Mapped to ${code}</span>`;
   // Recalculate ATP for this item
-  fetch('/api/workflow/po/atp',{ method:'POST',headers:{'Content-Type':'application/json'}, body:JSON.stringify({ lines:[{ ...wfData.atp.lines[lineIdx], itemCode:code }] }) })
+  fetch('/api/workflow/po/atp',{ method:'POST',headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''}, body:JSON.stringify({ lines:[{ ...wfData.atp.lines[lineIdx], itemCode:code }] }) })
     .then(r=>r.json()).then(d=>{
       if (d.lines?.[0]) {
         wfData.atp.lines[lineIdx] = d.lines[0];
@@ -8748,7 +8748,7 @@ async function wfCreateOrder() {
   btn.textContent = '⏳ Creating Sales Order…';
 
   try {
-    const res = await fetch('/api/workflow/po/create', { method:'POST', headers:{'Content-Type':'application/json'},
+    const res = await fetch('/api/workflow/po/create', { method:'POST', headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''},
       body: JSON.stringify({
         cardCode: customer.CardCode,
         poNumber: po.poNumber,
@@ -8954,7 +8954,7 @@ async function wfShowPoView() {
   if (needsLookup) {
     try {
       const r = await fetch('/api/workflow/po/customer', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'application/json','x-auth-token':localStorage.getItem('hanny_token')||''},
         body: JSON.stringify({ name: po.customerName, code: po.customerRef })
       });
       const d = await r.json();
@@ -9189,6 +9189,11 @@ let _mpoCurrentEmail = null;   // { uid, from, subject }
 let _mpoCurrentPo    = null;   // extracted PO JSON
 let _mpoCurrentCustomer = null;// SAP customer object
 
+// Every /api/mail-po* and /api/workflow/po/* route requires auth server-side;
+// this panel's fetch() calls previously sent none of them, so every action
+// silently 401'd.
+function _mpoAuthHdr() { return { 'x-auth-token': localStorage.getItem('hanny_token') || '' }; }
+
 async function showMailPoPanel() {
   // Move panel into .main so it participates in the flex layout (same as workflow-panel)
   const mainEl  = document.querySelector('.main');
@@ -9230,7 +9235,7 @@ function mpoTab(name) {
 
 async function mpoLoadStatus() {
   try {
-    const r = await fetch('/api/mail-po/status');
+    const r = await fetch('/api/mail-po/status', { headers: _mpoAuthHdr() });
     const d = await r.json();
     const dot   = document.getElementById('mpo-status-dot');
     const label = document.getElementById('mpo-status-label');
@@ -9264,7 +9269,7 @@ async function mpoScanInbox() {
   statusEl.textContent = '';
   listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)">⏳ Connecting to mailbox…</div>';
   try {
-    const r = await fetch('/api/mail-po/inbox');
+    const r = await fetch('/api/mail-po/inbox', { headers: _mpoAuthHdr() });
     const d = await r.json();
     if (!d.ok) { listEl.innerHTML = `<div style="text-align:center;padding:30px;color:#C0392B">❌ ${escHtml(d.error||'Scan failed')}</div>`; return; }
     const emails = d.emails || [];
@@ -9325,7 +9330,7 @@ async function mpoOpenEmail(uid, from, subject, date) {
   _mpoCurrentEmail = { uid, from, subject };
   _mpoCurrentPo = null; _mpoCurrentCustomer = null;
   try {
-    const r = await fetch('/api/mail-po/open', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ uid }) });
+    const r = await fetch('/api/mail-po/open', { method:'POST', headers:{'Content-Type':'application/json',..._mpoAuthHdr()}, body: JSON.stringify({ uid }) });
     const d = await r.json();
     if (!d.ok) { loadEl.innerHTML = `<span style="color:#C0392B">❌ ${escHtml(d.error)}</span>`; return; }
     document.getElementById('mpo-det-pdf').textContent = d.pdfName || 'PDF attached';
@@ -9341,7 +9346,7 @@ async function mpoExtract(uid) {
   loadEl.style.display = 'block';
   loadEl.innerHTML = '<span class="mpo-dot-loader">🤖 AI extracting PO data, checking customer &amp; credit…</span>';
   try {
-    const r = await fetch('/api/mail-po/extract', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ uid }) });
+    const r = await fetch('/api/mail-po/extract', { method:'POST', headers:{'Content-Type':'application/json',..._mpoAuthHdr()}, body: JSON.stringify({ uid }) });
     const d = await r.json();
     if (!d.ok) { loadEl.innerHTML = `<span style="color:#C0392B">❌ ${escHtml(d.error)}</span>`; return; }
     loadEl.style.display = 'none';
@@ -9427,7 +9432,7 @@ async function mpoSearchCustomer() {
   const custEl = document.getElementById('mpo-customer-info');
   custEl.innerHTML = '<div style="color:#64748B;font-size:12px">⏳ Searching…</div>';
   try {
-    const r = await fetch('/api/workflow/po/customer', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:q,code:q}) });
+    const r = await fetch('/api/workflow/po/customer', { method:'POST', headers:{'Content-Type':'application/json',..._mpoAuthHdr()}, body: JSON.stringify({name:q,code:q}) });
     const d = await r.json();
     if (d.candidates?.length) {
       const c = d.candidates[0]; _mpoCurrentCustomer = c;
@@ -9438,7 +9443,7 @@ async function mpoSearchCustomer() {
       </div>`;
       document.getElementById('mpo-create-section').style.display = 'block';
       // Run credit check
-      const cr = await fetch('/api/workflow/po/credit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({cardCode:c.CardCode, orderTotal:_mpoCurrentPo?.total||0}) });
+      const cr = await fetch('/api/workflow/po/credit', { method:'POST', headers:{'Content-Type':'application/json',..._mpoAuthHdr()}, body: JSON.stringify({cardCode:c.CardCode, orderTotal:_mpoCurrentPo?.total||0}) });
       const cd = await cr.json();
       if (cd.ok) _mpoRenderCredit(cd);
     } else {
@@ -9506,7 +9511,7 @@ function _mpoRenderEditableLines(lines) {
 
 async function _mpoLoadUoms(itemCode, idx, currentCode) {
   try {
-    const r = await fetch(`/api/mail-po/item-uoms?itemCode=${encodeURIComponent(itemCode)}`);
+    const r = await fetch(`/api/mail-po/item-uoms?itemCode=${encodeURIComponent(itemCode)}`, { headers: _mpoAuthHdr() });
     const d = await r.json();
     const sel = document.querySelector(`.mpo-line-uom[data-idx="${idx}"]`);
     const sp  = document.querySelector(`.mpo-uom-spin[data-idx="${idx}"]`);
@@ -9593,7 +9598,7 @@ async function mpoValidateSo() {
   const lines = _mpoReadLines();
   try {
     const r = await fetch('/api/mail-po/validate-so', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json',..._mpoAuthHdr()},
       body: JSON.stringify({ cardCode: _mpoCurrentCustomer.CardCode, lines })
     });
     const d = await r.json();
@@ -9650,7 +9655,7 @@ async function mpoPostSo() {
   const lines = _mpoReadLines();
   try {
     const r = await fetch('/api/mail-po/create-so-mail', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json',..._mpoAuthHdr()},
       body: JSON.stringify({
         fromEmail:    _mpoCurrentEmail?.from    || '',
         subject:      _mpoCurrentEmail?.subject || '',
@@ -9698,8 +9703,8 @@ async function mpoSaveAndTest() {
   if (!host || !user || !pass) { res.innerHTML = '<span style="color:#C0392B">❌ Host, email and password are required.</span>'; return; }
   res.innerHTML = '<span style="color:#64748B">⏳ Saving and testing…</span>';
   try {
-    await fetch('/api/mail-po/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({host,port,user,pass,smtp,poll}) });
-    const r = await fetch('/api/mail-po/test', { method:'POST' });
+    await fetch('/api/mail-po/config', { method:'POST', headers:{'Content-Type':'application/json',..._mpoAuthHdr()}, body: JSON.stringify({host,port,user,pass,smtp,poll}) });
+    const r = await fetch('/api/mail-po/test', { method:'POST', headers: _mpoAuthHdr() });
     const d = await r.json();
     if (d.ok) {
       res.innerHTML = '<span style="color:#16A34A">✅ Connection successful! You can now start monitoring.</span>';
@@ -9711,14 +9716,14 @@ async function mpoSaveAndTest() {
 }
 
 async function mpoStart() {
-  const r = await fetch('/api/mail-po/start', { method:'POST' });
+  const r = await fetch('/api/mail-po/start', { method:'POST', headers: _mpoAuthHdr() });
   const d = await r.json();
   if (d.ok) await mpoLoadStatus();
   else document.getElementById('mpo-test-result').innerHTML = `<span style="color:#C0392B">❌ ${escHtml(d.error)}</span>`;
 }
-async function mpoStop() { await fetch('/api/mail-po/stop', { method:'POST' }); await mpoLoadStatus(); }
+async function mpoStop() { await fetch('/api/mail-po/stop', { method:'POST', headers: _mpoAuthHdr() }); await mpoLoadStatus(); }
 async function mpoRefreshLogs() {
-  const r = await fetch('/api/mail-po/logs');
+  const r = await fetch('/api/mail-po/logs', { headers: _mpoAuthHdr() });
   const logs = await r.json();
   const el = document.getElementById('mpo-log-list');
   if (!el) return;
@@ -18461,6 +18466,7 @@ setInterval(() => {
       <div id="apinv-status-text" style="font-size:10px;opacity:.65">OCR three-way match: PO → GRPO → Supplier Invoice</div>
     </div>
     <span id="apinv-step-badge" style="background:rgba(29,78,216,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="showChatPanel()" title="Back to Chat" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">← Back</button>
     <button onclick="apinvResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Restart
@@ -18651,6 +18657,7 @@ setInterval(() => {
       <div style="font-size:10px;opacity:.65">Scan visitor/vehicle/material gate pass → local security register (no SAP posting)</div>
     </div>
     <span id="ocrgp-step-badge" style="background:rgba(8,145,178,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="showChatPanel()" title="Back to Chat" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">← Back</button>
     <button onclick="ocrgpResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Restart
@@ -18694,6 +18701,7 @@ setInterval(() => {
       <div style="font-size:10px;opacity:.65">Scan any document → OCR summary → choose which workflow it belongs to</div>
     </div>
     <span id="ocrdoc-step-badge" style="background:rgba(100,116,139,.6);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="showChatPanel()" title="Back to Chat" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">← Back</button>
     <button onclick="ocrdocResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Restart
