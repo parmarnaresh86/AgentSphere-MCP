@@ -3169,6 +3169,23 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// Same check as requireAuth, but also accepts the token as a ?token= query
+// param. Scoped deliberately to the "print this document" routes, which are
+// opened as plain <a href target="_blank"> links — a real browser
+// navigation, which can never carry a custom x-auth-token/Authorization
+// header. Using requireAuth on those routes was a real fix in name only:
+// it closed the auth gap but also made every "Print" link 401 instead of
+// ever showing the document (confirmed live before this was added). Not
+// used anywhere a header is available, so it doesn't widen what a route
+// accepts beyond this specific navigation-only case.
+function requireAuthOrQueryToken(req, res, next) {
+  const token = getToken(req) || (typeof req.query.token === "string" ? req.query.token : null);
+  const user = sessionRepo.verify(token);
+  if (!user) return res.status(401).json({ error: "Unauthorised" });
+  req.user = user;
+  next();
+}
+
 // ── Auth routes ──────────────────────────────────────────────
 // POST /auth/login
 app.post("/auth/login", (req, res) => {
@@ -5196,28 +5213,28 @@ app.use('/api/pricing', createPricingAgentRouter({ requireAuth, getActiveSap, gp
 
 // ── Purchase Request Chat Agent routes ─────────────────────────────────────
 app.use('/api/pr-agent', createPurchaseRequestAgentRouter({
-  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 
 // ── Standalone Purchase Order Agent routes ─────────────────────────────────
-app.use('/api/po-agent', createPurchaseOrderAgentRouter({ requireAuth, getActiveSap }));
+app.use('/api/po-agent', createPurchaseOrderAgentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 
 // ── Standalone Sales Order Agent routes ────────────────────────────────────
-app.use('/api/sales-order-agent', createSalesOrderAgentRouter({ requireAuth, getActiveSap }));
+app.use('/api/sales-order-agent', createSalesOrderAgentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 
 // ── PR to PO Conversion Agent routes ───────────────────────────────────────
 app.use('/api/pr-to-po', createPRtoPOAgentRouter({
-  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 
 // ── PO to GRPO Receipt Agent routes ────────────────────────────────────────
 app.use('/api/po-to-grpo', createPOtoGRPOAgentRouter({
-  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 
 // ── GRPO to AP Invoice OCR Agent routes ────────────────────────────────────
 app.use('/api/grpo-apinv', createGRPOtoAPInvAgentRouter({
-  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 
 // ── OCR Processing suite routes ─────────────────────────────────────────────
@@ -5240,7 +5257,7 @@ app.use('/api/ocr-document', createOcrDocumentAgentRouter({
 
 // ── Three-Way Match Agent routes ────────────────────────────────────────────
 app.use('/api/three-way-match', createThreeWayMatchRouter({
-  requireAuth, getActiveSap,
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap,
   isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap,
 }));
 
@@ -5263,18 +5280,18 @@ app.use('/api', createFinancialAgentRouter({ requireAuth }));
 
 // ── AP Invoice to AP Credit Memo Agent routes ───────────────────────────────
 app.use('/api/apinv-apcm', createAPInvToAPCMAgentRouter({
-  requireAuth, getActiveSap,
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap,
 }));
 
 // ── Sales O2C Agent routes ──────────────────────────────────────────────────
-app.use('/api/sales-quotation',    createSalesQuotationRouter({ requireAuth, getActiveSap }));
+app.use('/api/sales-quotation',    createSalesQuotationRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/quotation-comparison', createQuotationComparisonRouter({ requireAuth, getActiveSap }));
-app.use('/api/quotation-order',    createQuotationToOrderRouter({ requireAuth, getActiveSap }));
-app.use('/api/order-delivery',     createOrderToDeliveryRouter({ requireAuth, getActiveSap }));
-app.use('/api/delivery-arinv',     createDeliveryToARInvRouter({ requireAuth, getActiveSap }));
-app.use('/api/arinv-arcm',         createARInvToARCMRouter({ requireAuth, getActiveSap }));
-app.use('/api/incoming-payment',   createIncomingPaymentRouter({ requireAuth, getActiveSap }));
-app.use('/api/outgoing-payment',   createOutgoingPaymentRouter({ requireAuth, getActiveSap }));
+app.use('/api/quotation-order',    createQuotationToOrderRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
+app.use('/api/order-delivery',     createOrderToDeliveryRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
+app.use('/api/delivery-arinv',     createDeliveryToARInvRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
+app.use('/api/arinv-arcm',         createARInvToARCMRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
+app.use('/api/incoming-payment',   createIncomingPaymentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
+app.use('/api/outgoing-payment',   createOutgoingPaymentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 
 // ── Order Intelligence Agent routes ──────────────────────────────────────
 app.use('/api/order-intelligence', createOrderIntelligenceRouter({

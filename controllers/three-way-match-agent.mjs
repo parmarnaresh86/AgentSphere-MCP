@@ -653,7 +653,7 @@ ${doc.Comments ? `<div style="border:1px solid #ddd;border-radius:6px;padding:12
 // ── Router factory ────────────────────────────────────────────────────────────
 export function createThreeWayMatchRouter(deps) {
   const {
-    requireAuth, getActiveSap,
+    requireAuth, printAuth, getActiveSap,
     isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap,
   } = deps;
   const router  = Router();
@@ -1005,7 +1005,7 @@ export function createThreeWayMatchRouter(deps) {
   });
 
   // ── GET /print/:docEntry ─────────────────────────────────────────────────────
-  router.get('/print/:docEntry', async (req, res) => {
+  router.get('/print/:docEntry', printAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
       const doc = await sap.get(`/PurchaseInvoices(${parseInt(req.params.docEntry, 10)})`);

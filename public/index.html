@@ -2832,6 +2832,36 @@ body{font-family:var(--font);color:var(--text);display:flex}
 </div>
 
 <script>
+// A batch of controllers' /print/:docEntry routes now require auth
+// (previously open to anyone who found/guessed a docEntry), but every one
+// of those "🖨️ Print ..." links across the many agent panels is a plain
+// <a href target="_blank"> — a real browser navigation, which can't carry
+// an Authorization/x-auth-token header. The server accepts the same token
+// as a ?token= query param on those routes specifically (requireAuthOrQueryToken
+// in chat-server.mjs); this patches every such link's href with it as soon
+// as it appears in the DOM, from whichever of the many per-agent render
+// functions created it — one place instead of duplicating this in each.
+// Deliberately excludes /api/print/ (lookup-api.mjs's generic print route,
+// which stays unauthenticated by design) so it never gets a token appended.
+(function () {
+  function patchPrintLink(a) {
+    const href = a.getAttribute('href') || '';
+    if (!href.startsWith('/api/') || href.includes('/api/print/') || href.includes('token=')) return;
+    const tok = localStorage.getItem('hanny_token');
+    if (!tok) return;
+    a.setAttribute('href', href + (href.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(tok));
+  }
+  new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.matches?.('a[href*="/print/"]')) patchPrintLink(node);
+        node.querySelectorAll?.('a[href*="/print/"]').forEach(patchPrintLink);
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+})();
+
 // ════════════════════════════════════════════════════
 // State
 // ════════════════════════════════════════════════════

@@ -329,7 +329,7 @@ ${cards.length > 0 ? `
 // ── Router factory ─────────────────────────────────────────────────────────────
 
 export function createIncomingPaymentRouter(deps) {
-  const { requireAuth, getActiveSap } = deps;
+  const { requireAuth, printAuth, getActiveSap } = deps;
   const router = Router();
 
   // ── POST /chat ─────────────────────────────────────────────────────────────
@@ -606,7 +606,7 @@ export function createIncomingPaymentRouter(deps) {
   });
 
   // ── GET /print/:docEntry ───────────────────────────────────────────────────
-  router.get('/print/:docEntry', requireAuth, async (req, res) => {
+  router.get('/print/:docEntry', printAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
       const doc = await fetchIncomingPayment(sap, req.params.docEntry);

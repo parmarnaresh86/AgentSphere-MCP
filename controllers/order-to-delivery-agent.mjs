@@ -240,7 +240,7 @@ ${doc.Comments ? `<div style="border:1px solid #fde68a;border-radius:6px;padding
 // ── Router factory ─────────────────────────────────────────────────────────────
 
 export function createOrderToDeliveryRouter(deps) {
-  const { requireAuth, getActiveSap } = deps;
+  const { requireAuth, printAuth, getActiveSap } = deps;
   const router = Router();
 
   // ── POST /chat ─────────────────────────────────────────────────────────────
@@ -572,7 +572,7 @@ export function createOrderToDeliveryRouter(deps) {
   });
 
   // ── GET /print/:docEntry ───────────────────────────────────────────────────
-  router.get('/print/:docEntry', async (req, res) => {
+  router.get('/print/:docEntry', printAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
       const doc = await sap.get(`/DeliveryNotes(${parseInt(req.params.docEntry, 10)})`);

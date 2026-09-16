@@ -225,7 +225,7 @@ function buildPRSummary(session) {
 
 // ── Main router factory ────────────────────────────────────────────────────────
 export function createPurchaseRequestAgentRouter(deps) {
-  const { requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI } = deps;
+  const { requireAuth, printAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI } = deps;
   const aiDeps = { AI_PROVIDER, gptChatComplete, azureMessagesCreate, USE_AI };
   const router = Router();
 
@@ -700,7 +700,7 @@ export function createPurchaseRequestAgentRouter(deps) {
   });
 
   // GET /print/:docEntry ────────────────────────────────────────────────────────
-  router.get('/print/:docEntry', async (req, res) => {
+  router.get('/print/:docEntry', printAuth, async (req, res) => {
     try {
       const { docEntry } = req.params;
       const sap = getActiveSap();

@@ -200,7 +200,7 @@ function buildPOSummary(session) {
 
 // ── Main router factory ────────────────────────────────────────────────────────
 export function createPRtoPOAgentRouter(deps) {
-  const { requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI } = deps;
+  const { requireAuth, printAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI } = deps;
   const aiDeps = { AI_PROVIDER, gptChatComplete, azureMessagesCreate, USE_AI };
   const router = Router();
 
@@ -591,7 +591,7 @@ export function createPRtoPOAgentRouter(deps) {
   });
 
   // GET /print/:docEntry ─────────────────────────────────────────────────────────
-  router.get('/print/:docEntry', async (req, res) => {
+  router.get('/print/:docEntry', printAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
       const doc = await sap.get(`/PurchaseOrders(${parseInt(req.params.docEntry, 10)})`);

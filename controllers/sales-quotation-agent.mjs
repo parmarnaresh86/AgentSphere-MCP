@@ -280,7 +280,7 @@ ${doc.Comments ? `<div style="border:1px solid #bbf7d0;border-radius:6px;padding
 // ── Router factory ─────────────────────────────────────────────────────────────
 
 export function createSalesQuotationRouter(deps) {
-  const { requireAuth, getActiveSap } = deps;
+  const { requireAuth, printAuth, getActiveSap } = deps;
   const router = Router();
 
   // ── GET /items/search ──────────────────────────────────────────────────────
@@ -604,7 +604,7 @@ export function createSalesQuotationRouter(deps) {
   });
 
   // ── GET /print/:docEntry ───────────────────────────────────────────────────
-  router.get('/print/:docEntry', async (req, res) => {
+  router.get('/print/:docEntry', printAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
       const doc = await sap.get(`/Quotations(${parseInt(req.params.docEntry, 10)})`);

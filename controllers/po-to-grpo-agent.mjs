@@ -155,7 +155,7 @@ function buildVendorSummaryText(groups, totalPOs) {
 
 // ── Main router factory ────────────────────────────────────────────────────────
 export function createPOtoGRPOAgentRouter(deps) {
-  const { requireAuth, getActiveSap } = deps;
+  const { requireAuth, printAuth, getActiveSap } = deps;
   const router = Router();
 
   router.post('/chat', requireAuth, async (req, res) => {
@@ -412,7 +412,7 @@ export function createPOtoGRPOAgentRouter(deps) {
   });
 
   // GET /print/:docEntry ─────────────────────────────────────────────────────────
-  router.get('/print/:docEntry', async (req, res) => {
+  router.get('/print/:docEntry', printAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
       const doc = await sap.get(`/PurchaseDeliveryNotes(${parseInt(req.params.docEntry, 10)})`);
