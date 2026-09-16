@@ -14,7 +14,7 @@ import { createPoWorkflowAgentRouter } from "./controllers/po-workflow-agent.mjs
 import { createMailPoAgentRouter } from "./controllers/mail-po-agent.mjs";
 import { createLookupApiRouter } from "./controllers/lookup-api.mjs";
 import { createBrandingRouter } from "./controllers/branding.mjs";
-import { isWriteTool, describeWriteActions, CONFIRM_RE, CANCEL_RE } from "./lib/write-confirm.mjs";
+import { isWriteTool, describeWriteActions, CONFIRM_RE, CANCEL_RE, DUPLICATE_REF_RE, findRefField, suggestAltReference } from "./lib/write-confirm.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -3516,7 +3516,7 @@ async function executeConfirmedWrite(call) {
     );
     return { ...call, raw, error: null };
   } catch (e) {
-    return { ...call, raw: `Error: ${e.message}`, error: e.message };
+    return { ...call, raw: `Error: ${e.message}`, error: e.message, duplicateRef: DUPLICATE_REF_RE.test(e.message) };
   }
 }
 
@@ -3579,10 +3579,51 @@ app.post("/api/chat", async (req, res) => {
     if (CANCEL_RE.test(trimmed)) {
       return sendReply({ reply: "Cancelled — nothing was sent to SAP.", sessionId: sid, mode: "write-cancelled" });
     }
+    // We're retrying after SAP rejected a duplicate reference number and
+    // asked which one to use instead — free text here (anything that isn't
+    // a plain yes/no) is the reference the user wants, not a stale message
+    // to drop. A plain "yes" instead means "use the one I suggested".
+    if (pendingWrite.isDuplicateRefRetry && !CONFIRM_RE.test(trimmed) && !CANCEL_RE.test(trimmed)) {
+      const call = pendingWrite.pendingCalls[0];
+      const refField = findRefField(call.args) || "numAtCard";
+      _pendingWrites.set(sid, {
+        ...pendingWrite,
+        pendingCalls: [{ ...call, args: { ...call.args, [refField]: trimmed } }],
+      });
+      return sendReply({
+        reply: `Got it — I'll use **"${trimmed}"** as the reference number instead. Reply **yes** to post it, or **no** to cancel.`,
+        sessionId: sid,
+        mode: "write-duplicate-ref",
+      });
+    }
     if (CONFIRM_RE.test(trimmed)) {
       try {
         const writeResults = await Promise.all(pendingWrite.pendingCalls.map(executeConfirmedWrite));
         const failures = writeResults.filter(r => r.error);
+
+        // Exactly one call, and it failed specifically because SAP rejected
+        // a duplicate customer/vendor reference number (the raw-error
+        // dead-end this whole flow exists to avoid) — suggest a fresh
+        // reference and offer to retry with it, rather than handing SAP's
+        // raw JSON error to the AI to paraphrase as best it can.
+        if (writeResults.length === 1 && writeResults[0].duplicateRef) {
+          const failedCall = writeResults[0];
+          const refField = findRefField(failedCall.args);
+          const oldVal = refField ? failedCall.args[refField] : null;
+          const suggested = suggestAltReference(oldVal);
+          _pendingWrites.set(sid, {
+            ...pendingWrite,
+            pendingCalls: [{ ...failedCall, args: { ...failedCall.args, ...(refField ? { [refField]: suggested } : {}) } }],
+            isDuplicateRefRetry: true,
+          });
+          return sendReply({
+            reply: `❌ SAP rejected this — the reference number${oldVal ? ` **"${oldVal}"**` : ""} is already used for this customer/vendor (SAP doesn't allow a duplicate).\n\n` +
+              `Want me to retry with **"${suggested}"** instead? Reply **yes** to use that, tell me a different reference number, or **no** to cancel.`,
+            sessionId: sid,
+            mode: "write-duplicate-ref",
+          });
+        }
+
         let resumed;
         if (pendingWrite.engine === "claude") {
           const results = [
