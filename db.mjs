@@ -977,6 +977,12 @@ db.exec(`
 // turns) so the conversation-history sidebar can show a stable title
 // without re-parsing the full message array on every list request.
 try { db.exec(`ALTER TABLE chat_sessions ADD COLUMN preview TEXT DEFAULT ''`); } catch {}
+// user_id: who this conversation belongs to, set once at creation (best-
+// effort — /api/chat itself doesn't require auth, so this can be NULL for
+// an anonymous/widget caller). Added so the history sidebar (list/get) can
+// filter to the caller's own sessions instead of exposing every user's
+// conversations — it originally had no ownership check at all.
+try { db.exec(`ALTER TABLE chat_sessions ADD COLUMN user_id INTEGER`); } catch {}
 
 // Stored messages are the raw Claude/GPT-4o tool-calling wire format (content
 // blocks, tool_use/tool_result turns, etc.) — not something to show a human
@@ -1005,7 +1011,10 @@ export const chatSessionRepo = {
     if (!row) return null;
     try { return JSON.parse(row.messages); } catch { return null; }
   },
-  set(sessionId, messages) {
+  // userId: the caller's id, if known (best-effort — set on first insert
+  // only, like preview; never overwritten on later turns of the same
+  // conversation, so ownership can't be reassigned mid-conversation).
+  set(sessionId, messages, userId = null) {
     const existing = db.prepare(`SELECT session_id FROM chat_sessions WHERE session_id=?`).get(sessionId);
     let preview = null;
     if (!existing) {
@@ -1013,24 +1022,37 @@ export const chatSessionRepo = {
       preview = firstUser ? firstUser.content.slice(0, 120) : '(New conversation)';
     }
     db.prepare(`
-      INSERT INTO chat_sessions (session_id, messages, updated_at, preview)
-      VALUES (?,?,CURRENT_TIMESTAMP,?)
+      INSERT INTO chat_sessions (session_id, messages, updated_at, preview, user_id)
+      VALUES (?,?,CURRENT_TIMESTAMP,?,?)
       ON CONFLICT(session_id) DO UPDATE SET messages=excluded.messages, updated_at=CURRENT_TIMESTAMP
-    `).run(sessionId, JSON.stringify(messages), preview || '');
+    `).run(sessionId, JSON.stringify(messages), preview || '', userId);
   },
   delete(sessionId) {
     db.prepare(`DELETE FROM chat_sessions WHERE session_id=?`).run(sessionId);
   },
-  // Most-recently-active conversations, newest first, for the history sidebar.
-  list(limit = 50) {
-    return db.prepare(`SELECT session_id, preview, updated_at FROM chat_sessions ORDER BY updated_at DESC LIMIT ?`).all(limit);
+  // Most-recently-active conversations belonging to userId, newest first,
+  // for the history sidebar — was unfiltered (every user's sessions),
+  // returns nothing for an unknown caller rather than falling back to "all".
+  list(limit = 50, userId = null) {
+    if (userId == null) return [];
+    return db.prepare(`SELECT session_id, preview, updated_at FROM chat_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT ?`).all(userId, limit);
   },
   // Full conversation as displayable {role, text} turns, for loading a past
-  // session back into the chat UI.
+  // session back into the chat UI. Unscoped — used internally within the
+  // same request that owns sessionId, not exposed directly over HTTP.
   getDisplayable(sessionId) {
     const messages = chatSessionRepo.get(sessionId);
     if (!messages) return null;
     return extractDisplayText(messages);
+  },
+  // Ownership-checked variant for the HTTP route that lets a user reload a
+  // past conversation — returns null for a session that doesn't exist OR
+  // belongs to someone else (same response either way, so the route can't
+  // be used to probe which session ids exist).
+  getDisplayableForUser(sessionId, userId) {
+    const row = db.prepare(`SELECT messages, user_id FROM chat_sessions WHERE session_id=?`).get(sessionId);
+    if (!row || row.user_id == null || row.user_id !== userId) return null;
+    try { return extractDisplayText(JSON.parse(row.messages)); } catch { return null; }
   },
   // Drop conversations untouched for maxAgeMs — call occasionally to keep the table small.
   prune(maxAgeMs) {

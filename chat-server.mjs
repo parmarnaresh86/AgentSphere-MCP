@@ -3532,6 +3532,11 @@ app.post("/api/chat", async (req, res) => {
   let { message, sessionId, engine, stream } = req.body;
   if (!message) return res.status(400).json({ error: "message required" });
   const sid = sessionId || crypto.randomUUID();
+  // Best-effort caller identity — this route doesn't require auth (the
+  // embeddable widget can call it without a login), but when a valid token
+  // IS present we record ownership so the history sidebar (which DOES
+  // require auth) can later filter to just this user's own conversations.
+  const callerUser = sessionRepo.verify(getToken(req));
 
   // Optional SSE streaming — wraps the EXISTING handler's logic/branches
   // (write-confirmation, multi-tab reports, clarification flows, per-engine
@@ -3638,7 +3643,7 @@ app.post("/api/chat", async (req, res) => {
           ];
           resumed = await runGptAgentLoop(pendingWrite.messages, { assistantMessage: pendingWrite.assistantMessage, results });
         }
-        chatSessionRepo.set(sid, resumed.messages);
+        chatSessionRepo.set(sid, resumed.messages, callerUser?.user_id ?? null);
         const note = failures.length ? `\n\n⚠️ ${failures.length} of ${writeResults.length} action(s) failed — see above.` : "";
         return sendReply({ reply: resumed.text + note, sessionId: sid, mode: pendingWrite.engine === "claude" ? "ai" : "gpt4o" });
       } catch (err) {
@@ -3832,7 +3837,7 @@ app.post("/api/chat", async (req, res) => {
             _pendingWrites.set(sid, { engine: "gpt", assistantMessage: result.assistantMessage, readResults: result.readResults, pendingCalls: result.pendingCalls, messages: result.messages });
             reply = `Before I proceed, please confirm this action:\n\n${describeWriteActions(result.pendingCalls)}\n\n**Reply "yes" to confirm, or "cancel" to discard.**`;
           } else {
-            chatSessionRepo.set(sid, result.messages);
+            chatSessionRepo.set(sid, result.messages, callerUser?.user_id ?? null);
             reply = result.text;
           }
         }
@@ -3911,7 +3916,7 @@ app.post("/api/chat", async (req, res) => {
             _pendingWrites.set(sid, { engine: "claude", assistantContent: result.assistantContent, readResults: result.readResults, pendingCalls: result.pendingCalls, messages: result.messages });
             reply = `Before I proceed, please confirm this action:\n\n${describeWriteActions(result.pendingCalls)}\n\n**Reply "yes" to confirm, or "cancel" to discard.**`;
           } else {
-            chatSessionRepo.set(sid, result.messages);
+            chatSessionRepo.set(sid, result.messages, callerUser?.user_id ?? null);
             reply = result.text;
 
             // ── Save tool calls to prompt cache ────────────────────────
@@ -3973,15 +3978,20 @@ app.post("/api/reset", (req,res) => { chatSessionRepo.delete(req.body.sessionId)
 // and /api/reset above, which predate this and stay as they are — they're
 // behind requireAuth from the start: listing/reading past conversation
 // content is more sensitive than a single reset action.
+//
+// requireAuth alone isn't ownership, though — it was originally missing
+// entirely, so any logged-in user could list and read every other user's
+// (or company's) sessions via chatSessionRepo.list(50)/getDisplayable(id)
+// with no filter at all. Both now scope strictly to req.user.user_id.
 app.get("/api/chat/sessions", requireAuth, (req, res) => {
   try {
-    res.json({ ok: true, sessions: chatSessionRepo.list(50) });
+    res.json({ ok: true, sessions: chatSessionRepo.list(50, req.user.user_id) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 app.get("/api/chat/sessions/:id", requireAuth, (req, res) => {
   try {
-    const turns = chatSessionRepo.getDisplayable(req.params.id);
+    const turns = chatSessionRepo.getDisplayableForUser(req.params.id, req.user.user_id);
     if (!turns) return res.status(404).json({ ok: false, error: "Session not found" });
     res.json({ ok: true, sessionId: req.params.id, turns });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
