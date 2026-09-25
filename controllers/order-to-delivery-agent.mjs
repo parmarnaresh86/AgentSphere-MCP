@@ -7,10 +7,28 @@
  *  5. Post Delivery Note to SAP B1 (BaseType 17 — Order)
  */
 import { Router } from 'express';
-import db, { connRepo } from '../db.mjs';
+import db, { connRepo, cacheRepo } from '../db.mjs';
 
 function getCompanyId() { const c = connRepo.getActive(); return c ? c.company : 'default'; }
 function getCacheWarehouses() { return db.prepare(`SELECT WarehouseCode,WarehouseName FROM cache_warehouses WHERE company_id=? AND Inactive='tNO' ORDER BY WarehouseCode`).all(getCompanyId()); }
+
+// SAP Service Layer silently caps rows-per-request at its configured page size
+// (commonly 20) no matter what $top asks for, and returns an odata.nextLink
+// instead of erroring — so a plain single sap.get() call only ever sees the
+// first page. Keep paging with $skip until SAP returns no more rows.
+async function fetchAllPages(sap, endpoint, params = {}, hardCap = 5000) {
+  const all = [];
+  let skip = 0;
+  while (true) {
+    const r = await sap.get(endpoint, { ...params, $skip: skip });
+    const rows = Array.isArray(r.value) ? r.value : [];
+    if (!rows.length) break;
+    all.push(...rows);
+    if (all.length >= hardCap) break;
+    skip += rows.length;
+  }
+  return all;
+}
 
 const _sessions = new Map();
 
@@ -57,18 +75,15 @@ async function fetchOpenSourceDocs(sap, cardCode) {
   const base = {
     $filter:  `DocumentStatus eq 'bost_Open' and CardCode eq '${cc}'`,
     $orderby: 'DocDate desc',
-    $top:     50,
   };
   try {
-    const r = await sap.get('/Orders', {
+    return await fetchAllPages(sap, '/Orders', {
       ...base,
       $select: 'DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,NumAtCard',
-    });
-    if (Array.isArray(r.value)) return r.value;
+    }, 50);
   } catch { /* $select rejected by some SL versions */ }
   try {
-    const r = await sap.get('/Orders', base);
-    return Array.isArray(r.value) ? r.value : [];
+    return await fetchAllPages(sap, '/Orders', base, 50);
   } catch (e) {
     console.error('[OTD] fetchOpenSourceDocs error:', e.message);
     return [];
@@ -332,6 +347,7 @@ export function createOrderToDeliveryRouter(deps) {
               quickReplies = ['Process Another Delivery'];
               meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
             } catch (e) {
+              console.error('[OTD] post_target error:', e.message);
               reply = `❌ **Failed to post Delivery Note**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
               quickReplies = ['Open Delivery Form', 'Cancel'];
             }
@@ -528,20 +544,31 @@ export function createOrderToDeliveryRouter(deps) {
   });
 
   // ── GET /customers-with-orders ────────────────────────────────────────────
+  // Cache-first (Data Sync's "Open Sales Orders" entity, or auto-warmed here on
+  // first use) so the picker loads instantly instead of paging through /Orders
+  // live every time. Pass ?refresh=1 to force a live re-fetch — this snapshot is
+  // transactional data (orders open/close all day), so it's meant to be re-synced
+  // periodically via Tools → Data Sync rather than trusted indefinitely. The actual
+  // order lines used to build the Delivery Note are always re-fetched live below,
+  // regardless of whether this list came from cache.
   router.get('/customers-with-orders', requireAuth, async (req, res) => {
     try {
+      const companyId = getCompanyId();
+      if (req.query.refresh !== '1') {
+        const cached = cacheRepo.getOpenOrdersCustomers(companyId);
+        if (cached.length) return res.json({ ok: true, customers: cached, source: 'cache' });
+      }
       const sap = getActiveSap();
-      const r = await sap.get('/Orders', {
+      const rows = await fetchAllPages(sap, '/Orders', {
         $filter:  `DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'`,
-        $select:  'CardCode,CardName',
+        $select:  'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,NumAtCard',
         $orderby: 'CardName asc',
-        $top:     500,
       });
-      const rows = Array.isArray(r.value) ? r.value : [];
+      if (rows.length) cacheRepo.upsertOpenOrders(companyId, rows);
       const seen = new Map();
       rows.forEach(o => { if (!seen.has(o.CardCode)) seen.set(o.CardCode, o.CardName); });
       const customers = [...seen.entries()].map(([cardCode,cardName]) => ({ cardCode, cardName }));
-      res.json({ ok: true, customers });
+      res.json({ ok: true, customers, source: 'live' });
     } catch(e) { res.json({ ok: false, customers: [], error: e.message }); }
   });
 

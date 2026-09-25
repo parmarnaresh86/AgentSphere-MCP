@@ -17,7 +17,7 @@
  */
 import { Router } from 'express';
 import { cacheRepo, connRepo } from '../db.mjs';
-import { isConnected as dbIsConnected, getActiveType as dbGetActiveType, getActiveConfig, executeSQL, tableRef } from '../db-connector.mjs';
+import { isConnected as dbIsConnected, getActiveType as dbGetActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns } from '../db-connector.mjs';
 
 // ── Direct-DB availability ──────────────────────────────────────────────────
 // Sync prefers a live ODBC/direct DB connection (MSSQL or HANA) for this
@@ -148,22 +148,58 @@ const ENTITIES = {
   tax_codes: {
     label: 'Tax Codes (VAT)',
     icon:  '🧾',
+    // Tax codes live in a different table depending on the company's localization:
+    // VAT-based localizations (most of the world) keep them in OVTG (Service Layer
+    // /VatGroups); US/Canada Sales Tax localization keeps them in OSTC (Service Layer
+    // /SalesTaxCodes) instead. Both tables/entities can exist structurally on any
+    // company regardless of which one it actually uses — an unused one is simply empty,
+    // it doesn't error — so table/entity EXISTENCE can't tell us which localization this
+    // is. Fetch both and use whichever actually has rows.
     fetchSL: async (sap) => {
-      // Fetch without $select so we get the VatGroups sub-array with Rate
-      const rows = await fetchAll(sap, '/VatGroups', {});
-      return rows.map(v => {
-        // Rate is in the VatGroups collection — take the latest active entry
-        const slabs = v.VatGroups || [];
-        const rate  = slabs.length ? Number(slabs[slabs.length - 1].Rate || slabs[0].Rate || 0) : 0;
-        return { Code: v.Code, Name: v.Name, Category: v.Category, Rate: rate };
-      });
+      let vat = [];
+      try {
+        // Fetch without $select so we get the VatGroups sub-array with Rate
+        const rows = await fetchAll(sap, '/VatGroups', {});
+        vat = rows.map(v => {
+          // Rate is in the VatGroups collection — take the latest active entry
+          const slabs = v.VatGroups || [];
+          const rate  = slabs.length ? Number(slabs[slabs.length - 1].Rate || slabs[0].Rate || 0) : 0;
+          return { Code: v.Code, Name: v.Name, Category: v.Category, Rate: rate };
+        });
+      } catch (e) {
+        console.warn('[sync:tax_codes] /VatGroups fetch failed:', e.message);
+      }
+      if (vat.length) return vat;
+      try {
+        const rows = await fetchAll(sap, '/SalesTaxCodes', {});
+        const salesTax = rows.map(v => ({ Code: v.Code, Name: v.Name, Category: 'Sales Tax', Rate: Number(v.Rate || 0) }));
+        if (salesTax.length) return salesTax;
+      } catch (e) {
+        console.warn('[sync:tax_codes] /SalesTaxCodes fetch failed:', e.message);
+      }
+      return vat; // both empty/unavailable
     },
     fetchDB: async () => {
       const cfg = getActiveConfig(), isHana = dbGetActiveType() === 'hana';
-      const ovtg = tableRef('OVTG', cfg);
       const c = n => col(n, isHana);
-      const rows = await executeSQL(`SELECT ${c('Code')} AS Code, ${c('Name')} AS Name, ${c('Type')} AS Category, ${c('Rate')} AS Rate FROM ${ovtg}`);
-      return rows.map(r => ({ Code: pick(r,'Code'), Name: pick(r,'Name') || '', Category: pick(r,'Category') || '', Rate: Number(pick(r,'Rate') || 0) })).filter(r => r.Code);
+      const fetchOvtg = async () => {
+        const ovtgCols = await getTableColumns('OVTG').catch(() => new Set());
+        if (!ovtgCols.size) return [];
+        const ovtg = tableRef('OVTG', cfg);
+        const rows = await executeSQL(`SELECT ${c('Code')} AS Code, ${c('Name')} AS Name, ${c('Type')} AS Category, ${c('Rate')} AS Rate FROM ${ovtg}`);
+        return rows.map(r => ({ Code: pick(r,'Code'), Name: pick(r,'Name') || '', Category: pick(r,'Category') || '', Rate: Number(pick(r,'Rate') || 0) })).filter(r => r.Code);
+      };
+      const fetchOstc = async () => {
+        const ostcCols = await getTableColumns('OSTC').catch(() => new Set());
+        if (!ostcCols.size) return [];
+        const ostc = tableRef('OSTC', cfg);
+        const rows = await executeSQL(`SELECT ${c('Code')} AS Code, ${c('Name')} AS Name, ${c('Rate')} AS Rate, ${c('Lock')} AS LockRaw FROM ${ostc}`);
+        return rows
+          .filter(r => pick(r,'Code') && pick(r,'LockRaw') !== 'Y')
+          .map(r => ({ Code: pick(r,'Code'), Name: pick(r,'Name') || '', Category: 'Sales Tax', Rate: Number(pick(r,'Rate') || 0) }));
+      };
+      const [ovtgRows, ostcRows] = await Promise.all([fetchOvtg().catch(() => []), fetchOstc().catch(() => [])]);
+      return ovtgRows.length ? ovtgRows : ostcRows;
     },
     save: (companyId, rows) => cacheRepo.upsertTaxCodes(companyId, rows),
   },
@@ -244,6 +280,40 @@ const ENTITIES = {
       return rows.map(r => ({ Code: pick(r,'Code'), Name: pick(r,'Name') || '' })).filter(r => r.Code !== undefined && r.Code !== null);
     },
     save: (companyId, rows) => cacheRepo.upsertBPGroups(companyId, rows),
+  },
+  open_orders: {
+    label: 'Open Sales Orders',
+    icon:  '📄',
+    // Transactional, not master data — orders open/close throughout the day.
+    // This snapshot only speeds up populating the "which customers have an open
+    // order" picker; the actual order lines are always re-fetched live from SAP
+    // at the point of creating a Delivery Note, never read back out of this cache.
+    fetchSL: async (sap) => fetchAll(sap, '/Orders', {
+      $filter: `DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'`,
+      $select: 'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,NumAtCard',
+    }),
+    fetchDB: async () => {
+      const cfg = getActiveConfig(), isHana = dbGetActiveType() === 'hana';
+      const ordr = tableRef('ORDR', cfg);
+      const c = n => col(n, isHana);
+      // Not filtering on the "Canceled" flag here — its real column casing isn't
+      // consistent across installs (seen as CANCELED, all-caps, on some schemas, vs
+      // the PascalCase every other column uses) and this snapshot only feeds the
+      // customer picker; the per-customer order fetch used to actually build a
+      // Delivery Note always re-checks Cancelled live via Service Layer regardless.
+      const rows = await executeSQL(
+        `SELECT ${c('DocEntry')} AS DocEntry, ${c('DocNum')} AS DocNum, ${c('CardCode')} AS CardCode, ${c('CardName')} AS CardName,
+                ${c('DocDate')} AS DocDate, ${c('DocDueDate')} AS DocDueDate, ${c('DocTotal')} AS DocTotal, ${c('NumAtCard')} AS NumAtCard
+         FROM ${ordr} WHERE ${c('DocStatus')} = 'O'`
+      );
+      return rows
+        .filter(r => pick(r,'DocEntry') != null)
+        .map(r => ({
+          DocEntry: pick(r,'DocEntry'), DocNum: pick(r,'DocNum'), CardCode: pick(r,'CardCode'), CardName: pick(r,'CardName') || '',
+          DocDate: pick(r,'DocDate') || '', DocDueDate: pick(r,'DocDueDate') || '', DocTotal: Number(pick(r,'DocTotal') || 0), NumAtCard: pick(r,'NumAtCard') || '',
+        }));
+    },
+    save: (companyId, rows) => cacheRepo.upsertOpenOrders(companyId, rows),
   },
 };
 
@@ -424,6 +494,7 @@ export function createDataSyncRouter({ requireAuth, getActiveSap }) {
   router.get('/cache/currencies',      requireAuth, safe((req, res) => res.json(cacheRepo.getCurrencies(getCompanyId()))));
   router.get('/cache/item-groups',     requireAuth, safe((req, res) => res.json(cacheRepo.getItemGroups(getCompanyId()))));
   router.get('/cache/bp-groups',       requireAuth, safe((req, res) => res.json(cacheRepo.getBPGroups(getCompanyId()))));
+  router.get('/cache/open-orders-customers', requireAuth, safe((req, res) => res.json(cacheRepo.getOpenOrdersCustomers(getCompanyId()))));
 
   // ── Cache stats — exact row counts per entity stored in hanny.db ─────────────
   router.get('/cache/stats', requireAuth, safe((req, res) => {
