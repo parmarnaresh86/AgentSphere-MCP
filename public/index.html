@@ -3963,7 +3963,7 @@ async function sendChatMessage(text, { skipUserBubble = false } = {}) {
         badge.innerHTML = d.mode === 'db'
           ? `<span>⚡</span> Reused recent answer &nbsp;<span style="opacity:.7;font-weight:400">${escHtml(d.cacheSource)}</span>`
           : `<span>📋</span> Answered from Query Library &nbsp;<span style="opacity:.7;font-weight:400">${d.cacheSource}</span>`;
-        chatEl.appendChild(badge);
+        messagesEl.appendChild(badge);
       }
       const botRow = appendMsg('bot', d.reply, { actions: true, animate: !wasStreamed, onRegenerate: () => sendChatMessage(text, { skipUserBubble: true }) });
       if (d.queryLog?.length) injectQueryLog(botRow, d.queryLog);
