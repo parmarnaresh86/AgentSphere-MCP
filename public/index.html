@@ -2099,7 +2099,7 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-purch-p2p-workflow">
-        <div class="nav-subitem" onclick="showPRAgentPanel()" id="nav-pr-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>PR Agent</div>
+        <div class="nav-subitem" onclick="showPRAgentPanel()" id="nav-pr-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Purchase Request Agent</div>
         <div class="nav-subitem" onclick="showPOAgentPanel()" id="nav-po-agent" style="cursor:pointer"><span class="dot-icon" style="background:#7B5EA7"></span>Purchase Order</div>
         <div class="nav-subitem" onclick="showPRtoPOPanel()" id="nav-pr-to-po" style="cursor:pointer"><span class="dot-icon" style="background:#1a5c2e"></span>PR → PO</div>
         <div class="nav-subitem" onclick="showPOtoGRPOPanel()" id="nav-po-to-grpo" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>PO → GRPO</div>
@@ -3112,6 +3112,15 @@ const SAVED_PROMPTS = [
   'Top 10 customers by profit this year',
   'Items by margin this year',
   'Sales by warehouse',
+  // Purchase (P2P) — the list above was sales-only
+  'Show open purchase orders',
+  'Total purchase spend by vendor this year',
+  'AP aging breakdown by 30/60/90 days',
+  'Which vendors have the longest average lead time?',
+  'Items below reorder point right now',
+  'Purchase orders due for delivery this week',
+  'Open purchase requests awaiting approval',
+  'Monthly purchase trend this year',
 ];
 
 // ════════════════════════════════════════════════════
@@ -25593,7 +25602,7 @@ window.roAskFollowUp = function() {
     });
   });
 
-})(); // end PR Agent IIFE
+})(); // end Purchase Request Agent IIFE
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STANDALONE PURCHASE ORDER AGENT
