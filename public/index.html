@@ -15016,7 +15016,7 @@ setInterval(() => {
     const soAmt   = FD.sos.reduce((s,o)=>s+o.docTotal,0);
     const poCount = FD.pos.length;
     const poAmt   = FD.pos.reduce((s,o)=>s+o.docTotal,0);
-    const posWithLead = FD.pos.filter(p=>p.leadDays!=null && p.leadDays>0);
+    const posWithLead = FD.pos.filter(p=>p.leadDays!=null && p.leadDays>=0);
     const avgLead = posWithLead.length ? Math.round(posWithLead.reduce((s,p)=>s+p.leadDays,0)/posWithLead.length) : 0;
     const advPOs  = FD.pos.filter(p=>p.advanceStatus==='paid');
     const overdue = FD.pos.filter(p=>p.deliveryDate && new Date(p.deliveryDate) < today).length;
@@ -22940,7 +22940,14 @@ setInterval(() => {
           <button onclick="finCaSetDateBasis('due')" id="fin-ca-basis-due" style="border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:#0070F2;color:#fff;border:1px solid #0070F2">Due Date</button>
           <button onclick="finCaSetDateBasis('doc')" id="fin-ca-basis-doc" style="border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#374151;border:1px solid #d1d5db">Document Date</button>
         </div>
-        <button onclick="finCaToggleBucketEditor()" id="fin-ca-editor-toggle" style="margin-left:auto;background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">✏️ Edit Buckets</button>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+          <span style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase">Customer:</span>
+          <input type="text" id="fin-ca-customer-input" list="fin-ca-customer-list" placeholder="All customers"
+            oninput="finCaOnCustomerInput()" style="width:200px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">
+          <datalist id="fin-ca-customer-list"></datalist>
+          <button onclick="finCaClearCustomerFilter()" id="fin-ca-customer-clear" style="display:none;background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:0 4px" title="Clear filter">✕</button>
+        </div>
+        <button onclick="finCaToggleBucketEditor()" id="fin-ca-editor-toggle" style="background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">✏️ Edit Buckets</button>
       </div>
       <div id="fin-ca-bucket-editor" style="display:none">
         <div id="fin-ca-bucket-rows"></div>
@@ -33740,6 +33747,34 @@ const FIN_CA_DEFAULT_BUCKETS = [
   { label: '90+',     minDays: 91,   maxDays: null },
 ];
 let _finCaBuckets = null; // null = use default (server-side default too)
+let _finCaCardCode = '';       // active customer filter (CardCode), '' = all customers
+let _finCaCustomerOptions = []; // [{CardCode,CardName}] — populated from the last unfiltered load, for autocomplete
+
+window.finCaOnCustomerInput = function() {
+  const val = document.getElementById('fin-ca-customer-input').value.trim();
+  if (!val) { finCaClearCustomerFilter(); return; }
+  // Match against the known customer list — exact CardCode, or exact "CardName (CardCode)" pick from the datalist.
+  const m = /\(([^()]+)\)\s*$/.exec(val);
+  const code = m ? m[1] : val;
+  const found = _finCaCustomerOptions.find(c => c.CardCode.toLowerCase() === code.toLowerCase());
+  _finCaCardCode = found ? found.CardCode : '';
+  document.getElementById('fin-ca-customer-clear').style.display = _finCaCardCode ? 'inline' : 'none';
+  if (_finCaCardCode) finLoadCustomerAging();
+};
+
+window.finCaClearCustomerFilter = function() {
+  _finCaCardCode = '';
+  document.getElementById('fin-ca-customer-input').value = '';
+  document.getElementById('fin-ca-customer-clear').style.display = 'none';
+  finLoadCustomerAging();
+};
+
+function finCaUpdateCustomerOptions(summary) {
+  _finCaCustomerOptions = summary.map(r => ({ CardCode: r.CardCode, CardName: r.CardName }));
+  const list = document.getElementById('fin-ca-customer-list');
+  if (list) list.innerHTML = _finCaCustomerOptions.map(c =>
+    `<option value="${(c.CardName || c.CardCode).replace(/"/g,'&quot;')} (${c.CardCode})">`).join('');
+}
 
 window.finCaTab = function(tab) {
   ['summary','detail'].forEach(t => {
@@ -33837,6 +33872,7 @@ async function finLoadCustomerAging() {
   try {
     const qs = new URLSearchParams({ dateBasis: _finCaDateBasis });
     if (_finCaBuckets) qs.set('buckets', JSON.stringify(_finCaBuckets));
+    if (_finCaCardCode) qs.set('cardCode', _finCaCardCode);
     const res = await fetch(`/api/finance/customer-aging?${qs.toString()}`, { headers:{'x-auth-token':finTok()} });
     const d = await res.json();
     if (d.error) {
@@ -33845,6 +33881,7 @@ async function finLoadCustomerAging() {
       return;
     }
     _finCaData = d;
+    if (!_finCaCardCode) finCaUpdateCustomerOptions(d.summary); // keep the full picklist fresh from unfiltered loads
     finRenderCaTotals(d);
     finRenderCaSummary(d);
     finRenderCaDetail(d);

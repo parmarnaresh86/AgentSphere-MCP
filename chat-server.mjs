@@ -4723,7 +4723,7 @@ app.put("/api/db-connections/:id", requireAuth, (req, res) => {
 app.post("/api/db-connections/:id/activate", requireAuth, async (req, res) => {
   if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
   try {
-    const cfg = dbConnRepo.getById.get(Number(req.params.id));
+    const cfg = dbConnRepo.getById(Number(req.params.id));
     if (!cfg) return res.status(404).json({ error: "Not found" });
     await connectDB(cfg);
     dbConnRepo.activate(cfg.id);
@@ -5540,7 +5540,12 @@ app.get("/api/forecast/open-pos", requireAuth, async (req, res) => {
     const result = pos.map(po => {
       const matchedLines = fdDocLinesForItem(po, itemCode);
       if (itemCode && !matchedLines.length) return null;
-      const delivDate = po.TaxDate || po.DocDueDate;
+      // DocDueDate is the PO's actual expected-delivery field. TaxDate is the
+      // VAT/posting date — SAP defaults it equal to DocDate and it's rarely
+      // changed, so putting it first here always masked the real DocDueDate
+      // (which does vary — confirmed on live data), making every PO look like
+      // a same-day, 0-day lead time.
+      const delivDate = po.DocDueDate || po.TaxDate;
       const leadDays = delivDate && po.DocDate
         ? Math.round((new Date(delivDate) - new Date(po.DocDate)) / 86400000) : null;
       const adv = advMap.get(po.CardCode) || { amount: 0, refs: [] };
