@@ -2,8 +2,9 @@ import express from "express";
 import axios from "axios";
 import https from "node:https";
 import { appendFileSync, readFileSync, existsSync } from "node:fs";
-import { EXPORTS_DIR, isExcelExportRequest, generateExcelExport } from "./lib/excel-export.mjs";
-import { buildProfessionalInsight } from "./lib/data-insight.mjs";
+import { EXPORTS_DIR, isExcelExportRequest, generateExcelExport, generateMultiTabExcelReport } from "./lib/excel-export.mjs";
+import nodemailer from "nodemailer";
+import { buildProfessionalInsight, computeSummaryStats } from "./lib/data-insight.mjs";
 import { detectIntent as _detectIntentPure } from "./lib/detect-intent.mjs";
 import { qcol } from "./lib/sql-dialect.mjs";
 import { createProductionAgentRouter } from "./controllers/production-agent.mjs";
@@ -38,6 +39,9 @@ import { createOcrExpenseAgentRouter }  from './controllers/ocr-expense-agent.mj
 import { createOcrInwardAgentRouter }   from './controllers/ocr-inward-agent.mjs';
 import { createOcrGatePassAgentRouter } from './controllers/ocr-gatepass-agent.mjs';
 import { createOcrDocumentAgentRouter } from './controllers/ocr-document-agent.mjs';
+import { createCustomAgentsRouter }     from './controllers/custom-agents.mjs';
+import { createLocalTablesRouter }      from './controllers/local-tables.mjs';
+import { createWorkflowsRouter }        from './controllers/workflows.mjs';
 import { createThreeWayMatchRouter }    from './controllers/three-way-match-agent.mjs';
 import { createMenuMasterRouter }        from './controllers/master-data-agent.mjs';
 import { createScViewRouter }            from './controllers/sc-view-agent.mjs';
@@ -53,17 +57,19 @@ import { createDeliveryToARInvRouter }      from './controllers/delivery-to-arin
 import { createARInvToARCMRouter }          from './controllers/arinv-to-arcm-agent.mjs';
 import { createIncomingPaymentRouter }      from './controllers/incoming-payment-agent.mjs';
 import { createOutgoingPaymentRouter }      from './controllers/outgoing-payment-agent.mjs';
-import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo, chatSessionRepo } from "./db.mjs";
+import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo, chatSessionRepo, customAgentsRepo, localTablesRepo, workflowInstancesRepo } from "./db.mjs";
 import { createDataSyncRouter } from './controllers/data-sync.mjs';
 import { createFinancialAgentRouter } from './controllers/financial-agent.mjs';
 import { createActivityAgentRouter } from './controllers/activity-agent.mjs';
 import { createVendorPaymentAgingRouter } from './controllers/vendor-payment-aging-agent.mjs';
 import { createPurchaseAnalysisRouter } from './controllers/purchase-analysis-agent.mjs';
 import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mjs';
-import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap } from "./db-connector.mjs";
+import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap, scanTablesSchema } from "./db-connector.mjs";
+import { SAP_TABLE_CATALOG } from "./lib/sap-table-catalog.mjs";
+import { runSqlAnalystAgent, mightBeMultiQuestion, splitQuestions, runMultiQuestionAnalysis } from "./lib/sql-analyst-agent.mjs";
 import { loadCompanyContext, buildSqlContext, buildAiSummary, buildDimBlock, buildRegistryBlock, getDimMap, invalidateCache as invalidateContextCache, BASE_SCHEMA } from "./company-context.mjs";
 import { REPORT_CATEGORIES, listReports, getReport, runReport as runReportSQL } from "./reports-engine.mjs";
-import { handleV2Chat, classifyIntent, generateSQL, lintSql, buildMultiTabExcelReport, decideReportShape } from "./analytics-v2.mjs";
+import { handleV2Chat, classifyIntent, generateSQL, lintSql, buildMultiTabExcelReport, decideReportShape, callAI as callAIForSql } from "./analytics-v2.mjs";
 import { matchTemplate } from "./query-templates.mjs";
 
 dotenv.config();
@@ -2895,6 +2901,54 @@ async function gptChatComplete(body) {
   return r.data;
 }
 
+// Streaming variant of gptChatComplete for the SQL analyst: forwards answer
+// text to onDelta(chunk) as it arrives and resolves with the same
+// { choices: [{ message }], usage } shape (tool calls re-assembled from the
+// stream's deltas), so the caller can't tell the difference.
+async function gptChatCompleteStream(body, onDelta) {
+  const r = await axios.post(process.env.AZURE_GPT_ENDPOINT, { ...body, stream: true }, {
+    headers: { "api-key": process.env.AZURE_OPENAI_API_KEY, "Content-Type": "application/json" },
+    httpsAgent: _azureHttpsAgent,
+    responseType: "stream",
+    validateStatus: () => true,
+  });
+  if (r.status < 200 || r.status >= 300) {
+    let err = "";
+    for await (const c of r.data) err += c.toString();
+    throw new Error(`GPT ${r.status}: ${err.slice(0, 500)}`);
+  }
+  let content = "", buf = "", finish = null;
+  const calls = [];
+  for await (const chunk of r.data) {
+    buf += chunk.toString();
+    const lines = buf.split("\n");
+    buf = lines.pop();
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith("data:")) continue;
+      const data = t.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      let ev;
+      try { ev = JSON.parse(data); } catch { continue; }
+      const choice = ev.choices?.[0];
+      if (!choice) continue;
+      const d = choice.delta || {};
+      if (d.content) { content += d.content; onDelta?.(d.content); }
+      for (const tc of d.tool_calls || []) {
+        const slot = (calls[tc.index ?? 0] ||= { id: "", type: "function", function: { name: "", arguments: "" } });
+        if (tc.id) slot.id = tc.id;
+        if (tc.function?.name) slot.function.name += tc.function.name;
+        if (tc.function?.arguments) slot.function.arguments += tc.function.arguments;
+      }
+      if (choice.finish_reason) finish = choice.finish_reason;
+    }
+  }
+  const message = { role: "assistant", content: content || null };
+  const toolCalls = calls.filter(Boolean);
+  if (toolCalls.length) message.tool_calls = toolCalls;
+  return { choices: [{ message, finish_reason: finish }] };
+}
+
 // ── Context management helpers ────────────────────────
 // GPT-4o limit: 128K tokens. Reserve: 8K response + 4K system + 4K tools = ~16K.
 const GPT_MSG_TOKEN_BUDGET = 100_000;
@@ -3411,6 +3465,18 @@ app.put("/api/users/:id/permissions", requireAuth, (req, res) => {
 // forecast answers were inconsistent before this was routed deterministically.
 const FORECAST_ACTIONS = new Set(["product_forecast", "purchase_forecast"]);
 
+// While a direct DB connection (MSSQL/HANA) is active, read questions should
+// go straight through generateAndRunDirectSql and NEVER fall back to Service
+// Layer/MCP tools — that's the path that picked the wrong-dialect
+// query_hana_direct tool for a SQL Server company. Only genuine write/action
+// requests (direct SQL is read-only) still need the tool-calling agent.
+// A false positive here (e.g. "create a report of...") just means that one
+// question goes to the agent instead of direct SQL — never a correctness
+// issue, so the heuristic favors simplicity over precision.
+function looksLikeWriteRequest(msg) {
+  return /\b(create|raise|make|post|generate|add|apply|confirm|approve|receive|pay|convert|issue|cancel|delete|remove|update)\b/i.test(msg || "");
+}
+
 // ── Shared: AI generates SQL → executes directly against HANA/MSSQL ──────────
 // Used by DB Direct mode, and preferred by GPT-4o/Claude modes for data questions
 // when a direct DB connection is available (avoids SAP Service Layer's row limits).
@@ -3420,12 +3486,166 @@ const FORECAST_ACTIONS = new Set(["product_forecast", "purchase_forecast"]);
 // and caches results for SQL_CACHE_TTL_MS so repeated questions answer instantly.
 // Throws on failure (after both attempts) so callers can fall back to another data path.
 const SQL_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-async function generateAndRunDirectSql(message) {
+// sid -> last few Direct-SQL turns, in the {role, content, sql, summary} shape
+// generateSQL()'s `history` param expects (see its historyBlock builder in
+// analytics-v2.mjs). Separate from chatSessionRepo (the tool-calling agent's
+// message format, which can include tool_use blocks that aren't plain
+// strings) since direct SQL is a different, simpler code path — this is what
+// lets a follow-up like "this item" / "that customer" resolve against the
+// previous direct-SQL answer instead of the AI generating a query in a vacuum.
+const _directSqlHistory = new Map();
+// sid -> last 3 Q&A pairs (plain text) for the SQL analyst agent, so a
+// follow-up like "now show the same for Maharashtra" keeps its context.
+const _analystHistory = new Map();
+
+// AI client for the SQL analyst agent (lib/sql-analyst-agent.mjs), or null
+// when no AI is configured (DB Direct then uses the one-shot SQL path).
+function getAnalystAI() {
+  if (GPT_AVAILABLE && AI_PROVIDER === "gpt") return { chatComplete: gptChatComplete, chatCompleteStream: gptChatCompleteStream };
+  if (AI_PROVIDER === "azure") return { messagesCreate: azureMessagesCreate, model: process.env.AZURE_CLAUDE_MODEL || "claude-3-5-sonnet-20241022" };
+  return GPT_AVAILABLE ? { chatComplete: gptChatComplete, chatCompleteStream: gptChatCompleteStream } : null;
+}
+
+// Turns one analyst result into the reply markdown with its rich blocks:
+//   [[KPIS]]  → __KPIS__ tiles (after the lead line when the marker is missing)
+//   [[CHART]] → one __ATBL__ chart card per chart, in order (extras go on top)
+//   [[TABLE]] → one __ATBL__ full-data table per table, in order (extras at the end)
+// plus a visible note when a figure still can't be matched to a query result.
+function renderAnalystAnswer(r, question) {
+  let out = r.text || "";
+  const source = `DB Direct · ${getActiveType().toUpperCase()}`;
+  const card = payload => `\n\n__ATBL__${JSON.stringify(payload)}__/ATBL__\n\n`;
+
+  const tableCards = (r.tables || []).map(t => card({ rows: t.rows, sql: t.sql, source, rowCount: t.total ?? t.rows.length,
+    question: t.title || question, displayMode: "table", noAutoSummary: true }));
+  let ti = 0;
+  out = out.replace(/\[\[TABLE\]\]/g, () => tableCards[ti++] || "");
+  if (ti < tableCards.length) out += tableCards.slice(ti).join("");
+
+  const chartCards = (r.charts || []).map(c => card({ rows: c.rows, sql: c.sql, source, rowCount: c.rows.length,
+    question: c.title || question, displayMode: "chart", chartType: c.chartType, noAutoSummary: true }));
+  let ci = 0;
+  out = out.replace(/\[\[CHART\]\]/g, () => chartCards[ci++] || "");
+  const extraCharts = chartCards.slice(ci).join("");
+
+  if (r.kpis?.length || extraCharts) {
+    const top = (r.kpis?.length ? `\n\n__KPIS__${JSON.stringify(r.kpis)}__/KPIS__\n\n` : "") + extraCharts;
+    if (r.kpis?.length && out.includes("[[KPIS]]")) out = out.replace("[[KPIS]]", top);
+    else { const nl = out.indexOf("\n"); out = nl > 0 ? out.slice(0, nl) + top + out.slice(nl) : top + out; }
+  }
+  out = out.replace(/\[\[(KPIS|CHART|TABLE)\]\]/g, "");
+
+  if (r.unverified?.length) {
+    out += `\n\n> ℹ️ ${r.unverified.length === 1 ? "One figure" : `${r.unverified.length} figures`} in this answer could not be matched to the query results — please double-check: ${r.unverified.slice(0, 6).join(", ")}`;
+  }
+  return out;
+}
+
+// Follow-up questions: `lists` is one array per answer, merged in order and
+// de-duplicated (capped so a 12-question reply stays readable).
+function mergeFollowups(lists, max = 6) {
+  const out = [];
+  for (const q of lists.filter(Boolean).flat()) {
+    if (out.length >= max) break;
+    if (!out.some(x => x.toLowerCase() === q.toLowerCase())) out.push(q);
+  }
+  return out;
+}
+
+// Rendered as the app's standard "💡" numbered suggestion list — the frontend
+// makes each item clickable, and a bare "2" reply picks item 2 (_lastSuggestions).
+function followupsMarkdown(list) {
+  return list.length ? `\n\n💡 **You would also like to check** (click one, or reply with its number):\n${list.map((q, i) => `${i + 1}. ${q}`).join("\n")}` : "";
+}
+
+// "Here's what I understood" list shown before running a multi-question message.
+function buildQuestionConfirmReply(questions) {
+  const n = questions.length;
+  return `I understood **${n} questions** in your message:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n\n` +
+    `Reply **yes** to answer all ${n}, or:\n` +
+    `- **1,3,5** or **2-4**: answer only those\n` +
+    `- **skip 2,4**: answer all except those\n` +
+    `- **no**: cancel\n` +
+    `- or send a corrected list or a new question.`;
+}
+
+// Parses the reply to buildQuestionConfirmReply → array of 0-based indexes,
+// "cancel", or null (not a selection — treat as a fresh message).
+function parseQuestionSelection(reply, n) {
+  const r = String(reply || "").trim().toLowerCase().replace(/[.!]+$/, "");
+  if (/^(no|nope|cancel|stop|don'?t|nahi|na)\b/.test(r)) return "cancel";
+  if (isAffirmativeReply(r) || /^(yes|ya|haan|ha|ok|okay|go|run|all|run all|answer all|do all|yes all|proceed|start)\b[\w\s]*$/.test(r) && !/\d/.test(r)) {
+    return Array.from({ length: n }, (_, i) => i);
+  }
+  const nums = s => {
+    const out = new Set();
+    for (const part of s.split(/\s*(?:,|&|\band\b|\s)\s*/).filter(Boolean)) {
+      const m = /^(\d+)(?:-(\d+))?$/.exec(part);
+      if (!m) return null;
+      const a = +m[1], b = m[2] ? +m[2] : a;
+      for (let k = Math.min(a, b); k <= Math.max(a, b); k++) if (k >= 1 && k <= n) out.add(k - 1);
+    }
+    return [...out].sort((x, y) => x - y);
+  };
+  let m = /^(?:skip|remove|drop|except|without|exclude)\s+(?:q(?:uestions?)?\s*)?([\d,\s&and-]+)$/.exec(r);
+  if (m) { const ex = nums(m[1]); if (ex) { const keep = Array.from({ length: n }, (_, i) => i).filter(i => !ex.includes(i)); return keep.length ? keep : "cancel"; } }
+  m = /^(?:yes\s*,?\s*)?(?:run|only|answer|just|do)?\s*(?:q(?:uestions?)?\s*)?([\d][\d,\s&and-]*)(?:\s*only)?$/.exec(r);
+  if (m) { const pick = nums(m[1]); if (pick && pick.length) return pick; }
+  return null;
+}
+
+// One reply for a multi-question message: overview table, then each answer
+// under its own numbered heading with its own chart and queries.
+function buildMultiAnswerReply(results, skipped, ms) {
+  const nQ = results.reduce((n, r) => n + r.queries.length, 0);
+  const secs = Math.round(ms / 1000), took = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+  const cell = s => String(s).replace(/\|/g, "/").replace(/\n/g, " ");
+  let out = `**${results.length} questions answered** · ${nQ} queries · ${took}\n\n| # | Question | Queries | Status |\n|---|---|---|---|\n`;
+  out += results.map((r, i) => `| ${i + 1} | ${cell(r.question.length > 90 ? r.question.slice(0, 90) + "…" : r.question)} | ${r.queries.length} | ${r.error ? "⚠️ failed" : "✅"} |`).join("\n");
+  results.forEach((r, i) => { out += renderMultiAnswerSection(r, i); });
+  if (skipped.length) out += `\n\n---\n\n⚠️ Only the first ${results.length} questions were answered. Not answered:\n${skipped.map(q => `- ${q}`).join("\n")}`;
+  return out;
+}
+
+// One numbered answer inside a multi-question reply — also streamed on its
+// own (SSE "partial") the moment that answer is ready.
+function renderMultiAnswerSection(r, i) {
+  return `\n\n---\n\n### ${i + 1}. ${r.question}\n\n` + (r.error ? `⚠️ Couldn't answer this one: ${r.error}` : renderAnalystAnswer(r, r.question));
+}
+const DIRECT_SQL_HISTORY_MAX = 8; // last 4 Q&A pairs
+
+function summarizeRowsForHistory(rows) {
+  if (!rows?.length) return "No rows found.";
+  const preview = Object.entries(rows[0]).slice(0, 6).map(([k, v]) => `${k}=${v}`).join(", ");
+  return rows.length === 1 ? preview : `${rows.length} rows. First row: ${preview}`;
+}
+
+function pushDirectSqlHistory(sid, question, sql, rows) {
+  if (!sid) return;
+  const hist = _directSqlHistory.get(sid) || [];
+  hist.push({ role: "user", content: question });
+  hist.push({ role: "assistant", sql, summary: summarizeRowsForHistory(rows) });
+  _directSqlHistory.set(sid, hist.slice(-DIRECT_SQL_HISTORY_MAX));
+}
+
+function getDirectSqlHistory(sid) {
+  return sid ? (_directSqlHistory.get(sid) || []) : [];
+}
+
+// onStep(text) is an optional progress callback — the SSE `sendStep` from the
+// route handler, wired through so a ChatGPT/Claude-style "what it's doing
+// right now" narration is visible during generation/execution, not just a
+// single generic "Querying live data…" the caller already sends afterward.
+async function generateAndRunDirectSql(message, history = [], onStep = () => {}) {
   const dbType = getActiveType();
   const dbCfg  = getActiveConfig();
   const schema = dbCfg?.schema_name || dbCfg?.database || "DB";
+  onStep("Understanding your question…");
   const intent = classifyIntent(message);
 
+  // Only an exact-question cache hit skips generation — a follow-up like
+  // "this item" is different text so it always regenerates with history,
+  // never silently reuses an unrelated cached query for the wrong item.
   const cacheKey = schema + "::" + normPrompt(message);
   const cached = sqlCacheRepo.get(cacheKey, SQL_CACHE_TTL_MS);
   if (cached) return { sql: cached.sql, rows: cached.rows, dbType, cacheHit: true };
@@ -3433,11 +3653,16 @@ async function generateAndRunDirectSql(message) {
   // Query Template Library — known high-frequency questions skip AI SQL
   // generation entirely (faster, zero hallucination risk). Falls through to
   // AI generation below if the template's SQL fails against this schema.
-  const template = matchTemplate(message, dbType, dbCfg);
+  // Templates are context-free by design, so only used when there's no
+  // conversation history to resolve against (a bare "this item" follow-up
+  // must never match a template meant for a fresh, self-contained question).
+  const template = history.length === 0 ? matchTemplate(message, dbType, dbCfg) : null;
   if (template) {
     try {
+      onStep("Running query…");
       const rows = await executeSQL(template.sql);
       sqlCacheRepo.set(cacheKey, schema, message, template.sql, rows);
+      onStep(`Done — ${rows.length} row${rows.length === 1 ? "" : "s"} found.`);
       return { sql: template.sql, rows, dbType, cacheHit: false, template: template.name };
     } catch (err) {
       console.warn(`[TEMPLATE] ${template.name} failed (${err.message}), falling back to AI generation`);
@@ -3447,12 +3672,16 @@ async function generateAndRunDirectSql(message) {
   let lastError = null, generatedSQL = "", presentation = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      ({ sql: generatedSQL, presentation } = await generateSQL(message, intent, [], attempt > 1 ? lastError : null));
+      onStep(attempt === 1 ? "Writing SQL query…" : "Rewriting query to fix an error…");
+      ({ sql: generatedSQL, presentation } = await generateSQL(message, intent, history, attempt > 1 ? lastError : null));
+      onStep("Validating query…");
       const lintError = lintSql(generatedSQL, dbType);
       if (lintError) throw new Error(lintError);
 
+      onStep("Running query against the database…");
       const rows = await executeSQL(generatedSQL);
       sqlCacheRepo.set(cacheKey, schema, message, generatedSQL, rows);
+      onStep(`Done — ${rows.length} row${rows.length === 1 ? "" : "s"} found.`);
       return { sql: generatedSQL, rows, dbType, cacheHit: false, presentation };
     } catch (err) {
       lastError = err.message;
@@ -3462,6 +3691,116 @@ async function generateAndRunDirectSql(message) {
       }
     }
   }
+}
+
+// ── Multi-query analysis ──────────────────────────────────────────────────
+// generateAndRunDirectSql answers with exactly ONE SELECT — most questions
+// fit that, but "compare this year vs last year", "top items AND top
+// customers", etc. genuinely need 2+ independent queries plus a combining
+// step. This stays entirely inside the direct-SQL world (never Service
+// Layer/MCP tools) — it just runs generateAndRunDirectSql more than once.
+function looksLikeMultiQueryRequest(msg) {
+  return /\b(compare|comparison|versus|vs\.?)\b/i.test(msg || "")
+      || /\b(and also|as well as|along with)\b/i.test(msg || "")
+      || /\bboth\b[\s\S]*\band\b/i.test(msg || "");
+}
+
+// A bare pronoun with nothing in the conversation's direct-SQL history to
+// resolve it against ("detail sales of this item by month" as the very
+// first message of a session) can't be answered without guessing which
+// item/customer/order "this"/"that" means — worth pausing to ask rather
+// than generating SQL against a guess.
+function looksLikeUnresolvedPronounReference(msg) {
+  // Deliberately narrow: a determiner attached to a specific business noun
+  // ("this item", "that customer") is the actual ambiguous case — bare "it"
+  // or "this"/"that" alone is normal English in plenty of self-contained
+  // questions ("break it down by region", "this month") and would trigger
+  // constantly, adding a needless delay to clear questions.
+  return /\b(this|that|these|those)\s+(item|order|customer|product|invoice|po|purchase\s*order|sales\s*order|delivery|vendor|supplier|warehouse|branch|account|deal|quotation|grpo|deposit|payment)\b/i.test(msg || "");
+}
+
+function isAffirmativeReply(msg) {
+  return /^\s*(yes|yep|yeah|yup|correct|right|go ahead|run it|do it|confirm|ok|okay|sure|proceed)\s*[.!]?\s*$/i.test(msg || "");
+}
+
+// Cheap, deterministic-ish planning call — breaks a compound question into
+// up to 4 independent sub-questions, each restating shared context (item,
+// customer, date range) explicitly so it stands alone when handed to
+// generateSQL individually. Falls back to a single-item plan (i.e. no-op)
+// on any parse failure, so a bad plan never blocks a normal answer.
+async function planMultiQuery(message) {
+  const prompt = `Break this SAP B1 data question into up to 4 independent sub-questions, each answerable by ONE SQL SELECT query. If it's already answerable by a single query, return just one item.
+Question: "${message}"
+Respond with ONLY a JSON array, no markdown fences: [{"label": "short 3-5 word label", "question": "self-contained sub-question restating any shared context (item/customer/date range/etc.) explicitly"}]`;
+  try {
+    const raw = await callAIForSql([{ role: "user", content: prompt }], 400);
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [{ label: "Query", question: message }];
+    const plan = JSON.parse(jsonMatch[0]);
+    return Array.isArray(plan) && plan.length ? plan.slice(0, 4) : [{ label: "Query", question: message }];
+  } catch {
+    return [{ label: "Query", question: message }];
+  }
+}
+
+async function generateAndRunMultiQuerySql(message, history = [], onStep = () => {}, precomputedPlan = null) {
+  let plan = precomputedPlan;
+  if (!plan) {
+    onStep("Breaking this into sub-questions…");
+    plan = await planMultiQuery(message);
+    onStep(`Plan ready — ${plan.length} quer${plan.length === 1 ? "y" : "ies"}: ${plan.map(p => p.label).join(", ")}`);
+  }
+  const steps = [];
+  let i = 0;
+  for (const step of plan) {
+    i++;
+    const stepOnStep = (text) => onStep(`[${i}/${plan.length}] ${step.label}: ${text}`);
+    try {
+      const r = await generateAndRunDirectSql(step.question, history, stepOnStep);
+      steps.push({ label: step.label || "Query", question: step.question, sql: r.sql, rows: r.rows, dbType: r.dbType, error: null });
+    } catch (err) {
+      steps.push({ label: step.label || "Query", question: step.question, sql: err.sql || "", rows: [], dbType: getActiveType(), error: err.message });
+    }
+  }
+  onStep("Combining results…");
+  return { steps, single: steps.length === 1 };
+}
+
+function rowsToMarkdownTable(rows, maxRows = 15) {
+  if (!rows?.length) return "_No rows found._";
+  const cols = Object.keys(rows[0]);
+  const header = `| ${cols.join(" | ")} |`;
+  const sep = `| ${cols.map(() => "---").join(" | ")} |`;
+  const body = rows.slice(0, maxRows).map(r => `| ${cols.map(c => r[c] ?? "").join(" | ")} |`).join("\n");
+  const more = rows.length > maxRows ? `\n_+${rows.length - maxRows} more rows_` : "";
+  return `${header}\n${sep}\n${body}${more}`;
+}
+
+// Renders the multi-query result: the first step with data becomes the rich
+// __ATBL__ card (the frontend only renders one of those per reply), the
+// rest render as plain markdown sections with their own mini-insight, so
+// nothing is silently dropped just because it wasn't first in the plan.
+function buildMultiQueryReply(steps, sourceLabel) {
+  const firstOk = steps.find(s => s.rows?.length);
+  let reply = "";
+  if (firstOk) {
+    const payload = { rows: firstOk.rows.slice(0, 5000), sql: firstOk.sql, source: sourceLabel, rowCount: firstOk.rows.length, question: firstOk.question, displayMode: "table" };
+    reply += `__ATBL__${JSON.stringify(payload)}__/ATBL__`;
+  }
+  reply += `\n\n## Multi-part analysis (${steps.length} quer${steps.length === 1 ? "y" : "ies"})\n`;
+  for (const s of steps) {
+    reply += `\n### ${s.label}\n*${s.question}*\n\n`;
+    if (s.error) {
+      reply += `⚠️ Query failed: ${s.error}\n`;
+      continue;
+    }
+    reply += rowsToMarkdownTable(s.rows) + "\n";
+    const stats = computeSummaryStats(s.rows);
+    if (stats?.primaryCol) {
+      reply += `\n_Total ${stats.primaryCol}: **${Number(stats.sum).toLocaleString(undefined,{maximumFractionDigits:2})}** · Avg: **${Number(stats.avg).toLocaleString(undefined,{maximumFractionDigits:2})}**${stats.maxLabel ? ` · Top: ${stats.maxLabel}` : ""}_\n`;
+    }
+  }
+  return reply;
 }
 
 // Peels off one layer of our own "Break down "X" by month..."-style wrapping.
@@ -3508,11 +3847,13 @@ function buildDirectSqlWrapup(question, rows) {
 // the user having to retype it.
 const _lastSuggestions = new Map();
 
-// sid -> { question } for a follow-up we had to ask a clarifying question about
-// (e.g. "Filter ... to a specific customer, item, or warehouse" names no value).
-// The direct-SQL fast path has no multi-turn memory of its own, so the *next*
-// message from that session is treated as the missing answer and merged back
-// into the original question rather than run as a disconnected new query.
+// sid -> a question paused waiting for the user's next message to resolve it.
+// The direct-SQL fast path has no multi-turn memory of its own, so whatever
+// the user types next is treated as the answer/confirmation, not a fresh,
+// disconnected question. Shapes:
+//   { question }                        — legacy: "which customer/item/warehouse?"
+//   { kind: "multi-confirm", message, plan } — compound question, plan ready, awaiting "yes"
+//   { kind: "pronoun-clarify", message }     — "this item" with nothing in history to resolve it against
 const _pendingClarification = new Map();
 
 // sid -> { engine, assistantContent|assistantMessage, readResults, pendingCalls, messages }
@@ -3677,8 +4018,42 @@ app.post("/api/chat", async (req, res) => {
   // a single column (that silently picked the wrong dimension before, e.g.
   // matching a Brand field instead of the customer name) — ask the SQL
   // generator to match the value against all three possible fields instead.
-  const pendingClarification = !suggestionPick && _pendingClarification.get(sid);
-  if (pendingClarification) {
+  // A pending "confirm your questions" list takes a bare "2" as "run question 2",
+  // not as a pick from last turn's suggestions.
+  const pendingClarification = (!suggestionPick || _pendingClarification.get(sid)?.kind === "analyst-multi-confirm") && _pendingClarification.get(sid);
+  let analystPending = null;
+  if (pendingClarification?.kind === "multi-confirm") {
+    _pendingClarification.delete(sid);
+    if (isAffirmativeReply(message)) {
+      // Confirmed — run the plan exactly as shown, no re-planning (a second
+      // AI call here could silently produce a different plan than what the
+      // user actually agreed to).
+      const { steps } = await generateAndRunMultiQuerySql(pendingClarification.message, getDirectSqlHistory(sid), () => {}, pendingClarification.plan);
+      for (const s of steps) if (!s.error) pushDirectSqlHistory(sid, s.question, s.sql, s.rows);
+      return sendReply({ reply: buildMultiQueryReply(steps, `HANA Direct · ${getActiveType().toUpperCase()}`), sessionId: sid });
+    }
+    // Not a clear "yes" — treat this message as a correction and let it flow
+    // through the normal detection below (it may still turn out to be
+    // compound and prompt a fresh confirmation, or may now be clear enough
+    // to just run).
+  } else if (pendingClarification?.kind === "pronoun-clarify") {
+    // The user's reply names what the pronoun meant — fold it back into the
+    // original question rather than treating it as a disconnected new one.
+    const answer = message.trim();
+    message = `${pendingClarification.message} (referring to: "${answer}")`;
+    _pendingClarification.delete(sid);
+  } else if (pendingClarification?.kind === "analyst-multi-confirm") {
+    // We listed the questions we understood — this message says which to run
+    // (resolved in the DB SQL analyst branch below).
+    analystPending = pendingClarification;
+    _pendingClarification.delete(sid);
+  } else if (pendingClarification) {
+    // Legacy shape: "which customer/item/warehouse?" — this message is that
+    // answer. The reply usually names just the value ("STRIPE TIKTOK")
+    // without saying which of the three it is, so don't guess a single
+    // column (that silently picked the wrong dimension before, e.g. matching
+    // a Brand field instead of the customer name) — ask the SQL generator to
+    // match the value against all three possible fields instead.
     const answer = message.trim();
     message = `${pendingClarification.question}, filtered to "${answer}" (match against customer name, item code/description, or warehouse code/name — whichever one it actually is, do not assume)`;
     _pendingClarification.delete(sid);
@@ -3698,6 +4073,40 @@ app.post("/api/chat", async (req, res) => {
       sessionId: sid,
       mode: "clarify",
     });
+  }
+
+  // Pause for confirmation/clarification only on genuinely ambiguous or
+  // compound questions — a plain, clear question never hits this and runs
+  // immediately with no added delay. Only meaningful when there's a direct
+  // DB connection to answer against (matches the tryDirectSql condition each
+  // engine branch checks below) and this isn't itself an answer we just
+  // resolved above (pendingClarification would have rewritten message by now).
+  // DB SQL mode with an AI configured answers compound/multi-question messages
+  // itself (split → one analyst loop per question), so it skips this pause.
+  const analystHandlesMulti = engine === "db" && !!getAnalystAI();
+  if (!pendingClarification && !analystHandlesMulti && isConnected() && !looksLikeWriteRequest(message)) {
+    if (looksLikeMultiQueryRequest(message)) {
+      const plan = await planMultiQuery(message);
+      if (plan.length > 1) {
+        _pendingClarification.set(sid, { kind: "multi-confirm", message, plan });
+        const lines = plan.map((p, i) => `${i + 1}. **${p.label}** — ${p.question}`).join("\n");
+        return sendReply({
+          reply: `I'll answer this with ${plan.length} separate queries:\n\n${lines}\n\nReply **yes** to run them, or tell me what to change.`,
+          sessionId: sid,
+          mode: "clarify",
+        });
+      }
+      // Plan collapsed to a single query — not actually compound, fall
+      // through to the normal single-query flow below.
+    } else if (looksLikeUnresolvedPronounReference(message) && getDirectSqlHistory(sid).length === 0) {
+      const pronounPhrase = message.match(/\b(this|that|these|those)\s+(item|order|customer|product|invoice|po|purchase\s*order|sales\s*order|delivery|vendor|supplier|warehouse|branch|account|deal|quotation|grpo|deposit|payment)\b/i)[0];
+      _pendingClarification.set(sid, { kind: "pronoun-clarify", message });
+      return sendReply({
+        reply: `I don't have enough context yet to know which specific ${pronounPhrase.replace(/^(this|that|these|those)\s+/i, "")} you mean by *"${pronounPhrase}"* in *"${message}"* — could you name it (code or name)?`,
+        sessionId: sid,
+        mode: "clarify",
+      });
+    }
   }
 
   // "prepare excel ... with trend analysis and item wise month wise analysis,
@@ -3747,10 +4156,85 @@ app.post("/api/chat", async (req, res) => {
           return sendErrorReply(503, { error: "No DB connection configured. Go to Settings → DB Connection to add one." });
         }
       }
+      // Claude-connector-style analyst: multi-query tool loop + written analysis.
+      // A message holding several questions is split and each is answered by
+      // its own analyst loop (own queries, own chart), a few in parallel.
+      // Falls through to the one-shot SQL path below if no AI is configured,
+      // the user wants an Excel export (needs the raw rows), or the loop fails.
+      const analystAI = getAnalystAI();
+      if (analystAI && !isExcelExportRequest(message)) {
+        try {
+          const cfg = getActiveConfig();
+          let companyContext = "";
+          try { companyContext = buildSqlContext(); } catch {}
+          const baseOpts = {
+            history: _analystHistory.get(sid) || [],
+            executeSQL, getTableColumns, dbType: getActiveType(),
+            database: cfg?.schema_name || cfg?.database || "DB",
+            companyContext, onStep: sendStep, ...analystAI,
+          };
+          // Reply to our "here are the questions I understood" list?
+          let questions = null, histUser = message;
+          if (analystPending) {
+            const sel = parseQuestionSelection(message, analystPending.questions.length);
+            if (sel === "cancel") return sendReply({ reply: "Okay — cancelled, nothing was run.", sessionId: sid, mode: "clarify" });
+            if (sel) { questions = sel.map(i => analystPending.questions[i]); histUser = analystPending.message; }
+            // Anything else = a corrected list or a new question → handled below as fresh input.
+          }
+          if (!questions) {
+            questions = [message];
+            if (mightBeMultiQuestion(message)) {
+              sendStep("Reading your questions…");
+              questions = await splitQuestions(message, analystAI);
+            }
+            // Several questions → show what we understood and wait for the go-ahead.
+            if (questions.length > 1) {
+              _pendingClarification.set(sid, { kind: "analyst-multi-confirm", message, questions });
+              _lastSuggestions.delete(sid);
+              return sendReply({ reply: buildQuestionConfirmReply(questions), sessionId: sid, mode: "clarify" });
+            }
+          }
+
+          // Live output while the analysis runs (SSE, streaming requests only):
+          //   "delta"   — answer text as the AI writes it (null text = discard, it was sent back)
+          //   "partial" — one finished answer of a multi-question message
+          const sendLive = (type, payload) => { if (isStreaming) res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`); };
+          let reply, allQueries, histText, followupList = [], cachedAt = null;
+          if (questions.length === 1) {
+            const r = await runSqlAnalystAgent({ ...baseOpts, message, onDelta: chunk => sendLive("delta", { text: chunk }) });
+            reply = renderAnalystAnswer(r, message);
+            followupList = mergeFollowups([r.followups], 6);
+            allQueries = r.queries; histText = r.text; cachedAt = r.cachedAt || null;
+          } else {
+            const t0 = Date.now();
+            const { results, skipped } = await runMultiQuestionAnalysis(questions, baseOpts, {
+              concurrency: Number(process.env.SQL_ANALYST_CONCURRENCY) || 3,
+              onAnswer: (i, r) => sendLive("partial", { index: i, total: questions.length, markdown: renderMultiAnswerSection(r, i) }),
+            });
+            reply = buildMultiAnswerReply(results, skipped, Date.now() - t0);
+            allQueries = results.flatMap(r => r.queries);
+            followupList = mergeFollowups(results.map(r => r.followups), 8);
+            histText = results.map((r, i) => `Q${i + 1}: ${r.question}\n${(r.text || r.error || "").slice(0, 600)}`).join("\n\n");
+          }
+
+          reply += followupsMarkdown(followupList);
+          if (followupList.length) _lastSuggestions.set(sid, followupList); else _lastSuggestions.delete(sid);
+          for (const q of allQueries) _logQ({ method: 'SQL', endpoint: `Analyst: ${q.purpose || 'query'}`, sql: q.sql, rows: q.rows });
+          const hist = [...(_analystHistory.get(sid) || []), { role: "user", content: histUser }, { role: "assistant", content: histText.slice(0, 6000) }];
+          _analystHistory.set(sid, hist.slice(-6));
+          const allSql = allQueries.filter(q => !q.error).map(q => q.sql).join(";\n\n");
+          const cacheSource = cachedAt ? `Same question answered ${Math.max(1, Math.round((Date.now() - cachedAt) / 60000))} min ago — reused (answers refresh after 10 min)` : null;
+          return sendReply({ reply, sessionId: sid, mode: "db", sql: allSql, rowCount: allQueries.reduce((n, q) => n + q.rows, 0), cacheHit: !!cachedAt, cacheSource, queryLog: _reqQueryLog });
+        } catch (err) {
+          console.warn(`[SQL-ANALYST] failed, falling back to one-shot SQL: ${err.message}`);
+        }
+      }
+
       let generatedSQL = "", rows = [], dbType = getActiveType(), presentation = null;
       try {
-        const result = await generateAndRunDirectSql(message);
+        const result = await generateAndRunDirectSql(message, getDirectSqlHistory(sid), sendStep);
         generatedSQL = result.sql; rows = result.rows; dbType = result.dbType; presentation = result.presentation;
+        pushDirectSqlHistory(sid, message, generatedSQL, rows);
       } catch (err) {
         if (!err.sql) return sendErrorReply(500, { error: `SQL generation failed: ${err.message}` });
         generatedSQL = err.sql;
@@ -3762,7 +4246,7 @@ app.post("/api/chat", async (req, res) => {
           reply = `✅ **Query executed — no records found**\n\n\`\`\`sql\n${generatedSQL}\n\`\`\``;
         } else {
           // Emit structured block — frontend renders rich tabbed analytics card
-          const payload = { rows: rows.slice(0, 500), sql: generatedSQL, source: `DB Direct · ${dbType.toUpperCase()}`, rowCount: rows.length, question: message, displayMode: presentation || (isSummaryStyleQuestion(message) ? "chart" : "table") };
+          const payload = { rows: rows.slice(0, 5000), sql: generatedSQL, source: `DB Direct · ${dbType.toUpperCase()}`, rowCount: rows.length, question: message, displayMode: presentation || (isSummaryStyleQuestion(message) ? "chart" : "table") };
           reply = `__ATBL__${JSON.stringify(payload)}__/ATBL__${buildDirectSqlWrapup(message, rows)}`;
           if (isExcelExportRequest(message)) {
             const excelUrl = await generateExcelExport(message, rows);
@@ -3800,14 +4284,32 @@ app.post("/api/chat", async (req, res) => {
         else reply = result;
       } else {
         let dbResult = null, hanaAttemptError = null;
-        if (isKnownAnalytics && isConnected()) {
-          // Confidently classified analytics question — answer immediately via direct
-          // HANA/MSSQL (no Service Layer row cap). Understands the request first
-          // (intent classification + schema-focused SQL generation + lint/retry)
-          // before ever querying — never a blind guess.
+        const dbConnected = isConnected();
+        // Once a direct DB connection is active, ANY read question — not just
+        // pre-classified analytics intents — goes through direct SQL, never
+        // Service Layer/MCP tools. Only a genuine write request (direct SQL
+        // is read-only) skips this and reaches the agent below.
+        const tryDirectSql = dbConnected && !looksLikeWriteRequest(gptMessage);
+        if (tryDirectSql && looksLikeMultiQueryRequest(gptMessage)) {
           try {
-            const { sql: genSql, rows, dbType, presentation } = await generateAndRunDirectSql(gptMessage);
-            const payload = { rows: rows.slice(0, 500), sql: genSql, source: `HANA Direct (GPT-4o) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: gptMessage, displayMode: presentation || (isSummaryStyleQuestion(gptMessage) ? "chart" : "table") };
+            sendStep("Planning multi-part analysis…");
+            const { steps } = await generateAndRunMultiQuerySql(gptMessage, getDirectSqlHistory(sid), sendStep);
+            for (const s of steps) if (!s.error) pushDirectSqlHistory(sid, s.question, s.sql, s.rows);
+            dbResult = buildMultiQueryReply(steps, `HANA Direct (GPT-4o) · ${getActiveType().toUpperCase()}`);
+            _logQ({ method: 'SQL', endpoint: 'Direct DB Multi-Query (GPT-4o)', sql: steps.map(s=>s.sql).join(';\n'), rows: steps.reduce((n,s)=>n+s.rows.length,0) });
+            sendStep("Querying live data…");
+            console.log(`[GPT-PRE-INTERCEPT] routing to multi-query direct SQL (${steps.length} steps)`);
+          } catch (dbErr) {
+            hanaAttemptError = dbErr.message;
+            console.warn(`[GPT-PRE-INTERCEPT] multi-query direct SQL attempt failed: ${dbErr.message}`);
+          }
+        } else if (tryDirectSql) {
+          // Understands the request first (intent classification + schema-focused
+          // SQL generation + lint/retry) before ever querying — never a blind guess.
+          try {
+            const { sql: genSql, rows, dbType, presentation } = await generateAndRunDirectSql(gptMessage, getDirectSqlHistory(sid), sendStep);
+            pushDirectSqlHistory(sid, gptMessage, genSql, rows);
+            const payload = { rows: rows.slice(0, 5000), sql: genSql, source: `HANA Direct (GPT-4o) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: gptMessage, displayMode: presentation || (isSummaryStyleQuestion(gptMessage) ? "chart" : "table") };
             dbResult = rows.length
               ? `__ATBL__${JSON.stringify(payload)}__/ATBL__${buildDirectSqlWrapup(gptMessage, rows)}`
               : `✅ **Query executed — no records found**\n\n\`\`\`sql\n${genSql}\n\`\`\``;
@@ -3820,31 +4322,33 @@ app.post("/api/chat", async (req, res) => {
             console.log(`[GPT-PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
             hanaAttemptError = dbErr.message;
-            console.warn(`[GPT-PRE-INTERCEPT] HANA direct attempt failed, falling back: ${dbErr.message}`);
+            console.warn(`[GPT-PRE-INTERCEPT] direct SQL attempt failed: ${dbErr.message}`);
           }
         }
 
         if (dbResult) {
           reply = dbResult;
+        } else if (tryDirectSql) {
+          // DB connected and this was a read question, but SQL generation/
+          // execution failed — surface the error directly. Per the "SQL DB
+          // connection → direct query only" rule, this must NOT silently
+          // fall back to Service Layer/MCP tools.
+          console.log(`[GPT-PRE-INTERCEPT] direct SQL failed, not falling back to Service Layer (DB connected)`);
+          reply = `⚠️ **Direct SQL query failed:** ${hanaAttemptError || 'Could not generate a valid query for this question.'}\n\nTry rephrasing the question, or check the schema registry for the relevant table.`;
         } else if (isKnownAnalytics) {
-          // Known analytics intent but no DB connection / SQL attempt failed — fall
-          // back to the deterministic Service-Layer-backed NLP path, as before.
+          // No DB connection at all — fall back to the deterministic
+          // Service-Layer-backed NLP path, as before.
           console.log(`[GPT-PRE-INTERCEPT] routing to demoReply (action=${gptIntent.action})`);
           const result = await demoReply(gptMessage);
           if (typeof result === "object" && result.text) { reply = result.text; openForm = result.openForm; openForecastDashboard = result.openForecastDashboard; forecastData = result.forecastData; openRushDashboard = result.openRushDashboard; rushData = result.rushData; }
           else reply = result;
-          // If the Service-Layer/SMLSVC fallback ALSO failed, surface the earlier
-          // HANA-direct error too — otherwise the user only ever sees the last
-          // failure and wrongly concludes ODBC was never attempted at all.
-          if (hanaAttemptError && typeof reply === "string" && /error/i.test(reply)) {
-            reply += `\n\n<sub>⚠️ A direct HANA/ODBC query was tried first and also failed: ${hanaAttemptError}</sub>`;
-          }
         } else {
-          // Everything else — write/action requests, and any free-form/ambiguous
-          // question — goes to the tool-calling agent. It understands the request
-          // through natural conversation (asking a clarifying question itself when
-          // genuinely ambiguous, per the system prompt), then calls query_hana_direct
-          // (ODBC, no row cap) or a Service Layer tool as appropriate.
+          // Write/action requests (direct SQL is read-only, so these always
+          // land here even with a DB connection active), or — when there's
+          // no DB connection at all and it's not a known analytics intent —
+          // any free-form/ambiguous read question. Goes to the tool-calling
+          // agent, which uses Service Layer for writes and as the only
+          // available read path when no direct DB connection exists.
           sendStep("Thinking through your request…");
           console.log(`[GPT-PRE-INTERCEPT] falling through to GPT agent`);
           let msgs = chatSessionRepo.get(sid) || [];
@@ -3882,14 +4386,32 @@ app.post("/api/chat", async (req, res) => {
         else reply = result;
       } else {
         let dbResult = null, hanaAttemptError = null;
-        if (isKnownAnalytics && isConnected()) {
-          // Confidently classified analytics question — answer immediately via direct
-          // HANA/MSSQL (no Service Layer row cap). Understands the request first
-          // (intent classification + schema-focused SQL generation + lint/retry)
-          // before ever querying — never a blind guess.
+        const dbConnected = isConnected();
+        // Once a direct DB connection is active, ANY read question — not just
+        // pre-classified analytics intents — goes through direct SQL, never
+        // Service Layer/MCP tools. Only a genuine write request (direct SQL
+        // is read-only) skips this and reaches the agent below.
+        const tryDirectSql = dbConnected && !looksLikeWriteRequest(claudeMessage);
+        if (tryDirectSql && looksLikeMultiQueryRequest(claudeMessage)) {
           try {
-            const { sql: genSql, rows, dbType, presentation } = await generateAndRunDirectSql(claudeMessage);
-            const payload = { rows: rows.slice(0, 500), sql: genSql, source: `HANA Direct (Claude) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: claudeMessage, displayMode: presentation || (isSummaryStyleQuestion(claudeMessage) ? "chart" : "table") };
+            sendStep("Planning multi-part analysis…");
+            const { steps } = await generateAndRunMultiQuerySql(claudeMessage, getDirectSqlHistory(sid), sendStep);
+            for (const s of steps) if (!s.error) pushDirectSqlHistory(sid, s.question, s.sql, s.rows);
+            dbResult = buildMultiQueryReply(steps, `HANA Direct (Claude) · ${getActiveType().toUpperCase()}`);
+            _logQ({ method: 'SQL', endpoint: 'Direct DB Multi-Query (Claude)', sql: steps.map(s=>s.sql).join(';\n'), rows: steps.reduce((n,s)=>n+s.rows.length,0) });
+            sendStep("Querying live data…");
+            console.log(`[PRE-INTERCEPT] routing to multi-query direct SQL (${steps.length} steps)`);
+          } catch (dbErr) {
+            hanaAttemptError = dbErr.message;
+            console.warn(`[PRE-INTERCEPT] multi-query direct SQL attempt failed: ${dbErr.message}`);
+          }
+        } else if (tryDirectSql) {
+          // Understands the request first (intent classification + schema-focused
+          // SQL generation + lint/retry) before ever querying — never a blind guess.
+          try {
+            const { sql: genSql, rows, dbType, presentation } = await generateAndRunDirectSql(claudeMessage, getDirectSqlHistory(sid), sendStep);
+            pushDirectSqlHistory(sid, claudeMessage, genSql, rows);
+            const payload = { rows: rows.slice(0, 5000), sql: genSql, source: `HANA Direct (Claude) · ${dbType.toUpperCase()}`, rowCount: rows.length, question: claudeMessage, displayMode: presentation || (isSummaryStyleQuestion(claudeMessage) ? "chart" : "table") };
             dbResult = rows.length
               ? `__ATBL__${JSON.stringify(payload)}__/ATBL__${buildDirectSqlWrapup(claudeMessage, rows)}`
               : `✅ **Query executed — no records found**\n\n\`\`\`sql\n${genSql}\n\`\`\``;
@@ -3902,26 +4424,30 @@ app.post("/api/chat", async (req, res) => {
             console.log(`[PRE-INTERCEPT] routing to HANA direct SQL`);
           } catch (dbErr) {
             hanaAttemptError = dbErr.message;
-            console.warn(`[PRE-INTERCEPT] HANA direct attempt failed, falling back: ${dbErr.message}`);
+            console.warn(`[PRE-INTERCEPT] direct SQL attempt failed: ${dbErr.message}`);
           }
         }
 
         if (dbResult) {
           reply = dbResult;
+        } else if (tryDirectSql) {
+          // DB connected and this was a read question, but SQL generation/
+          // execution failed — surface the error directly, do NOT fall back
+          // to Service Layer/MCP tools while a DB connection is active.
+          console.log(`[PRE-INTERCEPT] direct SQL failed, not falling back to Service Layer (DB connected)`);
+          reply = `⚠️ **Direct SQL query failed:** ${hanaAttemptError || 'Could not generate a valid query for this question.'}\n\nTry rephrasing the question, or check the schema registry for the relevant table.`;
         } else if (isKnownAnalytics) {
+          // No DB connection at all — fall back to the deterministic
+          // Service-Layer-backed NLP path, as before.
           console.log(`[PRE-INTERCEPT] routing to demoReply (action=${analyticsIntent.action})`);
           const result = await demoReply(claudeMessage);
           if (typeof result === "object" && result.text) { reply = result.text; openForm = result.openForm; openForecastDashboard = result.openForecastDashboard; forecastData = result.forecastData; openRushDashboard = result.openRushDashboard; rushData = result.rushData; }
           else reply = result;
-          if (hanaAttemptError && typeof reply === "string" && /error/i.test(reply)) {
-            reply += `\n\n<sub>⚠️ A direct HANA/ODBC query was tried first and also failed: ${hanaAttemptError}</sub>`;
-          }
         } else {
-          // Everything else — write/action requests, and any free-form/ambiguous
-          // question — goes to the tool-calling agent. It understands the request
-          // through natural conversation (asking a clarifying question itself when
-          // genuinely ambiguous, per the system prompt), then calls query_hana_direct
-          // (ODBC, no row cap) or a Service Layer tool as appropriate.
+          // Write/action requests (always land here even with a DB connection
+          // active, since direct SQL is read-only), or — when there's no DB
+          // connection and it's not a known analytics intent — any free-form
+          // read question. Goes to the tool-calling agent.
           sendStep("Thinking through your request…");
           console.log(`[PRE-INTERCEPT] falling through to AI agent`);
 
@@ -4015,6 +4541,73 @@ app.get("/api/chat/sessions/:id", requireAuth, (req, res) => {
 });
 
 // ── Analytics AI summary ──────────────────────────────────────────────────────
+// ── Export a whole chat answer (KPIs + every table/chart + points) ───────────
+// Body: { title, kpis: [{label, value, unit, change_pct, yoy_pct, def}],
+//         tables: [{ name, rows, chartType }], points: [string] }
+// Sheets: "KPIs", "Points to note", then one sheet per table/chart
+// (charts get a native chart image via generateMultiTabExcelReport).
+function answerExportTabs({ kpis = [], tables = [], points = [] }) {
+  const tabs = [];
+  const fmtPct = v => (typeof v === "number" ? `${v > 0 ? "+" : ""}${v.toFixed(1)}%` : "");
+  if (kpis.length) tabs.push({ name: "KPIs", chartType: "none", rows: kpis.map(k => ({
+    KPI: String(k.label || ""), Value: typeof k.value === "number" ? k.value : String(k.value ?? ""),
+    Unit: k.unit === "inr" ? "₹" : k.unit === "pct" ? "%" : (k.unit || ""),
+    "Vs previous period": fmtPct(k.change_pct) + (k.vs ? ` ${k.vs}` : ""),
+    "Vs last year": fmtPct(k.yoy_pct) + (k.vs_yoy ? ` ${k.vs_yoy}` : ""),
+    "How calculated": String(k.def || k.note || ""),
+  })) });
+  if (points.length) tabs.push({ name: "Points to note", chartType: "none", rows: points.map((p, i) => ({ "#": i + 1, Point: String(p) })) });
+  for (const t of tables) {
+    if (Array.isArray(t.rows) && t.rows.length) tabs.push({ name: String(t.name || "Data").slice(0, 28), rows: t.rows.slice(0, 5000), chartType: t.chartType || "none" });
+  }
+  return tabs;
+}
+
+app.post("/api/export/answer-xlsx", requireAuth, async (req, res) => {
+  try {
+    const tabs = answerExportTabs(req.body || {});
+    if (!tabs.length) return res.status(400).json({ error: "Nothing to export in this answer." });
+    const url = await generateMultiTabExcelReport(req.body.title || "chat-answer", tabs);
+    res.json({ url });
+  } catch (e) {
+    res.status(500).json({ error: `Export failed: ${e.message}` });
+  }
+});
+
+// Emails the answer: HTML body (KPIs, tables, points) + the Excel workbook
+// and chart PNGs as attachments. Uses the SMTP settings from Settings → Mail.
+app.post("/api/export/answer-email", requireAuth, async (req, res) => {
+  try {
+    const { to, subject, html, charts = [] } = req.body || {};
+    const recipients = String(to || "").split(/[,;\s]+/).filter(Boolean);
+    if (!recipients.length || recipients.some(a => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a))) return res.status(400).json({ error: "Enter valid email address(es)." });
+    const cfg = mailConfigRepo.get() || {};
+    const host = cfg.smtp_host || process.env.MAIL_SMTP_HOST, user = cfg.mail_user || process.env.MAIL_USER, pass = cfg.mail_pass || process.env.MAIL_PASS;
+    if (!host || !user) return res.status(400).json({ error: "Mail is not configured — set SMTP in Settings → Mail first." });
+    const port = Number(cfg.smtp_port || process.env.MAIL_SMTP_PORT || 587);
+    const attachments = [];
+    const tabs = answerExportTabs(req.body || {});
+    if (tabs.length) {
+      const url = await generateMultiTabExcelReport(req.body.title || "chat-answer", tabs);
+      attachments.push({ filename: `${(req.body.title || "answer").replace(/[^\w\- ]+/g, "").slice(0, 50) || "answer"}.xlsx`, path: path.join(EXPORTS_DIR, path.basename(url)) });
+    }
+    charts.slice(0, 6).forEach((c, i) => {
+      const m = /^data:image\/png;base64,(.+)$/.exec(String(c.png || ""));
+      if (m) attachments.push({ filename: `chart-${i + 1}-${String(c.title || "chart").replace(/[^\w\- ]+/g, "").slice(0, 40)}.png`, content: Buffer.from(m[1], "base64") });
+    });
+    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass }, tls: { rejectUnauthorized: false } });
+    await transporter.sendMail({
+      from: user, to: recipients.join(", "),
+      subject: String(subject || req.body.title || "SAP analysis").slice(0, 200),
+      html: `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:#1F2937">${String(html || "")}<p style="color:#6B7280;font-size:11px;margin-top:18px">Full data and charts are attached. — AgentSphere</p></div>`,
+      attachments,
+    });
+    res.json({ ok: true, sentTo: recipients });
+  } catch (e) {
+    res.status(500).json({ error: `Email failed: ${e.message}` });
+  }
+});
+
 app.post("/api/summarize", requireAuth, async (req, res) => {
   const { rows = [], question = '', source = '' } = req.body;
   if (!rows.length) return res.json({ summary: 'No data to summarize.' });
@@ -4226,6 +4819,61 @@ app.post("/api/schema-registry/sync-udfs", requireAuth, async (req, res) => {
     invalidateUDFCache();
     res.json({ ok: true, synced: rows.length, company, message: `Synced ${rows.length} UDF fields from ${company}.` });
   } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Sync standard SAP B1 tables (by module/transaction) from live DB ────────
+// Scans the curated SAP_TABLE_CATALOG against the connected database's real
+// INFORMATION_SCHEMA/SYS.TABLE_COLUMNS and upserts a type='table' entry per
+// table into schemaRepo — the same registry the AI reads at SQL-generation
+// time (buildSqlContext/buildRegistryBlock). Real column names beat any
+// hand-typed schema doc, which is exactly what caused the OWOR/ItemName bug.
+// Upserts by table_name so it never clobbers a manually-written description
+// (e.g. the Production module notes already added for NOCPL_LIVE) — only the
+// column list is refreshed; a brand-new table gets a placeholder description.
+app.post("/api/schema-registry/sync-tables", requireAuth, async (req, res) => {
+  try {
+    if (!isConnected()) {
+      const saved = dbConnRepo.getActive();
+      if (saved) await connectDB(saved);
+      else return res.status(503).json({ error: "No DB connection active. Activate a DB connection first." });
+    }
+    const cfg = getActiveConfig();
+    const company = cfg?.database || cfg?.schema_name || 'default';
+    const modules = req.body?.modules; // optional: ["Production","Sales",...] to limit scope
+
+    const catalog = modules?.length
+      ? SAP_TABLE_CATALOG.filter(e => modules.includes(e.module))
+      : SAP_TABLE_CATALOG;
+
+    const liveColumns = await scanTablesSchema(catalog.map(e => e.table));
+
+    const existing = schemaRepo.listByCompany.all(company).filter(r => r.type === 'table');
+    const existingByTable = new Map(existing.map(r => [r.table_name, r]));
+
+    let created = 0, updated = 0, skipped = 0;
+    for (const entry of catalog) {
+      const cols = liveColumns[entry.table];
+      if (!cols?.length) { skipped++; continue; } // table not on this backend (module not licensed/installed)
+      const definition = cols.join(",");
+      const prior = existingByTable.get(entry.table);
+      if (prior) {
+        // Keep any human-written description; only refresh the live column list.
+        schemaRepo.update(prior.id, 'table', prior.name || entry.label, entry.table, definition, prior.description);
+        updated++;
+      } else {
+        schemaRepo.create(company, 'table', entry.label, entry.table, definition, `Module: ${entry.module}`);
+        created++;
+      }
+    }
+
+    invalidateContextCache(company);
+    res.json({
+      ok: true, company, scanned: catalog.length, created, updated, skipped,
+      message: `Scanned ${catalog.length} tables: ${created} new, ${updated} refreshed, ${skipped} not present on this database.`,
+    });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -5253,6 +5901,16 @@ app.use('/api/ocr-gatepass', createOcrGatePassAgentRouter({
 }));
 app.use('/api/ocr-document', createOcrDocumentAgentRouter({
   requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+}));
+app.use('/api/custom-agents', createCustomAgentsRouter({
+  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, customAgentsRepo, getActiveSap,
+  SAP_B1_SCHEMA, executeSQL, isConnected, schemaRepo, getActiveCompanyId, localTablesRepo,
+}));
+app.use('/api/local-tables', createLocalTablesRouter({
+  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, localTablesRepo,
+}));
+app.use('/api/workflows', createWorkflowsRouter({
+  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, customAgentsRepo, workflowInstancesRepo, localTablesRepo,
 }));
 
 // ── Three-Way Match Agent routes ────────────────────────────────────────────

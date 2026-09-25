@@ -606,12 +606,23 @@ export function buildRegistryBlock(ctx) {
   }
 
   if (ctx.tables.length) {
-    sections.push('Custom / Object Tables:\n' +
-      ctx.tables.map(e =>
-        `  Table: ${e.name}` +
-        (e.definition  ? `\n    Columns: ${e.definition}` : '') +
-        (e.description ? `\n    Purpose: ${e.description}` : '')
-      ).join('\n'));
+    // Auto-synced standard SAP B1 tables (sync-tables) can carry 200-400+
+    // columns — most of that tail is localization/audit noise (EDoc*, NFe*,
+    // GST*, U_* custom fields for modules this company doesn't use). Sending
+    // the full list on every prompt bloats tokens and can crowd out the
+    // fields that actually matter, so cap what's shown here; the full list
+    // still lives in the registry (UI/API) for reference.
+    const MAX_COLS_SHOWN = 60;
+    sections.push('Custom / Object Tables — use the SQL TABLE NAME in FROM/JOIN, never the label:\n' +
+      ctx.tables.map(e => {
+        const cols = e.definition ? e.definition.split(',') : [];
+        const shown = cols.length > MAX_COLS_SHOWN
+          ? cols.slice(0, MAX_COLS_SHOWN).join(',') + `,...(+${cols.length - MAX_COLS_SHOWN} more columns not shown — mostly localization/audit fields)`
+          : e.definition;
+        return `  SQL TABLE NAME: ${e.table_name || e.name}  (label: ${e.name})` +
+          (shown         ? `\n    Columns: ${shown}` : '') +
+          (e.description ? `\n    Purpose: ${e.description}` : '');
+      }).join('\n'));
   }
 
   if (ctx.views.length) {

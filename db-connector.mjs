@@ -198,6 +198,42 @@ export async function getTableColumns(tableName) {
 }
 
 /**
+ * Scans the live DB for real column names (in original case, ordered) of a
+ * batch of tables in one round trip — the primitive behind auto-populating
+ * the schema registry so the AI stops guessing field names (see
+ * schemaRepo type='table' entries and /api/schema-registry/sync-tables).
+ *
+ * @param {string[]} tableNames  e.g. ["OWOR","WOR1","OITM"]
+ * @returns {Promise<Object<string,string[]>>} tableName -> ordered column names.
+ *   A table that doesn't exist on this backend (module not licensed/installed,
+ *   or a version difference) is simply absent from the result — never thrown.
+ */
+export async function scanTablesSchema(tableNames) {
+  if (!isConnected()) throw new Error("No database connected.");
+  if (!tableNames?.length) return {};
+  const cfg    = _activeConfig;
+  const isHana = _activeType === "hana";
+  const list   = tableNames.map(t => `'${t.replace(/'/g, "''")}'`).join(",");
+
+  const sql = isHana
+    ? `SELECT TABLE_NAME, COLUMN_NAME, POSITION FROM SYS.TABLE_COLUMNS
+       WHERE SCHEMA_NAME = '${(cfg.schema_name || cfg.database || '').replace(/'/g, "''")}'
+       AND TABLE_NAME IN (${list}) ORDER BY TABLE_NAME, POSITION`
+    : `SELECT TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_NAME IN (${list}) ORDER BY TABLE_NAME, ORDINAL_POSITION`;
+
+  const rows = await executeSQL(sql);
+  const byTable = {};
+  for (const r of rows) {
+    const t = r.TABLE_NAME || r.table_name;
+    const c = r.COLUMN_NAME || r.column_name;
+    if (!t || !c) continue;
+    (byTable[t] ??= []).push(c);
+  }
+  return byTable;
+}
+
+/**
  * Resolves a logical field -> real SQL column name using an ordered list of
  * candidate names per field, validated against the live column set.
  *

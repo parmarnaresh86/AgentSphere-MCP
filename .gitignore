@@ -30,3 +30,8 @@ certs/
 
 # Generated Excel exports served at /exports — runtime output, not source
 exports/
+# local env backups (contain secrets)
+.env copy
+.env.*
+!.env.example
+hana-gateway-mcp/

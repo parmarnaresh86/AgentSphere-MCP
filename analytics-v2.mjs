@@ -274,12 +274,12 @@ Common query: GROUP BY INV1.CogsOcrCod with JOIN OPRC ON PrcCode=CogsOcrCod to g
 
   production: `
 PRIORITY TABLES FOR THIS QUERY:
-  OWOR  â€” Production Order header    (DocEntry,DocNum,ItemCode,ItemName,PlannedQty,CmpltQty,RjctQty,Status,Type,StartDate,DueDate,OriginNum,Warehouse,PostDate,Remarks,ProductionCost,ActualMaterialCost,ActualResourceCost,ActualOverheadCost)
-  WOR1  â€” Production Order comp/lines(DocEntry,LineNum,ItemCode,ItemType,Dscription,PlannedQty,IssuedQty,Price,Warehouse,BaseQty,IssueType,ActualAddition)
-  OITT  â€” Bill of Materials header   (Code,Name,Type,Warehouse,Price,BOMType,Status)
-  ITT1  â€” BOM component lines        (Code,Father,ItemCode,Quantity,Warehouse,Price,IssueMethod,CompWhs,VisualOrder)
-  ORSC  â€” Resource Master            (VisResCode,VisResName,ResType,DefaultWhs,Active,UoMGroup)
-  RSC1  â€” Resource Capacities        (VisResCode,Date1,Capacity,OnHand,Committed)
+  OWOR  â€” Production Order header    (DocEntry,DocNum,ItemCode,ProdName[item description, NOT ItemName],PlannedQty,CmpltQty,RjctQty,Status,Type,StartDate,DueDate,PostDate,CloseDate,RlsDate,OriginNum,OriginType,CardCode,Warehouse,Comments[NOT Remarks])
+  WOR1  â€” Production Order comp/lines(DocEntry,LineNum,ItemCode,ItemName,ItemType,PlannedQty,IssuedQty,BaseQty,IssueType,wareHouse[lowercase w],StartDate,EndDate,Status)
+  OITT  â€” Bill of Materials header   (Code,Name,TreeType[NOT Type],ToWH[NOT Warehouse],Qauntity[sic])
+  ITT1  â€” BOM component lines        (Father,ChildNum,Code,ItemName,Quantity,Warehouse,Price,IssueMthd,Uom,Comment,VisOrder,Type)
+  ORSC  â€” Resource Master            (ResCode,VisResCode,ResName,FrgnName,ResType,DfltWH,UnitOfMsr,StdCost1)
+  RSC1  â€” Resource-Warehouse link    (ResCode,WhsCode,Locked) -- no Date1/Capacity/OnHand/Committed columns exist on this backend
   OITM  â€” Item Master (FG/RM)        (ItemCode,ItemName,ItmsGrpCod,OnHand,IsCommited,OnOrder,ManBtchNum,ManSerNum)
   OITW  â€” Item Warehouse Stock       (ItemCode,WhsCode,OnHand,IsCommited,OnOrder)
 Production Order Status: 'P'=Planned 'L'=Released 'A'=Closed 'X'=Cancelled

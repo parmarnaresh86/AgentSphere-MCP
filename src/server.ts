@@ -73,6 +73,11 @@ const NAMESPACE_MAP: Record<string, string> = {
 let activeNamespace: string | null = null;
 let activeCompany: string = "";
 let smlBase: string = ""; // set in main() — e.g. https://host:50000/b1s
+// Set once the backend reports "Semantic Layer exposure is not enabled" (error 805) —
+// that means this company DB runs on SQL Server, not HANA, so sml.svc will never work,
+// not just this call. Once set, skip all further sml.svc attempts and go straight to
+// the Service Layer fallback, instead of retrying a call that can never succeed.
+let smlUnavailable = false;
 
 async function resolveNamespace(companyDB: string): Promise<string | null> {
   if (NAMESPACE_MAP[companyDB]) return (activeNamespace = NAMESPACE_MAP[companyDB]);
@@ -86,7 +91,15 @@ async function resolveNamespace(companyDB: string): Promise<string | null> {
       NAMESPACE_MAP[companyDB] = ns;
       return (activeNamespace = ns);
     }
-  } catch (e) { console.error("Namespace auto-discovery failed:", (e as Error).message); }
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (/Semantic Layer exposure is not enabled|"code":"805"/.test(msg)) {
+      smlUnavailable = true;
+      console.error(`sml.svc unavailable for ${companyDB} (SQL Server-backed company) — using Service Layer fallback for all analytics queries`);
+    } else {
+      console.error("Namespace auto-discovery failed:", msg);
+    }
+  }
   return null;
 }
 
@@ -325,13 +338,15 @@ async function callSMLSVC(
   }
 
   // ── Tier 1: OData GET (fallback when namespace is unknown) ───────────────
-  try {
-    const params: Record<string, unknown> = {};
-    if (filters.length) params["$filter"] = filters.join(" and ");
-    const data = await client.smlGet<{ value?: JsonObject[] }>(smlBase, viewName, params);
-    if (Array.isArray(data.value)) return data.value;
-  } catch {
-    // sml.svc OData GET not available — fall through to SL fallback
+  if (!smlUnavailable) {
+    try {
+      const params: Record<string, unknown> = {};
+      if (filters.length) params["$filter"] = filters.join(" and ");
+      const data = await client.smlGet<{ value?: JsonObject[] }>(smlBase, viewName, params);
+      if (Array.isArray(data.value)) return data.value;
+    } catch {
+      // sml.svc OData GET not available — fall through to SL fallback
+    }
   }
 
   // ── Tier 2: Service Layer direct fallback ────────────────────────────────
@@ -3491,6 +3506,7 @@ async function switchCompany(args: unknown): Promise<ToolResponse> {
   await client.login();
   activeCompany   = dbName;
   activeNamespace = null;
+  smlUnavailable  = false; // re-probe — the new company may be on a different (HANA) backend
   await resolveNamespace(dbName);
 
   return textResult({ message: `Switched to ${dbName}`, namespace: activeNamespace, company: dbName });
@@ -3596,6 +3612,7 @@ async function querySmlView(args: unknown): Promise<ToolResponse> {
   }
 
   try {
+    if (smlUnavailable) throw new Error("sml.svc unavailable for this company (SQL Server-backed)");
     // sml.svc lives under /b1s/ not /b1s/v2/ — use smlBase
     const data = await client.smlGet<{ value?: JsonObject[] }>(smlBase, viewName, params);
     const rows = Array.isArray(data.value) ? data.value : [];

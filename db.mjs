@@ -755,11 +755,35 @@ db.exec(`
     sap_doc_num    INTEGER,
     notes          TEXT DEFAULT ''
   );
+  CREATE TABLE IF NOT EXISTS custom_agents (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    key            TEXT UNIQUE NOT NULL,
+    name           TEXT NOT NULL,
+    icon           TEXT DEFAULT '🤖',
+    color          TEXT DEFAULT '#0070F2',
+    menu_section   TEXT DEFAULT 'Tools',
+    menu_group     TEXT DEFAULT 'Custom Agents',
+    requirement    TEXT DEFAULT '',
+    system_prompt  TEXT DEFAULT '',
+    greeting       TEXT DEFAULT '',
+    quick_replies  TEXT DEFAULT '[]',
+    status         TEXT DEFAULT 'active',
+    created_by     TEXT DEFAULT '',
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE INDEX IF NOT EXISTS idx_cache_items_name    ON cache_items(company_id, ItemName);
   CREATE INDEX IF NOT EXISTS idx_cache_bp_name       ON cache_business_partners(company_id, CardName, CardType);
   CREATE INDEX IF NOT EXISTS idx_cache_sync_company  ON cache_sync_log(company_id, entity);
   CREATE INDEX IF NOT EXISTS idx_ocr_documents_type   ON ocr_documents(company_id, doc_type, uploaded_at);
 `);
+
+// ── Migration: custom_agents.type / spec_json (added for Transaction Screen agents) ──
+(function migrateCustomAgents() {
+  const cols = db.prepare(`PRAGMA table_info(custom_agents)`).all().map(c => c.name);
+  if (!cols.includes('type'))      db.exec(`ALTER TABLE custom_agents ADD COLUMN type TEXT DEFAULT 'chat'`);
+  if (!cols.includes('spec_json')) db.exec(`ALTER TABLE custom_agents ADD COLUMN spec_json TEXT DEFAULT ''`);
+})();
 
 export const ocrDocumentsRepo = {
   insert(row) {
@@ -813,6 +837,252 @@ function deserializeOcrRow(row) {
     match_json:     row.match_json ? JSON.parse(row.match_json) : null,
   };
 }
+
+function deserializeAgentRow(row) {
+  if (!row) return null;
+  let quickReplies = [];
+  try { quickReplies = JSON.parse(row.quick_replies || '[]'); } catch { quickReplies = []; }
+  let spec = null;
+  try { spec = row.spec_json ? JSON.parse(row.spec_json) : null; } catch { spec = null; }
+  return { ...row, quick_replies: quickReplies, spec_json: spec };
+}
+
+function slugifyAgentKey(name) {
+  const base = String(name || '').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'agent';
+  return base.slice(0, 40);
+}
+
+export const customAgentsRepo = {
+  list(status = 'active') {
+    const rows = status
+      ? db.prepare(`SELECT * FROM custom_agents WHERE status=? ORDER BY created_at DESC`).all(status)
+      : db.prepare(`SELECT * FROM custom_agents ORDER BY created_at DESC`).all();
+    return rows.map(deserializeAgentRow);
+  },
+  getById(id) {
+    return deserializeAgentRow(db.prepare(`SELECT * FROM custom_agents WHERE id=?`).get(id));
+  },
+  getByKey(key) {
+    return deserializeAgentRow(db.prepare(`SELECT * FROM custom_agents WHERE key=?`).get(key));
+  },
+  insert(row) {
+    let key = slugifyAgentKey(row.name);
+    if (this.getByKey(key)) key = `${key}-${Date.now().toString(36)}`;
+    const stmt = db.prepare(`INSERT INTO custom_agents
+      (key, name, icon, color, menu_section, menu_group, requirement, system_prompt, greeting, quick_replies, created_by, type, spec_json)
+      VALUES (@key,@name,@icon,@color,@menu_section,@menu_group,@requirement,@system_prompt,@greeting,@quick_replies,@created_by,@type,@spec_json)`);
+    const info = stmt.run({
+      key,
+      name:           row.name,
+      icon:           row.icon || '🤖',
+      color:          row.color || '#0070F2',
+      menu_section:   row.menu_section || 'Tools',
+      menu_group:     row.menu_group || 'Custom Agents',
+      requirement:    row.requirement || '',
+      system_prompt:  row.system_prompt || '',
+      greeting:       row.greeting || '',
+      quick_replies:  JSON.stringify(row.quick_replies || []),
+      created_by:     row.created_by || '',
+      type:           row.type || 'chat',
+      spec_json:      row.spec_json ? JSON.stringify(row.spec_json) : '',
+    });
+    return this.getById(info.lastInsertRowid);
+  },
+  update(id, fields) {
+    const allowed = ['name','icon','color','menu_section','menu_group','requirement','system_prompt','greeting','quick_replies','status','type','spec_json'];
+    const set = {};
+    for (const k of allowed) if (fields[k] !== undefined) set[k] = fields[k];
+    if (set.quick_replies !== undefined) set.quick_replies = JSON.stringify(set.quick_replies || []);
+    if (set.spec_json !== undefined) set.spec_json = set.spec_json ? JSON.stringify(set.spec_json) : '';
+    if (!Object.keys(set).length) return this.getById(id);
+    set.updated_at = new Date().toISOString();
+    const cols = Object.keys(set);
+    db.prepare(`UPDATE custom_agents SET ${cols.map(c => `${c}=@${c}`).join(', ')} WHERE id=@id`)
+      .run({ ...set, id });
+    return this.getById(id);
+  },
+  remove(id) {
+    db.prepare(`DELETE FROM custom_agents WHERE id=?`).run(id);
+  },
+};
+
+// ── Local Tables — SAP-independent business tables (AI Studio Phase 1) ────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS local_tables (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    key            TEXT UNIQUE NOT NULL,
+    name           TEXT NOT NULL,
+    icon           TEXT DEFAULT '🗃️',
+    color          TEXT DEFAULT '#0f766e',
+    columns_json   TEXT NOT NULL DEFAULT '[]',
+    menu_section   TEXT DEFAULT 'Tools',
+    menu_group     TEXT DEFAULT 'Custom Agents',
+    requirement    TEXT DEFAULT '',
+    status         TEXT DEFAULT 'active',
+    created_by     TEXT DEFAULT '',
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS local_table_rows (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_id       INTEGER NOT NULL REFERENCES local_tables(id) ON DELETE CASCADE,
+    data_json      TEXT NOT NULL DEFAULT '{}',
+    created_by     TEXT DEFAULT '',
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_local_table_rows_table ON local_table_rows(table_id);
+`);
+
+function deserializeLocalTable(row) {
+  if (!row) return null;
+  let columns = [];
+  try { columns = JSON.parse(row.columns_json || '[]'); } catch { columns = []; }
+  return { ...row, columns_json: columns };
+}
+function deserializeLocalRow(row) {
+  if (!row) return null;
+  let data = {};
+  try { data = JSON.parse(row.data_json || '{}'); } catch { data = {}; }
+  return { id: row.id, table_id: row.table_id, created_by: row.created_by, created_at: row.created_at, updated_at: row.updated_at, ...data };
+}
+function slugifyLocalTableKey(name) {
+  const base = String(name || '').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'table';
+  return base.slice(0, 40);
+}
+
+export const localTablesRepo = {
+  list(status = 'active') {
+    const rows = status
+      ? db.prepare(`SELECT * FROM local_tables WHERE status=? ORDER BY created_at DESC`).all(status)
+      : db.prepare(`SELECT * FROM local_tables ORDER BY created_at DESC`).all();
+    return rows.map(deserializeLocalTable);
+  },
+  getById(id) {
+    return deserializeLocalTable(db.prepare(`SELECT * FROM local_tables WHERE id=?`).get(id));
+  },
+  getByKey(key) {
+    return deserializeLocalTable(db.prepare(`SELECT * FROM local_tables WHERE key=?`).get(key));
+  },
+  insert(row) {
+    let key = slugifyLocalTableKey(row.name);
+    if (this.getByKey(key)) key = `${key}-${Date.now().toString(36)}`;
+    const stmt = db.prepare(`INSERT INTO local_tables
+      (key, name, icon, color, columns_json, menu_section, menu_group, requirement, created_by)
+      VALUES (@key,@name,@icon,@color,@columns_json,@menu_section,@menu_group,@requirement,@created_by)`);
+    const info = stmt.run({
+      key,
+      name:          row.name,
+      icon:          row.icon || '🗃️',
+      color:         row.color || '#0f766e',
+      columns_json:  JSON.stringify(row.columns || []),
+      menu_section:  row.menu_section || 'Tools',
+      menu_group:    row.menu_group || 'Custom Agents',
+      requirement:   row.requirement || '',
+      created_by:    row.created_by || '',
+    });
+    return this.getById(info.lastInsertRowid);
+  },
+  update(id, fields) {
+    const allowed = ['name', 'icon', 'color', 'menu_section', 'menu_group', 'requirement', 'status'];
+    const set = {};
+    for (const k of allowed) if (fields[k] !== undefined) set[k] = fields[k];
+    if (fields.columns !== undefined) set.columns_json = JSON.stringify(fields.columns || []);
+    if (!Object.keys(set).length) return this.getById(id);
+    set.updated_at = new Date().toISOString();
+    const cols = Object.keys(set);
+    db.prepare(`UPDATE local_tables SET ${cols.map(c => `${c}=@${c}`).join(', ')} WHERE id=@id`).run({ ...set, id });
+    return this.getById(id);
+  },
+  remove(id) {
+    db.prepare(`DELETE FROM local_tables WHERE id=?`).run(id);
+  },
+
+  // ── Rows ───────────────────────────────────────────────────────────────────
+  listRows(tableId, limit = 200) {
+    const rows = db.prepare(`SELECT * FROM local_table_rows WHERE table_id=? ORDER BY id DESC LIMIT ?`).all(tableId, limit);
+    return rows.map(deserializeLocalRow);
+  },
+  getRow(tableId, id) {
+    const row = db.prepare(`SELECT * FROM local_table_rows WHERE table_id=? AND id=?`).get(tableId, id);
+    return deserializeLocalRow(row);
+  },
+  insertRow(tableId, data, createdBy) {
+    const info = db.prepare(`INSERT INTO local_table_rows (table_id, data_json, created_by) VALUES (?,?,?)`)
+      .run(tableId, JSON.stringify(data || {}), createdBy || '');
+    return this.getRow(tableId, info.lastInsertRowid);
+  },
+  updateRow(tableId, id, data) {
+    const existing = this.getRow(tableId, id);
+    if (!existing) return null;
+    const { id: _id, table_id, created_by, created_at, updated_at, ...prevData } = existing;
+    const merged = { ...prevData, ...data };
+    db.prepare(`UPDATE local_table_rows SET data_json=?, updated_at=datetime('now') WHERE table_id=? AND id=?`)
+      .run(JSON.stringify(merged), tableId, id);
+    return this.getRow(tableId, id);
+  },
+  removeRow(tableId, id) {
+    db.prepare(`DELETE FROM local_table_rows WHERE table_id=? AND id=?`).run(tableId, id);
+  },
+};
+
+// ── Workflow instances — runtime state for the Workflow Designer (AI Studio Phase 4) ──
+db.exec(`
+  CREATE TABLE IF NOT EXISTS workflow_instances (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    workflow_id    INTEGER NOT NULL,
+    workflow_key   TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'running',
+    current_node_id TEXT,
+    variables_json TEXT NOT NULL DEFAULT '{}',
+    history_json   TEXT NOT NULL DEFAULT '[]',
+    started_by     TEXT DEFAULT '',
+    started_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at   DATETIME
+  );
+  CREATE INDEX IF NOT EXISTS idx_wf_instances_workflow ON workflow_instances(workflow_key, status);
+`);
+
+function deserializeInstance(row) {
+  if (!row) return null;
+  let variables = {}, history = [];
+  try { variables = JSON.parse(row.variables_json || '{}'); } catch { variables = {}; }
+  try { history = JSON.parse(row.history_json || '[]'); } catch { history = []; }
+  return { ...row, variables_json: variables, history_json: history };
+}
+
+export const workflowInstancesRepo = {
+  create(workflowId, workflowKey, startedBy) {
+    const info = db.prepare(`INSERT INTO workflow_instances (workflow_id, workflow_key, started_by) VALUES (?,?,?)`)
+      .run(workflowId, workflowKey, startedBy || '');
+    return this.getById(info.lastInsertRowid);
+  },
+  getById(id) {
+    return deserializeInstance(db.prepare(`SELECT * FROM workflow_instances WHERE id=?`).get(id));
+  },
+  listByWorkflow(workflowKey, limit = 100) {
+    const rows = db.prepare(`SELECT * FROM workflow_instances WHERE workflow_key=? ORDER BY started_at DESC LIMIT ?`).all(workflowKey, limit);
+    return rows.map(deserializeInstance);
+  },
+  save(instance) {
+    db.prepare(`UPDATE workflow_instances SET status=@status, current_node_id=@current_node_id,
+        variables_json=@variables_json, history_json=@history_json, updated_at=datetime('now'),
+        completed_at=@completed_at
+      WHERE id=@id`).run({
+      id: instance.id,
+      status: instance.status,
+      current_node_id: instance.current_node_id,
+      variables_json: JSON.stringify(instance.variables_json || {}),
+      history_json: JSON.stringify(instance.history_json || []),
+      completed_at: (instance.status === 'completed' || instance.status === 'rejected' || instance.status === 'cancelled')
+        ? (instance.completed_at || new Date().toISOString()) : null,
+    });
+    return this.getById(instance.id);
+  },
+};
 
 export const cacheRepo = {
   // Items
