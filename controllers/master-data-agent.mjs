@@ -452,10 +452,16 @@ async function handleBPChat(sess, msg, sap, res, user) {
     const [,num,name] = msg.split(':');
     sess.series = (num==='skip'||!num) ? null : Number(num);
     sess.step = 'ASK_GROUP';
-    const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
-    sess.groupList = arr(gRes);
+    let groupError = null;
+    try {
+      const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
+      sess.groupList = arr(gRes);
+    } catch(e) { sess.groupList = []; groupError = e.message; }
     const serLabel = sess.series != null ? esc(name) : 'Default';
-    return res.json({ ok:true, reply:`<div>Series: <strong>${serLabel}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${bpGroupChips(sess.groupList)}</div>`, step:sess.step, sessionId:sid });
+    const groupContent = sess.groupList.length
+      ? bpGroupChips(sess.groupList)
+      : `<div style="font-size:12.5px;color:#b91c1c">⚠️ Could not load BP groups from SAP${groupError ? `: ${esc(groupError)}` : ' (none configured)'}.</div>`;
+    return res.json({ ok:true, reply:`<div>Series: <strong>${serLabel}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${groupContent}</div>`, step:sess.step, sessionId:sid });
   }
   if (msg.startsWith('select_bp_group:')) {
     const parts = msg.split(':'); sess.groupCode = Number(parts[1]); sess.groupName = parts.slice(2).join(':');
@@ -498,6 +504,9 @@ async function handleBPChat(sess, msg, sap, res, user) {
   }
   if (msg==='confirm_bp') {
     const cardType = bpType==='customer' ? 'cCustomer' : 'cSupplier';
+    if (sess.series == null && !sess.cardCode) {
+      return res.json({ ok:true, reply:`<div style="color:#b91c1c">⚠️ No Number Series was selected and no manual Code was entered, so SAP cannot assign a ${bpType==='customer'?'Customer':'Supplier'} Code. Please go back and either pick a Series or type a specific BP Code.</div>`, step:sess.step, sessionId:sid, quickReplies:['Start Over'] });
+    }
     const payload = {
       CardName: sess.cardName,
       ...(sess.cardCode ? {CardCode:sess.cardCode} : {}),
@@ -532,13 +541,18 @@ async function handleBPChat(sess, msg, sap, res, user) {
   if (step==='ASK_CODE') {
     const code = msg.trim(); sess.cardCode = (!code||code.toLowerCase()==='auto') ? null : code.toUpperCase();
     sess.step = 'ASK_SERIES';
+    sess.seriesError = null;
     try {
       const serRes = await sap.post('/SeriesService_GetDocumentSeries', { DocumentTypeParams:{ Document:'2' } });
       sess.seriesList = arr(serRes);
-    } catch(_) { sess.seriesList = []; }
+    } catch(e) { sess.seriesList = []; sess.seriesError = e.message; }
     let seriesContent;
     if (sess.seriesList.length) {
       seriesContent = seriesChips(sess.seriesList).replace(/select_series:/g,'select_bp_series:');
+    } else if (sess.seriesError) {
+      seriesContent = `<div style="font-size:12.5px;color:#b91c1c;margin-bottom:8px">⚠️ Could not load series from SAP: ${esc(sess.seriesError)}</div>
+        <button onclick="masterSend('select_bp_series:skip:Default')" style="margin:3px;padding:6px 16px;background:#f0f9ff;border:1.5px solid #0ea5e9;border-radius:20px;cursor:pointer;font-size:12.5px;color:#0369a1;font-weight:600">Skip (use SAP default)</button>
+        <div style="margin-top:10px;font-size:12.5px;color:#6b7280">If SAP requires a series for this card type, enter a specific <strong>BP Code</strong> above instead of "auto" next time, or type a series number and press Enter.</div>`;
     } else {
       seriesContent = `<div style="font-size:12.5px;color:#6b7280;margin-bottom:8px">No series configured in SAP.</div>
         <button onclick="masterSend('select_bp_series:skip:Default')" style="margin:3px;padding:6px 16px;background:#f0f9ff;border:1.5px solid #0ea5e9;border-radius:20px;cursor:pointer;font-size:12.5px;color:#0369a1;font-weight:600">Skip (use SAP default)</button>
@@ -550,10 +564,16 @@ async function handleBPChat(sess, msg, sap, res, user) {
     const input = msg.trim();
     sess.series = (!input || input.toLowerCase()==='skip') ? null : (isNaN(input) ? null : Number(input));
     sess.step = 'ASK_GROUP';
-    const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
-    sess.groupList = arr(gRes);
+    let groupError = null;
+    try {
+      const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
+      sess.groupList = arr(gRes);
+    } catch(e) { sess.groupList = []; groupError = e.message; }
     const serLabel = sess.series != null ? String(sess.series) : 'Default';
-    return res.json({ ok:true, reply:`<div>Series: <strong>${esc(serLabel)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${bpGroupChips(sess.groupList)}</div>`, step:sess.step, sessionId:sid });
+    const groupContent = sess.groupList.length
+      ? bpGroupChips(sess.groupList)
+      : `<div style="font-size:12.5px;color:#b91c1c">⚠️ Could not load BP groups from SAP${groupError ? `: ${esc(groupError)}` : ' (none configured)'}.</div>`;
+    return res.json({ ok:true, reply:`<div>Series: <strong>${esc(serLabel)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${groupContent}</div>`, step:sess.step, sessionId:sid });
   }
   if (step==='ASK_PHONE') {
     sess.phone = (msg.toLowerCase()==='skip') ? null : msg.trim();

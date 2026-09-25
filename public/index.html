@@ -10353,7 +10353,7 @@ async function mpoValidateSo() {
   }
 }
 
-async function mpoPostSo() {
+async function mpoPostSo(allowDuplicateRef) {
   if (!_mpoCurrentCustomer) return;
   const btn = document.getElementById('mpo-post-btn');
   const resultEl = document.getElementById('mpo-create-result');
@@ -10373,6 +10373,7 @@ async function mpoPostSo() {
         currency:     document.getElementById('mpo-currency').value,
         notes:        document.getElementById('mpo-notes').value,
         lines,
+        ...(allowDuplicateRef ? { allowDuplicateRef: true } : {}),
       })
     });
     const d = await r.json();
@@ -10388,9 +10389,15 @@ async function mpoPostSo() {
       // Update the DRAFT badge to POSTED
       const badge = document.querySelector('#mpo-create-section span[style*="DRAFT"]');
       if (badge) { badge.textContent = 'POSTED'; badge.style.background = '#DCFCE7'; badge.style.color = '#16A34A'; badge.style.borderColor = '#86EFAC'; }
-    } else {
-      resultEl.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:12px;color:#C0392B;font-size:12px;margin-top:6px">❌ ${escHtml(d.error||d.message||'SO creation failed')}</div>`;
+      return;
     }
+    if (d.duplicateRef) {
+      resultEl.innerHTML = `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px;color:#92400E;font-size:12px;margin-top:6px">⚠️ ${escHtml(d.error)}</div>`;
+      const proceed = confirm(`This PO reference (${d.numAtCard || 'this PO'}) has already been posted for this customer.\n\nPost it again using reference "${d.suggestedRef || ''}" instead?`);
+      if (proceed) { await mpoPostSo(true); }
+      return;
+    }
+    resultEl.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:12px;color:#C0392B;font-size:12px;margin-top:6px">❌ ${escHtml(d.error||d.message||'SO creation failed')}</div>`;
   } catch(e) {
     resultEl.innerHTML = `<span style="color:#C0392B">❌ ${escHtml(e.message)}</span>`;
   } finally {
