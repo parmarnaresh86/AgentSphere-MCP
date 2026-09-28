@@ -1220,12 +1220,29 @@ async function createSalesOrder(args: unknown): Promise<ToolResponse> {
     Comments: comments,
     DocumentLines: orderLines,
   };
-  if (optionalString(input.currency ?? input.docCurrency, "currency"))
-    payload.DocCurrency = input.currency ?? input.docCurrency;
+  const requestedCurrency = optionalString(input.currency ?? input.docCurrency, "currency");
+  if (requestedCurrency) payload.DocCurrency = requestedCurrency;
   if (optionalString(input.numAtCard ?? input.poNumber, "numAtCard"))
     payload.NumAtCard = input.numAtCard ?? input.poNumber;
 
-  const order = await client.post<JsonObject>("/Orders", payload);
+  let order: JsonObject;
+  try {
+    order = await client.post<JsonObject>("/Orders", payload);
+  } catch (error) {
+    // This company DB rejects an explicit DocCur — neither the ISO code (e.g. "USD") nor
+    // the "local currency" marker "##" validates against ORCR here, which means the company
+    // isn't set up for multi-currency documents at all. Retry without DocCurrency so SAP
+    // defaults the order to the BP's/company's own currency instead of us dictating one.
+    // (Duplicate customer/vendor reference errors are intentionally left to propagate here —
+    // the caller in chat-server.mjs's write-confirm flow already recovers from those generically.)
+    const message = error instanceof Error ? error.message : String(error);
+    if (requestedCurrency && payload.DocCurrency && /-5002|valid currency code/i.test(message)) {
+      const { DocCurrency, ...payloadWithoutCurrency } = payload;
+      order = await client.post<JsonObject>("/Orders", payloadWithoutCurrency);
+    } else {
+      throw error;
+    }
+  }
 
   return textResult({
     status: "CONFIRMED",

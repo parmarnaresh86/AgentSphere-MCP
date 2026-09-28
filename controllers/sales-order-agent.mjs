@@ -10,7 +10,7 @@
  * the chat reply — the frontend just injects it, no separate combo-list JS.
  */
 import { Router } from 'express';
-import db, { connRepo } from '../db.mjs';
+import db, { connRepo, cacheRepo } from '../db.mjs';
 
 const _sessions = new Map();
 
@@ -67,9 +67,38 @@ async function getDefaultUoMCode(itemCode, sap) {
   }
 }
 
-function getCacheTaxCodes() {
+async function getCacheTaxCodes(sap) {
   const cid = getCompanyId();
-  return db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
+  const rows = db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
+  if (rows.length || !sap) return rows;
+  // Cache is empty (never synced) — fall back to a live SAP lookup and warm the cache for next time.
+  // Tax codes live in a different SAP entity depending on the company's localization:
+  // VAT-based localizations expose /VatGroups; US/Canada Sales Tax localization keeps
+  // them in /SalesTaxCodes instead. Both entities can exist regardless of which one a
+  // given company actually uses — an unused one is simply empty, not an error — so try
+  // both and use whichever actually has data.
+  let vat = [];
+  try {
+    const d = await sap.get('/VatGroups', { $orderby: 'Code asc', $top: 200 });
+    const raw = Array.isArray(d.value) ? d.value : (Array.isArray(d) ? d : []);
+    vat = raw.map(v => {
+      const slabs = v.VatGroups || [];
+      const rate  = slabs.length ? Number(slabs[slabs.length - 1].Rate || slabs[0].Rate || 0) : 0;
+      return { Code: v.Code, Name: v.Name, Category: v.Category, Rate: rate };
+    });
+  } catch (e) {
+    console.error('[SO-Agent] live /VatGroups fetch failed:', e.message);
+  }
+  if (vat.length) { cacheRepo.upsertTaxCodes(cid, vat); return vat; }
+  try {
+    const d = await sap.get('/SalesTaxCodes', { $orderby: 'Code asc', $top: 200 });
+    const raw = Array.isArray(d.value) ? d.value : (Array.isArray(d) ? d : []);
+    const salesTax = raw.map(v => ({ Code: v.Code, Name: v.Name, Category: 'Sales Tax', Rate: Number(v.Rate || 0) }));
+    if (salesTax.length) { cacheRepo.upsertTaxCodes(cid, salesTax); return salesTax; }
+  } catch (e) {
+    console.error('[SO-Agent] live /SalesTaxCodes fetch failed:', e.message);
+  }
+  return vat; // both empty/unavailable
 }
 
 function getCacheWarehouses() {
@@ -80,33 +109,34 @@ function getCacheWarehouses() {
 // ── HTML combo builders (rendered inside agent reply) ─────────────────────────
 
 function buildCustomerComboHtml(customers) {
-  const opts = customers.map(c =>
-    `<option value="${escHtml(c.CardCode)}">${escHtml(c.CardCode)} — ${escHtml(c.CardName)}${c.City ? ' ('+escHtml(c.City)+')' : ''}</option>`
-  ).join('');
+  const dataJson = escHtml(JSON.stringify(customers.map(c => ({ code: c.CardCode, name: c.CardName, city: c.City || '' }))));
   const noCache = !customers.length
     ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Customer cache is empty — go to <strong>Tools → Data Sync</strong> to load master data, or type in the box below to search live.</div>` : '';
   return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:8px">Select Customer (${customers.length} available):</div>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-      <select id="soa-cust-sel"
-        style="flex:1;border:1.5px solid #0070F2;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
-        <option value="">— Select a Customer —</option>
-        ${opts}
-      </select>
-      <button onclick="soaComboSelectCustomer()"
-        style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
-        Select →
-      </button>
+    <div id="soa-cust-combo" data-items="${dataJson}" style="display:none"></div>
+    <div style="position:relative;margin-bottom:6px">
+      <input type="text" id="soa-cust-input" autocomplete="off"
+        placeholder="Type or paste customer code / name…"
+        oninput="soaCustOnInput(this)" onfocus="soaCustOnInput(this)"
+        onkeydown="soaCustOnKeydown(event)"
+        onblur="setTimeout(function(){var dd=document.getElementById('soa-cust-dropdown'); if(dd) dd.style.display='none';},150)"
+        style="width:100%;border:1.5px solid #0070F2;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none;box-sizing:border-box">
+      <input type="hidden" id="soa-cust-code">
+      <div id="soa-cust-dropdown"
+        style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:2px;background:#fff;border:1px solid #d1d5db;border-radius:6px;max-height:220px;overflow-y:auto;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
     </div>
-    <div style="font-size:11.5px;color:#6b7280">Or type a name / code in the box below to search</div>
+    <button onclick="soaComboSelectCustomer()"
+      style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+      Select →
+    </button>
+    <div style="font-size:11.5px;color:#6b7280;margin-top:6px">Type to filter (${customers.length} customers), or paste a code / name to auto-select. You can also type in the chat box below to search SAP live.</div>
   </div>`;
 }
 
 function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
-  const itemOpts = items.map(i =>
-    `<option value="${escHtml(i.ItemCode)}" data-name="${escHtml(i.ItemName)}" data-unit="${escHtml(i.SalesUnit||'')}" data-vat="${escHtml(i.SalesVATGroup||'')}">${escHtml(i.ItemCode)} — ${escHtml(i.ItemName)}</option>`
-  ).join('');
+  const dataJson = escHtml(JSON.stringify(items.map(i => ({ code: i.ItemCode, name: i.ItemName, vat: i.SalesVATGroup || '' }))));
   const taxOpts = [`<option value="">— None —</option>`, ...taxCodes.map(t =>
     `<option value="${escHtml(t.Code)}">${escHtml(t.Code)}${t.Name?' — '+escHtml(t.Name):''}</option>`)].join('');
   const whOpts  = [`<option value="">— Default —</option>`, ...warehouses.map(w =>
@@ -116,13 +146,20 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
   return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:8px">Add Line Item (${items.length} items available):</div>
+    <div id="soa-item-combo-${lineIdx}" data-items="${dataJson}" style="display:none"></div>
     <div style="margin-bottom:8px">
-      <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Item *</div>
-      <select id="soa-item-sel-${lineIdx}" onchange="soaComboItemChange(this,${lineIdx})"
-        style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
-        <option value="">— Select an Item —</option>
-        ${itemOpts}
-      </select>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Item * <span style="font-weight:400;color:#9ca3af">(paste a code/name to auto-select)</span></div>
+      <div style="position:relative">
+        <input type="text" id="soa-item-input-${lineIdx}" autocomplete="off"
+          placeholder="Type or paste item code / name…"
+          oninput="soaItemOnInput(this,${lineIdx})" onfocus="soaItemOnInput(this,${lineIdx})"
+          onkeydown="soaItemOnKeydown(event,${lineIdx})"
+          onblur="setTimeout(function(){var dd=document.getElementById('soa-item-dropdown-${lineIdx}'); if(dd) dd.style.display='none';},150)"
+          style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none;box-sizing:border-box">
+        <input type="hidden" id="soa-item-code-${lineIdx}">
+        <div id="soa-item-dropdown-${lineIdx}"
+          style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:2px;background:#fff;border:1px solid #d1d5db;border-radius:6px;max-height:220px;overflow-y:auto;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:80px 110px 70px 1fr 1fr;gap:8px;margin-bottom:10px">
       <div>
@@ -415,7 +452,7 @@ export function createSalesOrderAgentRouter(deps) {
           session.step = 'ADD_ITEM';
           session._lineIdx = 0;
           session._lines   = [];
-          const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+          const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
           reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:10px 14px;margin-bottom:8px">
             ✅ Customer: <strong>${escHtml(cardName)}</strong> (${escHtml(cardCode)})
           </div>
@@ -431,7 +468,7 @@ export function createSalesOrderAgentRouter(deps) {
             if (!session._lines) session._lines = [];
             session._lines.push(action);
             session._lineIdx = (session._lineIdx || 0) + 1;
-            const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+            const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
             reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:8px 14px;margin-bottom:8px">
               <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:6px">✅ Item added — ${session._lines.length} line(s) so far:</div>
               ${linesSummaryTable(session._lines)}
@@ -445,7 +482,7 @@ export function createSalesOrderAgentRouter(deps) {
         // ── Done adding items → show review / post form ─────────────────────
         else if (action?.action === 'done_items') {
           if (!session._lines?.length) {
-            const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+            const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
             reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
           } else {
             session.step = 'REVIEW_FORM';
@@ -484,7 +521,7 @@ export function createSalesOrderAgentRouter(deps) {
         // ── Add more items ───────────────────────────────────────────────────
         else if (action?.action === 'add_more_items') {
           session.step = 'ADD_ITEM';
-          const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+          const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
           reply = `<div style="font-size:13px;margin-bottom:6px">Add another item:</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
         }
 
@@ -517,14 +554,13 @@ export function createSalesOrderAgentRouter(deps) {
             session.selectedCustomer = { cardCode: c.CardCode, cardName: c.CardName };
             session.step = 'ADD_ITEM';
             session._lineIdx = 0; session._lines = [];
-            const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+            const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
             reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:10px 14px;margin-bottom:8px">
               ✅ Customer: <strong>${escHtml(c.CardName)}</strong> (${escHtml(c.CardCode)})
             </div>${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
           } else {
             customerList = customers.map(c => ({ cardCode: c.CardCode, cardName: c.CardName }));
-            const cached = getCacheCustomers();
-            reply = `<div style="margin-bottom:8px">Found <strong>${customers.length}</strong> matches. Select one:</div>${buildCustomerComboHtml(cached)}`;
+            reply = `<div style="margin-bottom:8px">Found <strong>${customers.length}</strong> matches. Select one:</div>${buildCustomerComboHtml(customers)}`;
             session.step = 'SELECT_CUSTOMER';
           }
         }

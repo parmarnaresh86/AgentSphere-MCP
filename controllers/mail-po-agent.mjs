@@ -348,12 +348,12 @@ PO TEXT:\n${cached.pdfText.substring(0, 8000)}`;
 
   // ── Create SO from email + send acknowledgment ────────────────────────────
   router.post('/create-so-mail', requireAuth, async (req, res) => {
-    const { fromEmail, subject, cardCode, poNumber, poDate, deliveryDate, currency, notes, lines = [] } = req.body || {};
+    const { fromEmail, subject, cardCode, poNumber, poDate, deliveryDate, currency, notes, lines = [], allowDuplicateRef } = req.body || {};
     if (!cardCode) return res.status(400).json({ ok: false, error: "cardCode required" });
     try {
       const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty)||1, UnitPrice: parseFloat(l.unitPrice)||0, ...(l.uomCode && l.uomCode !== "Manual" ? { UoMCode: l.uomCode } : {}) }));
       if (!docLines.length) return res.json({ ok: false, error: "No valid item lines to create SO" });
-      const { DocNum: docNum } = await createSoDirect(getActiveSap(), { cardCode, docDate: poDate, docDueDate: deliveryDate, numAtCard: poNumber, currency, comments: notes || "", docLines });
+      const { DocNum: docNum } = await createSoDirect(getActiveSap(), { cardCode, docDate: poDate, docDueDate: deliveryDate, numAtCard: poNumber, currency, comments: notes || "", docLines, allowDuplicateRef });
 
       // Send acknowledgment email
       let ackSent = false;
@@ -365,7 +365,10 @@ PO TEXT:\n${cached.pdfText.substring(0, 8000)}`;
         } catch (e) { console.warn("[MAIL-PO] Ack send failed:", e.message); }
       }
       res.json({ ok: true, docNum, cardCode, poNumber, ackSent });
-    } catch (e) { res.json({ ok: false, error: e.message }); }
+    } catch (e) {
+      if (e.duplicateRef) return res.json({ ok: false, duplicateRef: true, numAtCard: e.numAtCard, suggestedRef: e.suggestedRef, error: e.message });
+      res.json({ ok: false, error: e.message });
+    }
   });
 
   // ── Register PDF workflow callback for mail-po ────────────────────────────

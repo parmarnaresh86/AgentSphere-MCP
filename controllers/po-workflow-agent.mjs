@@ -208,15 +208,18 @@ ${rawText.substring(0, 8000)}`;
 
   // Step 5: Create Sales Order
   router.post('/create', requireAuth, async (req, res) => {
-    const { cardCode, poNumber, poDate, deliveryDate, lines = [], notes, creditOverride } = req.body || {};
+    const { cardCode, poNumber, poDate, deliveryDate, lines = [], notes, creditOverride, allowDuplicateRef } = req.body || {};
     if (!cardCode) return res.status(400).json({ error: 'cardCode required' });
     const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty) || 1, UnitPrice: parseFloat(l.unitPrice) || 0, ...(l.uomCode && l.uomCode !== 'Manual' ? { UoMCode: l.uomCode } : {}) }));
     if (!docLines.length) return res.status(400).json({ error: 'No valid item codes — map all items before creating order' });
     try {
       const comments = [poNumber ? `PO Ref: ${poNumber}` : '', notes || '', creditOverride ? 'Credit override approved' : ''].filter(Boolean).join(' | ');
-      const { DocNum, DocEntry } = await createSoDirect(getActiveSap(), { cardCode, docDate: poDate, docDueDate: deliveryDate, numAtCard: poNumber, comments, docLines });
+      const { DocNum, DocEntry } = await createSoDirect(getActiveSap(), { cardCode, docDate: poDate, docDueDate: deliveryDate, numAtCard: poNumber, comments, docLines, allowDuplicateRef });
       res.json({ ok: true, docNum: DocNum, docEntry: DocEntry, message: `Sales Order #${DocNum} created` });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) {
+      if (e.duplicateRef) return res.status(409).json({ error: e.message, duplicateRef: true, numAtCard: e.numAtCard, suggestedRef: e.suggestedRef });
+      res.status(500).json({ error: e.message });
+    }
   });
 
   return router;
