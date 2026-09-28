@@ -62,6 +62,15 @@ import { createDataSyncRouter } from './controllers/data-sync.mjs';
 import { createFinancialAgentRouter } from './controllers/financial-agent.mjs';
 import { createActivityAgentRouter } from './controllers/activity-agent.mjs';
 import { createVendorPaymentAgingRouter } from './controllers/vendor-payment-aging-agent.mjs';
+import { createCollectionsAgentRouter }          from './controllers/collections-agent.mjs';
+import { createCashFlowAgentRouter }             from './controllers/cash-flow-agent.mjs';
+import { createCreditRiskAgentRouter }           from './controllers/credit-risk-agent.mjs';
+import { createSalesFollowupAgentRouter }        from './controllers/sales-followup-agent.mjs';
+import { createQuotationIntelAgentRouter }       from './controllers/quotation-intel-agent.mjs';
+import { createInventoryOptimizationAgentRouter } from './controllers/inventory-optimization-agent.mjs';
+import { createDeadStockAgentRouter }            from './controllers/dead-stock-agent.mjs';
+import { createVendorPerformanceAgentRouter }    from './controllers/vendor-performance-agent.mjs';
+import { createApPaymentOptimizationRouter }    from './controllers/ap-payment-optimization-agent.mjs';
 import { createPurchaseAnalysisRouter } from './controllers/purchase-analysis-agent.mjs';
 import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mjs';
 import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap, scanTablesSchema, getCompanyCurrency } from "./db-connector.mjs";
@@ -6023,6 +6032,26 @@ app.use('/api/vendor-payment-aging', createVendorPaymentAgingRouter({
   AI_PROVIDER,
   USE_AI,
 }));
+
+// ── Insight agents (Collections, Cash Flow, Credit Risk, Sales Follow-up,
+//    Quotation Intelligence, Inventory Optimization, Dead Stock, Vendor
+//    Performance, AP Payment Optimization). All read live SAP tables via DB Direct and share one
+//    response shape rendered by the generic insight panel in index.html.
+{
+  const insightDeps = {
+    requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+    isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns,
+  };
+  app.use('/api/collections-agent',            createCollectionsAgentRouter(insightDeps));
+  app.use('/api/cash-flow-agent',              createCashFlowAgentRouter(insightDeps));
+  app.use('/api/credit-risk-agent',            createCreditRiskAgentRouter(insightDeps));
+  app.use('/api/sales-followup-agent',         createSalesFollowupAgentRouter(insightDeps));
+  app.use('/api/quotation-intel-agent',        createQuotationIntelAgentRouter(insightDeps));
+  app.use('/api/inventory-optimization-agent', createInventoryOptimizationAgentRouter(insightDeps));
+  app.use('/api/dead-stock-agent',             createDeadStockAgentRouter(insightDeps));
+  app.use('/api/vendor-performance-agent',     createVendorPerformanceAgentRouter(insightDeps));
+  app.use('/api/ap-payment-agent',             createApPaymentOptimizationRouter(insightDeps));
+}
 
 // ── Product Forecasting Agent routes ──────────────────────────────────────
 app.use('/api/forecasting', createForecastingRouter({
