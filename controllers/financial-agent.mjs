@@ -208,6 +208,8 @@ GROUP BY ${bucketCase('T0')}`;
     if (b.minDays !== null && b.maxDays !== null) return `${daysExpr} BETWEEN ${b.minDays} AND ${b.maxDays}`;
     return '1=1';
   }
+  // Standard SQL single-quote escaping — values are always wrapped in '...' below.
+  const sqlEscape = (s) => String(s).replace(/'/g, "''");
 
   router.get('/finance/customer-aging', requireAuth, async (req, res) => {
     if (!requireDb(res)) return;
@@ -222,6 +224,13 @@ GROUP BY ${bucketCase('T0')}`;
       const balance = `(T0."DocTotal" - T0."PaidToDate")`;
       const bucketCase = `CASE ${buckets.map(b => `WHEN ${bucketCondition(daysExpr, b)} THEN '${b.label}'`).join(' ')} ELSE 'Other' END`;
 
+      // Optional customer filter — exact CardCode match, or partial CardName match.
+      const cardCode = (req.query.cardCode || '').toString().trim().slice(0, 60);
+      const cardName = (req.query.cardName || '').toString().trim().slice(0, 100);
+      let custFilter = '';
+      if (cardCode) custFilter = ` AND T0."CardCode"='${sqlEscape(cardCode)}'`;
+      else if (cardName) custFilter = ` AND UPPER(T0."CardName") LIKE UPPER('%${sqlEscape(cardName)}%')`;
+
       // Tab 1 — aging-wise, one row per customer, one column per configured bucket
       const bucketCols = buckets.map((b, i) =>
         `${nf(dbType)}(SUM(CASE WHEN ${bucketCondition(daysExpr, b)} THEN ${balance} ELSE 0 END),0) AS "Bucket_${i}"`
@@ -230,7 +239,7 @@ GROUP BY ${bucketCase('T0')}`;
   ${bucketCols},
   ${nf(dbType)}(SUM(${balance}),0) AS "Total"
 FROM ${oinv} T0
-WHERE T0."DocStatus"='O' AND ${balance} > 0
+WHERE T0."DocStatus"='O' AND ${balance} > 0${custFilter}
 GROUP BY T0."CardCode", T0."CardName"
 ORDER BY SUM(${balance}) DESC`;
 
@@ -239,7 +248,7 @@ ORDER BY SUM(${balance}) DESC`;
   T0."DocDate" AS "InvoiceDate", T0."DocDueDate" AS "DueDate", ${balance} AS "Balance",
   ${daysExpr} AS "DaysOverdue", ${bucketCase} AS "Bucket"
 FROM ${oinv} T0
-WHERE T0."DocStatus"='O' AND ${balance} > 0
+WHERE T0."DocStatus"='O' AND ${balance} > 0${custFilter}
 ORDER BY T0."${dateCol}" ASC`;
 
       const [summaryRowsRaw, detailRowsRaw] = await Promise.all([executeSQL(summarySql), executeSQL(detailSql)]);
@@ -261,6 +270,7 @@ ORDER BY T0."${dateCol}" ASC`;
         agent: 'Customer Aging Detail Agent', dbType, dateBasis, generatedAt: new Date().toISOString(),
         bucketLabels: buckets.map(b => b.label),
         buckets, // echoed back so the UI can reload the same config after a refresh
+        customerFilter: { cardCode: cardCode || null, cardName: cardName || null },
         summary, totals: { grandTotal, overdueTotal, customerCount: summary.length },
         detail: detailRows,
         detailTotalCount: detailRowsRaw.length,

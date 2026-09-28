@@ -729,6 +729,18 @@ db.exec(`
     Name       TEXT DEFAULT '',
     PRIMARY KEY (company_id, Code)
   );
+  CREATE TABLE IF NOT EXISTS cache_open_orders (
+    company_id TEXT NOT NULL,
+    DocEntry   INTEGER NOT NULL,
+    DocNum     INTEGER,
+    CardCode   TEXT,
+    CardName   TEXT DEFAULT '',
+    DocDate    TEXT DEFAULT '',
+    DocDueDate TEXT DEFAULT '',
+    DocTotal   REAL DEFAULT 0,
+    NumAtCard  TEXT DEFAULT '',
+    PRIMARY KEY (company_id, DocEntry)
+  );
   CREATE TABLE IF NOT EXISTS cache_sync_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id TEXT NOT NULL,
@@ -775,6 +787,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_cache_items_name    ON cache_items(company_id, ItemName);
   CREATE INDEX IF NOT EXISTS idx_cache_bp_name       ON cache_business_partners(company_id, CardName, CardType);
   CREATE INDEX IF NOT EXISTS idx_cache_sync_company  ON cache_sync_log(company_id, entity);
+  CREATE INDEX IF NOT EXISTS idx_cache_open_orders_cust ON cache_open_orders(company_id, CardCode);
   CREATE INDEX IF NOT EXISTS idx_ocr_documents_type   ON ocr_documents(company_id, doc_type, uploaded_at);
 `);
 
@@ -1174,6 +1187,23 @@ export const cacheRepo = {
     db.transaction(() => { for (const r of rows) ins.run(companyId,r.Code,r.Name||''); })();
   },
   getBPGroups(companyId) { return db.prepare(`SELECT * FROM cache_bp_groups WHERE company_id=? ORDER BY Name`).all(companyId); },
+  // Open Sales Orders — transactional, not master data: a stale row here (an order
+  // that's since been delivered/closed elsewhere) would let someone act on it as if
+  // it were still open, so every sync replaces the whole snapshot rather than merging.
+  upsertOpenOrders(companyId, rows) {
+    const del = db.prepare(`DELETE FROM cache_open_orders WHERE company_id=?`);
+    const ins = db.prepare(`INSERT OR REPLACE INTO cache_open_orders
+      (company_id,DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,NumAtCard)
+      VALUES (?,?,?,?,?,?,?,?,?)`);
+    db.transaction(() => {
+      del.run(companyId);
+      for (const r of rows) ins.run(companyId,r.DocEntry,r.DocNum,r.CardCode,r.CardName||'',r.DocDate||'',r.DocDueDate||'',r.DocTotal||0,r.NumAtCard||'');
+    })();
+  },
+  getOpenOrdersCustomers(companyId) {
+    return db.prepare(`SELECT CardCode AS cardCode, CardName AS cardName FROM cache_open_orders
+      WHERE company_id=? GROUP BY CardCode ORDER BY CardName`).all(companyId);
+  },
   // Sync log
   logSync(companyId, entity, status, count, error='') {
     db.prepare(`INSERT INTO cache_sync_log(company_id,entity,status,record_count,error_msg,synced_at)
@@ -1200,6 +1230,7 @@ export const cacheRepo = {
       currencies:       db.prepare(`SELECT COUNT(*) AS n FROM cache_currencies       WHERE company_id=?`).get(companyId)?.n ?? 0,
       item_groups:      db.prepare(`SELECT COUNT(*) AS n FROM cache_item_groups      WHERE company_id=?`).get(companyId)?.n ?? 0,
       bp_groups:        db.prepare(`SELECT COUNT(*) AS n FROM cache_bp_groups        WHERE company_id=?`).get(companyId)?.n ?? 0,
+      open_orders:      db.prepare(`SELECT COUNT(*) AS n FROM cache_open_orders      WHERE company_id=?`).get(companyId)?.n ?? 0,
     };
   },
   // Wipes cached rows AND sync history for one entity — status goes back to
@@ -1217,6 +1248,7 @@ export const cacheRepo = {
       currencies:    () => del(`DELETE FROM cache_currencies WHERE company_id=?`),
       item_groups:   () => del(`DELETE FROM cache_item_groups WHERE company_id=?`),
       bp_groups:     () => del(`DELETE FROM cache_bp_groups WHERE company_id=?`),
+      open_orders:   () => del(`DELETE FROM cache_open_orders WHERE company_id=?`),
     };
     if (!byEntity[entity]) throw new Error(`Unknown entity: ${entity}`);
     byEntity[entity]();
@@ -1224,7 +1256,8 @@ export const cacheRepo = {
   },
   clearCompany(companyId) {
     ['cache_items','cache_business_partners','cache_tax_codes','cache_warehouses',
-     'cache_uom','cache_payment_terms','cache_currencies','cache_item_groups','cache_bp_groups']
+     'cache_uom','cache_payment_terms','cache_currencies','cache_item_groups','cache_bp_groups',
+     'cache_open_orders']
       .forEach(t => db.prepare(`DELETE FROM ${t} WHERE company_id=?`).run(companyId));
     // Also clear sync history so the UI shows "Never synced" instead of stale OK/counts.
     db.prepare(`DELETE FROM cache_sync_log WHERE company_id=?`).run(companyId);

@@ -2099,7 +2099,7 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-purch-p2p-workflow">
-        <div class="nav-subitem" onclick="showPRAgentPanel()" id="nav-pr-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>PR Agent</div>
+        <div class="nav-subitem" onclick="showPRAgentPanel()" id="nav-pr-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Purchase Request Agent</div>
         <div class="nav-subitem" onclick="showPOAgentPanel()" id="nav-po-agent" style="cursor:pointer"><span class="dot-icon" style="background:#7B5EA7"></span>Purchase Order</div>
         <div class="nav-subitem" onclick="showPRtoPOPanel()" id="nav-pr-to-po" style="cursor:pointer"><span class="dot-icon" style="background:#1a5c2e"></span>PR → PO</div>
         <div class="nav-subitem" onclick="showPOtoGRPOPanel()" id="nav-po-to-grpo" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>PO → GRPO</div>
@@ -3136,6 +3136,15 @@ const SAVED_PROMPTS = [
   'Top 10 customers by profit this year',
   'Items by margin this year',
   'Sales by warehouse',
+  // Purchase (P2P) — the list above was sales-only
+  'Show open purchase orders',
+  'Total purchase spend by vendor this year',
+  'AP aging breakdown by 30/60/90 days',
+  'Which vendors have the longest average lead time?',
+  'Items below reorder point right now',
+  'Purchase orders due for delivery this week',
+  'Open purchase requests awaiting approval',
+  'Monthly purchase trend this year',
 ];
 
 // ════════════════════════════════════════════════════
@@ -3978,7 +3987,7 @@ async function sendChatMessage(text, { skipUserBubble = false } = {}) {
         badge.innerHTML = d.mode === 'db'
           ? `<span>⚡</span> Reused recent answer &nbsp;<span style="opacity:.7;font-weight:400">${escHtml(d.cacheSource)}</span>`
           : `<span>📋</span> Answered from Query Library &nbsp;<span style="opacity:.7;font-weight:400">${d.cacheSource}</span>`;
-        chatEl.appendChild(badge);
+        messagesEl.appendChild(badge);
       }
       const botRow = appendMsg('bot', d.reply, { actions: true, animate: !wasStreamed, onRegenerate: () => sendChatMessage(text, { skipUserBubble: true }) });
       if (d.queryLog?.length) injectQueryLog(botRow, d.queryLog);
@@ -4751,14 +4760,24 @@ function fmtKpiValue(v, unit) {
   if (unit === 'pct') return `${n.toFixed(1)}%`;
   if (unit === 'count') return Math.round(n).toLocaleString('en-IN');
   if (unit === 'qty') return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  // unit 'inr' really means "money" — kept as the wire tag name for
+  // backward compat, but formatted per the connected company's own currency
+  // (window.APP_CURRENCY, read live from OADM.MainCurncy — see refreshAppCurrency()).
   if (unit === 'inr' || unit === undefined) {
-    if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} Cr`;
-    if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)} L`;
-    return `${sign}₹${Math.round(a).toLocaleString('en-IN')}`;
+    const cur = window.APP_CURRENCY || { code: 'INR', symbol: '₹' };
+    if (cur.code === 'INR') {
+      if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} Cr`;
+      if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)} L`;
+      return `${sign}₹${Math.round(a).toLocaleString('en-IN')}`;
+    }
+    if (a >= 1e9) return `${sign}${cur.symbol}${(a / 1e9).toFixed(2)}B`;
+    if (a >= 1e6) return `${sign}${cur.symbol}${(a / 1e6).toFixed(2)}M`;
+    if (a >= 1e3) return `${sign}${cur.symbol}${(a / 1e3).toFixed(2)}K`;
+    return `${sign}${cur.symbol}${Math.round(a).toLocaleString('en-US')}`;
   }
   return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
-// Bare big numbers inside a note ("GP 927737.5") → ₹ lakh/crore.
+// Bare big numbers inside a note ("GP 927737.5") → company-currency scale.
 const fmtKpiNote = s => String(s).replace(/(?<![\d₹.,%])\d{4,}(?:\.\d+)?(?![\d%])/g, m => fmtKpiValue(Number(m), 'inr'));
 
 function renderKpiTiles(kpis) {
@@ -4811,7 +4830,7 @@ function enhanceRichContent(root) {
         const v = td.textContent.trim();
         if (ci > 0 && /\d/.test(v) && /^[\s₹$€+\-−▲▼(]*[\d.,]+\s*(%|L|Cr|K|MTS|KG|days?)?\)?\s*$/i.test(v)) td.classList.add('rt-num');
         if (/^▲|^\+\s*\d/.test(v)) td.classList.add('rt-pos');
-        else if (/^▼|^[-−]\s*[₹\d]|^\(-/.test(v)) td.classList.add('rt-neg');
+        else if (/^▼|^[-−]\s*[₹$€\d]|^\(-/.test(v)) td.classList.add('rt-neg');
         if (/^✅|^paid$/i.test(v)) td.classList.add('rt-ok');
         if (/^⚠️|failed|overdue/i.test(v)) td.classList.add('rt-warn');
       });
@@ -5288,21 +5307,28 @@ function atblMail(uid) {
 }
 
 function atblSavePrompt(uid) {
-  const { data } = _atblStore[uid];
-  const prompt = data.question || '';
-  if (!prompt) return;
-  const saved = JSON.parse(localStorage.getItem('as_saved_prompts') || '[]');
-  const alreadySaved = saved.find(p => (p.text || p) === prompt);
-  if (!alreadySaved) {
-    saved.unshift({ text: prompt, source: data.source, at: new Date().toISOString() });
-    localStorage.setItem('as_saved_prompts', JSON.stringify(saved.slice(0, 50)));
-    renderSavedPanel();  // update panel immediately if it's open
+  const showToast = (text) => {
+    const toast = document.createElement('div');
+    toast.className = 'atbl-saved-toast';
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  };
+  try {
+    const { data } = _atblStore[uid];
+    const prompt = data.question || data.title || data.sql || '';
+    if (!prompt) { showToast('⚠️ Nothing to save for this card'); return; }
+    const saved = JSON.parse(localStorage.getItem('as_saved_prompts') || '[]');
+    const alreadySaved = saved.find(p => (p.text || p) === prompt);
+    if (!alreadySaved) {
+      saved.unshift({ text: prompt, source: data.source, at: new Date().toISOString() });
+      localStorage.setItem('as_saved_prompts', JSON.stringify(saved.slice(0, 50)));
+      renderSavedPanel();  // update panel immediately if it's open
+    }
+    showToast(alreadySaved ? '🔖 Already saved' : '🔖 Prompt saved!');
+  } catch (e) {
+    showToast('⚠️ Could not save prompt: ' + (e.message || 'storage unavailable'));
   }
-  const toast = document.createElement('div');
-  toast.className = 'atbl-saved-toast';
-  toast.textContent = alreadySaved ? '🔖 Already saved' : '🔖 Prompt saved!';
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 2000);
 }
 
 function atblDeleteSavedPrompt(idx) {
@@ -8457,6 +8483,7 @@ async function dbActivate(id) {
     await api(`/api/db-connections/${id}/activate`, { method:'POST' });
     updateDbStatusDot(true);
     loadDbConnections();
+    refreshAppCurrency();  // newly-activated company may use a different currency
     appendMsg('bot', '✅ DB connection activated. Switch engine to **DB SQL** to use it.');
     document.getElementById('db-modal-overlay').style.display='none';
   } catch(e) { alert('Activation failed: ' + e.message); }
@@ -8473,13 +8500,20 @@ function updateDbStatusDot(connected) {
   if (dot) dot.style.background = connected ? '#107E3E' : '#ccc';
 }
 
-// Check DB status on load
-(async () => {
+// Company's base currency (INR, USD, AED…), read live from the active SAP DB
+// (OADM.MainCurncy) — falls back to INR until the first status check lands.
+window.APP_CURRENCY = { code: 'INR', symbol: '₹' };
+async function refreshAppCurrency() {
   try {
     const s = await api('/api/db-connections/status');
     updateDbStatusDot(s.connected);
-  } catch {}
-})();
+    if (s.currency) window.APP_CURRENCY = s.currency;
+    return s;
+  } catch { return null; }
+}
+
+// Check DB status + currency on load
+refreshAppCurrency();
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -10368,7 +10402,7 @@ async function mpoValidateSo() {
   }
 }
 
-async function mpoPostSo() {
+async function mpoPostSo(allowDuplicateRef) {
   if (!_mpoCurrentCustomer) return;
   const btn = document.getElementById('mpo-post-btn');
   const resultEl = document.getElementById('mpo-create-result');
@@ -10388,6 +10422,7 @@ async function mpoPostSo() {
         currency:     document.getElementById('mpo-currency').value,
         notes:        document.getElementById('mpo-notes').value,
         lines,
+        ...(allowDuplicateRef ? { allowDuplicateRef: true } : {}),
       })
     });
     const d = await r.json();
@@ -10403,9 +10438,15 @@ async function mpoPostSo() {
       // Update the DRAFT badge to POSTED
       const badge = document.querySelector('#mpo-create-section span[style*="DRAFT"]');
       if (badge) { badge.textContent = 'POSTED'; badge.style.background = '#DCFCE7'; badge.style.color = '#16A34A'; badge.style.borderColor = '#86EFAC'; }
-    } else {
-      resultEl.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:12px;color:#C0392B;font-size:12px;margin-top:6px">❌ ${escHtml(d.error||d.message||'SO creation failed')}</div>`;
+      return;
     }
+    if (d.duplicateRef) {
+      resultEl.innerHTML = `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px;color:#92400E;font-size:12px;margin-top:6px">⚠️ ${escHtml(d.error)}</div>`;
+      const proceed = confirm(`This PO reference (${d.numAtCard || 'this PO'}) has already been posted for this customer.\n\nPost it again using reference "${d.suggestedRef || ''}" instead?`);
+      if (proceed) { await mpoPostSo(true); }
+      return;
+    }
+    resultEl.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:12px;color:#C0392B;font-size:12px;margin-top:6px">❌ ${escHtml(d.error||d.message||'SO creation failed')}</div>`;
   } catch(e) {
     resultEl.innerHTML = `<span style="color:#C0392B">❌ ${escHtml(e.message)}</span>`;
   } finally {
@@ -15024,7 +15065,7 @@ setInterval(() => {
     const soAmt   = FD.sos.reduce((s,o)=>s+o.docTotal,0);
     const poCount = FD.pos.length;
     const poAmt   = FD.pos.reduce((s,o)=>s+o.docTotal,0);
-    const posWithLead = FD.pos.filter(p=>p.leadDays!=null && p.leadDays>0);
+    const posWithLead = FD.pos.filter(p=>p.leadDays!=null && p.leadDays>=0);
     const avgLead = posWithLead.length ? Math.round(posWithLead.reduce((s,p)=>s+p.leadDays,0)/posWithLead.length) : 0;
     const advPOs  = FD.pos.filter(p=>p.advanceStatus==='paid');
     const overdue = FD.pos.filter(p=>p.deliveryDate && new Date(p.deliveryDate) < today).length;
@@ -22948,7 +22989,14 @@ setInterval(() => {
           <button onclick="finCaSetDateBasis('due')" id="fin-ca-basis-due" style="border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:#0070F2;color:#fff;border:1px solid #0070F2">Due Date</button>
           <button onclick="finCaSetDateBasis('doc')" id="fin-ca-basis-doc" style="border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#374151;border:1px solid #d1d5db">Document Date</button>
         </div>
-        <button onclick="finCaToggleBucketEditor()" id="fin-ca-editor-toggle" style="margin-left:auto;background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">✏️ Edit Buckets</button>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+          <span style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase">Customer:</span>
+          <input type="text" id="fin-ca-customer-input" list="fin-ca-customer-list" placeholder="All customers"
+            oninput="finCaOnCustomerInput()" style="width:200px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">
+          <datalist id="fin-ca-customer-list"></datalist>
+          <button onclick="finCaClearCustomerFilter()" id="fin-ca-customer-clear" style="display:none;background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:0 4px" title="Clear filter">✕</button>
+        </div>
+        <button onclick="finCaToggleBucketEditor()" id="fin-ca-editor-toggle" style="background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">✏️ Edit Buckets</button>
       </div>
       <div id="fin-ca-bucket-editor" style="display:none">
         <div id="fin-ca-bucket-rows"></div>
@@ -25617,7 +25665,7 @@ window.roAskFollowUp = function() {
     });
   });
 
-})(); // end PR Agent IIFE
+})(); // end Purchase Request Agent IIFE
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STANDALONE PURCHASE ORDER AGENT
@@ -33748,6 +33796,34 @@ const FIN_CA_DEFAULT_BUCKETS = [
   { label: '90+',     minDays: 91,   maxDays: null },
 ];
 let _finCaBuckets = null; // null = use default (server-side default too)
+let _finCaCardCode = '';       // active customer filter (CardCode), '' = all customers
+let _finCaCustomerOptions = []; // [{CardCode,CardName}] — populated from the last unfiltered load, for autocomplete
+
+window.finCaOnCustomerInput = function() {
+  const val = document.getElementById('fin-ca-customer-input').value.trim();
+  if (!val) { finCaClearCustomerFilter(); return; }
+  // Match against the known customer list — exact CardCode, or exact "CardName (CardCode)" pick from the datalist.
+  const m = /\(([^()]+)\)\s*$/.exec(val);
+  const code = m ? m[1] : val;
+  const found = _finCaCustomerOptions.find(c => c.CardCode.toLowerCase() === code.toLowerCase());
+  _finCaCardCode = found ? found.CardCode : '';
+  document.getElementById('fin-ca-customer-clear').style.display = _finCaCardCode ? 'inline' : 'none';
+  if (_finCaCardCode) finLoadCustomerAging();
+};
+
+window.finCaClearCustomerFilter = function() {
+  _finCaCardCode = '';
+  document.getElementById('fin-ca-customer-input').value = '';
+  document.getElementById('fin-ca-customer-clear').style.display = 'none';
+  finLoadCustomerAging();
+};
+
+function finCaUpdateCustomerOptions(summary) {
+  _finCaCustomerOptions = summary.map(r => ({ CardCode: r.CardCode, CardName: r.CardName }));
+  const list = document.getElementById('fin-ca-customer-list');
+  if (list) list.innerHTML = _finCaCustomerOptions.map(c =>
+    `<option value="${(c.CardName || c.CardCode).replace(/"/g,'&quot;')} (${c.CardCode})">`).join('');
+}
 
 window.finCaTab = function(tab) {
   ['summary','detail'].forEach(t => {
@@ -33845,6 +33921,7 @@ async function finLoadCustomerAging() {
   try {
     const qs = new URLSearchParams({ dateBasis: _finCaDateBasis });
     if (_finCaBuckets) qs.set('buckets', JSON.stringify(_finCaBuckets));
+    if (_finCaCardCode) qs.set('cardCode', _finCaCardCode);
     const res = await fetch(`/api/finance/customer-aging?${qs.toString()}`, { headers:{'x-auth-token':finTok()} });
     const d = await res.json();
     if (d.error) {
@@ -33853,6 +33930,7 @@ async function finLoadCustomerAging() {
       return;
     }
     _finCaData = d;
+    if (!_finCaCardCode) finCaUpdateCustomerOptions(d.summary); // keep the full picklist fresh from unfiltered loads
     finRenderCaTotals(d);
     finRenderCaSummary(d);
     finRenderCaDetail(d);
