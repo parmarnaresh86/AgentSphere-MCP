@@ -407,7 +407,7 @@ export async function generateSQL(question, intent, history = [], lastError = nu
   const cfg    = getActiveConfig();
   const dbType = getActiveType();
   const isHana = dbType === 'hana';
-  const schema = cfg?.schema_name || cfg?.database || '';
+  const schema = cfg?.database || cfg?.schema_name || '';
 
   const dialectRules = isHana
     ? `DATABASE: SAP HANA
@@ -734,7 +734,7 @@ export async function handleV2Chat(body, res) {
 
   try {
     const cfg    = getActiveConfig();
-    const schema = cfg?.schema_name || cfg?.database || 'DB';
+    const schema = cfg?.database || cfg?.schema_name || 'DB';
     const dbType = getActiveType()?.toUpperCase() || 'DB';
 
     // Stage 1: Classify

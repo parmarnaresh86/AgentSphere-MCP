@@ -1512,7 +1512,7 @@ async function aiGenerateSQL(question) {
   const cfg    = getActiveConfig();
   const dbType = getActiveType();
   const isHana = dbType === 'hana';
-  const schema = cfg?.schema_name || cfg?.database || '';
+  const schema = cfg?.database || cfg?.schema_name || '';
   const schemaHint = isHana
     ? `Database: SAP HANA. Schema: "${schema}". Use double-quoted identifiers: "${schema}"."TABLE"."COLUMN". HANA SQL: IFNULL, LIMIT N, YEAR(), MONTH(), LPAD(), || for concat. No TOP keyword.`
     : `Database: SQL Server. Database: [${cfg.database}]. T-SQL: ISNULL, TOP N, YEAR(), MONTH(), FORMAT(). No LIMIT keyword.`;
@@ -2187,7 +2187,7 @@ async function demoReply(message) {
     if (!isConnected()) return `**${report.title}**\n\n> No database connected. Please activate a DB connection in Settings → DB Connection, then ask again.`;
     try {
       const cfg    = getActiveConfig();
-      const schema = cfg?.schema_name || cfg?.database || '';
+      const schema = cfg?.database || cfg?.schema_name || '';
       const rows   = await runReportSQL(intent.reportId, schema, executeSQL);
       if (!rows.length) return `**${report.title}**\n\nNo data found.`;
       const cols = Object.keys(rows[0]);
@@ -3648,7 +3648,7 @@ function getDirectSqlHistory(sid) {
 async function generateAndRunDirectSql(message, history = [], onStep = () => {}) {
   const dbType = getActiveType();
   const dbCfg  = getActiveConfig();
-  const schema = dbCfg?.schema_name || dbCfg?.database || "DB";
+  const schema = dbCfg?.database || dbCfg?.schema_name || "DB";
   onStep("Understanding your question…");
   const intent = classifyIntent(message);
 
@@ -4179,8 +4179,8 @@ app.post("/api/chat", async (req, res) => {
           const currency = await getCompanyCurrency().catch(() => ({ code: "INR", symbol: "₹" }));
           const baseOpts = {
             history: _analystHistory.get(sid) || [],
-            executeSQL, getTableColumns, dbType: getActiveType(),
-            database: cfg?.schema_name || cfg?.database || "DB",
+            executeSQL, scanTablesSchema, dbType: getActiveType(),
+            database: cfg?.database || cfg?.schema_name || "DB",
             companyContext, currency, onStep: sendStep, ...analystAI,
           };
           // Reply to our "here are the questions I understood" list?
@@ -4925,7 +4925,7 @@ app.post("/api/reports/:id/run", requireAuth, async (req, res) => {
   }
 
   const cfg    = getActiveConfig();
-  const schema = cfg?.schema_name || cfg?.database || '';
+  const schema = cfg?.database || cfg?.schema_name || '';
   if (!schema) return res.status(400).json({ error: 'No schema name found on active DB connection.' });
 
   try {
@@ -4944,7 +4944,7 @@ app.get('/api/db/schema', requireAuth, async (req, res) => {
     const cfg  = getActiveConfig();
     let rows;
     if (type === 'hana') {
-      const schema = cfg.schema_name || cfg.database || 'SBO_DB';
+      const schema = cfg.database || cfg.schema_name || 'SBO_DB';
       rows = await executeSQL(
         `SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE_NAME as DATA_TYPE,
                 TO_VARCHAR(LENGTH) as MAX_LENGTH, IS_NULLABLE, TO_VARCHAR(POSITION) as ORDINAL_POSITION

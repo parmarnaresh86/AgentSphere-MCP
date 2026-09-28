@@ -187,7 +187,11 @@ export async function getCompanyCurrency() {
   const key = `${_activeType}::${cfg?.database || cfg?.schema_name || ""}`;
   if (_currencyCache && _currencyCache.key === key) return _currencyCache;
 
-  let code = "INR";
+  // OADM.MainCurncy is OCRN's currency key — usually a 3-letter ISO code
+  // (USD, INR…) but SAP B1 lets admins define it as a bare symbol instead
+  // (this company's is literally "$"), so it can't always be looked up in
+  // CURRENCY_SYMBOLS as if it were an ISO code.
+  let raw = "INR";
   if (isConnected()) {
     try {
       // HANA folds unquoted identifiers to uppercase, but SAP B1-on-HANA
@@ -195,11 +199,14 @@ export async function getCompanyCurrency() {
       // quoted here or HANA looks for MAINCURNCY and throws "invalid column".
       const col = _activeType === "hana" ? `"MainCurncy"` : "MainCurncy";
       const rows = await executeSQL(`SELECT ${col} AS MainCurncy FROM ${tableRef("OADM", cfg)}`);
-      const raw = rows?.[0]?.MainCurncy ?? rows?.[0]?.MAINCURNCY ?? rows?.[0]?.mainCurncy;
-      if (raw) code = String(raw).toUpperCase().trim();
+      const val = rows?.[0]?.MainCurncy ?? rows?.[0]?.MAINCURNCY ?? rows?.[0]?.mainCurncy;
+      if (val) raw = String(val).trim();
     } catch { /* keep INR default — e.g. module not licensed, permissions */ }
   }
-  const result = { key, code, symbol: CURRENCY_SYMBOLS[code] || `${code} ` };
+  const isIsoCode = /^[A-Za-z]{3}$/.test(raw);
+  const code = isIsoCode ? raw.toUpperCase() : raw;
+  const symbol = isIsoCode ? (CURRENCY_SYMBOLS[code] || `${code} `) : code;
+  const result = { key, code, symbol };
   _currencyCache = result;
   return result;
 }
@@ -226,7 +233,7 @@ export async function getTableColumns(tableName) {
   if (cached && Date.now() < cached.expiresAt) return cached.cols;
 
   const sql = isHana
-    ? `SELECT COLUMN_NAME FROM SYS.TABLE_COLUMNS WHERE SCHEMA_NAME = '${(cfg.schema_name || cfg.database || '').replace(/'/g, "''")}' AND TABLE_NAME = '${tableName}'`
+    ? `SELECT COLUMN_NAME FROM SYS.TABLE_COLUMNS WHERE SCHEMA_NAME = '${(cfg.database || cfg.schema_name || '').replace(/'/g, "''")}' AND TABLE_NAME = '${tableName}'`
     : `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${tableName}'`;
 
   const rows = await executeSQL(sql);
@@ -255,7 +262,7 @@ export async function scanTablesSchema(tableNames) {
 
   const sql = isHana
     ? `SELECT TABLE_NAME, COLUMN_NAME, POSITION FROM SYS.TABLE_COLUMNS
-       WHERE SCHEMA_NAME = '${(cfg.schema_name || cfg.database || '').replace(/'/g, "''")}'
+       WHERE SCHEMA_NAME = '${(cfg.database || cfg.schema_name || '').replace(/'/g, "''")}'
        AND TABLE_NAME IN (${list}) ORDER BY TABLE_NAME, POSITION`
     : `SELECT TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_NAME IN (${list}) ORDER BY TABLE_NAME, ORDINAL_POSITION`;
@@ -310,7 +317,7 @@ export async function disconnectDB() {
 export function tableRef(tableName, cfg) {
   if (!cfg) return tableName;
   if (cfg.db_type === "hana") {
-    const schema = cfg.schema_name || cfg.database;
+    const schema = cfg.database || cfg.schema_name;
     return schema ? `"${schema}"."${tableName}"` : `"${tableName}"`;
   }
   // MSSQL
