@@ -3174,8 +3174,13 @@ async function boot() {
       gptBtn.title = 'GPT-4o unavailable — check AZURE_GPT_ENDPOINT in .env';
       gptBtn.innerHTML = gptBtn.innerHTML + ' <span style="font-size:9px;opacity:.7">(no key)</span>';
     }
-    // Default model is GPT-4o — falls back to Standard if it's not configured.
-    setEngine(gptAvailable ? 'gpt4o' : 'standard');
+    // Load whichever engine the user marked "Default" in the AI Model menu.
+    // Falls back to GPT-4o (or Standard if that's not configured) the first
+    // time, or if the saved default is no longer available.
+    const AVAIL = { standard: true, db: true, v2: true, gpt4o: gptAvailable, ai: aiAvailable };
+    const savedDefault = getDefaultEngine();
+    const effectiveDefault = (savedDefault && AVAIL[savedDefault]) ? savedDefault : (gptAvailable ? 'gpt4o' : 'standard');
+    setEngine(effectiveDefault);
   } catch {}
   try { warehouses = await api('/api/suggest/warehouses'); } catch {}
 
@@ -5541,6 +5546,12 @@ document.getElementById('gpt-panel-input')?.addEventListener('input', function()
 
 // ── AI Model selector — moved here from the topbar; only reachable via
 //    Tools → AI Model in the sidebar now.
+// The engine used on next page load/refresh — set by the "Default" checkbox
+// in the AI Model menu below. null means "use the built-in fallback"
+// (GPT-4o if configured, else Standard) — see boot().
+function getDefaultEngine() { try { return localStorage.getItem('as_default_engine'); } catch { return null; } }
+function setDefaultEngine(key) { try { localStorage.setItem('as_default_engine', key); } catch {} }
+
 function openModelSelector(){
   openModal('🤖 AI Model');
   const footer=document.querySelector('.modal-footer');
@@ -5552,17 +5563,37 @@ function openModelSelector(){
     { key:'db',        label:'DB SQL',       icon:'🗄️', desc:'AI generates SQL, runs directly against MSSQL/HANA' },
     { key:'v2',        label:'Analytics V2', icon:'📊', desc:'Conversational AI SQL — ask anything about your data' },
   ];
+  const effectiveDefault = getDefaultEngine() || (gptAvailable ? 'gpt4o' : 'standard');
   modalBody.innerHTML='';
+  const hint=document.createElement('div');
+  hint.style.cssText='font-size:11px;color:var(--muted);margin-bottom:10px';
+  hint.textContent='Click a card to switch now. Tick "Default" to make it the model that loads automatically next time.';
+  modalBody.appendChild(hint);
   const wrap=document.createElement('div');
   wrap.style.cssText='display:flex;flex-direction:column;gap:8px';
   ENGINES.forEach(e=>{
     const avail=e.requires?e.requires():true;
     const active=chatEngine===e.key;
+    const isDefault=effectiveDefault===e.key;
     const card=document.createElement('div');
     card.style.cssText=`display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid ${active?'var(--blue)':'var(--border)'};border-radius:var(--r);cursor:${avail?'pointer':'not-allowed'};opacity:${avail?1:.55};background:${active?'var(--blue-light)':'#fff'}`;
-    card.innerHTML=`<span style="font-size:20px">${e.icon}</span><div><div style="font-weight:700;font-size:13px">${e.label}${active?' <span style="color:var(--blue);font-size:11px;font-weight:600">(active)</span>':''}</div><div style="font-size:11.5px;color:var(--muted);margin-top:1px">${avail?e.desc:e.unavailMsg}</div></div>`;
-    if(avail) card.addEventListener('click',()=>{ setEngine(e.key); closeModal(); });
+    card.innerHTML=`<span style="font-size:20px">${e.icon}</span>`
+      +`<div style="flex:1"><div style="font-weight:700;font-size:13px">${e.label}${active?' <span style="color:var(--blue);font-size:11px;font-weight:600">(active)</span>':''}</div>`
+      +`<div style="font-size:11.5px;color:var(--muted);margin-top:1px">${avail?e.desc:e.unavailMsg}</div></div>`
+      +(avail?`<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0" title="Load this model automatically on refresh">`
+        +`<input type="checkbox" ${isDefault?'checked':''} data-default-for="${e.key}" style="cursor:pointer">Default</label>`:'');
+    if(avail) card.addEventListener('click',(ev)=>{
+      if (ev.target.closest('label')) return;  // clicking the checkbox only sets the default, doesn't switch now
+      setEngine(e.key); closeModal();
+    });
     wrap.appendChild(card);
+  });
+  wrap.querySelectorAll('input[data-default-for]').forEach(cb=>{
+    cb.addEventListener('click', ev => ev.stopPropagation());
+    cb.addEventListener('change', () => {
+      if (cb.checked) setDefaultEngine(cb.dataset.defaultFor);
+      openModelSelector();  // re-render so only one checkbox stays checked
+    });
   });
   modalBody.appendChild(wrap);
 }
