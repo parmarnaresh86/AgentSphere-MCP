@@ -2174,6 +2174,21 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
   <div class="nav-section">
     <div class="nav-section-label">AI Agents</div>
     <div class="nav-group">
+      <div class="nav-group-header" data-group="ai-agents-finance">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Finance &amp; Credit
+        </span>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="nav-group-body" id="grp-ai-agents-finance">
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('collections')" id="nav-ia-collections" style="cursor:pointer"><span class="dot-icon" style="background:#EA580C"></span>Collections &amp; Receivables</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('cashflow')" id="nav-ia-cashflow" style="cursor:pointer"><span class="dot-icon" style="background:#059669"></span>Cash Flow Forecast</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('creditrisk')" id="nav-ia-creditrisk" style="cursor:pointer"><span class="dot-icon" style="background:#DC2626"></span>Credit Risk</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('appayment')" id="nav-ia-appayment" style="cursor:pointer"><span class="dot-icon" style="background:#0891B2"></span>AP Payment Optimization</div>
+      </div>
+    </div>
+    <div class="nav-group">
       <div class="nav-group-header" data-group="ai-agents-supply">
         <span style="display:flex;align-items:center;gap:7px">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
@@ -2189,6 +2204,9 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <div class="nav-subitem" onclick="showPurchasingAgent()" id="nav-purchasing-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Purchase Recommendation</div>
         <div class="nav-subitem" onclick="showRushOrderAgent()" id="nav-rush-orders" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Rush Orders</div>
         <div class="nav-subitem" onclick="showShipmentDelay()" id="nav-shipment-delay" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Shipment Delays</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('invopt')" id="nav-ia-invopt" style="cursor:pointer"><span class="dot-icon" style="background:#0D9488"></span>Inventory Optimization</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('deadstock')" id="nav-ia-deadstock" style="cursor:pointer"><span class="dot-icon" style="background:#D97706"></span>Dead Stock</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('vendorperf')" id="nav-ia-vendorperf" style="cursor:pointer"><span class="dot-icon" style="background:#4F46E5"></span>Vendor Performance</div>
       </div>
     </div>
     <div class="nav-group">
@@ -2220,6 +2238,8 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <div class="nav-subitem" onclick="showDynamicPricingAgent()" id="nav-dynamic-pricing" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Dynamic Pricing</div>
         <div class="nav-subitem" onclick="showOrderIntelligence()" id="nav-order-intelligence" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Order Intelligence</div>
         <div class="nav-subitem" onclick="showProductForecastAgent()" id="nav-product-forecast" style="cursor:pointer"><span class="dot-icon" style="background:#ec4899"></span>Product Forecasting</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('salesfollowup')" id="nav-ia-salesfollowup" style="cursor:pointer"><span class="dot-icon" style="background:#2563EB"></span>Sales Follow-up</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('quoteintel')" id="nav-ia-quoteintel" style="cursor:pointer"><span class="dot-icon" style="background:#8B5CF6"></span>Quotation Intelligence</div>
         <div class="nav-subitem" onclick="showMailPoPanel()" id="nav-mail-po" style="cursor:pointer">
           <span class="dot-icon" style="background:#22c55e"></span>Mail PO → SO
           <span id="mail-po-badge" style="display:none;font-size:9px;background:#22C55E;color:#fff;border-radius:8px;padding:1px 5px;font-weight:700;margin-left:auto">ON</span>
@@ -7522,7 +7542,7 @@ let _users = [];
     'purchase.create':   { groups: ['create-purch'] },
     'purchase.workflow': { groups: ['purch-p2p-workflow'] },
     'purchase.analysis': { groups: ['purch-reports'] },
-    'finance':           { groups: ['fin-ar'] },
+    'finance':           { groups: ['fin-ar', 'ai-agents-finance'] },
     'inventory':         { groups: ['inv-ops'] },
     'ai.supply':         { groups: ['ai-agents-supply'] },
     'ai.sales':          { groups: ['ai-agents-sales'] },
@@ -7548,7 +7568,7 @@ let _users = [];
     'Purchase — P2P': ['purchase.create','purchase.workflow','purchase.analysis'],
     'Finance':    ['finance'],
     'Inventory':  ['inventory'],
-    'AI Agents':  ['ai.supply','ai.sales','ai.crm'],
+    'AI Agents':  ['ai.supply','ai.sales','ai.crm','finance'],
     'Analytics AI': ['analytics'],
     'Forecast':   ['forecast'],
     'Tools':      ['tools.builder','tools.udt','tools.library','tools.db','tools.data_sync','tools.schema','tools.reports'],
@@ -8955,7 +8975,7 @@ function showChatPanel() {
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel',
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
-    'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel'];
+    'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel'];
   ALL_PANELS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('messages').style.display = 'flex';
   const bb = document.querySelector('.bottom-bar');
@@ -8983,7 +9003,7 @@ document.addEventListener('keydown', e => {
     'master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel',
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
-    'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel']
+    'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   if (anyOpen) showChatPanel();
 });
@@ -20279,7 +20299,7 @@ setInterval(() => {
     'Purchase — P2P': [{ id: 'create-purch', label: 'Quick Create' }, { id: 'purch-p2p-workflow', label: 'AI Workflow' }, { id: 'purch-reports', label: 'Procurement Analysis' }],
     'Finance':      [{ id: 'fin-ar', label: 'AR & Collections' }],
     'Inventory':    [{ id: 'inv-ops', label: 'Stock & Warehouse' }],
-    'AI Agents':    [{ id: 'ai-agents-supply', label: 'Supply Chain' }, { id: 'ai-agents-ocr', label: 'OCR Processing' }, { id: 'ai-agents-sales', label: 'Sales & Pricing' }, { id: 'ai-agents-crm', label: 'CRM & Service' }],
+    'AI Agents':    [{ id: 'ai-agents-finance', label: 'Finance & Credit' }, { id: 'ai-agents-supply', label: 'Supply Chain' }, { id: 'ai-agents-ocr', label: 'OCR Processing' }, { id: 'ai-agents-sales', label: 'Sales & Pricing' }, { id: 'ai-agents-crm', label: 'CRM & Service' }],
     'Analytics AI': [{ id: 'inv', label: 'Inventory' }, { id: 'cust', label: 'Customer Intelligence' }, { id: 'fin', label: 'Finance' }, { id: 'vend', label: 'Vendor / Procurement' }, { id: 'fcast', label: 'Forecasting' }],
     'Forecast':     [{ id: 'forecast-tools', label: 'Forecasting Tools' }],
     'Tools':        [{ id: 'dev-tools', label: 'Developer Tools' }],
@@ -35412,5 +35432,6 @@ window.almReset = almReset;
 })();
 </script>
 
+<script src="/insight-agents.js"></script>
 </body>
 </html>
