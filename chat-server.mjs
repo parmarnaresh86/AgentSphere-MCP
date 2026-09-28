@@ -71,6 +71,10 @@ import { createInventoryOptimizationAgentRouter } from './controllers/inventory-
 import { createDeadStockAgentRouter }            from './controllers/dead-stock-agent.mjs';
 import { createVendorPerformanceAgentRouter }    from './controllers/vendor-performance-agent.mjs';
 import { createApPaymentOptimizationRouter }    from './controllers/ap-payment-optimization-agent.mjs';
+import { createProfitabilityAgentRouter }       from './controllers/profitability-agent.mjs';
+import { createMarginLeakageAgentRouter }       from './controllers/margin-leakage-agent.mjs';
+import { createSalesCommissionAgentRouter }     from './controllers/sales-commission-agent.mjs';
+import { createMonthEndClosingAgentRouter }     from './controllers/month-end-closing-agent.mjs';
 import { createPurchaseAnalysisRouter } from './controllers/purchase-analysis-agent.mjs';
 import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mjs';
 import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap, scanTablesSchema } from "./db-connector.mjs";
@@ -6026,7 +6030,8 @@ app.use('/api/vendor-payment-aging', createVendorPaymentAgingRouter({
 
 // ── Insight agents (Collections, Cash Flow, Credit Risk, Sales Follow-up,
 //    Quotation Intelligence, Inventory Optimization, Dead Stock, Vendor
-//    Performance, AP Payment Optimization). All read live SAP tables via DB Direct and share one
+//    Performance, AP Payment Optimization, Profitability, Margin Leakage,
+//    Sales Commission, Month-End Closing). All read live SAP tables via DB Direct and share one
 //    response shape rendered by the generic insight panel in index.html.
 {
   const insightDeps = {
@@ -6042,6 +6047,10 @@ app.use('/api/vendor-payment-aging', createVendorPaymentAgingRouter({
   app.use('/api/dead-stock-agent',             createDeadStockAgentRouter(insightDeps));
   app.use('/api/vendor-performance-agent',     createVendorPerformanceAgentRouter(insightDeps));
   app.use('/api/ap-payment-agent',             createApPaymentOptimizationRouter(insightDeps));
+  app.use('/api/profitability-agent',          createProfitabilityAgentRouter(insightDeps));
+  app.use('/api/margin-leakage-agent',         createMarginLeakageAgentRouter(insightDeps));
+  app.use('/api/sales-commission-agent',       createSalesCommissionAgentRouter(insightDeps));
+  app.use('/api/month-end-agent',              createMonthEndClosingAgentRouter(insightDeps));
 }
 
 // ── Product Forecasting Agent routes ──────────────────────────────────────
