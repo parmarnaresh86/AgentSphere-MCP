@@ -4736,14 +4736,24 @@ function fmtKpiValue(v, unit) {
   if (unit === 'pct') return `${n.toFixed(1)}%`;
   if (unit === 'count') return Math.round(n).toLocaleString('en-IN');
   if (unit === 'qty') return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  // unit 'inr' really means "money" — kept as the wire tag name for
+  // backward compat, but formatted per the connected company's own currency
+  // (window.APP_CURRENCY, read live from OADM.MainCurncy — see refreshAppCurrency()).
   if (unit === 'inr' || unit === undefined) {
-    if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} Cr`;
-    if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)} L`;
-    return `${sign}₹${Math.round(a).toLocaleString('en-IN')}`;
+    const cur = window.APP_CURRENCY || { code: 'INR', symbol: '₹' };
+    if (cur.code === 'INR') {
+      if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} Cr`;
+      if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)} L`;
+      return `${sign}₹${Math.round(a).toLocaleString('en-IN')}`;
+    }
+    if (a >= 1e9) return `${sign}${cur.symbol}${(a / 1e9).toFixed(2)}B`;
+    if (a >= 1e6) return `${sign}${cur.symbol}${(a / 1e6).toFixed(2)}M`;
+    if (a >= 1e3) return `${sign}${cur.symbol}${(a / 1e3).toFixed(2)}K`;
+    return `${sign}${cur.symbol}${Math.round(a).toLocaleString('en-US')}`;
   }
   return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
-// Bare big numbers inside a note ("GP 927737.5") → ₹ lakh/crore.
+// Bare big numbers inside a note ("GP 927737.5") → company-currency scale.
 const fmtKpiNote = s => String(s).replace(/(?<![\d₹.,%])\d{4,}(?:\.\d+)?(?![\d%])/g, m => fmtKpiValue(Number(m), 'inr'));
 
 function renderKpiTiles(kpis) {
@@ -4796,7 +4806,7 @@ function enhanceRichContent(root) {
         const v = td.textContent.trim();
         if (ci > 0 && /\d/.test(v) && /^[\s₹$€+\-−▲▼(]*[\d.,]+\s*(%|L|Cr|K|MTS|KG|days?)?\)?\s*$/i.test(v)) td.classList.add('rt-num');
         if (/^▲|^\+\s*\d/.test(v)) td.classList.add('rt-pos');
-        else if (/^▼|^[-−]\s*[₹\d]|^\(-/.test(v)) td.classList.add('rt-neg');
+        else if (/^▼|^[-−]\s*[₹$€\d]|^\(-/.test(v)) td.classList.add('rt-neg');
         if (/^✅|^paid$/i.test(v)) td.classList.add('rt-ok');
         if (/^⚠️|failed|overdue/i.test(v)) td.classList.add('rt-warn');
       });
@@ -5273,21 +5283,28 @@ function atblMail(uid) {
 }
 
 function atblSavePrompt(uid) {
-  const { data } = _atblStore[uid];
-  const prompt = data.question || '';
-  if (!prompt) return;
-  const saved = JSON.parse(localStorage.getItem('as_saved_prompts') || '[]');
-  const alreadySaved = saved.find(p => (p.text || p) === prompt);
-  if (!alreadySaved) {
-    saved.unshift({ text: prompt, source: data.source, at: new Date().toISOString() });
-    localStorage.setItem('as_saved_prompts', JSON.stringify(saved.slice(0, 50)));
-    renderSavedPanel();  // update panel immediately if it's open
+  const showToast = (text) => {
+    const toast = document.createElement('div');
+    toast.className = 'atbl-saved-toast';
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  };
+  try {
+    const { data } = _atblStore[uid];
+    const prompt = data.question || data.title || data.sql || '';
+    if (!prompt) { showToast('⚠️ Nothing to save for this card'); return; }
+    const saved = JSON.parse(localStorage.getItem('as_saved_prompts') || '[]');
+    const alreadySaved = saved.find(p => (p.text || p) === prompt);
+    if (!alreadySaved) {
+      saved.unshift({ text: prompt, source: data.source, at: new Date().toISOString() });
+      localStorage.setItem('as_saved_prompts', JSON.stringify(saved.slice(0, 50)));
+      renderSavedPanel();  // update panel immediately if it's open
+    }
+    showToast(alreadySaved ? '🔖 Already saved' : '🔖 Prompt saved!');
+  } catch (e) {
+    showToast('⚠️ Could not save prompt: ' + (e.message || 'storage unavailable'));
   }
-  const toast = document.createElement('div');
-  toast.className = 'atbl-saved-toast';
-  toast.textContent = alreadySaved ? '🔖 Already saved' : '🔖 Prompt saved!';
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 2000);
 }
 
 function atblDeleteSavedPrompt(idx) {
@@ -8442,6 +8459,7 @@ async function dbActivate(id) {
     await api(`/api/db-connections/${id}/activate`, { method:'POST' });
     updateDbStatusDot(true);
     loadDbConnections();
+    refreshAppCurrency();  // newly-activated company may use a different currency
     appendMsg('bot', '✅ DB connection activated. Switch engine to **DB SQL** to use it.');
     document.getElementById('db-modal-overlay').style.display='none';
   } catch(e) { alert('Activation failed: ' + e.message); }
@@ -8458,13 +8476,20 @@ function updateDbStatusDot(connected) {
   if (dot) dot.style.background = connected ? '#107E3E' : '#ccc';
 }
 
-// Check DB status on load
-(async () => {
+// Company's base currency (INR, USD, AED…), read live from the active SAP DB
+// (OADM.MainCurncy) — falls back to INR until the first status check lands.
+window.APP_CURRENCY = { code: 'INR', symbol: '₹' };
+async function refreshAppCurrency() {
   try {
     const s = await api('/api/db-connections/status');
     updateDbStatusDot(s.connected);
-  } catch {}
-})();
+    if (s.currency) window.APP_CURRENCY = s.currency;
+    return s;
+  } catch { return null; }
+}
+
+// Check DB status + currency on load
+refreshAppCurrency();
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════

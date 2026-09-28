@@ -166,6 +166,44 @@ export function getActiveType()   { return _activeType; }
 export function getActiveConfig() { return _activeConfig; }
 export function isConnected()     { return !!_activeType && (_mssqlPool !== null || _hanaClient !== null); }
 
+// ── Company base currency ────────────────────────────────────────────────────
+// Each SAP B1 company has its own local currency (OADM.MainCurncy) — a UAE
+// company runs in AED, a US one in USD, an Indian one in INR. The AI's number
+// formatting (symbol, digit grouping, lakh/crore vs K/M/B) must follow the
+// currency of the company actually connected, not a single hardcoded currency.
+const CURRENCY_SYMBOLS = {
+  INR: "₹", USD: "$", EUR: "€", GBP: "£", AED: "AED ", SAR: "SAR ", JPY: "¥",
+  CNY: "¥", AUD: "A$", CAD: "C$", SGD: "S$", CHF: "CHF ", ZAR: "R", NZD: "NZ$",
+};
+let _currencyCache = null; // { key, code, symbol }
+
+/**
+ * Returns { code, symbol } for the currently active company, read live from
+ * OADM.MainCurncy and cached until the connection changes. Falls back to
+ * INR (this app's original default) if the lookup fails for any reason.
+ */
+export async function getCompanyCurrency() {
+  const cfg = _activeConfig;
+  const key = `${_activeType}::${cfg?.database || cfg?.schema_name || ""}`;
+  if (_currencyCache && _currencyCache.key === key) return _currencyCache;
+
+  let code = "INR";
+  if (isConnected()) {
+    try {
+      // HANA folds unquoted identifiers to uppercase, but SAP B1-on-HANA
+      // columns are created quoted (case-preserved) — MainCurncy must be
+      // quoted here or HANA looks for MAINCURNCY and throws "invalid column".
+      const col = _activeType === "hana" ? `"MainCurncy"` : "MainCurncy";
+      const rows = await executeSQL(`SELECT ${col} AS MainCurncy FROM ${tableRef("OADM", cfg)}`);
+      const raw = rows?.[0]?.MainCurncy ?? rows?.[0]?.MAINCURNCY ?? rows?.[0]?.mainCurncy;
+      if (raw) code = String(raw).toUpperCase().trim();
+    } catch { /* keep INR default — e.g. module not licensed, permissions */ }
+  }
+  const result = { key, code, symbol: CURRENCY_SYMBOLS[code] || `${code} ` };
+  _currencyCache = result;
+  return result;
+}
+
 // ── Live column discovery + field-mapping validation ────────────────────────
 // Used by agents that read live SAP tables directly (ODBC/DB Direct) so they
 // never silently query a column name that doesn't exist on this DB — a wrong

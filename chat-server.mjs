@@ -64,7 +64,7 @@ import { createActivityAgentRouter } from './controllers/activity-agent.mjs';
 import { createVendorPaymentAgingRouter } from './controllers/vendor-payment-aging-agent.mjs';
 import { createPurchaseAnalysisRouter } from './controllers/purchase-analysis-agent.mjs';
 import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mjs';
-import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap, scanTablesSchema } from "./db-connector.mjs";
+import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap, scanTablesSchema, getCompanyCurrency } from "./db-connector.mjs";
 import { SAP_TABLE_CATALOG } from "./lib/sap-table-catalog.mjs";
 import { runSqlAnalystAgent, mightBeMultiQuestion, splitQuestions, runMultiQuestionAnalysis } from "./lib/sql-analyst-agent.mjs";
 import { loadCompanyContext, buildSqlContext, buildAiSummary, buildDimBlock, buildRegistryBlock, getDimMap, invalidateCache as invalidateContextCache, BASE_SCHEMA } from "./company-context.mjs";
@@ -4167,11 +4167,12 @@ app.post("/api/chat", async (req, res) => {
           const cfg = getActiveConfig();
           let companyContext = "";
           try { companyContext = buildSqlContext(); } catch {}
+          const currency = await getCompanyCurrency().catch(() => ({ code: "INR", symbol: "₹" }));
           const baseOpts = {
             history: _analystHistory.get(sid) || [],
             executeSQL, getTableColumns, dbType: getActiveType(),
             database: cfg?.schema_name || cfg?.database || "DB",
-            companyContext, onStep: sendStep, ...analystAI,
+            companyContext, currency, onStep: sendStep, ...analystAI,
           };
           // Reply to our "here are the questions I understood" list?
           let questions = null, histUser = message;
@@ -4546,12 +4547,12 @@ app.get("/api/chat/sessions/:id", requireAuth, (req, res) => {
 //         tables: [{ name, rows, chartType }], points: [string] }
 // Sheets: "KPIs", "Points to note", then one sheet per table/chart
 // (charts get a native chart image via generateMultiTabExcelReport).
-function answerExportTabs({ kpis = [], tables = [], points = [] }) {
+function answerExportTabs({ kpis = [], tables = [], points = [] }, currencySymbol = "₹") {
   const tabs = [];
   const fmtPct = v => (typeof v === "number" ? `${v > 0 ? "+" : ""}${v.toFixed(1)}%` : "");
   if (kpis.length) tabs.push({ name: "KPIs", chartType: "none", rows: kpis.map(k => ({
     KPI: String(k.label || ""), Value: typeof k.value === "number" ? k.value : String(k.value ?? ""),
-    Unit: k.unit === "inr" ? "₹" : k.unit === "pct" ? "%" : (k.unit || ""),
+    Unit: k.unit === "inr" ? currencySymbol : k.unit === "pct" ? "%" : (k.unit || ""),
     "Vs previous period": fmtPct(k.change_pct) + (k.vs ? ` ${k.vs}` : ""),
     "Vs last year": fmtPct(k.yoy_pct) + (k.vs_yoy ? ` ${k.vs_yoy}` : ""),
     "How calculated": String(k.def || k.note || ""),
@@ -4565,7 +4566,8 @@ function answerExportTabs({ kpis = [], tables = [], points = [] }) {
 
 app.post("/api/export/answer-xlsx", requireAuth, async (req, res) => {
   try {
-    const tabs = answerExportTabs(req.body || {});
+    const currency = await getCompanyCurrency().catch(() => ({ symbol: "₹" }));
+    const tabs = answerExportTabs(req.body || {}, currency.symbol);
     if (!tabs.length) return res.status(400).json({ error: "Nothing to export in this answer." });
     const url = await generateMultiTabExcelReport(req.body.title || "chat-answer", tabs);
     res.json({ url });
@@ -4586,7 +4588,8 @@ app.post("/api/export/answer-email", requireAuth, async (req, res) => {
     if (!host || !user) return res.status(400).json({ error: "Mail is not configured — set SMTP in Settings → Mail first." });
     const port = Number(cfg.smtp_port || process.env.MAIL_SMTP_PORT || 587);
     const attachments = [];
-    const tabs = answerExportTabs(req.body || {});
+    const currency = await getCompanyCurrency().catch(() => ({ symbol: "₹" }));
+    const tabs = answerExportTabs(req.body || {}, currency.symbol);
     if (tabs.length) {
       const url = await generateMultiTabExcelReport(req.body.title || "chat-answer", tabs);
       attachments.push({ filename: `${(req.body.title || "answer").replace(/[^\w\- ]+/g, "").slice(0, 50) || "answer"}.xlsx`, path: path.join(EXPORTS_DIR, path.basename(url)) });
@@ -4754,8 +4757,9 @@ app.delete("/api/db-connections/:id", requireAuth, async (req, res) => {
   res.json({ ok: true, disconnected: !dbConnRepo.getActive() });
 });
 
-app.get("/api/db-connections/status", requireAuth, (_req, res) => {
-  res.json({ connected: isConnected(), db_type: getActiveType(), config: getActiveConfig() ? { host: getActiveConfig().host, database: getActiveConfig().database, db_type: getActiveConfig().db_type } : null });
+app.get("/api/db-connections/status", requireAuth, async (_req, res) => {
+  const currency = await getCompanyCurrency().catch(() => ({ code: "INR", symbol: "₹" }));
+  res.json({ connected: isConnected(), db_type: getActiveType(), currency, config: getActiveConfig() ? { host: getActiveConfig().host, database: getActiveConfig().database, db_type: getActiveConfig().db_type } : null });
 });
 
 // ── Schema Registry ─────────────────────────────────────────────────────────
