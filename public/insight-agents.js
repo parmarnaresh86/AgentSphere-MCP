@@ -51,6 +51,48 @@
       ],
       chips: ['Which invoices must we pay this week and why?', 'What happens if we only have half the cash?', 'Which vendors are we leaving unpaid, and what is the risk?', 'Which early-payment discounts are worth taking?'],
     },
+    profitability: {
+      title: 'Profitability', badge: 'GROSS PROFIT', api: '/api/profitability-agent', c1: '#14532D', c2: '#16A34A', asOfLabel: 'Period to',
+      icon: '<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>',
+      params: [
+        { key: 'days', label: 'Last N days', type: 'number', value: 90 },
+        { key: 'fromDate', label: 'Or from date', type: 'date' },
+        { key: 'includeCreditMemos', label: 'Net of credit memos', type: 'select', value: 'yes', options: ['yes', 'no'] },
+      ],
+      chips: ['Where do we make and lose money?', 'Which customers dilute our margin?', 'Compare sales employees by profit', 'Which items should we reprice?'],
+    },
+    marginleak: {
+      title: 'Margin Leakage', badge: 'LEAKAGE', api: '/api/margin-leakage-agent', c1: '#7F1D1D', c2: '#E11D48', asOfLabel: 'Period to',
+      icon: '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>',
+      params: [
+        { key: 'days', label: 'Last N days', type: 'number', value: 90 },
+        { key: 'fromDate', label: 'Or from date', type: 'date' },
+        { key: 'targetMarginPct', label: 'Target margin %', type: 'number', value: 15 },
+        { key: 'maxDiscountPct', label: 'Max discount %', type: 'number', value: 10 },
+        { key: 'anomalyPct', label: 'Anomaly: % below median', type: 'number', value: 25 },
+      ],
+      chips: ['What are the biggest sources of leakage?', 'Who is giving the most discount?', 'Are we recovering freight?', 'Which controls would stop this?'],
+    },
+    commission: {
+      title: 'Sales Commission', badge: 'PAYOUT', api: '/api/sales-commission-agent', c1: '#713F12', c2: '#CA8A04', asOfLabel: 'Period to',
+      icon: '<circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>',
+      params: [
+        { key: 'fromDate', label: 'Period from', type: 'date' },
+        { key: 'basis', label: 'Commission basis', type: 'select', options: ['', 'sales', 'collections', 'margin'] },
+        { key: 'defaultRatePct', label: 'Default rate %', type: 'number', placeholder: '2' },
+        { key: 'minMarginPct', label: 'Min margin % (0 = off)', type: 'number', placeholder: '0' },
+        { key: 'useSapRates', label: 'Use SAP employee %', type: 'select', options: ['', 'yes', 'no'] },
+        { key: 'salespersonRates', label: 'Sales employee rates', type: 'text', placeholder: 'Devraj=2.5; Zankhana=3' },
+        { key: 'customerRules', label: 'Customer rules', type: 'text', placeholder: 'CUS00001=3; CUS00002=0' },
+      ],
+      chips: ['Summarise commission by sales employee', 'Is anyone earning commission on low-margin sales?', 'Compare sales vs collections basis', 'Which sales have no sales employee?'],
+    },
+    monthend: {
+      title: 'Month-End Closing', badge: 'CLOSE', api: '/api/month-end-agent', c1: '#1E293B', c2: '#475569', asOfLabel: 'Period end', asOfDefault: 'monthEnd',
+      icon: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/>',
+      params: [],
+      chips: ['What must be done before we can close?', 'How much should we accrue?', 'Give me a close plan by team', 'Which items are critical and why?'],
+    },
     salesfollowup: {
       title: 'Sales Follow-up', badge: 'PIPELINE', api: '/api/sales-followup-agent', c1: '#1E3A8A', c2: '#2563EB',
       icon: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
@@ -327,7 +369,7 @@
     pf.innerHTML = fields.map(f => {
       const v = st.params[f.key] ?? '';
       const input = f.type === 'select'
-        ? `<select data-k="${f.key}">${f.options.map(o => `<option ${String(o) === String(v) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+        ? `<select data-k="${f.key}">${f.options.map(o => `<option value="${esc(o)}" ${String(o) === String(v) ? 'selected' : ''}>${esc(o === '' ? '(saved / default)' : o)}</option>`).join('')}</select>`
         : `<input data-k="${f.key}" type="${f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}" ${f.type === 'number' ? 'step="any"' : ''} value="${esc(v)}" placeholder="${esc(f.placeholder || '')}">`;
       return `<label>${esc(f.label)}${input}</label>`;
     }).join('');
@@ -368,6 +410,11 @@
     try {
       const d = await call(`${a.api}/analyze`, paramValues(key));
       st.data = d; st.error = null; st.limit = 100;
+      // Server can hand back effective / saved settings (e.g. commission rules).
+      if (d.paramsOut) {
+        Object.assign(st.params, d.paramsOut);
+        document.querySelectorAll(`#${PANEL_ID} .ia-params [data-k]`).forEach(el => { if (d.paramsOut[el.dataset.k] !== undefined) el.value = d.paramsOut[el.dataset.k]; });
+      }
       if (!d.tabs.some(t => t.key === st.tab)) st.tab = d.tabs[0]?.key;
       if (current === key) setStatus(`Updated ${new Date().toLocaleTimeString()} · ${(d.elapsedMs / 1000).toFixed(1)}s`);
     } catch (e) {
@@ -594,6 +641,11 @@
       const params = {};
       for (const f of AGENTS[key].params) if (f.value !== undefined) params[f.key] = String(f.value);
       params.asOf = new Date().toISOString().slice(0, 10);
+      if (AGENTS[key].asOfDefault === 'monthEnd') {
+        // Close the current month from the 20th onward, otherwise last month.
+        const d = new Date(), m = d.getUTCMonth() + (d.getUTCDate() >= 20 ? 1 : 0);
+        params.asOf = new Date(Date.UTC(d.getUTCFullYear(), m, 0)).toISOString().slice(0, 10);
+      }
       state[key] = { params, chat: [], sessionId: null, tab: null, data: null, limit: 100 };
     }
     hideOthers();
