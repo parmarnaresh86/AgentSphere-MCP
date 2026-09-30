@@ -77,6 +77,7 @@ import { createProfitabilityAgentRouter }       from './controllers/profitabilit
 import { createMarginLeakageAgentRouter }       from './controllers/margin-leakage-agent.mjs';
 import { createSalesCommissionAgentRouter }     from './controllers/sales-commission-agent.mjs';
 import { createMonthEndClosingAgentRouter }     from './controllers/month-end-closing-agent.mjs';
+import { createDemandForecastAgentRouter }      from './controllers/demand-forecast-agent.mjs';
 import { createPurchaseAnalysisRouter } from './controllers/purchase-analysis-agent.mjs';
 import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mjs';
 import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap, scanTablesSchema, getCompanyCurrency } from "./db-connector.mjs";
@@ -6298,7 +6299,7 @@ app.use('/api/vendor-payment-aging', createVendorPaymentAgingRouter({
 // ── Insight agents (Collections, Cash Flow, Credit Risk, Sales Follow-up,
 //    Quotation Intelligence, Inventory Optimization, Dead Stock, Vendor
 //    Performance, AP Payment Optimization, Profitability, Margin Leakage,
-//    Sales Commission, Month-End Closing). All read live SAP tables via DB Direct and share one
+//    Sales Commission, Month-End Closing, Supply Chain Demand Forecast). All read live SAP tables via DB Direct and share one
 //    response shape rendered by the generic insight panel in index.html.
 {
   const insightDeps = {
@@ -6318,6 +6319,7 @@ app.use('/api/vendor-payment-aging', createVendorPaymentAgingRouter({
   app.use('/api/margin-leakage-agent',         createMarginLeakageAgentRouter(insightDeps));
   app.use('/api/sales-commission-agent',       createSalesCommissionAgentRouter(insightDeps));
   app.use('/api/month-end-agent',              createMonthEndClosingAgentRouter(insightDeps));
+  app.use('/api/demand-forecast-agent',        createDemandForecastAgentRouter(insightDeps));
 }
 
 // ── Product Forecasting Agent routes ──────────────────────────────────────

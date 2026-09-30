@@ -116,6 +116,26 @@
       ],
       chips: ['Which quote lines leak margin?', 'Which quotes risk losing the deal on price?', 'What price should we quote and why?', 'Summarise pricing vs history'],
     },
+    scforecast: {
+      title: 'Supply Chain Demand Forecast', badge: 'S&OP', api: '/api/demand-forecast-agent', c1: '#1E3A8A', c2: '#2563EB',
+      icon: '<polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/><line x1="3" y1="21" x2="21" y2="21"/>',
+      params: [
+        { key: 'item', label: 'Chart item', type: 'text', placeholder: 'blank = all items (value)' },
+        { key: 'historyMonths', label: 'History (months)', type: 'number', value: 36 },
+        { key: 'horizonMonths', label: 'Horizon (months)', type: 'number', value: 12 },
+        { key: 'demandSource', label: 'Actual demand from', type: 'select', value: 'invoices', options: ['invoices', 'orders'] },
+        { key: 'safetyMarginPct', label: 'Safety margin %', type: 'number', value: 25 },
+        { key: 'defaultLeadTime', label: 'Default lead time (d)', type: 'number', value: 30 },
+        { key: 'confidence', label: 'Confidence %', type: 'select', value: '95', options: ['80', '90', '95', '99'] },
+        { key: 'excessMonths', label: 'Excess after (months)', type: 'number', value: 6 },
+        { key: 'stalePoDays', label: 'Ignore POs late > (days)', type: 'number', value: 180 },
+        { key: 'warehouse', label: 'Warehouse', type: 'text', placeholder: 'all' },
+        { key: 'group', label: 'Item group', type: 'text', placeholder: 'contains…' },
+        { key: 'arrivalField', label: 'PO target-delivery UDF', type: 'text', placeholder: 'e.g. U_TargetDelDate' },
+        { key: 'depositField', label: 'PO deposit UDF', type: 'text', placeholder: 'e.g. U_DepositDate' },
+      ],
+      chips: ['Prepare the S&OP summary for this month', 'Which items will stock out and when?', 'What must we order this week, from whom?', 'Which items are selling faster or slower than plan?', 'Where is the forecast least reliable?'],
+    },
     invopt: {
       title: 'Inventory Optimization', badge: 'MIN / MAX', api: '/api/inventory-optimization-agent', c1: '#134E4A', c2: '#0D9488',
       icon: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/>',
@@ -567,6 +587,15 @@
       return d;
     };
     try {
+      if (act.kind === 'focus') {
+        // Re-run the analysis with a parameter taken from the row (e.g. chart one item).
+        const v = row[act.from] ?? '';
+        state[key].params[act.param] = v;
+        const el = document.querySelector(`#${PANEL_ID} .ia-params [data-k="${act.param}"]`);
+        if (el) el.value = v;
+        document.querySelector(`#${PANEL_ID} .ia-body`)?.scrollTo({ top: 0, behavior: 'smooth' });
+        return runAnalysis(key);
+      }
       if (act.kind === 'post') {
         if (act.confirm && !confirm(fill(act.confirm, row))) return;
         await post();
