@@ -424,6 +424,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     // correctly on the very first paint after login instead of waiting on
     // the async /auth/me call that fires once index.html has loaded)
     localStorage.setItem('hanny_token', data.token);
+    try { sessionStorage.removeItem('lp_inapp'); } catch {} // Fiori theme: land on the launchpad after login
     localStorage.setItem('hanny_user',  JSON.stringify({ id: data.id, username: data.username, fullName: data.fullName, role: data.role, permissions: data.permissions || [], isSuperAdmin: data.isSuperAdmin || false }));
     okEl.textContent = `Welcome, ${data.fullName || data.username}! Redirecting…`;
     okEl.style.display = 'block';

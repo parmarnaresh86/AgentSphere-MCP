@@ -10,6 +10,8 @@
 import { Router } from 'express';
 import { brandingRepo } from '../db.mjs';
 
+const UI_THEMES = ["hana", "fiori"];
+
 function brandingToJson(row) {
   return {
     companyName:     row.company_name      || "",
@@ -18,6 +20,7 @@ function brandingToJson(row) {
     developedByLogo: row.developed_by_logo || "",
     productName:     row.product_name      || "",
     productLogo:     row.product_logo      || "",
+    uiTheme:         UI_THEMES.includes(row.ui_theme) ? row.ui_theme : "hana",
   };
 }
 function isValidLogoValue(v) {
@@ -38,7 +41,8 @@ export function createBrandingRouter(deps) {
 
   router.put('/', requireAuth, (req, res) => {
     if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
-    const { companyName, companyLogo, developedBy, developedByLogo, productName, productLogo } = req.body || {};
+    const { companyName, companyLogo, developedBy, developedByLogo, productName, productLogo, uiTheme } = req.body || {};
+    if (uiTheme !== undefined && !UI_THEMES.includes(uiTheme)) return res.status(400).json({ error: `uiTheme must be one of: ${UI_THEMES.join(", ")}` });
     for (const [label, v] of [["companyLogo", companyLogo], ["developedByLogo", developedByLogo], ["productLogo", productLogo]]) {
       if (!isValidLogoValue(v)) return res.status(400).json({ error: `${label} must be an uploaded image or empty` });
     }
@@ -50,6 +54,7 @@ export function createBrandingRouter(deps) {
       if (developedByLogo  !== undefined) fields.developed_by_logo = developedByLogo;
       if (productName      !== undefined) fields.product_name      = String(productName).slice(0, 200);
       if (productLogo      !== undefined) fields.product_logo      = productLogo;
+      if (uiTheme          !== undefined) fields.ui_theme          = uiTheme;
       const saved = brandingRepo.save(fields, req.user.username || req.user.email || "");
       res.json({ ok: true, branding: brandingToJson(saved) });
     } catch (e) { res.status(500).json({ error: e.message }); }

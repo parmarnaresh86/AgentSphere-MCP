@@ -16,6 +16,34 @@
 })();
 </script>
 <script>
+// ── UI theme ─────────────────────────────────────────────────
+// Picked by an admin in Company Setup (branding.uiTheme): 'hana' = the
+// original dark-shell UI, 'fiori' = S/4HANA Horizon look whose home screen
+// is /launchpad.html. Cached in localStorage so the page never flashes the
+// wrong theme; the live value is re-read from /api/branding on every load.
+// A launchpad tile opens a screen here via ?open=/form=/prompt=/aiprompt=/
+// ask=/chat and sets sessionStorage.lp_inapp, so a reload stays in the app.
+(function(){
+  if (!localStorage.getItem('hanny_token')) return;
+  let t = 'hana';
+  try { t = localStorage.getItem('ui_theme') === 'fiori' ? 'fiori' : 'hana'; } catch {}
+  const q = new URLSearchParams(location.search);
+  const deep = ['open','form','prompt','aiprompt','ask','chat'].some(k => q.has(k));
+  let inApp = false;
+  try { inApp = sessionStorage.getItem('lp_inapp') === '1'; } catch {}
+  const toLaunchpad = th => th === 'fiori' && !deep && !inApp;
+  if (toLaunchpad(t)) { location.replace('/launchpad.html'); return; }
+  document.documentElement.setAttribute('data-ui', t);
+  fetch('/api/branding').then(r => r.json()).then(b => {
+    const nt = b.uiTheme === 'fiori' ? 'fiori' : 'hana';
+    try { localStorage.setItem('ui_theme', nt); } catch {}
+    if (nt === t) return;
+    if (toLaunchpad(nt)) { location.replace('/launchpad.html'); return; }
+    document.documentElement.setAttribute('data-ui', nt);
+  }).catch(() => {});
+})();
+</script>
+<script>
 // ── Number display locale ────────────────────────────────────
 // Digit grouping follows the connected company's base currency (see
 // refreshAppCurrency): INR → Indian grouping (12,34,567), everything else →
@@ -1828,6 +1856,101 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
   #user-input{font-size:16px} /* prevents iOS Safari auto-zoom on focus */
 }
 </style>
+<style id="fiori-theme">
+/* ═══════════════════════════════════════════════════════════════
+   FIORI THEME — SAP S/4HANA Horizon look (admin: Company Setup → Theme)
+   Only active under html[data-ui="fiori"]; the default HANA theme
+   above is untouched. Restyles the app frame (sidebar, shell bar,
+   chat); agent panels keep their own colours.
+═══════════════════════════════════════════════════════════════ */
+@font-face{font-family:'72fiori';font-weight:400;font-display:swap;src:url('https://cdn.jsdelivr.net/npm/@sap-theming/theming-base-content/content/Base/baseLib/baseTheme/fonts/72-Regular.woff2') format('woff2')}
+@font-face{font-family:'72fiori';font-weight:600;font-display:swap;src:url('https://cdn.jsdelivr.net/npm/@sap-theming/theming-base-content/content/Base/baseLib/baseTheme/fonts/72-Semibold.woff2') format('woff2')}
+@font-face{font-family:'72fiori';font-weight:700;font-display:swap;src:url('https://cdn.jsdelivr.net/npm/@sap-theming/theming-base-content/content/Base/baseLib/baseTheme/fonts/72-Bold.woff2') format('woff2')}
+html[data-ui="fiori"]{
+  /* --shell stays dark: panel and modal headers draw white text on it */
+  --shell:#1d2d3e; --shell-brand:#1d2d3e; --shell-hover:#eaecee; --shell-active:#0070f2;
+  --blue:#0070f2; --blue-mid:#0064d9; --blue-light:#ebf8ff;
+  --bg:#f5f6f7; --text:#1d2d3e; --muted:#556b82; --border:#d9d9d9; --user-bg:#ebf8ff;
+  --green:#256f3a; --red:#aa0808; --orange:#e76500;
+  --font:'72fiori','72','Segoe UI',system-ui,-apple-system,sans-serif;
+  --r:8px;
+  --shadow:0 0 2px rgba(34,53,72,.15),0 2px 4px rgba(34,53,72,.15);
+  --fi-hover:#eaecee; --fi-sel:#ebf8ff; --fi-line:#e5e5e5;
+}
+
+/* Sidebar → light Horizon side navigation */
+html[data-ui="fiori"] .sidebar{background:#fff;border-right:1px solid var(--fi-line);box-shadow:none}
+html[data-ui="fiori"] .sidebar::-webkit-scrollbar-thumb{background:rgba(34,53,72,.18)}
+html[data-ui="fiori"] .brand{background:#fff;border-bottom:1px solid var(--fi-line);height:52px}
+html[data-ui="fiori"] .brand-name{color:var(--text)}
+html[data-ui="fiori"] .brand-sub{color:var(--muted)}
+html[data-ui="fiori"] .brand-avatar{border-radius:10px;box-shadow:none}
+html[data-ui="fiori"] #brand-company-name{color:var(--muted) !important}
+html[data-ui="fiori"] .sidebar-toggle-btn{background:#fff;border-color:var(--border);color:var(--muted)}
+html[data-ui="fiori"] .sidebar-toggle-btn:hover{background:var(--fi-hover);color:var(--text)}
+html[data-ui="fiori"] .sidebar-powered-by{color:var(--muted)}
+html[data-ui="fiori"] .icon-rail-btn{color:var(--muted)}
+html[data-ui="fiori"] .icon-rail-btn:hover{background:var(--fi-sel);color:var(--blue);border-color:transparent}
+html[data-ui="fiori"] .icon-rail-divider{background:var(--fi-line)}
+html[data-ui="fiori"] .nav-section-label{color:var(--text);border-radius:8px;border-left-color:transparent}
+html[data-ui="fiori"] .nav-section-label:hover{background:var(--fi-hover);color:var(--text)}
+html[data-ui="fiori"] .nav-section-label.sec-open{background:none;color:var(--blue-mid);border-left-color:transparent}
+html[data-ui="fiori"] .nav-item{color:var(--text);border-radius:8px;border-left-color:transparent}
+html[data-ui="fiori"] .nav-item:hover{background:var(--fi-hover);color:var(--text)}
+html[data-ui="fiori"] .nav-item.active{background:var(--fi-sel);color:var(--blue-mid);border-left-color:transparent;box-shadow:inset 3px 0 0 var(--blue)}
+html[data-ui="fiori"] .nav-group-header{color:var(--muted);border-radius:8px}
+html[data-ui="fiori"] .nav-group-header:hover{background:var(--fi-hover);color:var(--text)}
+html[data-ui="fiori"] .nav-group-header.open{color:var(--text);background:none}
+html[data-ui="fiori"] .nav-group-body{border-left-color:var(--fi-line)}
+html[data-ui="fiori"] .nav-subitem{color:var(--text);border-radius:8px}
+html[data-ui="fiori"] .nav-subitem:hover{background:var(--fi-hover);color:var(--text)}
+html[data-ui="fiori"] .nav-subitem.active{background:var(--fi-sel);color:var(--blue-mid);box-shadow:inset 3px 0 0 var(--blue)}
+html[data-ui="fiori"] .nav-subitem .dot-icon[data-fi]{color:var(--muted) !important}
+html[data-ui="fiori"] .nav-subitem:hover .dot-icon[data-fi]{color:var(--text) !important}
+html[data-ui="fiori"] .nav-subitem.active .dot-icon[data-fi]{color:var(--blue) !important}
+html[data-ui="fiori"] .sidebar-bottom{border-top-color:var(--fi-line)}
+html[data-ui="fiori"] .logout-btn{color:var(--muted)}
+html[data-ui="fiori"] .logout-btn:hover{background:var(--fi-hover);color:var(--text)}
+html[data-ui="fiori"] #new-chat-btn{background:var(--blue) !important;border-color:var(--blue) !important;color:#fff !important}
+html[data-ui="fiori"] #new-chat-btn:hover{background:var(--blue-mid) !important}
+html[data-ui="fiori"] #brand-company-row{margin-top:0 !important;padding-top:8px !important}
+
+/* Shell bar → white Horizon shell bar */
+html[data-ui="fiori"] .topbar{background:#fff;height:48px;border-bottom:1px solid var(--fi-line);box-shadow:none}
+html[data-ui="fiori"] .topbar-title{color:var(--text)}
+html[data-ui="fiori"] .topbar-tools-count{color:var(--muted)}
+html[data-ui="fiori"] .mode-hint{color:var(--muted);border-left-color:var(--border)}
+html[data-ui="fiori"] .mode-toggle{background:var(--bg);border-color:transparent;border-radius:10px}
+html[data-ui="fiori"] .mode-btn{border-radius:8px}
+html[data-ui="fiori"] #hanny-wake-hint,html[data-ui="fiori"] #engine-status{background:var(--fi-sel) !important;border-color:#b8dcff !important;color:var(--blue-mid) !important}
+html[data-ui="fiori"] #lang-select{background:#fff !important;border-color:var(--border) !important;color:var(--text) !important}
+html[data-ui="fiori"] #lang-select option{background:#fff !important;color:var(--text) !important}
+html[data-ui="fiori"] #company-btn{background:#fff;border-color:var(--border);color:var(--text)}
+html[data-ui="fiori"] #company-btn:hover{background:var(--fi-hover);border-color:var(--border)}
+html[data-ui="fiori"] #user-pill{background:var(--bg) !important;border-color:var(--border) !important;color:var(--text) !important}
+html[data-ui="fiori"] #logout-btn{background:#fff !important;border-color:var(--border) !important;color:var(--red) !important}
+html[data-ui="fiori"] #logout-btn:hover{background:#ffeaf4 !important}
+html[data-ui="fiori"] .mobile-menu-btn{background:#fff;border-color:var(--border);color:var(--text)}
+.lp-home-btn{display:none}
+html[data-ui="fiori"] .lp-home-btn{
+  display:flex;align-items:center;gap:6px;height:32px;padding:0 12px 0 10px;flex-shrink:0;
+  border:none;border-radius:8px;background:none;color:var(--text);
+  font:600 13px var(--font);cursor:pointer;
+}
+html[data-ui="fiori"] .lp-home-btn:hover{background:var(--fi-hover)}
+html[data-ui="fiori"] .lp-home-btn svg{width:16px;height:16px;fill:var(--blue)}
+
+/* Chat → Horizon cards */
+html[data-ui="fiori"] .welcome-avatar{border-radius:12px}
+html[data-ui="fiori"] .wchip{border-radius:16px}
+html[data-ui="fiori"] .bubble{border-radius:12px}
+html[data-ui="fiori"] .bubble.bot{border-color:transparent;border-top-left-radius:4px}
+html[data-ui="fiori"] .bubble.user{border-top-right-radius:4px}
+html[data-ui="fiori"] .av.user{background:var(--fi-sel);border-color:#b8dcff}
+html[data-ui="fiori"] .input-row{border-radius:12px;background:#fff}
+html[data-ui="fiori"] #send-btn{border-radius:10px}
+html[data-ui="fiori"] .bot-agent-btn{border-radius:8px}
+</style>
 </head>
 <body>
 
@@ -2662,6 +2785,10 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
 
   <!-- Top bar -->
   <div class="topbar">
+    <button class="lp-home-btn" id="lp-home-btn" title="Back to the launchpad" onclick="try{sessionStorage.removeItem('lp_inapp')}catch(e){}location.href='/launchpad.html'">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7.47.28a.75.75 0 0 1 1.06 0l7 7a.75.75 0 0 1-1.06 1.06L14 7.87v6.38A1.75 1.75 0 0 1 12.25 16h-2.5a.75.75 0 0 1-.75-.75V11.5h-2v3.75a.75.75 0 0 1-.75.75h-2.5A1.75 1.75 0 0 1 2 14.25V7.87l-.47.47A.75.75 0 0 1 .47 7.28l7-7ZM3.5 6.37v7.88c0 .14.11.25.25.25H5.5v-3.75A.75.75 0 0 1 6.25 10h3.5a.75.75 0 0 1 .75.75v3.75h1.75a.25.25 0 0 0 .25-.25V6.37L8 1.87 3.5 6.37Z"/></svg>
+      Home
+    </button>
     <button class="mobile-menu-btn" id="mobile-menu-btn" title="Menu" onclick="toggleMobileSidebar()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
@@ -38886,5 +39013,39 @@ window.almReset = almReset;
 
 <script src="/insight-agents.js"></script>
 <script src="/ocr-workbench.js"></script>
+<script>
+// ── Launchpad deep link ──────────────────────────────────────
+// /?open=<sidebar item id> | form=<data-form> | prompt=<data-prompt> |
+// aiprompt=<data-ai-prompt> | ask=<free text> | chat — opens that screen
+// once the page has finished wiring its sidebar handlers. Items the user
+// has no permission for are hidden by applyPermissions and are skipped.
+(function(){
+  const q = new URLSearchParams(location.search);
+  const keys = ['open','form','prompt','aiprompt','ask','chat'];
+  if (!keys.some(k => q.has(k))) return;
+  try { sessionStorage.setItem('lp_inapp', '1'); } catch {}
+  history.replaceState(null, '', '/');
+  const esc = v => (window.CSS && CSS.escape) ? CSS.escape(v) : v.replace(/["\\]/g, '\\$&');
+  const sel = q.get('open')     ? '#' + esc(q.get('open'))
+            : q.get('form')     ? '[data-form="' + esc(q.get('form')) + '"]'
+            : q.get('prompt')   ? '[data-prompt="' + esc(q.get('prompt')) + '"]'
+            : q.get('aiprompt') ? '[data-ai-prompt="' + esc(q.get('aiprompt')) + '"]'
+            : null;
+  const ask = q.get('ask');
+  const run = () => {
+    if (ask) {
+      const inp = document.getElementById('user-input');
+      if (inp && typeof sendMessage === 'function') { inp.value = ask; sendMessage(); }
+      return;
+    }
+    if (!sel) return;
+    const el = document.querySelector('#app-sidebar ' + sel);
+    if (!el || getComputedStyle(el).display === 'none') return;
+    el.click();
+  };
+  const start = () => setTimeout(run, 400);
+  if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
+})();
+</script>
 </body>
 </html>

@@ -236,6 +236,11 @@ db.exec(`
     updated_by         TEXT DEFAULT ''
   )
 `);
+// UI theme picked by an admin: 'hana' (original dark shell) or 'fiori'
+// (S/4HANA Horizon launchpad). Added after the table shipped, so migrate.
+if (!db.prepare(`PRAGMA table_info(branding_settings)`).all().some(c => c.name === 'ui_theme')) {
+  db.exec(`ALTER TABLE branding_settings ADD COLUMN ui_theme TEXT DEFAULT 'hana'`);
+}
 
 const BRANDING_DEFAULTS = {
   company_name:      '',
@@ -244,6 +249,7 @@ const BRANDING_DEFAULTS = {
   developed_by_logo: '/assets/henny-ai-logo.png',
   product_name:      'AgentSphere',
   product_logo:      '/assets/henny-agentic-logo.png',
+  ui_theme:          'hana',
 };
 
 export const brandingRepo = {
@@ -258,13 +264,13 @@ export const brandingRepo = {
     const vals = [
       merged.company_name, merged.company_logo,
       merged.developed_by, merged.developed_by_logo,
-      merged.product_name, merged.product_logo,
+      merged.product_name, merged.product_logo, merged.ui_theme || 'hana',
       new Date().toISOString(), updatedBy,
     ];
     if (has) {
-      db.prepare(`UPDATE branding_settings SET company_name=?,company_logo=?,developed_by=?,developed_by_logo=?,product_name=?,product_logo=?,updated_at=?,updated_by=? WHERE id=1`).run(...vals);
+      db.prepare(`UPDATE branding_settings SET company_name=?,company_logo=?,developed_by=?,developed_by_logo=?,product_name=?,product_logo=?,ui_theme=?,updated_at=?,updated_by=? WHERE id=1`).run(...vals);
     } else {
-      db.prepare(`INSERT INTO branding_settings (id,company_name,company_logo,developed_by,developed_by_logo,product_name,product_logo,updated_at,updated_by) VALUES (1,?,?,?,?,?,?,?,?)`).run(...vals);
+      db.prepare(`INSERT INTO branding_settings (id,company_name,company_logo,developed_by,developed_by_logo,product_name,product_logo,ui_theme,updated_at,updated_by) VALUES (1,?,?,?,?,?,?,?,?,?)`).run(...vals);
     }
     return this.get();
   },

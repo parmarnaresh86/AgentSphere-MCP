@@ -41,7 +41,7 @@ body{display:flex;flex-direction:column}
 .topbar a:hover{color:#fff}
 .topbar h1{font-size:14px;font-weight:700;flex:1}
 
-.wrap{flex:1;overflow-y:auto;display:flex;justify-content:center;padding:32px 16px}
+.wrap{flex:1;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:20px;padding:32px 16px}
 .card{
   width:100%;max-width:560px;background:var(--white);border:1px solid var(--border);
   border-radius:8px;padding:28px;height:fit-content;
@@ -79,6 +79,34 @@ body{display:flex;flex-direction:column}
 .btn-primary{background:var(--blue);color:#fff}
 .btn-primary:hover{background:#0058C7}
 .btn-primary:disabled{background:#9CA3AF;cursor:not-allowed}
+
+/* Theme picker */
+.themes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.theme-card{
+  border:1.5px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;background:var(--white);
+  text-align:left;font-family:inherit;color:inherit;transition:border-color .15s,box-shadow .15s;
+}
+.theme-card:hover{border-color:#9CA3AF}
+.theme-card[aria-checked="true"]{border-color:var(--blue);box-shadow:0 0 0 2px rgba(0,112,242,.2)}
+.theme-card b{display:flex;align-items:center;justify-content:space-between;font-size:13px;margin-top:10px}
+.theme-card small{display:block;font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
+.theme-card .tick{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0}
+.theme-card[aria-checked="true"] .tick{border:5px solid var(--blue)}
+.mock{height:92px;border-radius:6px;overflow:hidden;display:flex;border:1px solid var(--border)}
+.mock-hana .side{width:28%;background:#1a2535;padding:8px 6px;display:flex;flex-direction:column;gap:5px}
+.mock-hana .side i{height:5px;border-radius:2px;background:rgba(255,255,255,.25)}
+.mock-hana .side i:nth-child(2){background:#3b82f6}
+.mock-hana .body{flex:1;display:flex;flex-direction:column;background:#F5F6F7}
+.mock-hana .top{height:14px;background:#1a2535}
+.mock-hana .msg{margin:8px;height:18px;border-radius:3px;background:#fff;border:1px solid #E5E5E5}
+.mock-fiori{flex-direction:column;background:#f5f6f7}
+.mock-fiori .top{height:14px;background:#fff;border-bottom:1px solid #e5e5e5;display:flex;align-items:center;padding:0 6px;gap:4px}
+.mock-fiori .top i{width:14px;height:4px;border-radius:2px;background:#d9d9d9}
+.mock-fiori .top i:first-child{background:#0070f2}
+.mock-fiori .tiles{display:flex;flex-wrap:wrap;gap:5px;padding:8px}
+.mock-fiori .tiles i{width:26px;height:26px;border-radius:5px;background:#fff;box-shadow:0 0 1px rgba(34,53,72,.3),0 1px 2px rgba(34,53,72,.15);position:relative}
+.mock-fiori .tiles i::after{content:"";position:absolute;left:5px;bottom:5px;width:7px;height:7px;border-radius:2px;background:#0070f2}
+@media (max-width:520px){.themes{grid-template-columns:1fr}}
 
 .status{font-size:12.5px;margin-top:14px;padding:8px 12px;border-radius:var(--r);display:none}
 .status.ok{display:block;background:#E3F5E9;color:var(--green)}
@@ -120,6 +148,27 @@ body{display:flex;flex-direction:column}
       <button class="btn btn-primary" id="cs-save-btn" onclick="csSave()">Save Changes</button>
     </div>
     <div class="status" id="cs-status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Application Theme</h2>
+    <p class="hint">Look and home screen for every user of this instance. Admin only.</p>
+    <div class="themes" role="radiogroup" aria-label="Application theme">
+      <button type="button" class="theme-card" role="radio" data-theme="hana" aria-checked="false">
+        <div class="mock mock-hana"><div class="side"><i></i><i></i><i></i><i></i></div><div class="body"><div class="top"></div><div class="msg"></div><div class="msg" style="margin-top:0;width:60%"></div></div></div>
+        <b>HANA theme <span class="tick"></span></b>
+        <small>The original look: dark sidebar menu, opens on AI chat.</small>
+      </button>
+      <button type="button" class="theme-card" role="radio" data-theme="fiori" aria-checked="false">
+        <div class="mock mock-fiori"><div class="top"><i></i><i></i><i></i><i></i></div><div class="tiles"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        <b>Fiori theme <span class="tick"></span></b>
+        <small>SAP S/4HANA Horizon look: opens on a launchpad of app tiles.</small>
+      </button>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" id="th-save-btn" onclick="thSave()">Apply Theme</button>
+    </div>
+    <div class="status" id="th-status"></div>
   </div>
 </div>
 
@@ -166,9 +215,38 @@ document.getElementById('cs-logo-clear').addEventListener('click', () => {
   csRenderLogo();
 });
 
+let thSaved = 'hana', thPick = 'hana';
+function thRender() {
+  document.querySelectorAll('.theme-card').forEach(c => c.setAttribute('aria-checked', String(c.dataset.theme === thPick)));
+}
+document.querySelectorAll('.theme-card').forEach(c => c.addEventListener('click', () => { thPick = c.dataset.theme; thRender(); }));
+
+async function thSave() {
+  const btn = document.getElementById('th-save-btn');
+  const status = document.getElementById('th-status');
+  if (thPick === thSaved) { status.className = 'status ok'; status.textContent = '✓ This theme is already active.'; return; }
+  btn.disabled = true; btn.textContent = 'Applying…';
+  status.className = 'status';
+  try {
+    await api('/api/branding', { method: 'PUT', body: JSON.stringify({ uiTheme: thPick }) });
+    thSaved = thPick;
+    try { localStorage.setItem('ui_theme', thPick); } catch {}
+    status.className = 'status ok';
+    status.textContent = '✓ Theme applied — reloading…';
+    // This page runs inside the main app's iframe: reload the whole app so the new theme takes effect
+    setTimeout(() => { try { sessionStorage.removeItem('lp_inapp'); } catch {} window.top.location.replace('/'); }, 700);
+  } catch (e) {
+    status.className = 'status err';
+    status.textContent = '✗ ' + e.message;
+    btn.disabled = false; btn.textContent = 'Apply Theme';
+  }
+}
+
 async function csLoad() {
   try {
     const b = await api('/api/branding');
+    thSaved = thPick = b.uiTheme || 'hana';
+    thRender();
     document.getElementById('cs-name').value = b.companyName || '';
     csLogoData = b.companyLogo || '';
     csRenderLogo();
