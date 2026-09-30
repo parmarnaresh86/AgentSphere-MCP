@@ -638,6 +638,7 @@ export const ALL_PERMISSIONS = [
   { key: 'ai.supply.purchasing_agent',  label: 'Purchase Recommendation',  section: 'AI Agents', group: 'Supply Chain' },
   { key: 'ai.supply.rush_orders',       label: 'Rush Orders',              section: 'AI Agents', group: 'Supply Chain' },
   { key: 'ai.supply.shipment_delay',    label: 'Shipment Delays',          section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.sc_forecast',       label: 'Supply Chain Demand Forecast', section: 'AI Agents', group: 'Supply Chain' },
   { key: 'ai.supply.inv_opt',           label: 'Inventory Optimization',   section: 'AI Agents', group: 'Supply Chain' },
   { key: 'ai.supply.dead_stock',        label: 'Dead Stock',               section: 'AI Agents', group: 'Supply Chain' },
   { key: 'ai.supply.vendor_perf',       label: 'Vendor Performance',       section: 'AI Agents', group: 'Supply Chain' },
@@ -934,6 +935,11 @@ const ONE_TIME_GRANTS = [
   // admins then assign them to other roles via Roles & Permissions.
   { name: 'inventory.workflow.v1', trigger: ['admin.roles'],
     keys: ['inventory.workflow.transfer_request','inventory.workflow.transfer_from_request','inventory.workflow.transfer_direct','inventory.workflow.goods_issue','inventory.workflow.goods_receipt'] },
+  // Supply Chain Demand Forecast → whoever could already see its sibling
+  // insight agent, Inventory Optimization, so the new menu item doesn't
+  // vanish for existing admins/users.
+  { name: 'ai.supply.sc_forecast.v1', trigger: ['ai.supply.inv_opt'],
+    keys: ['ai.supply.sc_forecast'] },
 ];
 for (const g of ONE_TIME_GRANTS) {
   if (db.prepare(`SELECT 1 FROM permission_grants_applied WHERE name=?`).get(g.name)) continue;
