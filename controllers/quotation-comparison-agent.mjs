@@ -5,6 +5,7 @@
  *  No posting. View only.
  */
 import { Router } from 'express';
+import db, { connRepo } from '../db.mjs';
 
 const _sessions = new Map();
 
@@ -20,6 +21,77 @@ function today() { return new Date().toISOString().slice(0, 10); }
 function fmtN(n, d = 2) {
   if (n == null || isNaN(Number(n))) return '—';
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Styled reply helpers (mirrors Sales Order Agent's card look) ───────────────
+const THEME = { border: '#7c3aed', bg: '#f5f3ff', text: '#5b21b6' };
+
+function buildInfoTable(rows) {
+  const trs = rows.map((r, i) =>
+    `<tr${i % 2 === 1 ? ' style="background:#f9fafb"' : ''}><td style="padding:7px 12px;font-size:12px;color:#6b7280;width:38%">${r.label}</td><td style="padding:7px 12px;font-size:12.5px;font-weight:600">${r.value}</td></tr>`
+  ).join('');
+  return `<table style="width:100%;border-collapse:collapse"><tbody>${trs}</tbody></table>`;
+}
+
+function buildCard(title, rows, footer) {
+  return `<div style="background:${THEME.bg};border:1.5px solid ${THEME.border};border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13px;font-weight:700;color:${THEME.text};margin-bottom:10px">${title}</div>
+    ${buildInfoTable(rows)}
+    ${footer ? `<div style="font-size:12.5px;color:#374151;margin-top:10px">${footer}</div>` : ''}
+  </div>`;
+}
+
+function buildDataTable(headers, rows) {
+  const thead = headers.map(h => `<th style="padding:6px 10px;text-align:left;font-size:10.5px;font-weight:700;color:${THEME.text};text-transform:uppercase">${h}</th>`).join('');
+  const tbody = rows.map((r, i) =>
+    `<tr${i % 2 === 1 ? ' style="background:#f9fafb"' : ''}>${r.map(c => `<td style="padding:6px 10px;font-size:12px">${c}</td>`).join('')}</tr>`
+  ).join('');
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:${THEME.bg}">${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+}
+
+// ── Cache helpers ──────────────────────────────────────────────────────────────
+
+function getCompanyId() {
+  const conn = connRepo.getActive();
+  return conn ? conn.company : 'default';
+}
+
+function getCacheCustomers() {
+  const cid = getCompanyId();
+  return db.prepare(`SELECT CardCode, CardName, City FROM cache_business_partners
+    WHERE company_id=? AND CardType='cCustomer' AND Frozen='tNO' ORDER BY CardName LIMIT 500`).all(cid);
+}
+
+// ── HTML combo builder (rendered inside agent reply) ───────────────────────────
+
+function buildCustomerComboHtml(customers, label) {
+  const opts = customers.map(c =>
+    `<option value="${escHtml(c.CardCode)}">${escHtml(c.CardCode)} — ${escHtml(c.CardName)}${c.City ? ' ('+escHtml(c.City)+')' : ''}</option>`
+  ).join('');
+  const noCache = !customers.length
+    ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Customer cache is empty — go to <strong>Tools → Data Sync</strong> to load master data, or type a name in the box below to search live.</div>` : '';
+  const customersJson = escHtml(JSON.stringify(customers.map(c => ({ code: c.CardCode, name: c.CardName, city: c.City || '' }))));
+  return `<div style="background:#f5f3ff;border:1.5px solid #7c3aed;border-radius:8px;padding:14px;margin:6px 0" data-customers="${customersJson}">
+    ${noCache}
+    <div style="font-size:12px;font-weight:700;color:#5b21b6;margin-bottom:8px">${label || `Select Customer (${customers.length} available)`}:</div>
+    <input type="text" placeholder="🔍 Search customer by name or code…" oninput="qcompFilterCustomers(this)"
+      style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <select id="qcomp-cust-sel"
+        style="flex:1;border:1.5px solid #7c3aed;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
+        <option value="">— Select a Customer —</option>
+        ${opts}
+      </select>
+      <button onclick="qcompComboSelectCustomer()"
+        style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+        Select →
+      </button>
+    </div>
+    <div style="font-size:11.5px;color:#6b7280">Type above to filter, or type a name in the chat box below to search live SAP data</div>
+  </div>`;
 }
 
 // ── SAP helpers ────────────────────────────────────────────────────────────────
@@ -140,39 +212,40 @@ function buildSummaryReply(comparisonData) {
   }
 
   const topGroups = groups.slice(0, 5);
-  const tableRows = topGroups.map(g =>
-    `| ${g.cardName} | ${g.cardCode} | ${g.count} | ${fmtN(g.totalValue)} |`
-  ).join('\n');
+  const topTableRows = topGroups.map(g => [escHtml(g.cardName), escHtml(g.cardCode), String(g.count), fmtN(g.totalValue)]);
 
-  return `### 📊 Open Quotations Summary\n\n` +
-    `| Metric | Value |\n|---|---|\n` +
-    `| **Total Quotations** | ${summary.totalQuotations} |\n` +
-    `| **Customers** | ${summary.totalCustomers} |\n` +
-    `| **Total Value** | ${fmtN(summary.totalValue)} |\n\n` +
-    (topGroups.length
-      ? `**Top Customers by Quotation Value:**\n\n| Customer | Code | Count | Total Value |\n|---|---|---|---|\n${tableRows}\n\n`
-      : '') +
-    `Search by customer name or type **"all"** to reload.`;
+  const footer = (topGroups.length
+    ? `<div style="font-weight:700;margin:10px 0 6px">Top Customers by Quotation Value:</div>${buildDataTable(['Customer', 'Code', 'Count', 'Total Value'], topTableRows)}<div style="margin-top:10px">`
+    : '')
+    + `Search by customer name or type <strong>"all"</strong> to reload.`
+    + (topGroups.length ? `</div>` : '');
+
+  return buildCard('📊 Open Quotations Summary', [
+    { label: 'Total Quotations', value: String(summary.totalQuotations) },
+    { label: 'Customers',        value: String(summary.totalCustomers) },
+    { label: 'Total Value',      value: fmtN(summary.totalValue) },
+  ], footer);
 }
 
 function buildCustomerReply(comparisonData, customerName) {
   const { summary, groups } = comparisonData;
   if (!summary.totalQuotations) {
-    return `No open quotations found for **${customerName}**.`;
+    return `No open quotations found for <strong>${escHtml(customerName)}</strong>.`;
   }
 
   const g = groups[0];
-  if (!g) return `No open quotations found for **${customerName}**.`;
+  if (!g) return `No open quotations found for <strong>${escHtml(customerName)}</strong>.`;
 
   const tableRows = g.quotations.map(q =>
-    `| ${q.docNum} | ${q.docDate || '—'} | ${q.validUntil || '—'} | ${q.numAtCard || '—'} | ${q.lineCount} | ${fmtN(q.docTotal)} |`
-  ).join('\n');
+    [String(q.docNum), q.docDate || '—', q.validUntil || '—', escHtml(q.numAtCard || '—'), String(q.lineCount), fmtN(q.docTotal)]
+  );
 
-  return `### 📋 Open Quotations for ${g.cardName} (${g.cardCode})\n\n` +
-    `**${g.count}** open quotation${g.count !== 1 ? 's' : ''} — Total Value: **${fmtN(g.totalValue)}**\n\n` +
-    `| Doc # | Date | Valid Until | Reference | Lines | Total |\n|---|---|---|---|---|---|\n` +
-    `${tableRows}\n\n` +
-    `Type another customer name to compare, or type **"all"** to see all customers.`;
+  return `<div style="background:${THEME.bg};border:1.5px solid ${THEME.border};border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13px;font-weight:700;color:${THEME.text};margin-bottom:4px">📋 Open Quotations for ${escHtml(g.cardName)} (${escHtml(g.cardCode)})</div>
+    <div style="font-size:12.5px;color:#374151;margin-bottom:10px"><strong>${g.count}</strong> open quotation${g.count !== 1 ? 's' : ''} — Total Value: <strong>${fmtN(g.totalValue)}</strong></div>
+    ${buildDataTable(['Doc #', 'Date', 'Valid Until', 'Reference', 'Lines', 'Total'], tableRows)}
+    <div style="font-size:12.5px;color:#374151;margin-top:10px">Type another customer name to compare, or type <strong>"all"</strong> to see all customers.</div>
+  </div>`;
 }
 
 // ── Router factory ─────────────────────────────────────────────────────────────
@@ -197,16 +270,42 @@ export function createQuotationComparisonRouter(deps) {
       let reply          = '';
       let quickReplies   = [];
       let comparisonData = null;
-      let customerList   = null;
+
+      // ── JSON actions (from the customer picker) ─────────────────────────────
+      if (msg.startsWith('{')) {
+        let action = null;
+        try { action = JSON.parse(msg); } catch {}
+        if (action?.action === 'select_customer' && action.cardCode) {
+          session.lastQuery = action.cardCode;
+          session.step      = 'SELECT_CUSTOMER';
+          const quotations  = await fetchOpenQuotations(sap, action.cardCode);
+          comparisonData     = buildComparisonData(quotations);
+          reply              = buildCustomerReply(comparisonData, action.cardName || action.cardCode);
+          quickReplies       = ['Show All Open Quotations', 'Refresh', 'Start Over'];
+        } else {
+          reply = 'Unexpected action. Please start over.';
+          quickReplies = ['Start Over'];
+        }
 
       // ── Reset / start over ─────────────────────────────────────────────────
-      if (/start over|reset|cancel/i.test(msgL)) {
+      } else if (/start over|reset|cancel/i.test(msgL)) {
         Object.assign(session, initSession());
-        reply = '## 🟣 Quotation Comparison Agent\n\nSession reset. Type a customer name, or type **"all"** to load all open quotations:';
+        const cached = getCacheCustomers();
+        reply = `<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🟣 Welcome to the <strong>Quotation Comparison Agent</strong>!</div>
+          <div style="font-size:13px;color:#374151;margin-bottom:8px">Session reset. Select a customer below, or type <strong>"all"</strong> to load all open quotations:</div>`
+          + buildCustomerComboHtml(cached);
+        quickReplies = ['Show All Open Quotations'];
+
+      // ── Welcome (session start) ─────────────────────────────────────────────
+      } else if (!msg) {
+        const cached = getCacheCustomers();
+        reply = `<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🟣 Welcome to the <strong>Quotation Comparison Agent</strong>!</div>
+          <div style="font-size:13px;color:#374151;margin-bottom:8px">Select a customer to compare their open quotations, or type <strong>"all"</strong> to load everything:</div>`
+          + buildCustomerComboHtml(cached);
         quickReplies = ['Show All Open Quotations'];
 
       // ── Load all quotations ────────────────────────────────────────────────
-      } else if (!msg || /^all$/i.test(msgL) || /show all|all open|all quot/i.test(msgL)) {
+      } else if (/^all$/i.test(msgL) || /show all|all open|all quot/i.test(msgL)) {
         session.lastQuery = 'all';
         session.step      = 'SELECT_CUSTOMER';
         const quotations  = await fetchAllOpenQuotations(sap);
@@ -233,7 +332,7 @@ export function createQuotationComparisonRouter(deps) {
         const customers = await searchCustomers(sap, msg);
 
         if (!customers.length) {
-          reply = `No customers found matching **"${msg}"**. Try a different name, or type **"all"** to see all open quotations.`;
+          reply = `No customers found matching <strong>"${escHtml(msg)}"</strong>. Try a different name, or type <strong>"all"</strong> to see all open quotations.`;
           quickReplies = ['Show All Open Quotations'];
 
         } else if (customers.length === 1) {
@@ -246,20 +345,10 @@ export function createQuotationComparisonRouter(deps) {
           quickReplies      = ['Show All Open Quotations', 'Refresh', 'Start Over'];
 
         } else {
-          // Multiple customers found — show list and load all their quotations
-          customerList = customers.map(c => ({ cardCode: c.CardCode, cardName: c.CardName }));
+          // Multiple customers found — let the user pick one from a searchable list
           session.step = 'SELECT_CUSTOMER';
-
-          // Load quotations for all matched customers and aggregate
-          const allQuotations = [];
-          await Promise.all(customers.slice(0, 10).map(async c => {
-            const qs = await fetchOpenQuotations(sap, c.CardCode);
-            allQuotations.push(...qs);
-          }));
-          comparisonData = buildComparisonData(allQuotations);
-
-          reply = `Found **${customers.length}** customers matching **"${msg}"**.\n\n` +
-            buildSummaryReply(comparisonData);
+          reply = `Found <strong>${customers.length}</strong> customers matching <strong>"${escHtml(msg)}"</strong>. Select one:\n\n`
+            + buildCustomerComboHtml(customers, `${customers.length} matches`);
           quickReplies = ['Show All Open Quotations', 'Start Over'];
         }
       }
@@ -271,7 +360,6 @@ export function createQuotationComparisonRouter(deps) {
         ok: true, reply, quickReplies, sessionId: sid,
         step: session.step,
         comparisonData,
-        customerList,
       });
 
     } catch (e) {

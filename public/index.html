@@ -251,7 +251,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
 .wchip-form:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
 
 /* Fiori Message rows */
-.msg-row{display:flex;gap:8px;max-width:820px;width:100%;align-self:flex-start}
+.msg-row{display:flex;gap:8px;max-width:1020px;width:100%;align-self:flex-start}
 .msg-row.user{align-self:flex-end;flex-direction:row-reverse}
 
 .av{
@@ -1967,13 +1967,13 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-master-records">
-        <div class="nav-subitem" onclick="showMasterPanel('item')" id="nav-master-item" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Item Master</div>
-        <div class="nav-subitem" onclick="showMasterPanel('customer')" id="nav-master-customer" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>Customer Master</div>
-        <div class="nav-subitem" onclick="showMasterPanel('supplier')" id="nav-master-supplier" style="cursor:pointer"><span class="dot-icon" style="background:#7c3aed"></span>Supplier Master</div>
-        <div class="nav-subitem" onclick="showGstinCheckPanel()" id="nav-gstin-check" style="cursor:pointer"><span class="dot-icon" style="background:#059669"></span>GSTIN Check</div>
-        <div class="nav-subitem" onclick="showBpCheckPanel()" id="nav-bp-check" style="cursor:pointer"><span class="dot-icon" style="background:#db2777"></span>BP Duplicate Check</div>
-        <div class="nav-subitem" onclick="showMasterPanel('bom')" id="nav-master-bom" style="cursor:pointer"><span class="dot-icon" style="background:#d97706"></span>Bill of Material</div>
-        <div class="nav-subitem" onclick="showMasterPanel('service_call')" id="nav-master-service-call" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>Service Call</div>
+        <div class="nav-subitem" onclick="showMasterPanel('item')" id="nav-master-item" data-perm="master.item" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Item Master</div>
+        <div class="nav-subitem" onclick="showMasterPanel('customer')" id="nav-master-customer" data-perm="master.customer" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>Customer Master</div>
+        <div class="nav-subitem" onclick="showMasterPanel('supplier')" id="nav-master-supplier" data-perm="master.supplier" style="cursor:pointer"><span class="dot-icon" style="background:#7c3aed"></span>Supplier Master</div>
+        <div class="nav-subitem" onclick="showGstinCheckPanel()" id="nav-gstin-check" data-perm="master.gstin_check" style="cursor:pointer"><span class="dot-icon" style="background:#059669"></span>GSTIN Check</div>
+        <div class="nav-subitem" onclick="showBpCheckPanel()" id="nav-bp-check" data-perm="master.bp_check" style="cursor:pointer"><span class="dot-icon" style="background:#db2777"></span>BP Duplicate Check</div>
+        <div class="nav-subitem" onclick="showMasterPanel('bom')" id="nav-master-bom" data-perm="master.bom" style="cursor:pointer"><span class="dot-icon" style="background:#d97706"></span>Bill of Material</div>
+        <div class="nav-subitem" onclick="showMasterPanel('service_call')" id="nav-master-service-call" data-perm="master.service_call" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>Service Call</div>
       </div>
     </div>
   </div>
@@ -1990,10 +1990,10 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body open" id="grp-service">
-        <div class="nav-subitem" onclick="showScViewAgent()" id="nav-sc-view" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>Service Call Dashboard</div>
-        <div class="nav-subitem" onclick="showMasterPanel('svc_call')" id="nav-svc-call" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>New Service Call</div>
-        <div class="nav-subitem" onclick="showScFormAgent()" id="nav-sc-form" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Service Call</div>
-        <div class="nav-subitem" onclick="showScWizardAgent()" id="nav-sc-wizard" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>New Call Wizard</div>
+        <div class="nav-subitem" onclick="showScViewAgent()" id="nav-sc-view" data-perm="service.sc_view" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>Service Call Dashboard</div>
+        <div class="nav-subitem" onclick="showMasterPanel('svc_call')" id="nav-svc-call" data-perm="service.svc_call" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>New Service Call</div>
+        <div class="nav-subitem" onclick="showScFormAgent()" id="nav-sc-form" data-perm="service.sc_form" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Service Call</div>
+        <div class="nav-subitem" onclick="showScWizardAgent()" id="nav-sc-wizard" data-perm="service.sc_wizard" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>New Call Wizard</div>
       </div>
     </div>
   </div>
@@ -2012,13 +2012,13 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-create-sales">
-        <div class="nav-subitem" data-form="quotation"><span class="dot-icon" style="background:#0070F2"></span>Quotation</div>
-        <div class="nav-subitem" data-form="order"><span class="dot-icon" style="background:#0070F2"></span>Sales Order</div>
-        <div class="nav-subitem" data-form="delivery"><span class="dot-icon" style="background:#0070F2"></span>Delivery</div>
-        <div class="nav-subitem" data-form="pod"><span class="dot-icon" style="background:#107E3E"></span>Confirm POD</div>
-        <div class="nav-subitem" data-form="invoice"><span class="dot-icon" style="background:#0070F2"></span>AR Invoice</div>
-        <div class="nav-subitem" data-form="payment"><span class="dot-icon" style="background:#107E3E"></span>Incoming Payment</div>
-        <div class="nav-subitem" data-form="atp"><span class="dot-icon" style="background:#6A1DE8"></span>ATP Check</div>
+        <div class="nav-subitem" data-form="quotation" data-perm="sales.create.quotation"><span class="dot-icon" style="background:#0070F2"></span>Quotation</div>
+        <div class="nav-subitem" data-form="order" data-perm="sales.create.order"><span class="dot-icon" style="background:#0070F2"></span>Sales Order</div>
+        <div class="nav-subitem" data-form="delivery" data-perm="sales.create.delivery"><span class="dot-icon" style="background:#0070F2"></span>Delivery</div>
+        <div class="nav-subitem" data-form="pod" data-perm="sales.create.pod"><span class="dot-icon" style="background:#107E3E"></span>Confirm POD</div>
+        <div class="nav-subitem" data-form="invoice" data-perm="sales.create.invoice"><span class="dot-icon" style="background:#0070F2"></span>AR Invoice</div>
+        <div class="nav-subitem" data-form="payment" data-perm="sales.create.payment"><span class="dot-icon" style="background:#107E3E"></span>Incoming Payment</div>
+        <div class="nav-subitem" data-form="atp" data-perm="sales.create.atp"><span class="dot-icon" style="background:#6A1DE8"></span>ATP Check</div>
       </div>
     </div>
 
@@ -2032,15 +2032,15 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-sales-o2c-workflow">
-        <div class="nav-subitem" onclick="showSOAgentPanel()" id="nav-soa" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Sales Order</div>
-        <div class="nav-subitem" onclick="showSQPanel()" id="nav-sq" style="cursor:pointer"><span class="dot-icon" style="background:#15803d"></span>Sales Quotation</div>
-        <div class="nav-subitem" onclick="showQCompPanel()" id="nav-qcomp" style="cursor:pointer"><span class="dot-icon" style="background:#7c3aed"></span>Quotation Compare</div>
-        <div class="nav-subitem" onclick="showQ2OPanel()" id="nav-q2o" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>Quot → Order</div>
-        <div class="nav-subitem" onclick="showO2DPanel()" id="nav-o2d" style="cursor:pointer"><span class="dot-icon" style="background:#b45309"></span>Order → Delivery</div>
-        <div class="nav-subitem" onclick="showD2ARInvPanel()" id="nav-d2arinv" style="cursor:pointer"><span class="dot-icon" style="background:#0369a1"></span>Delivery → AR Inv</div>
-        <div class="nav-subitem" onclick="showARInv2ARCMPanel()" id="nav-arinv2arcm" style="cursor:pointer"><span class="dot-icon" style="background:#9f1239"></span>AR Inv → Credit</div>
-        <div class="nav-subitem" onclick="showInPayPanel()" id="nav-inpmt" style="cursor:pointer"><span class="dot-icon" style="background:#047857"></span>Incoming Payment</div>
-        <div class="nav-subitem" onclick="window.location.href='/sales-analysis.html'" id="nav-sales-analysis" style="cursor:pointer"><span class="dot-icon" style="background:#10B981"></span>Sales Analysis</div>
+        <div class="nav-subitem" onclick="showSOAgentPanel()" id="nav-soa" data-perm="sales.workflow.sales_order" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Sales Order</div>
+        <div class="nav-subitem" onclick="showSQPanel()" id="nav-sq" data-perm="sales.workflow.quotation" style="cursor:pointer"><span class="dot-icon" style="background:#15803d"></span>Sales Quotation</div>
+        <div class="nav-subitem" onclick="showQCompPanel()" id="nav-qcomp" data-perm="sales.workflow.quote_compare" style="cursor:pointer"><span class="dot-icon" style="background:#7c3aed"></span>Quotation Compare</div>
+        <div class="nav-subitem" onclick="showQ2OPanel()" id="nav-q2o" data-perm="sales.workflow.quote_to_order" style="cursor:pointer"><span class="dot-icon" style="background:#0e7490"></span>Quot → Order</div>
+        <div class="nav-subitem" onclick="showO2DPanel()" id="nav-o2d" data-perm="sales.workflow.order_to_delivery" style="cursor:pointer"><span class="dot-icon" style="background:#b45309"></span>Order → Delivery</div>
+        <div class="nav-subitem" onclick="showD2ARInvPanel()" id="nav-d2arinv" data-perm="sales.workflow.delivery_to_arinv" style="cursor:pointer"><span class="dot-icon" style="background:#0369a1"></span>Delivery → AR Inv</div>
+        <div class="nav-subitem" onclick="showARInv2ARCMPanel()" id="nav-arinv2arcm" data-perm="sales.workflow.arinv_to_arcm" style="cursor:pointer"><span class="dot-icon" style="background:#9f1239"></span>AR Inv → Credit</div>
+        <div class="nav-subitem" onclick="showInPayPanel()" id="nav-inpmt" data-perm="sales.workflow.incoming_payment" style="cursor:pointer"><span class="dot-icon" style="background:#047857"></span>Incoming Payment</div>
+        <div class="nav-subitem" onclick="window.location.href='/sales-analysis.html'" id="nav-sales-analysis" data-perm="sales.workflow.sales_analysis_link" style="cursor:pointer"><span class="dot-icon" style="background:#10B981"></span>Sales Analysis</div>
       </div>
     </div>
 
@@ -2054,16 +2054,16 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-sales-reports">
-        <div class="nav-subitem" data-prompt="open sales orders"><span class="dot-icon" style="background:#0070F2"></span>Open Orders</div>
-        <div class="nav-subitem" data-prompt="open quotations"><span class="dot-icon" style="background:#0070F2"></span>Open Quotations</div>
-        <div class="nav-subitem" data-prompt="top 20 customers by sales this year"><span class="dot-icon" style="background:#E9730C"></span>Top Customers</div>
-        <div class="nav-subitem" data-prompt="monthly sales trend this year"><span class="dot-icon" style="background:#E9730C"></span>Monthly Trend</div>
-        <div class="nav-subitem" data-prompt="quarterly sales this year"><span class="dot-icon" style="background:#E9730C"></span>Quarterly Sales</div>
-        <div class="nav-subitem" data-prompt="top 10 items by sales"><span class="dot-icon" style="background:#E9730C"></span>Top Items</div>
-        <div class="nav-subitem" data-prompt="sales by salesperson this year"><span class="dot-icon" style="background:#E9730C"></span>By Salesperson</div>
-        <div class="nav-subitem" data-prompt="top 10 customers by profit this year"><span class="dot-icon" style="background:#E9730C"></span>By Gross Profit</div>
-        <div class="nav-subitem" data-prompt="items by margin this year"><span class="dot-icon" style="background:#E9730C"></span>By GP Margin</div>
-        <div class="nav-subitem" data-prompt="sales by warehouse"><span class="dot-icon" style="background:#E9730C"></span>By Warehouse</div>
+        <div class="nav-subitem" data-prompt="open sales orders" data-perm="sales.analysis.open_orders"><span class="dot-icon" style="background:#0070F2"></span>Open Orders</div>
+        <div class="nav-subitem" data-prompt="open quotations" data-perm="sales.analysis.open_quotations"><span class="dot-icon" style="background:#0070F2"></span>Open Quotations</div>
+        <div class="nav-subitem" data-prompt="top 20 customers by sales this year" data-perm="sales.analysis.top_customers"><span class="dot-icon" style="background:#E9730C"></span>Top Customers</div>
+        <div class="nav-subitem" data-prompt="monthly sales trend this year" data-perm="sales.analysis.monthly_trend"><span class="dot-icon" style="background:#E9730C"></span>Monthly Trend</div>
+        <div class="nav-subitem" data-prompt="quarterly sales this year" data-perm="sales.analysis.quarterly_sales"><span class="dot-icon" style="background:#E9730C"></span>Quarterly Sales</div>
+        <div class="nav-subitem" data-prompt="top 10 items by sales" data-perm="sales.analysis.top_items"><span class="dot-icon" style="background:#E9730C"></span>Top Items</div>
+        <div class="nav-subitem" data-prompt="sales by salesperson this year" data-perm="sales.analysis.by_salesperson"><span class="dot-icon" style="background:#E9730C"></span>By Salesperson</div>
+        <div class="nav-subitem" data-prompt="top 10 customers by profit this year" data-perm="sales.analysis.by_gross_profit"><span class="dot-icon" style="background:#E9730C"></span>By Gross Profit</div>
+        <div class="nav-subitem" data-prompt="items by margin this year" data-perm="sales.analysis.by_gp_margin"><span class="dot-icon" style="background:#E9730C"></span>By GP Margin</div>
+        <div class="nav-subitem" data-prompt="sales by warehouse" data-perm="sales.analysis.by_warehouse"><span class="dot-icon" style="background:#E9730C"></span>By Warehouse</div>
       </div>
     </div>
   </div>
@@ -2082,10 +2082,10 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-create-purch">
-        <div class="nav-subitem" data-form="purchaseOrder"><span class="dot-icon" style="background:#E9730C"></span>Purchase Order</div>
-        <div class="nav-subitem" data-form="grpo"><span class="dot-icon" style="background:#E9730C"></span>Goods Receipt PO</div>
-        <div class="nav-subitem" data-form="apInvoice"><span class="dot-icon" style="background:#E9730C"></span>A/P Invoice</div>
-        <div class="nav-subitem" data-form="outgoingPayment"><span class="dot-icon" style="background:#BB0000"></span>Pay Vendor</div>
+        <div class="nav-subitem" data-form="purchaseOrder" data-perm="purchase.create.purchase_order"><span class="dot-icon" style="background:#E9730C"></span>Purchase Order</div>
+        <div class="nav-subitem" data-form="grpo" data-perm="purchase.create.grpo"><span class="dot-icon" style="background:#E9730C"></span>Goods Receipt PO</div>
+        <div class="nav-subitem" data-form="apInvoice" data-perm="purchase.create.ap_invoice"><span class="dot-icon" style="background:#E9730C"></span>A/P Invoice</div>
+        <div class="nav-subitem" data-form="outgoingPayment" data-perm="purchase.create.outgoing_payment"><span class="dot-icon" style="background:#BB0000"></span>Pay Vendor</div>
       </div>
     </div>
 
@@ -2099,16 +2099,16 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-purch-p2p-workflow">
-        <div class="nav-subitem" onclick="showPRAgentPanel()" id="nav-pr-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Purchase Request Agent</div>
-        <div class="nav-subitem" onclick="showPOAgentPanel()" id="nav-po-agent" style="cursor:pointer"><span class="dot-icon" style="background:#7B5EA7"></span>Purchase Order</div>
-        <div class="nav-subitem" onclick="showPRtoPOPanel()" id="nav-pr-to-po" style="cursor:pointer"><span class="dot-icon" style="background:#1a5c2e"></span>PR → PO</div>
-        <div class="nav-subitem" onclick="showPOtoGRPOPanel()" id="nav-po-to-grpo" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>PO → GRPO</div>
-        <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-grpo-apinv" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>GRPO → AP Inv</div>
-        <div class="nav-subitem" onclick="showThreeWayMatchPanel()" id="nav-three-way-match" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>3-Way Match</div>
-        <div class="nav-subitem" onclick="showAPCMPanel()" id="nav-apinv-apcm" style="cursor:pointer"><span class="dot-icon" style="background:#b91c1c"></span>AP Inv → Credit</div>
-        <div class="nav-subitem" onclick="showOutPayPanel()" id="nav-outpmt" style="cursor:pointer"><span class="dot-icon" style="background:#1e40af"></span>Outgoing Payment</div>
-        <div class="nav-subitem" onclick="window.location.href='/vendor-payment-aging.html'" id="nav-vp-aging" style="cursor:pointer"><span class="dot-icon" style="background:#E9730C"></span>AP Aging Report</div>
-        <div class="nav-subitem" onclick="window.location.href='/purchase-analysis.html'" id="nav-purchase-analysis" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Purchase Analysis</div>
+        <div class="nav-subitem" onclick="showPRAgentPanel()" id="nav-pr-agent" data-perm="purchase.workflow.pr_agent" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Purchase Request Agent</div>
+        <div class="nav-subitem" onclick="showPOAgentPanel()" id="nav-po-agent" data-perm="purchase.workflow.po_agent" style="cursor:pointer"><span class="dot-icon" style="background:#7B5EA7"></span>Purchase Order</div>
+        <div class="nav-subitem" onclick="showPRtoPOPanel()" id="nav-pr-to-po" data-perm="purchase.workflow.pr_to_po" style="cursor:pointer"><span class="dot-icon" style="background:#1a5c2e"></span>PR → PO</div>
+        <div class="nav-subitem" onclick="showPOtoGRPOPanel()" id="nav-po-to-grpo" data-perm="purchase.workflow.po_to_grpo" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>PO → GRPO</div>
+        <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-grpo-apinv" data-perm="purchase.workflow.grpo_to_apinv" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>GRPO → AP Inv</div>
+        <div class="nav-subitem" onclick="showThreeWayMatchPanel()" id="nav-three-way-match" data-perm="purchase.workflow.three_way_match" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>3-Way Match</div>
+        <div class="nav-subitem" onclick="showAPCMPanel()" id="nav-apinv-apcm" data-perm="purchase.workflow.apinv_to_apcm" style="cursor:pointer"><span class="dot-icon" style="background:#b91c1c"></span>AP Inv → Credit</div>
+        <div class="nav-subitem" onclick="showOutPayPanel()" id="nav-outpmt" data-perm="purchase.workflow.outgoing_payment" style="cursor:pointer"><span class="dot-icon" style="background:#1e40af"></span>Outgoing Payment</div>
+        <div class="nav-subitem" onclick="showVendorPaymentAgingAgent()" id="nav-vp-aging" data-perm="purchase.workflow.vp_aging" style="cursor:pointer"><span class="dot-icon" style="background:#E9730C"></span>AP Aging Report</div>
+        <div class="nav-subitem" onclick="window.location.href='/purchase-analysis.html'" id="nav-purchase-analysis" data-perm="purchase.workflow.purchase_analysis_link" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>Purchase Analysis</div>
       </div>
     </div>
 
@@ -2122,10 +2122,10 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-purch-reports">
-        <div class="nav-subitem" data-prompt="purchase analysis this year"><span class="dot-icon" style="background:#E9730C"></span>Purchase Analysis</div>
-        <div class="nav-subitem" data-prompt="top 10 vendors by spend this year"><span class="dot-icon" style="background:#E9730C"></span>Top Vendors</div>
-        <div class="nav-subitem" data-prompt="show vendors"><span class="dot-icon" style="background:#0070F2"></span>Vendor List</div>
-        <div class="nav-subitem" data-prompt="show all customers"><span class="dot-icon" style="background:#0070F2"></span>Customer List</div>
+        <div class="nav-subitem" data-prompt="purchase analysis this year" data-perm="purchase.analysis.purchase_analysis"><span class="dot-icon" style="background:#E9730C"></span>Purchase Analysis</div>
+        <div class="nav-subitem" data-prompt="top 10 vendors by spend this year" data-perm="purchase.analysis.top_vendors"><span class="dot-icon" style="background:#E9730C"></span>Top Vendors</div>
+        <div class="nav-subitem" data-prompt="show vendors" data-perm="purchase.analysis.vendor_list"><span class="dot-icon" style="background:#0070F2"></span>Vendor List</div>
+        <div class="nav-subitem" data-prompt="show all customers" data-perm="purchase.analysis.customer_list"><span class="dot-icon" style="background:#0070F2"></span>Customer List</div>
       </div>
     </div>
   </div>
@@ -2142,11 +2142,21 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-fin-ar">
-        <div class="nav-subitem" data-prompt="AR aging report"><span class="dot-icon" style="background:#6A1DE8"></span>AR Aging</div>
-        <div class="nav-subitem" data-prompt="collections overdue 30 days"><span class="dot-icon" style="background:#E9730C"></span>Overdue 30 Days</div>
-        <div class="nav-subitem" data-prompt="collections overdue 60 days"><span class="dot-icon" style="background:#BB0000"></span>Overdue 60 Days</div>
-        <div class="nav-subitem" data-prompt="AP aging report"><span class="dot-icon" style="background:#6A1DE8"></span>AP Aging</div>
+        <div class="nav-subitem" data-prompt="AR aging report" data-perm="finance.ar_aging"><span class="dot-icon" style="background:#6A1DE8"></span>AR Aging</div>
+        <div class="nav-subitem" data-prompt="collections overdue 30 days" data-perm="finance.overdue_30"><span class="dot-icon" style="background:#E9730C"></span>Overdue 30 Days</div>
+        <div class="nav-subitem" data-prompt="collections overdue 60 days" data-perm="finance.overdue_60"><span class="dot-icon" style="background:#BB0000"></span>Overdue 60 Days</div>
+        <div class="nav-subitem" data-prompt="AP aging report" data-perm="finance.ap_aging"><span class="dot-icon" style="background:#6A1DE8"></span>AP Aging</div>
       </div>
+    </div>
+    <div class="nav-item" id="nav-financial-dashboard" data-perm="finance.financial_dashboard" onclick="showFinancialDashboard()" style="cursor:pointer" title="Real-time P&L and Cash Flow / Liquidity — queried directly from HANA/MSSQL">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Financial Dashboard
+      <span style="margin-left:auto;font-size:9px;background:rgba(16,185,129,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">LIVE</span>
+    </div>
+    <div class="nav-item" id="nav-customer-aging" data-perm="finance.customer_aging" onclick="showCustomerAgingDashboard()" style="cursor:pointer" title="Customer AR aging — bucket-wise and invoice-detail tabs, queried directly from HANA/MSSQL">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Customer Aging Detail
+      <span style="margin-left:auto;font-size:9px;background:rgba(16,185,129,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">LIVE</span>
     </div>
   </div>
 
@@ -2162,10 +2172,10 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-inv-ops">
-        <div class="nav-subitem" data-prompt="show stock levels"><span class="dot-icon" style="background:#0070F2"></span>Stock Levels</div>
-        <div class="nav-subitem" data-prompt="show in stock only items"><span class="dot-icon" style="background:#107E3E"></span>In-Stock Items</div>
-        <div class="nav-subitem" data-prompt="pick list for order"><span class="dot-icon" style="background:#6A1DE8"></span>Pick List</div>
-        <div class="nav-subitem" data-prompt="check ATP"><span class="dot-icon" style="background:#6A1DE8"></span>ATP Check</div>
+        <div class="nav-subitem" data-prompt="show stock levels" data-perm="inventory.stock_levels"><span class="dot-icon" style="background:#0070F2"></span>Stock Levels</div>
+        <div class="nav-subitem" data-prompt="show in stock only items" data-perm="inventory.in_stock_items"><span class="dot-icon" style="background:#107E3E"></span>In-Stock Items</div>
+        <div class="nav-subitem" data-prompt="pick list for order" data-perm="inventory.pick_list"><span class="dot-icon" style="background:#6A1DE8"></span>Pick List</div>
+        <div class="nav-subitem" data-prompt="check ATP" data-perm="inventory.atp_check"><span class="dot-icon" style="background:#6A1DE8"></span>ATP Check</div>
       </div>
     </div>
   </div>
@@ -2182,14 +2192,14 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-ai-agents-finance">
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('collections')" id="nav-ia-collections" style="cursor:pointer"><span class="dot-icon" style="background:#EA580C"></span>Collections &amp; Receivables</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('cashflow')" id="nav-ia-cashflow" style="cursor:pointer"><span class="dot-icon" style="background:#059669"></span>Cash Flow Forecast</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('creditrisk')" id="nav-ia-creditrisk" style="cursor:pointer"><span class="dot-icon" style="background:#DC2626"></span>Credit Risk</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('appayment')" id="nav-ia-appayment" style="cursor:pointer"><span class="dot-icon" style="background:#0891B2"></span>AP Payment Optimization</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('profitability')" id="nav-ia-profitability" style="cursor:pointer"><span class="dot-icon" style="background:#16A34A"></span>Profitability</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('marginleak')" id="nav-ia-marginleak" style="cursor:pointer"><span class="dot-icon" style="background:#E11D48"></span>Margin Leakage</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('commission')" id="nav-ia-commission" style="cursor:pointer"><span class="dot-icon" style="background:#CA8A04"></span>Sales Commission</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('monthend')" id="nav-ia-monthend" style="cursor:pointer"><span class="dot-icon" style="background:#475569"></span>Month-End Closing</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('collections')" id="nav-ia-collections" data-perm="ai.finance.collections" style="cursor:pointer"><span class="dot-icon" style="background:#EA580C"></span>Collections &amp; Receivables</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('cashflow')" id="nav-ia-cashflow" data-perm="ai.finance.cashflow" style="cursor:pointer"><span class="dot-icon" style="background:#059669"></span>Cash Flow Forecast</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('creditrisk')" id="nav-ia-creditrisk" data-perm="ai.finance.creditrisk" style="cursor:pointer"><span class="dot-icon" style="background:#DC2626"></span>Credit Risk</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('appayment')" id="nav-ia-appayment" data-perm="ai.finance.appayment" style="cursor:pointer"><span class="dot-icon" style="background:#0891B2"></span>AP Payment Optimization</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('profitability')" id="nav-ia-profitability" data-perm="ai.finance.profitability" style="cursor:pointer"><span class="dot-icon" style="background:#16A34A"></span>Profitability</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('marginleak')" id="nav-ia-marginleak" data-perm="ai.finance.marginleak" style="cursor:pointer"><span class="dot-icon" style="background:#E11D48"></span>Margin Leakage</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('commission')" id="nav-ia-commission" data-perm="ai.finance.commission" style="cursor:pointer"><span class="dot-icon" style="background:#CA8A04"></span>Sales Commission</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('monthend')" id="nav-ia-monthend" data-perm="ai.finance.monthend" style="cursor:pointer"><span class="dot-icon" style="background:#475569"></span>Month-End Closing</div>
       </div>
     </div>
     <div class="nav-group">
@@ -2201,16 +2211,16 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-ai-agents-supply">
-        <div class="nav-subitem" onclick="showMrpAutoPoAgent()" id="nav-mrp-auto-po" style="cursor:pointer"><span class="dot-icon" style="background:#6366f1"></span>MRP Auto-PO</div>
-        <div class="nav-subitem" onclick="showProcurementAgent()" id="nav-procurement-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Stock Reorder Monitor</div>
-        <div class="nav-subitem" onclick="showPurchaseThreeWayMatchAgent()" id="nav-purchase-three-way-match" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Purchase Three Way Match</div>
-        <div class="nav-subitem" onclick="showProductionAgent()" id="nav-production-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Production Agent</div>
-        <div class="nav-subitem" onclick="showPurchasingAgent()" id="nav-purchasing-agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Purchase Recommendation</div>
-        <div class="nav-subitem" onclick="showRushOrderAgent()" id="nav-rush-orders" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Rush Orders</div>
-        <div class="nav-subitem" onclick="showShipmentDelay()" id="nav-shipment-delay" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Shipment Delays</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('invopt')" id="nav-ia-invopt" style="cursor:pointer"><span class="dot-icon" style="background:#0D9488"></span>Inventory Optimization</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('deadstock')" id="nav-ia-deadstock" style="cursor:pointer"><span class="dot-icon" style="background:#D97706"></span>Dead Stock</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('vendorperf')" id="nav-ia-vendorperf" style="cursor:pointer"><span class="dot-icon" style="background:#4F46E5"></span>Vendor Performance</div>
+        <div class="nav-subitem" onclick="showMrpAutoPoAgent()" id="nav-mrp-auto-po" data-perm="ai.supply.mrp_auto_po" style="cursor:pointer"><span class="dot-icon" style="background:#6366f1"></span>MRP Auto-PO</div>
+        <div class="nav-subitem" onclick="showProcurementAgent()" id="nav-procurement-agent" data-perm="ai.supply.procurement_agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Stock Reorder Monitor</div>
+        <div class="nav-subitem" onclick="showPurchaseThreeWayMatchAgent()" id="nav-purchase-three-way-match" data-perm="ai.supply.three_way_match" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Purchase Three Way Match</div>
+        <div class="nav-subitem" onclick="showProductionAgent()" id="nav-production-agent" data-perm="ai.supply.production_agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Production Agent</div>
+        <div class="nav-subitem" onclick="showPurchasingAgent()" id="nav-purchasing-agent" data-perm="ai.supply.purchasing_agent" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>Purchase Recommendation</div>
+        <div class="nav-subitem" onclick="showRushOrderAgent()" id="nav-rush-orders" data-perm="ai.supply.rush_orders" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Rush Orders</div>
+        <div class="nav-subitem" onclick="showShipmentDelay()" id="nav-shipment-delay" data-perm="ai.supply.shipment_delay" style="cursor:pointer"><span class="dot-icon" style="background:#ef4444"></span>Shipment Delays</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('invopt')" id="nav-ia-invopt" data-perm="ai.supply.inv_opt" style="cursor:pointer"><span class="dot-icon" style="background:#0D9488"></span>Inventory Optimization</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('deadstock')" id="nav-ia-deadstock" data-perm="ai.supply.dead_stock" style="cursor:pointer"><span class="dot-icon" style="background:#D97706"></span>Dead Stock</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('vendorperf')" id="nav-ia-vendorperf" data-perm="ai.supply.vendor_perf" style="cursor:pointer"><span class="dot-icon" style="background:#4F46E5"></span>Vendor Performance</div>
       </div>
     </div>
     <div class="nav-group">
@@ -2222,12 +2232,12 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-ai-agents-ocr">
-        <div class="nav-subitem" onclick="showOcrPoScanPanel()" id="nav-ocr-po-scan" style="cursor:pointer"><span class="dot-icon" style="background:#6366f1"></span>Scan Purchase Order</div>
-        <div class="nav-subitem" onclick="showOcrExpensePanel()" id="nav-ocr-expense" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Scan Expense Invoice</div>
-        <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-ocr-apinv" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>Scan A/P Invoice</div>
-        <div class="nav-subitem" onclick="showOcrInwardPanel()" id="nav-ocr-inward" style="cursor:pointer"><span class="dot-icon" style="background:#16a34a"></span>Scan Inward</div>
-        <div class="nav-subitem" onclick="showOcrGatePassPanel()" id="nav-ocr-gatepass" style="cursor:pointer"><span class="dot-icon" style="background:#0891b2"></span>Scan Gate Pass</div>
-        <div class="nav-subitem" onclick="showOcrDocumentPanel()" id="nav-ocr-document" style="cursor:pointer"><span class="dot-icon" style="background:#64748b"></span>Scan Document Mode</div>
+        <div class="nav-subitem" onclick="showOcrPoScanPanel()" id="nav-ocr-po-scan" data-perm="ai.ocr.po_scan" style="cursor:pointer"><span class="dot-icon" style="background:#6366f1"></span>Scan Purchase Order</div>
+        <div class="nav-subitem" onclick="showOcrExpensePanel()" id="nav-ocr-expense" data-perm="ai.ocr.expense" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Scan Expense Invoice</div>
+        <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-ocr-apinv" data-perm="ai.ocr.apinv" style="cursor:pointer"><span class="dot-icon" style="background:#1d4ed8"></span>Scan A/P Invoice</div>
+        <div class="nav-subitem" onclick="showOcrInwardPanel()" id="nav-ocr-inward" data-perm="ai.ocr.inward" style="cursor:pointer"><span class="dot-icon" style="background:#16a34a"></span>Scan Inward</div>
+        <div class="nav-subitem" onclick="showOcrGatePassPanel()" id="nav-ocr-gatepass" data-perm="ai.ocr.gatepass" style="cursor:pointer"><span class="dot-icon" style="background:#0891b2"></span>Scan Gate Pass</div>
+        <div class="nav-subitem" onclick="showOcrDocumentPanel()" id="nav-ocr-document" data-perm="ai.ocr.document" style="cursor:pointer"><span class="dot-icon" style="background:#64748b"></span>Scan Document Mode</div>
       </div>
     </div>
     <div class="nav-group">
@@ -2239,16 +2249,16 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-ai-agents-sales">
-        <div class="nav-subitem" onclick="showDynamicPricingAgent()" id="nav-dynamic-pricing" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Dynamic Pricing</div>
-        <div class="nav-subitem" onclick="showOrderIntelligence()" id="nav-order-intelligence" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Order Intelligence</div>
-        <div class="nav-subitem" onclick="showProductForecastAgent()" id="nav-product-forecast" style="cursor:pointer"><span class="dot-icon" style="background:#ec4899"></span>Product Forecasting</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('salesfollowup')" id="nav-ia-salesfollowup" style="cursor:pointer"><span class="dot-icon" style="background:#2563EB"></span>Sales Follow-up</div>
-        <div class="nav-subitem" data-insight onclick="showInsightAgent('quoteintel')" id="nav-ia-quoteintel" style="cursor:pointer"><span class="dot-icon" style="background:#8B5CF6"></span>Quotation Intelligence</div>
-        <div class="nav-subitem" onclick="showMailPoPanel()" id="nav-mail-po" style="cursor:pointer">
+        <div class="nav-subitem" onclick="showDynamicPricingAgent()" id="nav-dynamic-pricing" data-perm="ai.sales.dynamic_pricing" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Dynamic Pricing</div>
+        <div class="nav-subitem" onclick="showOrderIntelligence()" id="nav-order-intelligence" data-perm="ai.sales.order_intelligence" style="cursor:pointer"><span class="dot-icon" style="background:#f59e0b"></span>Order Intelligence</div>
+        <div class="nav-subitem" onclick="showProductForecastAgent()" id="nav-product-forecast" data-perm="ai.sales.product_forecast" style="cursor:pointer"><span class="dot-icon" style="background:#ec4899"></span>Product Forecasting</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('salesfollowup')" id="nav-ia-salesfollowup" data-perm="ai.sales.followup" style="cursor:pointer"><span class="dot-icon" style="background:#2563EB"></span>Sales Follow-up</div>
+        <div class="nav-subitem" data-insight onclick="showInsightAgent('quoteintel')" id="nav-ia-quoteintel" data-perm="ai.sales.quote_intel" style="cursor:pointer"><span class="dot-icon" style="background:#8B5CF6"></span>Quotation Intelligence</div>
+        <div class="nav-subitem" onclick="showMailPoPanel()" id="nav-mail-po" data-perm="ai.sales.mail_po" style="cursor:pointer">
           <span class="dot-icon" style="background:#22c55e"></span>Mail PO → SO
           <span id="mail-po-badge" style="display:none;font-size:9px;background:#22C55E;color:#fff;border-radius:8px;padding:1px 5px;font-weight:700;margin-left:auto">ON</span>
         </div>
-        <div class="nav-subitem" onclick="showWorkflowPanel('po')" id="nav-po-workflow" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>PO → Sales Order</div>
+        <div class="nav-subitem" onclick="showWorkflowPanel('po')" id="nav-po-workflow" data-perm="ai.sales.po_workflow" style="cursor:pointer"><span class="dot-icon" style="background:#0f766e"></span>PO → Sales Order</div>
       </div>
     </div>
     <!-- CRM & Service group -->
@@ -2261,8 +2271,8 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-ai-agents-crm">
-        <div class="nav-subitem" onclick="showActivityAgent()" id="nav-activity-agent" style="cursor:pointer"><span class="dot-icon" style="background:#7c3aed"></span>Activity Agent</div>
-        <div class="nav-subitem" onclick="showPromptActivity()" id="nav-prompt-activity" style="cursor:pointer"><span class="dot-icon" style="background:#db2777"></span>Prompt Activity</div>
+        <div class="nav-subitem" onclick="showActivityAgent()" id="nav-activity-agent" data-perm="ai.crm.activity_agent" style="cursor:pointer"><span class="dot-icon" style="background:#7c3aed"></span>Activity Agent</div>
+        <div class="nav-subitem" onclick="showPromptActivity()" id="nav-prompt-activity" data-perm="ai.crm.prompt_activity" style="cursor:pointer"><span class="dot-icon" style="background:#db2777"></span>Prompt Activity</div>
       </div>
     </div>
   </div>
@@ -2288,19 +2298,19 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div class="nav-group-body" id="grp-inv">
-          <div class="nav-subitem" data-ai-prompt="Run ABC-XYZ inventory classification for the last 12 months and show me the results with a summary table">
+          <div class="nav-subitem" data-perm="analytics.inv.abc_xyz" data-ai-prompt="Run ABC-XYZ inventory classification for the last 12 months and show me the results with a summary table">
             <span class="dot-icon" style="background:#f59e0b"></span>ABC-XYZ Classification
           </div>
-          <div class="nav-subitem" data-ai-prompt="Predict stockout risk for all inventory items — show critical, low stock, and days of stock remaining">
+          <div class="nav-subitem" data-perm="analytics.inv.stockout_prediction" data-ai-prompt="Predict stockout risk for all inventory items — show critical, low stock, and days of stock remaining">
             <span class="dot-icon" style="background:#ef4444"></span>Stockout Prediction
           </div>
-          <div class="nav-subitem" data-ai-prompt="Detect dead stock and slow-moving inventory — show items with zero or very low demand and their tied-up value">
+          <div class="nav-subitem" data-perm="analytics.inv.dead_slow_stock" data-ai-prompt="Detect dead stock and slow-moving inventory — show items with zero or very low demand and their tied-up value">
             <span class="dot-icon" style="background:#6b7280"></span>Dead/Slow Stock
           </div>
-          <div class="nav-subitem" data-ai-prompt="Calculate reorder points for all inventory items using 14 day lead time and 7 day safety buffer — flag which items need ordering now">
+          <div class="nav-subitem" data-perm="analytics.inv.reorder_points" data-ai-prompt="Calculate reorder points for all inventory items using 14 day lead time and 7 day safety buffer — flag which items need ordering now">
             <span class="dot-icon" style="background:#3b82f6"></span>Reorder Points (ROP)
           </div>
-          <div class="nav-subitem" data-ai-prompt="Calculate Economic Order Quantity (EOQ) for all items to minimise ordering and holding costs">
+          <div class="nav-subitem" data-perm="analytics.inv.eoq" data-ai-prompt="Calculate Economic Order Quantity (EOQ) for all items to minimise ordering and holding costs">
             <span class="dot-icon" style="background:#8b5cf6"></span>EOQ Calculator
           </div>
         </div>
@@ -2313,19 +2323,19 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div class="nav-group-body" id="grp-cust">
-          <div class="nav-subitem" data-ai-prompt="Run RFM customer segmentation — score all customers on Recency, Frequency and Monetary value and show segments like Champions, At Risk, Lost">
+          <div class="nav-subitem" data-perm="analytics.cust.rfm" data-ai-prompt="Run RFM customer segmentation — score all customers on Recency, Frequency and Monetary value and show segments like Champions, At Risk, Lost">
             <span class="dot-icon" style="background:#10b981"></span>RFM Segmentation
           </div>
-          <div class="nav-subitem" data-ai-prompt="Detect customer churn risk — identify customers who have gone silent and are likely to churn">
+          <div class="nav-subitem" data-perm="analytics.cust.churn" data-ai-prompt="Detect customer churn risk — identify customers who have gone silent and are likely to churn">
             <span class="dot-icon" style="background:#f87171"></span>Churn Prediction
           </div>
-          <div class="nav-subitem" data-ai-prompt="Calculate Customer Lifetime Value (CLV) for all customers — show projected 3 year CLV and tier as Platinum, Gold, Silver, Bronze">
+          <div class="nav-subitem" data-perm="analytics.cust.clv" data-ai-prompt="Calculate Customer Lifetime Value (CLV) for all customers — show projected 3 year CLV and tier as Platinum, Gold, Silver, Bronze">
             <span class="dot-icon" style="background:#fbbf24"></span>Customer CLV
           </div>
-          <div class="nav-subitem" data-ai-prompt="Analyze revenue concentration — show Pareto analysis, how many customers drive 80% of revenue, and HHI concentration risk">
+          <div class="nav-subitem" data-perm="analytics.cust.revenue_concentration" data-ai-prompt="Analyze revenue concentration — show Pareto analysis, how many customers drive 80% of revenue, and HHI concentration risk">
             <span class="dot-icon" style="background:#a855f7"></span>Revenue Concentration
           </div>
-          <div class="nav-subitem" data-ai-prompt="Analyze sales quotation win rate this year — show conversion rate, average deal value, and win rate by customer">
+          <div class="nav-subitem" data-perm="analytics.cust.quote_win_rate" data-ai-prompt="Analyze sales quotation win rate this year — show conversion rate, average deal value, and win rate by customer">
             <span class="dot-icon" style="background:#06b6d4"></span>Quotation Win Rate
           </div>
         </div>
@@ -2338,16 +2348,16 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div class="nav-group-body" id="grp-fin">
-          <div class="nav-subitem" data-ai-prompt="Calculate working capital efficiency metrics — show DSO, DPO, DSI and Cash Conversion Cycle (CCC)">
+          <div class="nav-subitem" data-perm="analytics.fin.working_capital" data-ai-prompt="Calculate working capital efficiency metrics — show DSO, DPO, DSI and Cash Conversion Cycle (CCC)">
             <span class="dot-icon" style="background:#22c55e"></span>Working Capital (CCC)
           </div>
-          <div class="nav-subitem" data-ai-prompt="Detect margin erosion — identify items whose gross profit percentage has been declining over the last 12 months">
+          <div class="nav-subitem" data-perm="analytics.fin.margin_erosion" data-ai-prompt="Detect margin erosion — identify items whose gross profit percentage has been declining over the last 12 months">
             <span class="dot-icon" style="background:#f97316"></span>Margin Erosion
           </div>
-          <div class="nav-subitem" data-ai-prompt="Detect transaction outliers in AR invoices using statistical z-score analysis — flag unusual invoice amounts">
+          <div class="nav-subitem" data-perm="analytics.fin.transaction_outliers" data-ai-prompt="Detect transaction outliers in AR invoices using statistical z-score analysis — flag unusual invoice amounts">
             <span class="dot-icon" style="background:#ef4444"></span>Transaction Outliers
           </div>
-          <div class="nav-subitem" data-ai-prompt="Forecast cash flow for the next 90 days — show expected AR inflows and AP outflows by due date bucket">
+          <div class="nav-subitem" data-perm="analytics.fin.cash_flow_forecast" data-ai-prompt="Forecast cash flow for the next 90 days — show expected AR inflows and AP outflows by due date bucket">
             <span class="dot-icon" style="background:#0ea5e9"></span>Cash Flow Forecast
           </div>
         </div>
@@ -2360,13 +2370,13 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div class="nav-group-body" id="grp-vend">
-          <div class="nav-subitem" data-ai-prompt="Analyze vendor lead time reliability — show average lead days, standard deviation and reliability rating per vendor">
+          <div class="nav-subitem" data-perm="analytics.vend.lead_time" data-ai-prompt="Analyze vendor lead time reliability — show average lead days, standard deviation and reliability rating per vendor">
             <span class="dot-icon" style="background:#84cc16"></span>Vendor Lead Time
           </div>
-          <div class="nav-subitem" data-ai-prompt="Analyze vendor on-time delivery performance — show on-time percentage, early, late counts and average delay days per vendor">
+          <div class="nav-subitem" data-perm="analytics.vend.on_time_delivery" data-ai-prompt="Analyze vendor on-time delivery performance — show on-time percentage, early, late counts and average delay days per vendor">
             <span class="dot-icon" style="background:#22d3ee"></span>On-Time Delivery
           </div>
-          <div class="nav-subitem" data-ai-prompt="Analyze vendor spend concentration and risk — show top vendor spend percentages, HHI index and supply chain dependency risk">
+          <div class="nav-subitem" data-perm="analytics.vend.concentration" data-ai-prompt="Analyze vendor spend concentration and risk — show top vendor spend percentages, HHI index and supply chain dependency risk">
             <span class="dot-icon" style="background:#f59e0b"></span>Vendor Concentration
           </div>
         </div>
@@ -2379,13 +2389,13 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div class="nav-group-body" id="grp-fcast">
-          <div class="nav-subitem" data-ai-prompt="Forecast total sales revenue for the next 3 months using all 9 statistical models — show model accuracy and best model recommendation">
+          <div class="nav-subitem" data-perm="analytics.fcast.sales_forecast" data-ai-prompt="Forecast total sales revenue for the next 3 months using all 9 statistical models — show model accuracy and best model recommendation">
             <span class="dot-icon" style="background:#6366f1"></span>Sales Forecast
           </div>
-          <div class="nav-subitem" data-ai-prompt="Forecast item demand for the next 3 months using all statistical models — auto-select best model by MAPE and show procurement suggestion">
+          <div class="nav-subitem" data-perm="analytics.fcast.demand_forecast" data-ai-prompt="Forecast item demand for the next 3 months using all statistical models — auto-select best model by MAPE and show procurement suggestion">
             <span class="dot-icon" style="background:#ec4899"></span>Demand Forecast
           </div>
-          <div class="nav-subitem" data-ai-prompt="Detect seasonality in our sales data — run full decomposition, ACF analysis and show peak/trough months and seasonal strength">
+          <div class="nav-subitem" data-perm="analytics.fcast.seasonality" data-ai-prompt="Detect seasonality in our sales data — run full decomposition, ACF analysis and show peak/trough months and seasonal strength">
             <span class="dot-icon" style="background:#14b8a6"></span>Seasonality Detection
           </div>
         </div>
@@ -2407,42 +2417,27 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-forecast-tools">
-        <div class="nav-subitem" onclick="showDemandForecastPanel()" id="nav-demand-forecast" style="cursor:pointer"><span class="dot-icon" style="background:#6366f1"></span>Demand Forecast</div>
-        <div class="nav-subitem" onclick="showB1ForecastPanel()" id="nav-b1-forecast" style="cursor:pointer"><span class="dot-icon" style="background:#0ea5e9"></span>Forecast with B1</div>
-        <div class="nav-subitem" onclick="showForecastDashboard()" id="nav-forecast-dashboard" style="cursor:pointer"><span class="dot-icon" style="background:#8b5cf6"></span>Forecast Dashboard</div>
+        <div class="nav-subitem" onclick="showDemandForecastPanel()" id="nav-demand-forecast" data-perm="forecast.demand_forecast" style="cursor:pointer"><span class="dot-icon" style="background:#6366f1"></span>Demand Forecast</div>
+        <div class="nav-subitem" onclick="showB1ForecastPanel()" id="nav-b1-forecast" data-perm="forecast.b1_forecast" style="cursor:pointer"><span class="dot-icon" style="background:#0ea5e9"></span>Forecast with B1</div>
+        <div class="nav-subitem" onclick="showForecastDashboard()" id="nav-forecast-dashboard" data-perm="forecast.dashboard" style="cursor:pointer"><span class="dot-icon" style="background:#8b5cf6"></span>Forecast Dashboard</div>
       </div>
-    </div>
-  </div>
-
-  <!-- ══ 9b. FINANCE ══════════════════════════════════════════════ -->
-  <div class="nav-section" id="nav-section-finance">
-    <div class="nav-section-label">Finance</div>
-    <div class="nav-item" id="nav-financial-dashboard" onclick="showFinancialDashboard()" style="cursor:pointer" title="Real-time P&L and Cash Flow / Liquidity — queried directly from HANA/MSSQL">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-      Financial Dashboard
-      <span style="margin-left:auto;font-size:9px;background:rgba(16,185,129,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">LIVE</span>
-    </div>
-    <div class="nav-item" id="nav-customer-aging" onclick="showCustomerAgingDashboard()" style="cursor:pointer" title="Customer AR aging — bucket-wise and invoice-detail tabs, queried directly from HANA/MSSQL">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Customer Aging Detail
-      <span style="margin-left:auto;font-size:9px;background:rgba(16,185,129,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">LIVE</span>
     </div>
   </div>
 
   <!-- ══ 10. TOOLS ════════════════════════════════════════════════ -->
   <div class="nav-section">
     <div class="nav-section-label">Tools</div>
-    <div class="nav-item" id="nav-ai-model" onclick="openModelSelector()" style="cursor:pointer" title="Choose which AI engine answers your questions">
+    <div class="nav-item" id="nav-ai-model" data-perm="tools.ai_model" onclick="openModelSelector()" style="cursor:pointer" title="Choose which AI engine answers your questions">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
       AI Model
       <span id="active-model-badge" style="margin-left:auto;font-size:9px;background:rgba(0,112,242,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">GPT-4o</span>
     </div>
-    <div class="nav-item" id="nav-chatgpt-window" onclick="toggleGptPanel(true)" style="cursor:pointer" title="Open the AI chat panel in the main screen">
+    <div class="nav-item" id="nav-chatgpt-window" data-perm="tools.chat_panel" onclick="toggleGptPanel(true)" style="cursor:pointer" title="Open the AI chat panel in the main screen">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
       AI Chat Panel
       <span style="margin-left:auto;font-size:9px;background:rgba(16,163,127,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">NEW</span>
     </div>
-    <div class="nav-item" id="nav-data-sync" onclick="showDataSyncPanel()" style="cursor:pointer" title="Sync SAP master data to local cache">
+    <div class="nav-item" id="nav-data-sync" data-perm="tools.data_sync" onclick="showDataSyncPanel()" style="cursor:pointer" title="Sync SAP master data to local cache">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
       Data Sync
       <span style="margin-left:auto;font-size:9px;background:rgba(16,185,129,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">CACHE</span>
@@ -2456,20 +2451,20 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-dev-tools">
-        <div class="nav-subitem" id="nav-db-builder" onclick="showDbBuilderPanel()" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>DB Query Builder</div>
-        <div class="nav-subitem" onclick="openUdtWizard()" id="nav-create-udt" style="cursor:pointer"><span class="dot-icon" style="background:#107E3E"></span>Create UDT</div>
-        <div class="nav-subitem" data-prompt="List all user defined tables (UDTs) in SAP B1 — show table name, description and type"><span class="dot-icon" style="background:#107E3E"></span>View UDTs</div>
-        <div class="nav-subitem" id="nav-query-library" onclick="openQueryLibrary()" style="cursor:pointer">
+        <div class="nav-subitem" id="nav-db-builder" data-perm="tools.builder" onclick="showDbBuilderPanel()" style="cursor:pointer"><span class="dot-icon" style="background:#0070F2"></span>DB Query Builder</div>
+        <div class="nav-subitem" onclick="openUdtWizard()" id="nav-create-udt" data-perm="tools.udt_create" style="cursor:pointer"><span class="dot-icon" style="background:#107E3E"></span>Create UDT</div>
+        <div class="nav-subitem" data-perm="tools.udt_view" data-prompt="List all user defined tables (UDTs) in SAP B1 — show table name, description and type"><span class="dot-icon" style="background:#107E3E"></span>View UDTs</div>
+        <div class="nav-subitem" id="nav-query-library" data-perm="tools.library" onclick="openQueryLibrary()" style="cursor:pointer">
           <span class="dot-icon" style="background:#6A1DE8"></span>Query Library
           <span id="ql-nav-badge" style="font-size:9px;background:var(--blue,#0070F2);color:#fff;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:auto">0</span>
         </div>
-        <div class="nav-subitem" id="nav-schema-registry" onclick="openSchemaRegistry()" style="cursor:pointer">
+        <div class="nav-subitem" id="nav-schema-registry" data-perm="tools.schema" onclick="openSchemaRegistry()" style="cursor:pointer">
           <span class="dot-icon" style="background:#8B5CF6"></span>Schema Registry
         </div>
-        <div class="nav-subitem" onclick="openReportsPanel()" style="cursor:pointer">
+        <div class="nav-subitem" data-perm="tools.reports" onclick="openReportsPanel()" style="cursor:pointer">
           <span class="dot-icon" style="background:#F59E0B"></span>Reports &amp; KPIs
         </div>
-        <div class="nav-subitem" id="nav-db-connection" onclick="openDbConfig()" style="cursor:pointer;display:none">
+        <div class="nav-subitem" id="nav-db-connection" data-perm="tools.db" onclick="openDbConfig()" style="cursor:pointer;display:none">
           <span class="dot-icon" style="background:#E9730C"></span>DB Connection
           <span id="db-nav-dot" style="width:7px;height:7px;border-radius:50%;background:#ccc;display:inline-block;margin-left:auto"></span>
         </div>
@@ -2484,27 +2479,27 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
   <!-- ══ 11. ADMIN ════════════════════════════════════════════════ -->
   <div class="nav-section" id="nav-section-admin" style="display:none">
     <div class="nav-section-label">Admin</div>
-    <div class="nav-item" id="nav-user-management" onclick="openUserManager()" style="cursor:pointer">
+    <div class="nav-item" id="nav-user-management" data-perm="admin.users" onclick="openUserManager()" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       User Management
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
     </div>
-    <div class="nav-item" id="nav-roles-perms" onclick="openRolesModal()" style="cursor:pointer">
+    <div class="nav-item" id="nav-roles-perms" data-perm="admin.roles" onclick="openRolesModal()" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       Roles &amp; Permissions
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
     </div>
-    <div class="nav-item" id="nav-user-rights" onclick="showUserRightsPanel()" style="cursor:pointer">
+    <div class="nav-item" id="nav-user-rights" data-perm="admin.user_rights" onclick="showUserRightsPanel()" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M16 11l2 2 4-4"/></svg>
       User Rights
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
     </div>
-    <div class="nav-item" id="nav-company-setup" onclick="showCompanySetupPanel()" style="cursor:pointer">
+    <div class="nav-item" id="nav-company-setup" data-perm="admin.company_setup" onclick="showCompanySetupPanel()" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>
       Company Setup
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
     </div>
-    <div class="nav-item" id="nav-developer-settings" onclick="showDeveloperSettingsPanel()" style="cursor:pointer">
+    <div class="nav-item" id="nav-developer-settings" data-perm="admin.developer_settings" onclick="showDeveloperSettingsPanel()" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
       Developer Settings
       <span style="margin-left:auto;font-size:9px;background:rgba(239,68,68,.6);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">ADMIN</span>
@@ -5161,6 +5156,8 @@ function atblRenderPage(uid) {
         const isNum = numCols && numCols.has(c) && v !== null && v !== undefined && v !== '';
         let d = (v === null || v === undefined) ? '' : String(v);
         if (isNum) { const n = parseFloat(v); d = Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        // SAP/DB datetime columns (e.g. DocDate) come back as '2026-09-28T00:00:00' — show just the date.
+        else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(d)) { d = d.slice(0, 10); }
         return `<td${isNum ? ' class="num"' : ''}>${d}</td>`;
       }).join('')}<td class="atbl-drill" title="Drill down into this row" onclick="atblDrillRow('${uid}',${start + ri})">🔍</td></tr>`
     ).join('');
@@ -7585,62 +7582,6 @@ let _users = [];
 (function() {
   // Map: permission key → selector(s) to hide if permission missing
   // Each entry can be an element ID, a group data-group value, or a nav-section label text
-  const PERM_MAP = {
-    'home':              { sections: [] },  // always visible
-    'ui.form_mode':      { subitems: ['mode-form-btn'] },
-    'master.item':       { subitems: ['nav-master-item'] },
-    'master.customer':   { subitems: ['nav-master-customer'] },
-    'master.supplier':   { subitems: ['nav-master-supplier'] },
-    'master.bom':        { subitems: ['nav-master-bom'] },
-    'master.service_call': { subitems: ['nav-master-service-call'] },
-    'service.sc_view':    { subitems: ['nav-sc-view'] },
-    'service.svc_call':   { subitems: ['nav-svc-call'] },
-    'service.sc_form':    { subitems: ['nav-sc-form'] },
-    'service.sc_wizard':  { subitems: ['nav-sc-wizard'] },
-    'sales.create':      { groups: ['create-sales'] },
-    'sales.workflow':    { groups: ['sales-o2c-workflow'] },
-    'sales.analysis':    { groups: ['sales-reports'] },
-    'purchase.create':   { groups: ['create-purch'] },
-    'purchase.workflow': { groups: ['purch-p2p-workflow'] },
-    'purchase.analysis': { groups: ['purch-reports'] },
-    'finance':           { groups: ['fin-ar', 'ai-agents-finance'] },
-    'inventory':         { groups: ['inv-ops'] },
-    'ai.supply':         { groups: ['ai-agents-supply'] },
-    'ai.sales':          { groups: ['ai-agents-sales'] },
-    'ai.crm':            { groups: ['ai-agents-crm'] },
-    'analytics':         { analyticsToggle: true },
-    'forecast':          { groups: ['forecast-tools'] },
-    'tools.builder':     { toolSubitems: ['tools-db-builder'] },
-    'tools.udt':         { toolSubitems: ['tools-udt-create', 'tools-udt-view'] },
-    'tools.library':     { toolSubitems: ['tools-query-lib'] },
-    'tools.db':          { subitems: ['nav-db-connection'] },
-    'tools.data_sync':   { subitems: ['nav-data-sync'] },
-    'tools.schema':      { toolSubitems: ['tools-schema-registry'] },
-    'tools.reports':     { toolSubitems: ['tools-reports-panel'] },
-    'admin.users':       { subitems: ['nav-user-management'] },
-    'admin.roles':       { subitems: ['nav-roles-perms'] },
-  };
-
-  // Sections that should be completely hidden if ALL their perms are missing
-  const SECTION_PERMS = {
-    'Master Data': ['master.item','master.customer','master.supplier','master.bom','master.service_call'],
-    'Service Call':['service.sc_view','service.svc_call','service.sc_form','service.sc_wizard'],
-    'Sales — O2C': ['sales.create','sales.workflow','sales.analysis'],
-    'Purchase — P2P': ['purchase.create','purchase.workflow','purchase.analysis'],
-    'Finance':    ['finance'],
-    'Inventory':  ['inventory'],
-    'AI Agents':  ['ai.supply','ai.sales','ai.crm','finance'],
-    'Analytics AI': ['analytics'],
-    'Forecast':   ['forecast'],
-    'Tools':      ['tools.builder','tools.udt','tools.library','tools.db','tools.data_sync','tools.schema','tools.reports'],
-  };
-
-  function hideEl(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
-  function hideGroup(grpId) {
-    const hdr = document.querySelector(`[data-group="${grpId}"]`);
-    if (hdr) hdr.closest('.nav-group')?.style.setProperty('display','none','important');
-  }
-
   // Reveal the Admin nav section and expand it in the accordion
   function showAdminSection() {
     const adminSec = document.getElementById('nav-section-admin');
@@ -7688,62 +7629,34 @@ let _users = [];
       if (dbItem) dbItem.style.removeProperty('display');
     }
 
-    // Hide individual items
-    if (!has('admin.users'))  hideEl('nav-user-management');
-    if (!has('admin.roles'))  hideEl('nav-roles-perms');
-    if (!has('master.item'))     hideEl('nav-master-item');
-    if (!has('master.customer')) hideEl('nav-master-customer');
-    if (!has('master.supplier')) hideEl('nav-master-supplier');
-    if (!has('master.bom'))          hideEl('nav-master-bom');
-    if (!has('master.service_call')) hideEl('nav-master-service-call');
-    if (!has('service.sc_view'))    hideEl('nav-sc-view');
-    if (!has('service.svc_call'))   hideEl('nav-svc-call');
-    if (!has('service.sc_form'))    hideEl('nav-sc-form');
-    if (!has('service.sc_wizard'))  hideEl('nav-sc-wizard');
-    if (!has('sales.create'))    hideGroup('create-sales');
-    if (!has('sales.workflow'))  hideGroup('sales-o2c-workflow');
-    if (!has('sales.analysis'))  hideGroup('sales-reports');
-    if (!has('purchase.create'))   hideGroup('create-purch');
-    if (!has('purchase.workflow')) hideGroup('purch-p2p-workflow');
-    if (!has('purchase.analysis')) hideGroup('purch-reports');
-    if (!has('finance'))    hideGroup('fin-ar');
-    if (!has('inventory'))  hideGroup('inv-ops');
-    if (!has('ai.supply'))  hideGroup('ai-agents-supply');
-    if (!has('ai.sales'))   hideGroup('ai-agents-sales');
-    if (!has('ai.crm'))     hideGroup('ai-agents-crm');
-    if (!has('forecast'))   hideGroup('forecast-tools');
-    if (!has('tools.builder')) {
-      hideEl('nav-db-builder');
-    }
-    if (!has('tools.udt')) {
-      hideEl('nav-create-udt');
-      const viewUdt = document.querySelector('[data-prompt*="UDTs"]');
-      if (viewUdt) viewUdt.style.display = 'none';
-    }
-    if (!has('tools.library')) {
-      const ql = document.querySelector('[onclick*="openQueryLibrary"]');
-      if (ql) ql.style.display = 'none';
-    }
-    if (!has('tools.data_sync')) hideEl('nav-data-sync');
-    if (!has('tools.schema')) {
-      const sr = document.querySelector('[onclick*="openSchemaRegistry"]');
-      if (sr) sr.style.display = 'none';
-    }
-    if (!has('tools.reports')) {
-      const rp = document.querySelector('[onclick*="openReportsPanel"]');
-      if (rp) rp.style.display = 'none';
-    }
-    if (!has('analytics')) {
-      const btn = document.getElementById('analytics-toggle');
-      if (btn) btn.style.display = 'none';
+    // Hide every individual menu item the user doesn't have permission for.
+    // Every leaf nav-item/nav-subitem carries data-perm="<key>" — this one
+    // sweep replaces the old per-key hardcoded hide list and scales to any
+    // number of menu items with no further code changes.
+    document.querySelectorAll('#app-sidebar [data-perm]').forEach(el => {
+      if (!has(el.getAttribute('data-perm'))) el.style.setProperty('display', 'none', 'important');
+    });
+
+    // Hide the "BI & AI Models" toggle if every analytics item under it got hidden
+    const analyticsItems = document.querySelectorAll('#analytics-models-body [data-perm]');
+    if (analyticsItems.length && [...analyticsItems].every(el => el.style.display === 'none')) {
+      document.getElementById('analytics-toggle')?.style.setProperty('display', 'none', 'important');
     }
 
-    // Hide entire sections where all perms missing
-    document.querySelectorAll('.nav-section-label').forEach(lbl => {
-      const text = (lbl.childNodes[0]?.textContent || '').trim();
-      const secPerms = SECTION_PERMS[text];
-      if (secPerms && !secPerms.some(k => has(k))) {
-        lbl.closest('.nav-section')?.style.setProperty('display','none','important');
+    // Hide any collapsible group whose every item just got hidden above, so
+    // users don't see an empty group header with nothing underneath.
+    document.querySelectorAll('#app-sidebar .nav-group').forEach(grp => {
+      const items = grp.querySelectorAll('[data-perm]');
+      if (items.length && [...items].every(el => el.style.display === 'none')) {
+        grp.style.setProperty('display', 'none', 'important');
+      }
+    });
+
+    // Hide any whole section whose every item just got hidden above.
+    document.querySelectorAll('#app-sidebar .nav-section').forEach(sec => {
+      const items = sec.querySelectorAll('[data-perm]');
+      if (items.length && [...items].every(el => el.style.display === 'none')) {
+        sec.style.setProperty('display', 'none', 'important');
       }
     });
   }
@@ -17312,6 +17225,558 @@ setInterval(() => {
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     VENDOR PAYMENT AGING AGENT PANEL
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="vendor-payment-aging-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#7C2D12 0%,#E9730C 100%);color:#fff;padding:10px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap">
+    <button onclick="showChatPanel()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap">&larr; Back</button>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    <span style="font-size:14px;font-weight:700">Vendor Payment Aging</span>
+    <span style="font-size:10px;background:#107E3E;color:#fff;padding:2px 7px;border-radius:8px;font-weight:700">AI</span>
+    <span id="vpa-status" style="font-size:10px;color:rgba(255,255,255,.7);margin-left:auto"></span>
+  </div>
+
+  <!-- Filter bar -->
+  <div style="background:#fff;border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0">
+    <div class="vpa-fg"><label>Aging Date</label><input type="date" id="vpa-f-aging-date"/></div>
+    <div class="vpa-fg"><label>Bucket Size</label>
+      <select id="vpa-f-bucket-size"><option value="30">30 Days</option><option value="45">45 Days</option><option value="60">60 Days</option><option value="90">90 Days</option></select>
+    </div>
+    <div class="vpa-fg"><label>Vendor</label><input type="text" id="vpa-f-vendor" placeholder="Code or name…"/></div>
+    <div class="vpa-fg"><label>Doc Type</label><select id="vpa-f-doctype"><option value="">All Types</option></select></div>
+    <div class="vpa-fg"><label>Bucket</label><select id="vpa-f-bucket-filter"><option value="">All Buckets</option></select></div>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--muted);align-self:flex-end;padding-bottom:6px;white-space:nowrap">
+      <input type="checkbox" id="vpa-f-overdue-only" style="accent-color:#BB0000;width:14px;height:14px"/> Overdue Only
+    </label>
+    <button onclick="vpaRunAnalyze()" id="vpa-analyze-btn" style="height:30px;padding:0 16px;background:#0070F2;color:#fff;border:none;border-radius:4px;font-size:12.5px;font-weight:600;cursor:pointer;align-self:flex-end">🔍 Analyze</button>
+    <button onclick="vpaClearFilters()" style="height:30px;padding:0 10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;font-size:11.5px;cursor:pointer;align-self:flex-end">Clear</button>
+  </div>
+
+  <!-- KPI row -->
+  <div style="padding:10px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;background:#F8F9FB;border-bottom:1px solid var(--border);flex-shrink:0">
+    <div class="fd-kpi" style="border-left-color:#E9730C"><div class="fd-kpi-label">Balance Due</div><div id="vpa-kpi-balance" class="fd-kpi-val">—</div><div class="fd-kpi-sub" id="vpa-kpi-docs">— documents</div></div>
+    <div class="fd-kpi" style="border-left-color:#BB0000"><div class="fd-kpi-label">Overdue Amount</div><div id="vpa-kpi-overdue" class="fd-kpi-val">—</div><div class="fd-kpi-sub" id="vpa-kpi-overdue-pct">—% of balance</div></div>
+    <div class="fd-kpi" style="border-left-color:#0070F2"><div class="fd-kpi-label">Future Remit</div><div id="vpa-kpi-future" class="fd-kpi-val">—</div><div class="fd-kpi-sub">Not yet due</div></div>
+    <div class="fd-kpi" style="border-left-color:#107E3E"><div class="fd-kpi-label">Vendors</div><div id="vpa-kpi-vendors" class="fd-kpi-val">—</div><div class="fd-kpi-sub" id="vpa-kpi-date">As of —</div></div>
+  </div>
+
+  <!-- Floating chat FAB -->
+  <button id="vpa-chat-fab" onclick="vpaChatToggle()" title="Ask Aging Assistant" style="position:absolute;bottom:24px;right:24px;z-index:200;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#E9730C,#B85A0A);border:none;cursor:pointer;box-shadow:0 4px 16px rgba(233,115,12,.45);display:flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s">
+    <svg id="vpa-chat-fab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <span id="vpa-chat-fab-close" style="display:none;font-size:22px;color:#fff;line-height:1">&times;</span>
+  </button>
+
+  <!-- Chat popup -->
+  <div id="vpa-chat-panel" style="display:none;position:absolute;bottom:86px;right:20px;z-index:199;width:360px;height:520px;background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.18);flex-direction:column;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#7C2D12,#E9730C);padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">📊</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:#fff">Aging Assistant</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:4px">
+          <span style="width:6px;height:6px;border-radius:50%;background:#3DD68C;display:inline-block"></span><span id="vpa-chat-status">Ready</span>
+        </div>
+      </div>
+      <button onclick="vpaChatToggle()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:20px;line-height:1;padding:0 2px">&times;</button>
+    </div>
+    <div id="vpa-chat-messages" style="flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px;background:#F8F9FB">
+      <div class="vpa-no-data" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:20px">
+        <div style="font-size:26px">📊</div>
+        <div style="font-size:12.5px">Set filters and click <strong>Analyze</strong></div>
+        <div style="font-size:11px;color:#aaa;margin-top:4px">I'll answer questions about your AP aging data</div>
+      </div>
+    </div>
+    <div style="padding:10px 12px;border-top:1px solid #EEF1F5;display:flex;gap:8px;align-items:center;flex-shrink:0;background:#fff">
+      <textarea id="vpa-user-input" rows="1" placeholder="Ask about aging data…" autocomplete="off" style="flex:1;font-size:12px;padding:8px 12px;border:1px solid #D0D7E3;border-radius:16px;outline:none;background:#F8F9FB;resize:none;max-height:70px;font-family:inherit"></textarea>
+      <button onclick="vpaSendFromInput()" id="vpa-send-btn" style="width:34px;height:34px;border-radius:50%;background:#E9730C;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Scrollable content -->
+  <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px">
+
+    <!-- AI Insight -->
+    <div id="vpa-insight-card" style="display:none;background:linear-gradient(135deg,#FFF8F0,#FFF3E5);border:1px solid #FFE0BD;border-left:3px solid #E9730C;border-radius:4px;padding:12px 14px;font-size:12.5px;line-height:1.65">
+      <h3 style="font-size:12px;font-weight:700;color:#E9730C;margin-bottom:6px">🤖 AI Insight</h3>
+      <div id="vpa-insight-body"></div>
+    </div>
+
+    <!-- Aging bucket chart -->
+    <div class="vpa-chart-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--text)">Aging Bucket Breakdown</div>
+          <div style="font-size:11px;color:var(--muted)" id="vpa-chart-sub">Balance due by bucket</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <div class="vpa-chart-tab active" id="vpa-chart-tab-balance" onclick="vpaSwitchChartType('balance')">Balance</div>
+          <div class="vpa-chart-tab" id="vpa-chart-tab-overdue" onclick="vpaSwitchChartType('overdue')">Overdue</div>
+        </div>
+      </div>
+      <div style="position:relative;height:200px"><canvas id="vpa-aging-chart"></canvas></div>
+    </div>
+
+    <!-- Vendor table -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.06);overflow:hidden;flex-shrink:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)">
+        <span style="font-size:12.5px;font-weight:700;color:var(--text)">Vendor Aging Detail <span id="vpa-vendor-count" style="font-weight:400;color:var(--muted);font-size:11px"></span></span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="vpa-tbl-btn" onclick="vpaExportCsv()">⬇ Export CSV</button>
+          <button class="vpa-tbl-btn" id="vpa-toggle-buckets-btn" onclick="vpaToggleBucketColumns()">Show Buckets</button>
+        </div>
+      </div>
+      <div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+        <input type="text" id="vpa-tbl-search" placeholder="Search vendor in table…" oninput="vpaFilterTable()" style="width:100%;height:28px;padding:0 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;outline:none"/>
+      </div>
+      <div style="overflow-x:auto;max-height:340px;overflow-y:auto">
+        <table id="vpa-vendor-table" style="border-collapse:collapse;width:100%;font-size:12px;min-width:700px">
+          <thead>
+            <tr id="vpa-table-head">
+              <th onclick="vpaSortTable('name')" data-col="name">Vendor</th>
+              <th onclick="vpaSortTable('balanceDue')" data-col="balanceDue" class="vpa-sort-desc">Balance Due</th>
+              <th onclick="vpaSortTable('overdue')" data-col="overdue">Overdue</th>
+              <th onclick="vpaSortTable('futureRemit')" data-col="futureRemit">Future Remit</th>
+              <th onclick="vpaSortTable('maxDaysOutstanding')" data-col="maxDaysOutstanding">Max Days</th>
+            </tr>
+          </thead>
+          <tbody id="vpa-vendor-tbody">
+            <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">
+              <div style="font-size:24px;margin-bottom:8px">📋</div>
+              Click <strong>Analyze</strong> to load vendor aging data
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /scroll content -->
+</div><!-- /vendor-payment-aging-panel -->
+
+<style>
+.vpa-fg{display:flex;flex-direction:column;gap:3px}
+.vpa-fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.vpa-fg input,.vpa-fg select{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);font-size:12px;font-family:inherit;outline:none}
+.vpa-fg input:focus,.vpa-fg select:focus{border-color:#0070F2;background:#fff}
+.vpa-chart-card{background:#fff;border:1px solid var(--border);border-radius:6px;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.vpa-chart-tab{font-size:10.5px;padding:2px 9px;border-radius:12px;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg)}
+.vpa-chart-tab.active{background:#E9730C;color:#fff;border-color:#E9730C}
+.vpa-tbl-btn{font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--bg)}
+.vpa-tbl-btn:hover{border-color:#0070F2;color:#0070F2}
+.vpa-tbl-btn.active{background:#E8F4FF;border-color:#0070F2;color:#0070F2}
+#vpa-vendor-table th{background:#F5F6F7;padding:7px 10px;text-align:left;font-size:10.5px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);position:sticky;top:0;cursor:pointer;user-select:none;white-space:nowrap}
+#vpa-vendor-table th:hover{background:#EBEBEB}
+#vpa-vendor-table th.vpa-sort-asc::after{content:' ▲';opacity:.6}
+#vpa-vendor-table th.vpa-sort-desc::after{content:' ▼';opacity:.6}
+#vpa-vendor-table td{padding:6px 10px;border-bottom:1px solid #F0F0F0;white-space:nowrap}
+#vpa-vendor-table tr:hover td{background:#E8F4FF}
+#vpa-vendor-table .vpa-amt{text-align:right;font-variant-numeric:tabular-nums}
+#vpa-vendor-table .vpa-overdue-cell{color:#BB0000;font-weight:600}
+.vpa-days-pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10.5px;font-weight:600}
+.vpa-days-0{background:#E8F8F0;color:#107E3E}
+.vpa-days-30{background:#FFF3CD;color:#856404}
+.vpa-days-60{background:#FFE0BD;color:#B85A0A}
+.vpa-days-90{background:#FFE0E0;color:#BB0000}
+#vpa-chat-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(233,115,12,.55)}
+#vpa-chat-messages::-webkit-scrollbar{width:4px}
+#vpa-chat-messages::-webkit-scrollbar-thumb{background:#D0D7E3;border-radius:4px}
+.vpa-msg-row{display:flex;gap:7px;align-self:flex-start;max-width:100%}
+.vpa-msg-row.user{align-self:flex-end;flex-direction:row-reverse}
+.vpa-av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;font-weight:700}
+.vpa-av.bot{background:#E9730C;color:#fff}
+.vpa-av.user{background:#E8F4FF;color:#0070F2;border:1px solid #99CAFF}
+.vpa-bubble{padding:9px 12px;border-radius:12px;line-height:1.6;font-size:11.5px;max-width:88%;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.vpa-bubble.bot{background:#fff;border:1px solid #E8EDF3;border-top-left-radius:2px;color:#1A2332}
+.vpa-bubble.user{background:#0070F2;color:#fff;border-top-right-radius:2px}
+.vpa-bubble.bot table{border-collapse:collapse;width:100%;margin:5px 0;font-size:10.5px}
+.vpa-bubble.bot th{background:#F5F6F7;padding:4px 7px;text-align:left;font-weight:700;border-bottom:1px solid var(--border)}
+.vpa-bubble.bot td{padding:3px 7px;border-bottom:1px solid #F0F0F0}
+.vpa-bubble.bot strong{font-weight:700}
+.vpa-bubble.bot ul,.vpa-bubble.bot ol{padding-left:14px;margin:2px 0}
+.vpa-bubble.bot p{margin:2px 0}
+.vpa-qr-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;padding-left:33px}
+.vpa-qr-chip{background:#fff;border:1px solid #E9730C;color:#E9730C;border-radius:14px;padding:3px 10px;font-size:10.5px;font-weight:500;cursor:pointer;white-space:nowrap}
+.vpa-qr-chip:hover{background:#E9730C;color:#fff}
+.vpa-qr-chip.used{opacity:.4;cursor:default;pointer-events:none}
+.vpa-typing-bubble{background:#fff;border:1px solid #E8EDF3;border-radius:12px;border-top-left-radius:2px;padding:9px 13px;display:flex;align-items:center;gap:4px}
+.vpa-dot{width:6px;height:6px;border-radius:50%;background:#94a3b8;animation:vpaBounce 1.2s infinite ease-in-out}
+.vpa-dot:nth-child(2){animation-delay:.2s}
+.vpa-dot:nth-child(3){animation-delay:.4s}
+@keyframes vpaBounce{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1);opacity:1}}
+</style>
+
+<script>
+(function(){
+  // ── State ──────────────────────────────────────────────────────────────
+  const VPA = {
+    sessionId: null, isBusy: false, agingData: null, allVendors: [], bucketCols: [],
+    showBuckets: false, sortCol: 'balanceDue', sortDir: 'desc',
+    agingChart: null, chartMode: 'balance', currentAgingContext: '',
+    chatVisible: false, inited: false,
+  };
+
+  function fmtN(n, d) {
+    d = d || 0;
+    if (n == null || isNaN(Number(n))) return '—';
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+
+  function vpaToken() { return localStorage.getItem('hanny_token') || ''; }
+
+  async function vpaSafeJson(r) {
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      if (r.status === 401) throw new Error('Session expired — please refresh the page');
+      const t = await r.text().catch(()=>'');
+      throw new Error(t.includes('<!DOCTYPE') ? `Server error (${r.status})` : t.slice(0,200) || `HTTP ${r.status}`);
+    }
+    return r.json();
+  }
+
+  // ── Show / Hide panel ─────────────────────────────────────────────────
+  window.showVendorPaymentAgingAgent = function() {
+    showChatPanel();
+    document.getElementById('messages').style.display = 'none';
+    const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+    const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+    document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+    document.getElementById('nav-vp-aging')?.classList.add('active');
+    const main = document.querySelector('.main');
+    const panel = document.getElementById('vendor-payment-aging-panel');
+    if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+    if (panel) panel.style.display = 'flex';
+    if (!VPA.inited) { vpaInit(); VPA.inited = true; }
+  };
+
+  function vpaInit() {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dateInp = document.getElementById('vpa-f-aging-date');
+    if (dateInp) dateInp.value = todayStr;
+    const inp = document.getElementById('vpa-user-input');
+    if (inp) {
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.vpaSendFromInput(); } });
+      inp.addEventListener('input', () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 70) + 'px'; });
+    }
+    vpaStartChat();
+  }
+
+  // ── Chat toggle ────────────────────────────────────────────────────────
+  window.vpaChatToggle = function() {
+    const panel = document.getElementById('vpa-chat-panel');
+    const fabIcon = document.getElementById('vpa-chat-fab-icon');
+    const fabClose = document.getElementById('vpa-chat-fab-close');
+    if (!panel) return;
+    VPA.chatVisible = !VPA.chatVisible;
+    panel.style.display = VPA.chatVisible ? 'flex' : 'none';
+    fabIcon.style.display = VPA.chatVisible ? 'none' : '';
+    fabClose.style.display = VPA.chatVisible ? '' : 'none';
+    if (VPA.chatVisible) document.getElementById('vpa-user-input')?.focus();
+  };
+
+  // ── Analyze ────────────────────────────────────────────────────────────
+  window.vpaRunAnalyze = async function() {
+    const btn = document.getElementById('vpa-analyze-btn');
+    btn.disabled = true;
+    const statusEl = document.getElementById('vpa-status');
+    if (statusEl) statusEl.textContent = 'Loading…';
+
+    const params = {
+      agingDate: document.getElementById('vpa-f-aging-date').value || new Date().toISOString().slice(0,10),
+      bucketSize: parseInt(document.getElementById('vpa-f-bucket-size').value) || 30,
+      filters: {
+        vendorSearch: document.getElementById('vpa-f-vendor').value.trim() || undefined,
+        docType:      document.getElementById('vpa-f-doctype').value      || undefined,
+        agingBucket:  document.getElementById('vpa-f-bucket-filter').value|| undefined,
+        onlyOverdue:  document.getElementById('vpa-f-overdue-only').checked || undefined,
+      },
+    };
+
+    try {
+      const r = await fetch('/api/vendor-payment-aging/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': vpaToken() },
+        body: JSON.stringify(params),
+      });
+      const data = await vpaSafeJson(r);
+      if (!data.ok) throw new Error(data.error || 'Analysis failed');
+
+      VPA.agingData = data;
+      VPA.allVendors = data.vendors || [];
+      VPA.bucketCols = (data.buckets || []).map(b => b.bucket);
+
+      vpaUpdateKPIs(data.totals, params.agingDate);
+      vpaUpdateFilterOptions(data.options);
+      vpaUpdateCharts(data.buckets);
+      vpaRenderTable();
+
+      if (data.aiInsight) {
+        document.getElementById('vpa-insight-card').style.display = 'block';
+        document.getElementById('vpa-insight-body').innerHTML = renderMd(data.aiInsight);
+      }
+
+      VPA.currentAgingContext = vpaBuildContextString(data);
+      VPA.sessionId = null;
+
+      if (statusEl) statusEl.textContent = 'Ready';
+      vpaAppendMessage('bot', `✅ Loaded aging as of **${params.agingDate}** — **${data.totals.vendorCount}** vendors, balance due **${fmtN(data.totals.balanceDue)}**.${data.totals.overdue > 0 ? ` ⚠️ Overdue: **${fmtN(data.totals.overdue)}**` : ''}\n\nAsk me anything about this data.`,
+        ['Show top overdue vendors', 'Aging bucket summary', 'Vendors over 90 days', 'Cash flow risk']);
+    } catch (e) {
+      if (statusEl) statusEl.textContent = 'Error';
+      vpaAppendMessage('bot', `❌ Failed to load aging data: **${e.message}**\n\nPlease check your HANA connection and try again.`);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  function vpaBuildContextString(data) {
+    const { vendors, totals, buckets, params } = data;
+    const top = (vendors || []).slice(0, 15);
+    const buckStr = (buckets || []).map(b => `  ${b.bucket}: ${fmtN(b.balanceDue)} (${b.vendorCount} vendors)`).join('\n');
+    const topStr  = top.map((v, i) => `  ${i+1}. ${v.name} (${v.code}): Balance ${fmtN(v.balanceDue)}, Overdue ${fmtN(v.overdue)}, ${v.maxDaysOutstanding} days max`).join('\n');
+    return `VENDOR PAYMENT AGING — As of: ${params?.agingDate} | Bucket: ${params?.bucketSize} days
+TOTALS: Balance Due ${fmtN(totals.balanceDue)}, Overdue ${fmtN(totals.overdue)}, Future ${fmtN(totals.futureRemit)}, Vendors: ${totals.vendorCount}
+AGING BUCKETS:\n${buckStr}
+TOP VENDORS:\n${topStr}`;
+  }
+
+  function vpaUpdateKPIs(t, agingDate) {
+    document.getElementById('vpa-kpi-balance').textContent = fmtN(t.balanceDue);
+    document.getElementById('vpa-kpi-overdue').textContent = fmtN(t.overdue);
+    document.getElementById('vpa-kpi-future').textContent  = fmtN(t.futureRemit);
+    document.getElementById('vpa-kpi-vendors').textContent = t.vendorCount;
+    document.getElementById('vpa-kpi-docs').textContent    = `${t.docCount} documents`;
+    document.getElementById('vpa-kpi-date').textContent    = `As of ${agingDate}`;
+    const pct = t.balanceDue > 0 ? ((t.overdue / t.balanceDue) * 100).toFixed(1) : '0.0';
+    document.getElementById('vpa-kpi-overdue-pct').textContent = `${pct}% of balance`;
+  }
+
+  function vpaUpdateFilterOptions(opts) {
+    if (!opts) return;
+    vpaPopulateSelect('vpa-f-doctype', opts.docTypes || [], 'All Types');
+    vpaPopulateSelect('vpa-f-bucket-filter', opts.buckets || [], 'All Buckets');
+  }
+
+  function vpaPopulateSelect(id, items, placeholder) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${placeholder}</option>`;
+    items.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; if (v === cur) o.selected = true; sel.appendChild(o); });
+  }
+
+  // ── Charts ─────────────────────────────────────────────────────────────
+  window.vpaSwitchChartType = function(mode) {
+    VPA.chartMode = mode;
+    document.getElementById('vpa-chart-tab-balance').classList.toggle('active', mode === 'balance');
+    document.getElementById('vpa-chart-tab-overdue').classList.toggle('active', mode === 'overdue');
+    document.getElementById('vpa-chart-sub').textContent = mode === 'balance' ? 'Balance due by bucket' : 'Overdue amount by bucket';
+    if (VPA.agingData) vpaUpdateCharts(VPA.agingData.buckets, VPA.agingData.dimBreakdown);
+  };
+
+  function vpaUpdateCharts(buckets) {
+    buckets = buckets || [];
+    const BUCKET_COLORS = { 'Current':'#107E3E','1-30':'#0070F2','31-60':'#F0AB00','61-90':'#E9730C','90+':'#BB0000','120+':'#BB0000' };
+    const valKey = VPA.chartMode === 'balance' ? 'balanceDue' : 'overdue';
+
+    const c1 = document.getElementById('vpa-aging-chart');
+    if (c1) {
+      if (VPA.agingChart) VPA.agingChart.destroy();
+      VPA.agingChart = new Chart(c1.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: buckets.map(b => b.bucket),
+          datasets: [{ data: buckets.map(b => b[valKey] || 0), backgroundColor: buckets.map(b => (BUCKET_COLORS[b.bucket]||'#94a3b8')+'CC'), borderColor: buckets.map(b => BUCKET_COLORS[b.bucket]||'#94a3b8'), borderWidth: 1.5, borderRadius: 3 }],
+        },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>' '+fmtN(c.raw) } } },
+          scales:{ x:{ grid:{display:false}, ticks:{font:{size:10}} }, y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:9},callback:v=>fmtN(v)} } } },
+      });
+    }
+  }
+
+  // ── Table ──────────────────────────────────────────────────────────────
+  window.vpaSortTable = function(col) {
+    VPA.sortDir = VPA.sortCol === col && VPA.sortDir === 'desc' ? 'asc' : 'desc';
+    VPA.sortCol = col;
+    document.querySelectorAll('#vpa-vendor-table th').forEach(th => {
+      th.classList.remove('vpa-sort-asc','vpa-sort-desc');
+      if (th.dataset.col === col) th.classList.add(`vpa-sort-${VPA.sortDir}`);
+    });
+    if (VPA.agingData) vpaRenderTable();
+  };
+
+  function vpaRenderTable() { vpaRenderTableFromVendors(VPA.allVendors); }
+
+  function vpaRenderTableFromVendors(vendors) {
+    document.getElementById('vpa-vendor-count').textContent = `(${vendors.length})`;
+    const q = (document.getElementById('vpa-tbl-search').value || '').toLowerCase();
+    const shown = q ? vendors.filter(v => (v.name + v.code + v.group).toLowerCase().includes(q)) : vendors;
+
+    const sorted = [...shown].sort((a, b) => {
+      const va = a[VPA.sortCol] ?? '', vb = b[VPA.sortCol] ?? '';
+      if (typeof va === 'number') return VPA.sortDir === 'asc' ? va - vb : vb - va;
+      return VPA.sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+    });
+
+    const tbody = document.getElementById('vpa-vendor-tbody');
+    if (!sorted.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No vendors match the current filters</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = sorted.map(v => {
+      const daysClass = v.maxDaysOutstanding > 90 ? 'vpa-days-90' : v.maxDaysOutstanding > 60 ? 'vpa-days-60' : v.maxDaysOutstanding > 30 ? 'vpa-days-30' : 'vpa-days-0';
+      let bucketCells = '';
+      if (VPA.showBuckets) {
+        VPA.bucketCols.forEach(b => { bucketCells += `<td class="vpa-amt">${fmtN(v.buckets?.[b] || 0)}</td>`; });
+      }
+      return `<tr>
+        <td><div style="font-weight:600;font-size:12px">${escHtml(v.name || v.code)}</div><div style="font-size:10.5px;color:var(--muted)">${escHtml(v.code)}</div></td>
+        <td class="vpa-amt">${fmtN(v.balanceDue)}</td>
+        <td class="vpa-amt vpa-overdue-cell">${v.overdue > 0 ? fmtN(v.overdue) : '<span style="color:#107E3E">Current</span>'}</td>
+        <td class="vpa-amt">${fmtN(v.futureRemit)}</td>
+        <td class="vpa-amt"><span class="vpa-days-pill ${daysClass}">${v.maxDaysOutstanding}</span></td>
+        ${bucketCells}
+      </tr>`;
+    }).join('');
+  }
+
+  window.vpaFilterTable = function() { if (VPA.agingData) vpaRenderTable(); };
+
+  window.vpaToggleBucketColumns = function() {
+    VPA.showBuckets = !VPA.showBuckets;
+    const btn = document.getElementById('vpa-toggle-buckets-btn');
+    btn.textContent = VPA.showBuckets ? 'Hide Buckets' : 'Show Buckets';
+    btn.classList.toggle('active', VPA.showBuckets);
+
+    const headRow = document.getElementById('vpa-table-head');
+    headRow.querySelectorAll('.vpa-bucket-col').forEach(c => c.remove());
+    if (VPA.showBuckets) {
+      VPA.bucketCols.forEach(b => {
+        const th = document.createElement('th');
+        th.className = 'vpa-bucket-col'; th.style.fontSize = '10px'; th.textContent = b;
+        headRow.appendChild(th);
+      });
+    }
+    if (VPA.agingData) vpaRenderTable();
+  };
+
+  window.vpaExportCsv = function() {
+    if (!VPA.allVendors.length) { alert('No data to export. Run Analyze first.'); return; }
+    const headers = ['Code', 'Vendor Name', 'Balance Due', 'Overdue', 'Future Remit', 'Max Days Outstanding'];
+    const rows = VPA.allVendors.map(v => [v.code, v.name, v.balanceDue.toFixed(2), v.overdue.toFixed(2), v.futureRemit.toFixed(2), v.maxDaysOutstanding]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c || '').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const agingDate = document.getElementById('vpa-f-aging-date').value || 'today';
+    a.href = url; a.download = `vendor_aging_${agingDate}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  window.vpaClearFilters = function() {
+    document.getElementById('vpa-f-vendor').value = '';
+    document.getElementById('vpa-f-doctype').value = '';
+    document.getElementById('vpa-f-bucket-filter').value = '';
+    document.getElementById('vpa-f-overdue-only').checked = false;
+  };
+
+  // ── Chat ───────────────────────────────────────────────────────────────
+  function vpaAppendMessage(role, content, quickReplies) {
+    const msgs = document.getElementById('vpa-chat-messages');
+    const placeholder = msgs.querySelector('.vpa-no-data');
+    if (placeholder) placeholder.remove();
+
+    const row = document.createElement('div');
+    row.className = `vpa-msg-row ${role}`;
+    row.innerHTML = `<div class="vpa-av ${role === 'bot' ? 'bot' : 'user'}">${role === 'bot' ? '📊' : '👤'}</div><div class="vpa-bubble ${role === 'bot' ? 'bot' : 'user'}">${role === 'bot' ? renderMd(content) : escHtml(content)}</div>`;
+    msgs.appendChild(row);
+
+    if (quickReplies && quickReplies.length) {
+      const qrDiv = document.createElement('div');
+      qrDiv.className = 'vpa-qr-row';
+      quickReplies.forEach(qr => {
+        const chip = document.createElement('button');
+        chip.className = 'vpa-qr-chip'; chip.textContent = qr;
+        chip.onclick = () => { document.querySelectorAll('.vpa-qr-chip:not(.used)').forEach(c => c.classList.add('used')); window.vpaSendMessage(qr); };
+        qrDiv.appendChild(chip);
+      });
+      msgs.appendChild(qrDiv);
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function vpaShowTyping() {
+    const msgs = document.getElementById('vpa-chat-messages');
+    const row = document.createElement('div');
+    row.className = 'vpa-msg-row bot'; row.id = 'vpa-typing-indicator';
+    row.innerHTML = `<div class="vpa-av bot">📊</div><div class="vpa-typing-bubble"><div class="vpa-dot"></div><div class="vpa-dot"></div><div class="vpa-dot"></div></div>`;
+    msgs.appendChild(row);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  function vpaHideTyping() { document.getElementById('vpa-typing-indicator')?.remove(); }
+
+  function vpaSetChatBusy(busy) {
+    document.getElementById('vpa-send-btn').disabled = busy;
+    document.getElementById('vpa-user-input').disabled = busy;
+    const s = document.getElementById('vpa-chat-status'); if (s) s.textContent = busy ? 'Thinking…' : 'Ready';
+  }
+
+  async function vpaStartChat() {
+    try {
+      const r = await fetch('/api/vendor-payment-aging/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': vpaToken() },
+        body: JSON.stringify({ message: '', sessionId: null }),
+      });
+      const data = await vpaSafeJson(r);
+      if (data.ok) { VPA.sessionId = data.sessionId; vpaAppendMessage('bot', data.reply, data.quickReplies); }
+    } catch (e) { console.warn('[VPAging] startChat:', e.message); }
+  }
+
+  window.vpaSendMessage = async function(msg) {
+    if (VPA.isBusy || !msg.trim()) return;
+    VPA.isBusy = true; vpaSetChatBusy(true);
+    vpaAppendMessage('user', msg); vpaShowTyping();
+    try {
+      const r = await fetch('/api/vendor-payment-aging/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': vpaToken() },
+        body: JSON.stringify({ message: msg, sessionId: VPA.sessionId, agingContext: VPA.currentAgingContext }),
+      });
+      const data = await vpaSafeJson(r);
+      vpaHideTyping();
+      if (data.ok) { VPA.sessionId = data.sessionId; vpaAppendMessage('bot', data.reply, data.quickReplies); }
+      else vpaAppendMessage('bot', `❌ ${data.error || 'Error'}`);
+    } catch (e) {
+      vpaHideTyping();
+      vpaAppendMessage('bot', `⚠️ Connection error: ${e.message}`);
+    } finally {
+      VPA.isBusy = false; vpaSetChatBusy(false);
+    }
+  };
+
+  window.vpaSendFromInput = function() {
+    const inp = document.getElementById('vpa-user-input');
+    const msg = inp.value.trim(); if (!msg || VPA.isBusy) return;
+    inp.value = ''; inp.style.height = 'auto';
+    window.vpaSendMessage(msg);
+  };
+
+  // ── Patch neighboring show functions so this panel always gets hidden ────
+  ['showChatPanel','showPRAgentPanel','showPOAgentPanel','showPRtoPOPanel','showPOtoGRPOPanel',
+   'showGRPOtoAPInvPanel','showThreeWayMatchPanel','showAPCMPanel','showOutPayPanel'].forEach(fnName => {
+    const orig = window[fnName];
+    if (typeof orig !== 'function') return;
+    window[fnName] = function(...args) {
+      const p = document.getElementById('vendor-payment-aging-panel');
+      if (p) p.style.display = 'none';
+      return orig.apply(this, args);
+    };
+  });
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      DYNAMIC PRICING AGENT PANEL
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="dynamic-pricing-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
@@ -23305,6 +23770,8 @@ setInterval(() => {
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">
       <div>
         <div style="font-size:11px;font-weight:700;color:#0e7490;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">👤 Customer (with open quotations)</div>
+        <input type="text" placeholder="🔍 Search customer…" oninput="q2oFilterCustomers(this)"
+          style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:12.5px;margin-bottom:5px;box-sizing:border-box;outline:none">
         <select id="q2o-cust-sel" class="form-input" style="width:100%;font-size:13px" onchange="q2oOnCustomerChange()">
           <option value="">⏳ Loading customers…</option>
         </select>
@@ -23328,7 +23795,7 @@ setInterval(() => {
   <div id="q2o-edit-area" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg)"></div>
 
   <div id="q2o-content-split" style="flex:1;display:flex;overflow:hidden">
-    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
       <div id="q2o-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
       <div id="q2o-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
       <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
@@ -23339,13 +23806,6 @@ setInterval(() => {
           </button>
         </div>
       </div>
-    </div>
-    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
-      <div style="background:#0e7490;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
-        📑 Order Preview
-        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Quotation &amp; order details</div>
-      </div>
-      <div id="q2o-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
     </div>
   </div>
 </div><!-- /#q2o-panel -->
@@ -23372,6 +23832,8 @@ setInterval(() => {
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">
       <div>
         <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">👤 Customer (with open orders)</div>
+        <input type="text" placeholder="🔍 Search customer…" oninput="o2dFilterCustomers(this)"
+          style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:12.5px;margin-bottom:5px;box-sizing:border-box;outline:none">
         <select id="o2d-cust-sel" class="form-input" style="width:100%;font-size:13px" onchange="o2dOnCustomerChange()">
           <option value="">⏳ Loading customers…</option>
         </select>
@@ -23395,7 +23857,7 @@ setInterval(() => {
   <div id="o2d-edit-area" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg)"></div>
   <!-- Chat + preview split -->
   <div id="o2d-content-split" style="flex:1;display:flex;overflow:hidden">
-    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
       <div id="o2d-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
       <div id="o2d-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
       <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
@@ -23406,13 +23868,6 @@ setInterval(() => {
           </button>
         </div>
       </div>
-    </div>
-    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
-      <div style="background:#b45309;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
-        🚛 Delivery Preview
-        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Order &amp; delivery details</div>
-      </div>
-      <div id="o2d-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
     </div>
   </div>
 </div><!-- /#o2d-panel -->
@@ -23434,7 +23889,7 @@ setInterval(() => {
     </button>
   </div>
   <div style="flex:1;display:flex;overflow:hidden">
-    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
       <div id="d2arinv-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
       <div id="d2arinv-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
       <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
@@ -23445,13 +23900,6 @@ setInterval(() => {
           </button>
         </div>
       </div>
-    </div>
-    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
-      <div style="background:#0369a1;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
-        🧾 Invoice Summary
-        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Delivery &amp; invoice details</div>
-      </div>
-      <div id="d2arinv-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
     </div>
   </div>
 </div><!-- /#d2arinv-panel -->
@@ -23473,7 +23921,7 @@ setInterval(() => {
     </button>
   </div>
   <div style="flex:1;display:flex;overflow:hidden">
-    <div style="flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
       <div id="arinv2arcm-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
       <div id="arinv2arcm-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
       <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
@@ -23484,13 +23932,6 @@ setInterval(() => {
           </button>
         </div>
       </div>
-    </div>
-    <div style="width:35%;min-width:240px;max-width:360px;display:flex;flex-direction:column;overflow:hidden">
-      <div style="background:#9f1239;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">
-        🔴 Credit Memo Summary
-        <div style="font-size:10.5px;color:rgba(255,255,255,.6)">Customer &amp; invoice details</div>
-      </div>
-      <div id="arinv2arcm-summary" style="flex:1;overflow-y:auto;padding:12px"></div>
     </div>
   </div>
 </div><!-- /#arinv2arcm-panel -->
@@ -25811,6 +26252,50 @@ window.roAskFollowUp = function() {
     area.scrollTop = area.scrollHeight;
   }
 
+  // ── Local search/filter over already-loaded vendor & item combos ─────────────
+  function poaEscAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Splits the query into words and requires every word to appear SOMEWHERE in the
+  // haystack, in any order — so "molding american" still matches "American ... Molding ...".
+  function poaWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+
+  window.poaFilterVendors = function(inputEl) {
+    const container = inputEl.closest('[data-vendors]');
+    if (!container) return;
+    const sel = container.querySelector('select[id^="poa-vendor-sel"]');
+    if (!sel) return;
+    let vendors = [];
+    try { vendors = JSON.parse(container.getAttribute('data-vendors')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? vendors.filter(v => poaWordMatch(qWords, [v.code, v.name, v.city].join(' ')))
+      : vendors;
+    sel.innerHTML = '<option value="">— Select a Vendor —</option>' + filtered.map(v =>
+      `<option value="${poaEscAttr(v.code)}">${poaEscAttr(v.code)} — ${poaEscAttr(v.name)}${v.city ? ' ('+poaEscAttr(v.city)+')' : ''}</option>`
+    ).join('');
+  };
+
+  window.poaFilterItems = function(inputEl, idx) {
+    const container = inputEl.closest('[data-items]');
+    if (!container) return;
+    const sel = container.querySelector('#poa-item-sel-'+idx);
+    if (!sel) return;
+    let items = [];
+    try { items = JSON.parse(container.getAttribute('data-items')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? items.filter(i => poaWordMatch(qWords, [i.code, i.name].join(' ')))
+      : items;
+    sel.innerHTML = '<option value="">— Select an Item —</option>' + filtered.map(i =>
+      `<option value="${poaEscAttr(i.code)}" data-name="${poaEscAttr(i.name)}" data-unit="${poaEscAttr(i.unit)}" data-vat="${poaEscAttr(i.vat)}">${poaEscAttr(i.code)} — ${poaEscAttr(i.name)}</option>`
+    ).join('');
+  };
+
   // ── Combo action handlers (called from inline HTML in agent replies) ─────────
   window.poaComboSelectVendor = function() {
     const sel = document.getElementById('poa-vendor-sel');
@@ -25828,7 +26313,69 @@ window.roAskFollowUp = function() {
       const taxSel = document.getElementById('poa-tax-'+idx);
       if (taxSel) taxSel.value = opt.dataset.vat;
     }
+    poaCalcLine(idx);
   };
+
+  // Live preview of Net / Tax / Line Total as qty, price, disc% or tax code change —
+  // mirrors the authoritative calc the server re-runs in the 'add_item' action.
+  window.poaCalcLine = function(idx) {
+    const qty   = parseFloat(document.getElementById('poa-qty-'+idx)?.value)  || 0;
+    const price = parseFloat(document.getElementById('poa-price-'+idx)?.value) || 0;
+    const disc  = parseFloat(document.getElementById('poa-disc-'+idx)?.value)  || 0;
+    const taxSel = document.getElementById('poa-tax-'+idx);
+    const rate   = parseFloat(taxSel?.options[taxSel.selectedIndex]?.dataset.rate) || 0;
+    const net    = qty * price * (1 - disc / 100);
+    const taxAmt = net * (rate / 100);
+    const netEl = document.getElementById('poa-net-'+idx);
+    const taxEl = document.getElementById('poa-taxamt-'+idx);
+    const totEl = document.getElementById('poa-linetotal-'+idx);
+    if (netEl) netEl.textContent = net.toFixed(2);
+    if (taxEl) taxEl.textContent = taxAmt.toFixed(2);
+    if (totEl) totEl.textContent = (net + taxAmt).toFixed(2);
+  };
+
+  // ── In-page PDF/print preview modal (avoids opening a new tab, which never
+  //    carries the auth token and shows "Unauthorised") ─────────────────────────
+  window.poaShowPrintModal = function(url) {
+    // Some print links get an auto-appended ?token= elsewhere (a global patcher for <a href>
+    // print links); guard against ending up with two token= params, which Express would turn
+    // into an array and fail auth on.
+    let src = url;
+    if (!/[?&]token=/.test(src)) {
+      const token = localStorage.getItem('hanny_token') || '';
+      src += (src.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+    }
+    let modal = document.getElementById('poa-print-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'poa-print-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+      modal.innerHTML =
+        '<div style="background:#fff;border-radius:10px;width:min(900px,94vw);height:min(90vh,1100px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #e5e7eb;background:#f9fafb">'
+        + '<div style="font-size:13px;font-weight:700;color:#1d4ed8">🖨️ Purchase Order Preview</div>'
+        + '<button id="poa-print-modal-close" style="background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:#6b7280">✕</button>'
+        + '</div>'
+        + '<iframe id="poa-print-modal-frame" style="flex:1;border:none;width:100%"></iframe>'
+        + '</div>';
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) poaClosePrintModal(); });
+      modal.querySelector('#poa-print-modal-close').onclick = poaClosePrintModal;
+    }
+    modal.querySelector('#poa-print-modal-frame').src = src;
+  };
+
+  function poaClosePrintModal() {
+    const m = document.getElementById('poa-print-modal');
+    if (m) m.remove();
+  }
+
+  window.addEventListener('message', e => {
+    if (e.data && e.data.type === 'poa-print-close') poaClosePrintModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') poaClosePrintModal();
+  });
 
   window.poaComboAddItem = function(idx) {
     const itemSel  = document.getElementById('poa-item-sel-'+idx);
@@ -25989,6 +26536,50 @@ window.roAskFollowUp = function() {
     wrap.appendChild(bubble); area.appendChild(wrap);
     area.scrollTop = area.scrollHeight;
   }
+
+  // ── Local search/filter over already-loaded customer & item combos ───────────
+  // Same pattern as the PO agent (poaFilterVendors/poaFilterItems): a plain text
+  // input filters the options of a <select> underneath it — no custom dropdown.
+  function soaEscAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function soaWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+
+  window.soaFilterCustomers = function(inputEl) {
+    const container = inputEl.closest('[data-customers]');
+    if (!container) return;
+    const sel = container.querySelector('select[id^="soa-cust-sel"]');
+    if (!sel) return;
+    let customers = [];
+    try { customers = JSON.parse(container.getAttribute('data-customers')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? customers.filter(c => soaWordMatch(qWords, [c.code, c.name, c.city].join(' ')))
+      : customers;
+    sel.innerHTML = '<option value="">— Select a Customer —</option>' + filtered.map(c =>
+      `<option value="${soaEscAttr(c.code)}">${soaEscAttr(c.code)} — ${soaEscAttr(c.name)}${c.city ? ' ('+soaEscAttr(c.city)+')' : ''}</option>`
+    ).join('');
+  };
+
+  window.soaFilterItems = function(inputEl, idx) {
+    const container = inputEl.closest('[data-items]');
+    if (!container) return;
+    const sel = container.querySelector('#soa-item-sel-'+idx);
+    if (!sel) return;
+    let items = [];
+    try { items = JSON.parse(container.getAttribute('data-items')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? items.filter(i => soaWordMatch(qWords, [i.code, i.name].join(' ')))
+      : items;
+    sel.innerHTML = '<option value="">— Select an Item —</option>' + filtered.map(i =>
+      `<option value="${soaEscAttr(i.code)}" data-name="${soaEscAttr(i.name)}" data-unit="${soaEscAttr(i.unit)}" data-vat="${soaEscAttr(i.vat)}">${soaEscAttr(i.code)} — ${soaEscAttr(i.name)}</option>`
+    ).join('');
+  };
 
   // ── Combo action handlers (called from inline HTML in agent replies) ─────────
   window.soaComboSelectCustomer = function() {
@@ -26380,7 +26971,12 @@ window.roAskFollowUp = function() {
     av.textContent = role === 'bot' ? '🤖' : '👤';
     const b = document.createElement('div'); b.className = `bubble ${role}`;
     b.innerHTML = role === 'bot' ? renderMd(content) : escHtml(content);
-    b.querySelectorAll('a[href*="/print/"]').forEach(a => { a.className = 'print-link'; a.target = '_blank'; });
+    b.querySelectorAll('a[href*="/print/"]').forEach(a => {
+      a.className = 'print-link';
+      a.removeAttribute('target');
+      const href = a.getAttribute('href');
+      a.addEventListener('click', e => { e.preventDefault(); poaShowPrintModal(href); });
+    });
     row.appendChild(av); row.appendChild(b);
     msgs.appendChild(row);
     msgs.scrollTop = msgs.scrollHeight;
@@ -26451,10 +27047,10 @@ window.roAskFollowUp = function() {
        ['Vendor', vendor ? vendor.cardCode : 'Open'],['Required By', dueDate || '—']].forEach(([l,v]) => {
         h += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(0,0,0,.06)"><span style="color:var(--muted)">${escHtml(String(l))}</span><span style="font-weight:600">${escHtml(String(v||'—'))}</span></div>`;
       });
-      h += `</div><a href="/api/pr-to-po/print/${result.docEntry}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px;background:#1a5c2e;color:#fff;border-radius:4px;cursor:pointer;font-size:12.5px;font-weight:600;text-decoration:none;box-sizing:border-box;margin-bottom:14px">🖨️ Print PO #${result.docNum}</a>`;
+      h += `</div><button onclick="poaShowPrintModal('/api/pr-to-po/print/${result.docEntry}')" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px;background:#1a5c2e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12.5px;font-weight:600;box-sizing:border-box;margin-bottom:14px;font-family:var(--font)">🖨️ Print PO #${result.docNum}</button>`;
       if (mergedLines.length) {
         h += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:8px">PO Lines (${mergedLines.length})</div>`;
-        mergedLines.forEach(l => { h += ptpoLineCard(l); });
+        mergedLines.forEach(l => { h += ptpoLineCard(l, null, false); });
       }
       panel.innerHTML = h; return;
     }
@@ -26477,26 +27073,78 @@ window.roAskFollowUp = function() {
     }
 
     if (mergedLines.length) {
+      const missing = mergedLines.filter(l => !(l.unitPrice > 0)).length;
       h += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:8px">PO Lines (${mergedLines.length})</div>`;
+      if (missing > 0) h += `<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:6px 8px;margin-bottom:8px">⚠️ ${missing} line(s) missing a price — enter one below before posting.</div>`;
       let grand = 0;
-      mergedLines.forEach(l => { grand += (l.qty||0)*(l.unitPrice||0); h += ptpoLineCard(l); });
-      if (grand > 0) h += `<div style="border-top:2px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:700">Est. Total</span><span style="font-size:14px;font-weight:700;color:#1a5c2e">${fNpo(grand)}</span></div>`;
+      mergedLines.forEach((l, i) => { grand += (l.qty||0)*(l.unitPrice||0); h += ptpoLineCard(l, i, true); });
+      h += `<div style="border-top:2px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:700">Est. Total</span><span data-grand-total style="font-size:14px;font-weight:700;color:#1a5c2e">${fNpo(grand)}</span></div>`;
     }
     panel.innerHTML = h;
   }
 
-  function ptpoLineCard(l) {
+  // idx/editable omitted (or editable=false) → static historical display, e.g. after posting.
+  // data-idx/data-lt/data-grand-total match the raw <input>s buildPOSummary() embeds in the
+  // chat's markdown table (server-side, pr-to-po-agent.mjs) — ptpoEditLine keeps both surfaces
+  // in sync regardless of which one the user actually edits in.
+  function ptpoLineCard(l, idx, editable) {
     const lt = (l.qty||0)*(l.unitPrice||0);
+    const priceMissing = !(l.unitPrice > 0);
+    const priceHtml = editable
+      ? `<input type="number" class="ptpo-price-input" data-idx="${idx}" min="0" step="0.01" value="${l.unitPrice||''}" placeholder="0.00"
+           oninput="ptpoEditLine(${idx},'unitPrice',this.value,false)" onchange="ptpoEditLine(${idx},'unitPrice',this.value,true)"
+           style="width:64px;border:1px solid ${priceMissing?'#f59e0b':'var(--border)'};border-radius:4px;padding:2px 5px;font-size:11px;text-align:right;font-family:var(--font)">`
+      : (l.unitPrice > 0 ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e">${fNpo(l.unitPrice)}</span>` : '');
+    const whHtml = editable
+      ? `<input type="text" class="ptpo-wh-input" data-idx="${idx}" value="${escHtml(l.warehouseCode||'')}" placeholder="Whs"
+           onchange="ptpoEditLine(${idx},'warehouseCode',this.value,true)"
+           style="width:52px;border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-size:11px;font-family:var(--font)">`
+      : (l.warehouseCode ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f0f4ff;color:var(--blue)">${escHtml(l.warehouseCode)}</span>` : '');
     return `<div style="border:1px solid var(--border);border-radius:4px;padding:8px 10px;margin-bottom:6px;background:var(--bg)">
       <div style="font-size:11.5px;font-weight:700;color:#1a5c2e">${escHtml(l.itemCode||'')}</div>
       <div style="font-size:11px;color:var(--text);margin:1px 0;line-height:1.3">${escHtml(l.itemName||'—')}</div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:5px">
         <span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e">Qty: ${fNpo(l.qty,0)} ${l.unit||'EA'}</span>
-        ${l.warehouseCode ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f0f4ff;color:var(--blue)">${escHtml(l.warehouseCode)}</span>` : ''}
+        <label style="font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:3px">${editable?'Price:':''}${priceHtml}</label>
+        <label style="font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:3px">${editable?'Whs:':''}${whHtml}</label>
         ${l.sourcePR ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f5f0ff;color:#6d28d9">PR#${l.sourcePR}</span>` : ''}
-        ${lt > 0 ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e">${fNpo(lt)}</span>` : ''}
+        ${editable ? `<span data-lt="${idx}" style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e;font-weight:700">${lt>0?fNpo(lt):'—'}</span>`
+                   : (lt > 0 ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e">${fNpo(lt)}</span>` : '')}
       </div>
     </div>`;
+  }
+
+  // Local edit + live total refresh always; server sync (sync=true) only on blur/change,
+  // so the authoritative session.mergedLines the "Post" step reads is kept in step.
+  // Updates every matching element across BOTH surfaces (chat table + sidebar cards), since
+  // the same line can be shown editable in either place at once.
+  window.ptpoEditLine = function(idx, field, value, sync) {
+    const l = _ptpoState.mergedLines[idx];
+    if (!l) return;
+    if (field === 'warehouseCode') l.warehouseCode = value;
+    else l[field] = parseFloat(value) || 0;
+
+    const inputSel = field === 'warehouseCode' ? '.ptpo-wh-input' : '.ptpo-price-input';
+    document.querySelectorAll(`${inputSel}[data-idx="${idx}"]`).forEach(el => { if (el.value !== value) el.value = value; });
+
+    const lt = (l.qty||0)*(l.unitPrice||0);
+    document.querySelectorAll(`[data-lt="${idx}"]`).forEach(el => { el.textContent = lt > 0 ? fNpo(lt) : '—'; });
+
+    let grand = 0; _ptpoState.mergedLines.forEach(x => grand += (x.qty||0)*(x.unitPrice||0));
+    document.querySelectorAll('[data-grand-total]').forEach(el => { el.textContent = fNpo(grand); });
+
+    if (sync) ptpoSyncLine(idx, field, l[field]);
+  };
+
+  async function ptpoSyncLine(idx, field, value) {
+    if (!_ptpoSessionId) return;
+    try {
+      await fetch('/api/pr-to-po/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': tok() },
+        body: JSON.stringify({ sessionId: _ptpoSessionId, message: JSON.stringify({ action: 'update_line', idx, field, value }) }),
+      });
+    } catch (e) { console.error('[PR-to-PO] line sync failed:', e.message); }
   }
 
   // ── PR Detail Modal ───────────────────────────────────────────────────────────
@@ -30480,6 +31128,50 @@ window.roAskFollowUp = function() {
     else sqLoadMasterData();
   };
 
+  // ── Local search/filter over already-loaded customer & item combos ───────────
+  // Same pattern as the PO / Sales Order agents: a plain text input filters the
+  // options of the <select> underneath it.
+  function sqEscAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function sqWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+
+  window.sqFilterCustomers = function(inputEl) {
+    const container = inputEl.closest('[data-customers]');
+    if (!container) return;
+    const sel = container.querySelector('select[id^="sq-cust-sel"]');
+    if (!sel) return;
+    let customers = [];
+    try { customers = JSON.parse(container.getAttribute('data-customers')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? customers.filter(c => sqWordMatch(qWords, [c.code, c.name, c.city].join(' ')))
+      : customers;
+    sel.innerHTML = '<option value="">— Select a Customer —</option>' + filtered.map(c =>
+      `<option value="${sqEscAttr(c.code)}">${sqEscAttr(c.code)} — ${sqEscAttr(c.name)}${c.city ? ' ('+sqEscAttr(c.city)+')' : ''}</option>`
+    ).join('');
+  };
+
+  window.sqFilterItems = function(inputEl, idx) {
+    const container = inputEl.closest('[data-items]');
+    if (!container) return;
+    const sel = container.querySelector('#sq-item-sel-'+idx);
+    if (!sel) return;
+    let items = [];
+    try { items = JSON.parse(container.getAttribute('data-items')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? items.filter(i => sqWordMatch(qWords, [i.code, i.name].join(' ')))
+      : items;
+    sel.innerHTML = '<option value="">— Select an Item —</option>' + filtered.map(i =>
+      `<option value="${sqEscAttr(i.code)}" data-name="${sqEscAttr(i.name)}" data-unit="${sqEscAttr(i.unit)}" data-vat="${sqEscAttr(i.vat)}">${sqEscAttr(i.code)} — ${sqEscAttr(i.name)}</option>`
+    ).join('');
+  };
+
   // ── Combo action handlers (called from inline HTML in agent replies) ─────────
   window.sqComboSelectCustomer = function() {
     const sel = document.getElementById('sq-cust-sel');
@@ -30488,10 +31180,6 @@ window.roAskFollowUp = function() {
     const cardCode = sel.value;
     const cardName = opt.text.split(' — ').slice(1).join(' — ').replace(/ \(.*\)$/, '');
     sqSend(JSON.stringify({ action:'select_customer', cardCode, cardName: cardName||cardCode }));
-  };
-
-  window.sqComboFilterCustomers = function(sel) {
-    // Native select handles filtering via browser; just highlight the option
   };
 
   window.sqComboItemChange = function(sel, idx) {
@@ -30789,7 +31477,8 @@ window.roAskFollowUp = function() {
   };
 
   function sqSend(text){
-    sqAddMsg('user', text);
+    const isJsonAction = text.trim().startsWith('{');
+    if (!isJsonAction) sqAddMsg('user', text);
     el('sq-qr-area').innerHTML='';
     const tok = localStorage.getItem('hanny_token')||'';
     fetch(API+'/chat', {method:'POST', headers:{'Content-Type':'application/json','x-auth-token':tok}, body:JSON.stringify({sessionId,message:text})})
@@ -31166,8 +31855,40 @@ window.roAskFollowUp = function() {
     inp.value=''; qcompSend(txt);
   };
 
+  function qcompEscAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function qcompWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+  window.qcompFilterCustomers = function(inputEl) {
+    const container = inputEl.closest('[data-customers]');
+    if (!container) return;
+    const sel = container.querySelector('select[id^="qcomp-cust-sel"]');
+    if (!sel) return;
+    let customers = [];
+    try { customers = JSON.parse(container.getAttribute('data-customers')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? customers.filter(c => qcompWordMatch(qWords, [c.code, c.name, c.city].join(' ')))
+      : customers;
+    sel.innerHTML = '<option value="">— Select a Customer —</option>' + filtered.map(c =>
+      `<option value="${qcompEscAttr(c.code)}">${qcompEscAttr(c.code)} — ${qcompEscAttr(c.name)}${c.city ? ' ('+qcompEscAttr(c.city)+')' : ''}</option>`
+    ).join('');
+  };
+  window.qcompComboSelectCustomer = function() {
+    const sel = document.getElementById('qcomp-cust-sel');
+    if (!sel || !sel.value) { alert('Please select a customer'); return; }
+    const opt = sel.options[sel.selectedIndex];
+    const cardCode = sel.value;
+    const cardName = opt.text.split(' — ').slice(1).join(' — ').replace(/ \(.*\)$/, '');
+    qcompSend(JSON.stringify({ action:'select_customer', cardCode, cardName: cardName||cardCode }));
+  };
+
   function qcompSend(text){
-    qcompAddMsg('user',text);
+    const isJsonAction = text.trim().startsWith('{');
+    if (!isJsonAction) qcompAddMsg('user',text);
     el('qcomp-qr-area').innerHTML='';
     fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId,message:text})})
       .then(r=>r.json()).then(d=>{
@@ -31254,19 +31975,35 @@ window.roAskFollowUp = function() {
 
   // ── Customer combo — only customers with open quotations ─────────────────────
   const q2oTok = () => localStorage.getItem('hanny_token')||'';
+  let _q2oCustomers = [];
+
+  function q2oWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+
+  window.q2oFilterCustomers = function(inputEl) {
+    const sel = el('q2o-cust-sel'); if (!sel) return;
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? _q2oCustomers.filter(c => q2oWordMatch(qWords, [c.cardCode, c.cardName].join(' ')))
+      : _q2oCustomers;
+    sel.innerHTML = `<option value="">— Select Customer (${filtered.length} with open quotations) —</option>` +
+      filtered.map(c => `<option value="${c.cardCode}">${c.cardCode} — ${c.cardName}</option>`).join('');
+  };
 
   window.q2oLoadCustomers = async function() {
     const sel = el('q2o-cust-sel'); if (!sel) return;
     sel.innerHTML = '<option value="">⏳ Loading customers with open quotations…</option>';
     try {
       const r = await fetch('/api/quotation-order/customers-with-quotations', {headers:{'x-auth-token':q2oTok()}}).then(r=>r.json());
-      const list = r.customers || [];
-      if (!list.length) {
+      _q2oCustomers = r.customers || [];
+      if (!_q2oCustomers.length) {
         sel.innerHTML = '<option value="">⚠️ No customers with open quotations found</option>';
         return;
       }
-      sel.innerHTML = `<option value="">— Select Customer (${list.length} with open quotations) —</option>` +
-        list.map(c => `<option value="${c.cardCode}">${c.cardCode} — ${c.cardName}</option>`).join('');
+      sel.innerHTML = `<option value="">— Select Customer (${_q2oCustomers.length} with open quotations) —</option>` +
+        _q2oCustomers.map(c => `<option value="${c.cardCode}">${c.cardCode} — ${c.cardName}</option>`).join('');
     } catch(e) { sel.innerHTML = '<option value="">❌ Failed to load: ' + e.message + '</option>'; }
   };
 
@@ -31324,7 +32061,6 @@ window.roAskFollowUp = function() {
     sessionId=null; currentQuot=null; currentLines=[];
     const msgs = el('q2o-messages'); if(msgs) msgs.innerHTML='';
     const qr   = el('q2o-qr-area');  if(qr)   qr.innerHTML='';
-    const sum  = el('q2o-summary');  if(sum)  sum.innerHTML='';
     const badge = el('q2o-step-badge'); if(badge) badge.textContent='READY';
     const stxt  = el('q2o-status-text'); if(stxt) stxt.textContent='Convert open quotation to sales order';
     q2oHideEditForm();
@@ -31347,7 +32083,8 @@ window.roAskFollowUp = function() {
   };
 
   function q2oSend(text){
-    q2oAddMsg('user',text);
+    const isJsonAction = text.trim().startsWith('{');
+    if (!isJsonAction) q2oAddMsg('user',text);
     el('q2o-qr-area').innerHTML='';
     fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json','x-auth-token':q2oTok()},body:JSON.stringify({sessionId,message:text})})
       .then(r=>r.json()).then(d=>{
@@ -31582,44 +32319,6 @@ window.roAskFollowUp = function() {
     if (split) split.style.display = 'flex';
   };
 
-  function q2oRenderOrderPreview(fd) {
-    const box = el('q2o-summary'); if (!box) return;
-    const lines = fd.lines || [];
-    const total = lines.reduce((s,l) => s + Number(l.lineTotal||l.qty*l.unitPrice||0), 0);
-
-    const rowsHtml = lines.map((l,i) => `
-      <tr style="border-bottom:1px solid #f0f9ff">
-        <td style="padding:5px 8px;font-size:11.5px;font-weight:600;color:#0e7490">${l.itemCode||''}</td>
-        <td style="padding:5px 8px;font-size:11px;color:#374151">${l.itemName||''}</td>
-        <td style="padding:5px 8px;font-size:11.5px;text-align:right">${l.qty}</td>
-        <td style="padding:5px 8px;font-size:11.5px;text-align:right">${Number(l.unitPrice||0).toFixed(2)}</td>
-        <td style="padding:5px 8px;font-size:11.5px;text-align:right;font-weight:600">${Number(l.lineTotal||l.qty*(l.unitPrice||0)).toFixed(2)}</td>
-      </tr>`).join('');
-
-    box.innerHTML = `
-      <div style="font-size:12.5px;font-weight:700;color:#0e7490;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #e0f2fe">
-        ${fd.cardName||fd.cardCode||'Customer'}</div>
-      <div style="font-size:11px;color:#6b7280;margin-bottom:2px">Quotation #${fd.docNum}</div>
-      <div style="font-size:11px;color:#6b7280;margin-bottom:8px">Date: ${fd.docDate||'—'} &nbsp;|&nbsp; Valid: ${fd.dueDate||'—'}</div>
-      ${lines.length ? `
-        <div style="font-size:10px;font-weight:700;color:#0e7490;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Line Items</div>
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;min-width:260px">
-            <thead><tr style="background:#ecfeff;font-size:10px;font-weight:700;color:#0e7490">
-              <th style="padding:4px 8px;text-align:left">Item</th>
-              <th style="padding:4px 8px;text-align:left">Desc</th>
-              <th style="padding:4px 8px;text-align:right">Qty</th>
-              <th style="padding:4px 8px;text-align:right">Price</th>
-              <th style="padding:4px 8px;text-align:right">Total</th>
-            </tr></thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-        </div>
-        <div style="margin-top:10px;text-align:right;font-size:13px;font-weight:700;color:#0e7490;padding-top:8px;border-top:1.5px solid #0e7490">
-          Total: ${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
-        </div>` : '<div style="color:#9ca3af;font-size:12px">No lines</div>'}`;
-  }
-
   function q2oShowQR(qrs){
     const area=el('q2o-qr-area'); area.innerHTML='';
     qrs.forEach(q=>{ const btn=document.createElement('button'); btn.textContent=q; btn.className='quick-reply-btn';
@@ -31636,17 +32335,6 @@ window.roAskFollowUp = function() {
       +(role==='user'?'background:'+COLOR+';color:#fff':'background:#f3f4f6;color:var(--text)');
     bubble.innerHTML=html; wrap.appendChild(bubble); area.appendChild(wrap);
     area.scrollTop=area.scrollHeight;
-  }
-
-  function q2oRenderSummary(s){
-    const box=el('q2o-summary'); if(!box) return;
-    let h='<div style="font-size:11.5px;color:var(--text)">';
-    if(s.customer) h+=`<div style="font-weight:700;font-size:13px;margin-bottom:6px">${s.customer}</div>`;
-    if(s.quotNum) h+=`<div style="color:#6b7280;margin-bottom:4px">Quotation #${s.quotNum}</div>`;
-    if(s.lines&&s.lines.length){
-      s.lines.forEach(l=>h+=`<div style="padding:3px 0;border-bottom:1px solid #e5e7eb;font-size:11px">${l.ItemCode} × ${l.Quantity}</div>`);
-    }
-    h+='</div>'; box.innerHTML=h;
   }
 
   window.q2oOpenForm = function(){
@@ -31770,7 +32458,6 @@ window.roAskFollowUp = function() {
     sessionId=null;
     const msgs=el('o2d-messages'); if(msgs) msgs.innerHTML='';
     const qr=el('o2d-qr-area'); if(qr) qr.innerHTML='';
-    const sum=el('o2d-summary'); if(sum) sum.innerHTML='';
     const badge=el('o2d-step-badge'); if(badge) badge.textContent='READY';
     const stxt=el('o2d-status-text'); if(stxt) stxt.textContent='Select customer → pick open order → create delivery note';
     o2dHideEditForm();
@@ -31787,15 +32474,32 @@ window.roAskFollowUp = function() {
   }
 
   // ── Customer combo ────────────────────────────────────────────────────────────
+  let _o2dCustomers = [];
+
+  function o2dWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+
+  window.o2dFilterCustomers = function(inputEl) {
+    const sel = el('o2d-cust-sel'); if (!sel) return;
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? _o2dCustomers.filter(c => o2dWordMatch(qWords, [c.cardCode, c.cardName].join(' ')))
+      : _o2dCustomers;
+    sel.innerHTML = `<option value="">— Select Customer (${filtered.length} with open orders) —</option>` +
+      filtered.map(c=>`<option value="${c.cardCode}">${c.cardCode} — ${c.cardName}</option>`).join('');
+  };
+
   window.o2dLoadCustomers = async function() {
     const sel = el('o2d-cust-sel'); if (!sel) return;
     sel.innerHTML = '<option value="">⏳ Loading customers with open orders…</option>';
     try {
       const r = await fetch(API+'/customers-with-orders',{headers:{'x-auth-token':o2dTok()}}).then(r=>r.json());
-      const list = r.customers || [];
-      if (!list.length) { sel.innerHTML='<option value="">⚠️ No customers with open orders found</option>'; return; }
-      sel.innerHTML = `<option value="">— Select Customer (${list.length} with open orders) —</option>` +
-        list.map(c=>`<option value="${c.cardCode}">${c.cardCode} — ${c.cardName}</option>`).join('');
+      _o2dCustomers = r.customers || [];
+      if (!_o2dCustomers.length) { sel.innerHTML='<option value="">⚠️ No customers with open orders found</option>'; return; }
+      sel.innerHTML = `<option value="">— Select Customer (${_o2dCustomers.length} with open orders) —</option>` +
+        _o2dCustomers.map(c=>`<option value="${c.cardCode}">${c.cardCode} — ${c.cardName}</option>`).join('');
     } catch(e) { sel.innerHTML='<option value="">❌ Failed: '+e.message+'</option>'; }
   };
 
@@ -31845,7 +32549,8 @@ window.roAskFollowUp = function() {
   };
 
   function o2dSend(text){
-    o2dAddMsg('user',text);
+    const isJsonAction = text.trim().startsWith('{');
+    if (!isJsonAction) o2dAddMsg('user',text);
     const qr=el('o2d-qr-area'); if(qr) qr.innerHTML='';
     fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json','x-auth-token':o2dTok()},body:JSON.stringify({sessionId,message:text})})
       .then(r=>r.json()).then(d=>{
@@ -32079,7 +32784,7 @@ window.roAskFollowUp = function() {
 
   window.d2arinvResetSession=function(){
     sessionId=null; currentDel=null; currentLines=[];
-    el('d2arinv-messages').innerHTML=''; el('d2arinv-qr-area').innerHTML=''; el('d2arinv-summary').innerHTML='';
+    el('d2arinv-messages').innerHTML=''; el('d2arinv-qr-area').innerHTML='';
     el('d2arinv-step-badge').textContent='READY'; el('d2arinv-status-text').textContent='Invoice customer from delivery note';
     d2arinvStart();
   };
@@ -32099,8 +32804,40 @@ window.roAskFollowUp = function() {
     inp.value=''; d2arinvSend(txt);
   };
 
+  function d2arinvEscAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function d2arinvWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+  window.d2arinvFilterCustomers = function(inputEl) {
+    const container = inputEl.closest('[data-customers]');
+    if (!container) return;
+    const sel = container.querySelector('select[id^="d2arinv-cust-sel"]');
+    if (!sel) return;
+    let customers = [];
+    try { customers = JSON.parse(container.getAttribute('data-customers')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? customers.filter(c => d2arinvWordMatch(qWords, [c.code, c.name, c.city].join(' ')))
+      : customers;
+    sel.innerHTML = '<option value="">— Select a Customer —</option>' + filtered.map(c =>
+      `<option value="${d2arinvEscAttr(c.code)}">${d2arinvEscAttr(c.code)} — ${d2arinvEscAttr(c.name)}${c.city ? ' ('+d2arinvEscAttr(c.city)+')' : ''}</option>`
+    ).join('');
+  };
+  window.d2arinvComboSelectCustomer = function() {
+    const sel = document.getElementById('d2arinv-cust-sel');
+    if (!sel || !sel.value) { alert('Please select a customer'); return; }
+    const opt = sel.options[sel.selectedIndex];
+    const cardCode = sel.value;
+    const cardName = opt.text.split(' — ').slice(1).join(' — ').replace(/ \(.*\)$/, '');
+    d2arinvSend(JSON.stringify({ action:'select_customer', cardCode, cardName: cardName||cardCode }));
+  };
+
   function d2arinvSend(text){
-    d2arinvAddMsg('user',text);
+    const isJsonAction = text.trim().startsWith('{');
+    if (!isJsonAction) d2arinvAddMsg('user',text);
     el('d2arinv-qr-area').innerHTML='';
     fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId,message:text})})
       .then(r=>r.json()).then(d=>{
@@ -32133,16 +32870,6 @@ window.roAskFollowUp = function() {
         area.appendChild(btn);
       });
     }
-    if(d.customerList&&d.customerList.length){
-      const area=el('d2arinv-qr-area'); area.innerHTML='';
-      d.customerList.forEach(c=>{
-        const btn=document.createElement('button'); btn.className='quick-reply-btn';
-        btn.textContent=c.cardCode+' — '+c.cardName;
-        btn.style.cssText='padding:5px 12px;border:1px solid '+COLOR+';color:'+COLOR+';background:#fff;border-radius:14px;font-size:12px;cursor:pointer;font-family:var(--font);margin:2px';
-        btn.onclick=()=>d2arinvSend(JSON.stringify({action:'select_customer',cardCode:c.cardCode,cardName:c.cardName}));
-        area.appendChild(btn);
-      });
-    }
     if(d.formData){
       currentDel={CardName:d.formData.cardName,CardCode:d.formData.cardCode,DocNum:d.formData.docNum,DocEntry:d.formData.docEntry};
       currentLines=(d.formData.lines||[]).map(l=>({ItemCode:l.itemCode,ItemDescription:l.itemName,Quantity:l.qty,UnitPrice:l.unitPrice||0,TaxCode:l.taxCode||'',WarehouseCode:l.warehouse||''}));
@@ -32166,18 +32893,6 @@ window.roAskFollowUp = function() {
       +(role==='user'?'background:'+COLOR+';color:#fff':'background:#f3f4f6;color:var(--text)');
     bubble.innerHTML=html; wrap.appendChild(bubble); area.appendChild(wrap);
     area.scrollTop=area.scrollHeight;
-  }
-
-  function d2arinvRenderSummary(s){
-    const box=el('d2arinv-summary'); if(!box) return;
-    let h='<div style="font-size:11.5px">';
-    if(s.customer) h+=`<div style="font-weight:700;font-size:13px;margin-bottom:6px">${s.customer}</div>`;
-    if(s.delNum) h+=`<div style="color:#6b7280;margin-bottom:4px">Delivery #${s.delNum}</div>`;
-    if(s.lines&&s.lines.length){
-      s.lines.forEach(l=>h+=`<div style="padding:3px 0;border-bottom:1px solid #e5e7eb;font-size:11px">${l.ItemCode} × ${l.Quantity}</div>`);
-    }
-    if(s.total) h+=`<div style="margin-top:8px;font-weight:700;font-size:13px;color:${COLOR}">Total: ${s.total}</div>`;
-    h+='</div>'; box.innerHTML=h;
   }
 
   window.d2arinvOpenForm=function(){
@@ -32296,7 +33011,7 @@ window.roAskFollowUp = function() {
 
   window.arinv2arcmResetSession=function(){
     sessionId=null; currentInv=null; currentLines=[];
-    el('arinv2arcm-messages').innerHTML=''; el('arinv2arcm-qr-area').innerHTML=''; el('arinv2arcm-summary').innerHTML='';
+    el('arinv2arcm-messages').innerHTML=''; el('arinv2arcm-qr-area').innerHTML='';
     el('arinv2arcm-step-badge').textContent='READY'; el('arinv2arcm-status-text').textContent='Select customer → choose invoice → post credit memo';
     arinv2arcmStart();
   };
@@ -32316,8 +33031,40 @@ window.roAskFollowUp = function() {
     inp.value=''; arinv2arcmSend(txt);
   };
 
+  function arinv2arcmEscAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function arinv2arcmWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+  window.arinv2arcmFilterCustomers = function(inputEl) {
+    const container = inputEl.closest('[data-customers]');
+    if (!container) return;
+    const sel = container.querySelector('select[id^="arinv2arcm-cust-sel"]');
+    if (!sel) return;
+    let customers = [];
+    try { customers = JSON.parse(container.getAttribute('data-customers')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? customers.filter(c => arinv2arcmWordMatch(qWords, [c.code, c.name, c.city].join(' ')))
+      : customers;
+    sel.innerHTML = '<option value="">— Select a Customer —</option>' + filtered.map(c =>
+      `<option value="${arinv2arcmEscAttr(c.code)}">${arinv2arcmEscAttr(c.code)} — ${arinv2arcmEscAttr(c.name)}${c.city ? ' ('+arinv2arcmEscAttr(c.city)+')' : ''}</option>`
+    ).join('');
+  };
+  window.arinv2arcmComboSelectCustomer = function() {
+    const sel = document.getElementById('arinv2arcm-cust-sel');
+    if (!sel || !sel.value) { alert('Please select a customer'); return; }
+    const opt = sel.options[sel.selectedIndex];
+    const cardCode = sel.value;
+    const cardName = opt.text.split(' — ').slice(1).join(' — ').replace(/ \(.*\)$/, '');
+    arinv2arcmSend(JSON.stringify({ action:'select_customer', cardCode, cardName: cardName||cardCode }));
+  };
+
   function arinv2arcmSend(text){
-    arinv2arcmAddMsg('user',text);
+    const isJsonAction = text.trim().startsWith('{');
+    if (!isJsonAction) arinv2arcmAddMsg('user',text);
     el('arinv2arcm-qr-area').innerHTML='';
     fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId,message:text})})
       .then(r=>r.json()).then(d=>{
@@ -32337,16 +33084,6 @@ window.roAskFollowUp = function() {
         btn.textContent='AR #'+s.docNum+' — '+s.docDate+' — '+Number(s.docTotal||0).toFixed(2);
         btn.style.cssText='padding:5px 12px;border:1px solid '+COLOR+';color:'+COLOR+';background:#fff;border-radius:14px;font-size:12px;cursor:pointer;font-family:var(--font);margin:2px';
         btn.onclick=()=>arinv2arcmSend(JSON.stringify({action:'select_arinv',docEntry:s.docEntry}));
-        area.appendChild(btn);
-      });
-    }
-    if(d.customerList&&d.customerList.length){
-      const area=el('arinv2arcm-qr-area'); area.innerHTML='';
-      d.customerList.forEach(c=>{
-        const btn=document.createElement('button'); btn.className='quick-reply-btn';
-        btn.textContent=c.cardCode+' — '+c.cardName;
-        btn.style.cssText='padding:5px 12px;border:1px solid '+COLOR+';color:'+COLOR+';background:#fff;border-radius:14px;font-size:12px;cursor:pointer;font-family:var(--font);margin:2px';
-        btn.onclick=()=>arinv2arcmSend(JSON.stringify({action:'select_customer',cardCode:c.cardCode,cardName:c.cardName}));
         area.appendChild(btn);
       });
     }
@@ -32373,18 +33110,6 @@ window.roAskFollowUp = function() {
       +(role==='user'?'background:'+COLOR+';color:#fff':'background:#f3f4f6;color:var(--text)');
     bubble.innerHTML=html; wrap.appendChild(bubble); area.appendChild(wrap);
     area.scrollTop=area.scrollHeight;
-  }
-
-  function arinv2arcmRenderSummary(s){
-    const box=el('arinv2arcm-summary'); if(!box) return;
-    let h='<div style="font-size:11.5px">';
-    if(s.customer) h+=`<div style="font-weight:700;font-size:13px;margin-bottom:6px">${s.customer}</div>`;
-    if(s.invoiceNum) h+=`<div style="color:#6b7280;margin-bottom:4px">Invoice #${s.invoiceNum}</div>`;
-    if(s.lines&&s.lines.length){
-      s.lines.forEach(l=>h+=`<div style="padding:3px 0;border-bottom:1px solid #e5e7eb;font-size:11px">${l.ItemCode} × ${l.Quantity} @ ${l.UnitPrice||''}</div>`);
-    }
-    if(s.total) h+=`<div style="margin-top:8px;font-weight:700;font-size:13px;color:${COLOR}">Total: ${s.total}</div>`;
-    h+='</div>'; box.innerHTML=h;
   }
 
   window.arinv2arcmOpenForm=function(){
@@ -32524,6 +33249,37 @@ window.roAskFollowUp = function() {
     const inp=el('inpmt-input'); if(!inp) return;
     const txt=inp.value.trim(); if(!txt) return;
     inp.value=''; inpmtSend(txt);
+  };
+
+  function inpmtEscAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function inpmtWordMatch(queryWords, haystack) {
+    const hay = haystack.toLowerCase();
+    return queryWords.every(w => hay.includes(w));
+  }
+  window.inpmtFilterCustomers = function(inputEl) {
+    const container = inputEl.closest('[data-customers]');
+    if (!container) return;
+    const sel = container.querySelector('select[id^="inpmt-cust-sel"]');
+    if (!sel) return;
+    let customers = [];
+    try { customers = JSON.parse(container.getAttribute('data-customers')) || []; } catch {}
+    const qWords = inputEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = qWords.length
+      ? customers.filter(c => inpmtWordMatch(qWords, [c.code, c.name, c.city].join(' ')))
+      : customers;
+    sel.innerHTML = '<option value="">— Select a Customer —</option>' + filtered.map(c =>
+      `<option value="${inpmtEscAttr(c.code)}">${inpmtEscAttr(c.code)} — ${inpmtEscAttr(c.name)}${c.city ? ' ('+inpmtEscAttr(c.city)+')' : ''}</option>`
+    ).join('');
+  };
+  window.inpmtComboSelectCustomer = function() {
+    const sel = document.getElementById('inpmt-cust-sel');
+    if (!sel || !sel.value) { alert('Please select a customer'); return; }
+    const opt = sel.options[sel.selectedIndex];
+    const cardCode = sel.value;
+    const cardName = opt.text.split(' — ').slice(1).join(' — ').replace(/ \(.*\)$/, '');
+    inpmtSend(null, { action:'select_bp', cardCode, cardName: cardName||cardCode });
   };
 
   function inpmtSend(text, jsonAction){
@@ -33265,17 +34021,27 @@ function rpRenderGrid(role) {
          👑 <strong>Super Administrator</strong> — This role has unrestricted access to all menus and features. Permissions cannot be modified.
        </div>` : '';
 
-  html += Object.entries(sections).map(([sec, perms]) => `
-    <div class="rp-sec-label">${sec}</div>
-    <div class="rp-perm-grid">
-      ${perms.map(p => {
-        const on = granted.has(p.key) || isSA;
-        return `<label class="rp-perm-item${on?' checked':''}${isSA?' disabled':''}" onclick="${isSA?'':'rpTogglePerm(this)'}">
-          <input type="checkbox" data-perm="${p.key}" ${on?'checked':''} ${isSA?'disabled':''} onchange="rpMarkUnsaved()">
-          <span>${p.label}</span>
-        </label>`;
-      }).join('')}
-    </div>`).join('');
+  // Within each section, sub-bucket by `group` (a collapsible sidebar
+  // sub-menu) so related items render together; ungrouped items (direct
+  // section-level menu entries) render first with no sub-heading.
+  const renderItem = p => {
+    const on = granted.has(p.key) || isSA;
+    return `<label class="rp-perm-item${on?' checked':''}${isSA?' disabled':''}" onclick="${isSA?'':'rpTogglePerm(this)'}">
+      <input type="checkbox" data-perm="${p.key}" ${on?'checked':''} ${isSA?'disabled':''} onchange="rpMarkUnsaved()">
+      <span>${p.label}</span>
+    </label>`;
+  };
+
+  html += Object.entries(sections).map(([sec, perms]) => {
+    const ungrouped = perms.filter(p => !p.group);
+    const groups = {};
+    perms.forEach(p => { if (p.group) (groups[p.group] = groups[p.group]||[]).push(p); });
+    const ungroupedHtml = ungrouped.length ? `<div class="rp-perm-grid">${ungrouped.map(renderItem).join('')}</div>` : '';
+    const groupsHtml = Object.entries(groups).map(([grp, gperms]) => `
+      <div style="font-size:11px;font-weight:600;color:#6b7280;margin:8px 0 4px;padding-left:2px">${grp}</div>
+      <div class="rp-perm-grid">${gperms.map(renderItem).join('')}</div>`).join('');
+    return `<div class="rp-sec-label">${sec}</div>${ungroupedHtml}${groupsHtml}`;
+  }).join('');
 
   document.getElementById('rp-perms-grid').innerHTML = html;
 }
@@ -33525,31 +34291,40 @@ function urRenderPermsGrid() {
          👑 <strong>Super Administrator</strong> — Unrestricted access to everything. Rights cannot be modified.
        </div>` : '';
 
-  html += Object.entries(sections).map(([sec, perms]) => `
-    <div style="margin-bottom:20px">
+  const renderUrItem = p => {
+    const active   = isSA || effSet.has(p.key);
+    const isOvr    = p.key in ovrMap;
+    const fromRole = roleSet.has(p.key);
+    let bg, border, textColor, hint = '';
+    if (isSA) { bg='#f9fafb'; border='#e5e7eb'; textColor='#374151'; }
+    else if (active && isOvr && !fromRole) { bg='#eff6ff'; border='#3b82f6'; textColor='#1d4ed8'; hint='<span style="font-size:9px;margin-left:auto;color:#3b82f6;font-weight:600">+override</span>'; }
+    else if (!active && isOvr && fromRole) { bg='#fff7ed'; border='#f97316'; textColor='#9a3412'; hint='<span style="font-size:9px;margin-left:auto;color:#f97316;font-weight:600">-override</span>'; }
+    else if (active) { bg='#f0fdf4'; border='#10b981'; textColor='#065f46'; }
+    else { bg='#fff'; border='#e5e7eb'; textColor='#9ca3af'; }
+    return `<label onclick="${isSA?'':'urTogglePerm(this,\''+p.key+'\')'}"
+      style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid ${border};border-radius:7px;
+             cursor:${isSA?'not-allowed':'pointer'};background:${bg};transition:all .12s;user-select:none">
+      <input type="checkbox" data-perm="${p.key}" ${active?'checked':''} ${isSA?'disabled':''}
+        style="accent-color:#0070F2;width:14px;height:14px;flex-shrink:0" onchange="urMarkUnsaved()">
+      <span style="font-size:12.5px;color:${textColor};font-weight:${active?'600':'400'}">${p.label}</span>
+      ${hint}
+    </label>`;
+  };
+
+  html += Object.entries(sections).map(([sec, perms]) => {
+    const ungrouped = perms.filter(p => !p.group);
+    const groups = {};
+    perms.forEach(p => { if (p.group) (groups[p.group] = groups[p.group]||[]).push(p); });
+    const gridOpen  = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">';
+    const ungroupedHtml = ungrouped.length ? `${gridOpen}${ungrouped.map(renderUrItem).join('')}</div>` : '';
+    const groupsHtml = Object.entries(groups).map(([grp, gperms]) => `
+      <div style="font-size:11px;font-weight:600;color:#6b7280;margin:8px 0 4px;padding-left:2px">${grp}</div>
+      ${gridOpen}${gperms.map(renderUrItem).join('')}</div>`).join('');
+    return `<div style="margin-bottom:20px">
       <div style="font-size:10.5px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.07em;padding-bottom:6px;border-bottom:1px solid #f3f4f6;margin-bottom:10px">${sec}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">
-        ${perms.map(p => {
-          const active   = isSA || effSet.has(p.key);
-          const isOvr    = p.key in ovrMap;
-          const fromRole = roleSet.has(p.key);
-          let bg, border, textColor, hint = '';
-          if (isSA) { bg='#f9fafb'; border='#e5e7eb'; textColor='#374151'; }
-          else if (active && isOvr && !fromRole) { bg='#eff6ff'; border='#3b82f6'; textColor='#1d4ed8'; hint='<span style="font-size:9px;margin-left:auto;color:#3b82f6;font-weight:600">+override</span>'; }
-          else if (!active && isOvr && fromRole) { bg='#fff7ed'; border='#f97316'; textColor='#9a3412'; hint='<span style="font-size:9px;margin-left:auto;color:#f97316;font-weight:600">-override</span>'; }
-          else if (active) { bg='#f0fdf4'; border='#10b981'; textColor='#065f46'; }
-          else { bg='#fff'; border='#e5e7eb'; textColor='#9ca3af'; }
-          return `<label onclick="${isSA?'':'urTogglePerm(this,\''+p.key+'\')'}"
-            style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid ${border};border-radius:7px;
-                   cursor:${isSA?'not-allowed':'pointer'};background:${bg};transition:all .12s;user-select:none">
-            <input type="checkbox" data-perm="${p.key}" ${active?'checked':''} ${isSA?'disabled':''}
-              style="accent-color:#0070F2;width:14px;height:14px;flex-shrink:0" onchange="urMarkUnsaved()">
-            <span style="font-size:12.5px;color:${textColor};font-weight:${active?'600':'400'}">${p.label}</span>
-            ${hint}
-          </label>`;
-        }).join('')}
-      </div>
-    </div>`).join('');
+      ${ungroupedHtml}${groupsHtml}
+    </div>`;
+  }).join('');
 
   document.getElementById('ur-perms-grid').innerHTML = html;
 }

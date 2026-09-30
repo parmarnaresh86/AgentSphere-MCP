@@ -52,6 +52,30 @@ function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ── Styled reply helpers (mirrors Sales Order Agent's card look) ───────────────
+const THEME = { border: '#b45309', bg: '#fffbeb', text: '#b45309' };
+
+function buildInfoTable(rows) {
+  const trs = rows.map((r, i) =>
+    `<tr${i % 2 === 1 ? ' style="background:#f9fafb"' : ''}><td style="padding:7px 12px;font-size:12px;color:#6b7280;width:38%">${r.label}</td><td style="padding:7px 12px;font-size:12.5px;font-weight:600">${r.value}</td></tr>`
+  ).join('');
+  return `<table style="width:100%;border-collapse:collapse"><tbody>${trs}</tbody></table>`;
+}
+
+function buildCard(title, rows, footer) {
+  return `<div style="background:${THEME.bg};border:1.5px solid ${THEME.border};border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13px;font-weight:700;color:${THEME.text};margin-bottom:10px">${title}</div>
+    ${buildInfoTable(rows)}
+    ${footer ? `<div style="font-size:12.5px;color:#374151;margin-top:10px">${footer}</div>` : ''}
+  </div>`;
+}
+
+function buildErrorCard(title, detail) {
+  return `<div style="background:#fef2f2;border:1.5px solid #f87171;border-radius:8px;padding:12px 16px;color:#b91c1c;font-size:13px">
+    ❌ <strong>${title}</strong>${detail ? `<br><br>${detail}` : ''}
+  </div>`;
+}
+
 // ── SAP helpers ────────────────────────────────────────────────────────────────
 
 async function searchCustomers(sap, query) {
@@ -348,7 +372,7 @@ export function createOrderToDeliveryRouter(deps) {
               meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
             } catch (e) {
               console.error('[OTD] post_target error:', e.message);
-              reply = `❌ **Failed to post Delivery Note**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
+              reply = buildErrorCard('Failed to post Delivery Note', `SAP Error: ${escHtml(e.message)}<br><br>Would you like to <strong>retry</strong> or <strong>cancel</strong>?`);
               quickReplies = ['Open Delivery Form', 'Cancel'];
             }
           }
@@ -360,7 +384,7 @@ export function createOrderToDeliveryRouter(deps) {
           if (cardCode) session.selectedCustomer = { cardCode, cardName: cardName || cardCode };
           const doc = await fetchSourceByEntry(sap, docEntry);
           if (!doc) {
-            reply = `❌ Could not load Sales Order (DocEntry: ${docEntry}). It may have been closed.`;
+            reply = buildErrorCard('Could not load Sales Order', `DocEntry: ${docEntry}. It may have been closed.`);
             quickReplies = ['Start Over'];
           } else {
             session.sourceDetail = buildSourceDetail(doc);
@@ -368,9 +392,11 @@ export function createOrderToDeliveryRouter(deps) {
             const d              = session.sourceDetail;
             const warehouses     = getCacheWarehouses();
             formData = { ...d, warehouses };
-            reply = `✅ **Sales Order #${d.docNum}** loaded for **${escHtml(d.cardName || d.cardCode || '')}**.\n\n` +
-              `${d.lines.length} line(s) &nbsp;·&nbsp; Total: **${fmtN(d.docTotal)}**\n\n` +
-              `Review and adjust delivery quantities in the form below, then click **Post Delivery Note**.`;
+            reply = buildCard(`✅ Sales Order #${d.docNum} loaded`, [
+              { label: 'Customer', value: escHtml(d.cardName || d.cardCode || '') },
+              { label: 'Lines',    value: String(d.lines.length) },
+              { label: 'Total',    value: fmtN(d.docTotal) },
+            ], 'Review and adjust delivery quantities in the form below, then click <strong>Post Delivery Note</strong>.');
           }
         }
 
@@ -381,17 +407,16 @@ export function createOrderToDeliveryRouter(deps) {
             session.sourceDetail = buildSourceDetail(doc);
             session.step = 'REVIEW_FORM';
             formData = buildFormData(session.sourceDetail);
-            reply = `### Sales Order #${doc.DocNum} — ${escHtml(doc.CardName || doc.CardCode)}\n\n` +
-              `| Field | Value |\n|---|---|\n` +
-              `| **Customer** | ${escHtml(doc.CardName || '—')} (${escHtml(doc.CardCode || '—')}) |\n` +
-              `| **Order Date** | ${session.sourceDetail.docDate || '—'} |\n` +
-              `| **Delivery Date** | ${session.sourceDetail.dueDate || '—'} |\n` +
-              `| **Lines** | ${session.sourceDetail.lines.length} |\n` +
-              `| **Total** | ${fmtN(session.sourceDetail.docTotal)} |\n\n` +
-              `Open the Delivery Note form to review lines and set delivery quantities:`;
+            reply = buildCard(`Sales Order #${doc.DocNum} — ${escHtml(doc.CardName || doc.CardCode)}`, [
+              { label: 'Customer',      value: `${escHtml(doc.CardName || '—')} (${escHtml(doc.CardCode || '—')})` },
+              { label: 'Order Date',    value: escHtml(session.sourceDetail.docDate || '—') },
+              { label: 'Delivery Date', value: escHtml(session.sourceDetail.dueDate || '—') },
+              { label: 'Lines',         value: String(session.sourceDetail.lines.length) },
+              { label: 'Total',         value: fmtN(session.sourceDetail.docTotal) },
+            ], 'Open the Delivery Note form to review lines and set delivery quantities:');
             quickReplies = ['Open Delivery Form'];
           } else {
-            reply = '❌ Could not load Sales Order detail. Please try again.';
+            reply = buildErrorCard('Could not load Sales Order detail', 'Please try again.');
           }
         }
 
@@ -402,12 +427,12 @@ export function createOrderToDeliveryRouter(deps) {
           session.step = 'SELECT_SOURCE';
           const docs = await fetchOpenSourceDocs(sap, cardCode);
           if (!docs.length) {
-            reply = `No open sales orders found for **${escHtml(cardName)}** (${escHtml(cardCode)}).`;
+            reply = `No open sales orders found for <strong>${escHtml(cardName)}</strong> (${escHtml(cardCode)}).`;
             quickReplies = ['Search Another Customer', 'Start Over'];
             session.step = 'INIT';
           } else {
             sourceList = mapSourceList(docs);
-            reply = `Found **${docs.length}** open sales order${docs.length !== 1 ? 's' : ''} for **${escHtml(cardName)}**. Click one to load its details:`;
+            reply = `Found <strong>${docs.length}</strong> open sales order${docs.length !== 1 ? 's' : ''} for <strong>${escHtml(cardName)}</strong>. Click one to load its details:`;
           }
         }
 
@@ -419,9 +444,8 @@ export function createOrderToDeliveryRouter(deps) {
       // ── INIT / SELECT_CUSTOMER — customer search ───────────────────────────
       else if (session.step === 'INIT' || session.step === 'SELECT_CUSTOMER') {
         if (!msg) {
-          reply = `## 🟠 Sales Order → Delivery Note Agent\n\n` +
-            `*Select a customer to view their open sales orders, then create a Delivery Note.*\n\n` +
-            `Type a **customer name or code** to begin:`;
+          reply = `<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🟠 Welcome to the <strong>Sales Order → Delivery Note Agent</strong>!</div>
+            <div style="font-size:13px;color:#374151">Select a customer above, or type a name/code below, to view their open sales orders and create a Delivery Note.</div>`;
           session.step = 'INIT';
         } else if (/start over|reset|cancel/i.test(msgL)) {
           Object.assign(session, initSession());
@@ -430,7 +454,7 @@ export function createOrderToDeliveryRouter(deps) {
         } else {
           const customers = await searchCustomers(sap, msg);
           if (!customers.length) {
-            reply = `No customers found matching **"${escHtml(msg)}"**. Please try a different name or code.`;
+            reply = `No customers found matching <strong>"${escHtml(msg)}"</strong>. Please try a different name or code.`;
             quickReplies = ['Start Over'];
           } else if (customers.length === 1) {
             const c = customers[0];
@@ -438,16 +462,16 @@ export function createOrderToDeliveryRouter(deps) {
             session.step = 'SELECT_SOURCE';
             const docs = await fetchOpenSourceDocs(sap, c.CardCode);
             if (!docs.length) {
-              reply = `No open sales orders found for **${escHtml(c.CardName)}** (${escHtml(c.CardCode)}).`;
+              reply = `No open sales orders found for <strong>${escHtml(c.CardName)}</strong> (${escHtml(c.CardCode)}).`;
               quickReplies = ['Search Another Customer', 'Start Over'];
               session.step = 'INIT';
             } else {
               sourceList = mapSourceList(docs);
-              reply = `Found **${docs.length}** open sales order${docs.length !== 1 ? 's' : ''} for **${escHtml(c.CardName)}**. Click one to load its details:`;
+              reply = `Found <strong>${docs.length}</strong> open sales order${docs.length !== 1 ? 's' : ''} for <strong>${escHtml(c.CardName)}</strong>. Click one to load its details:`;
             }
           } else {
             customerList = customers.map(c => ({ cardCode: c.CardCode, cardName: c.CardName }));
-            reply = `Found **${customers.length}** customers matching **"${escHtml(msg)}"**. Select one:`;
+            reply = `Found <strong>${customers.length}</strong> customers matching <strong>"${escHtml(msg)}"</strong>. Select one:`;
             session.step = 'SELECT_CUSTOMER';
           }
         }
@@ -467,8 +491,11 @@ export function createOrderToDeliveryRouter(deps) {
               session.sourceDetail = buildSourceDetail(doc);
               session.step = 'REVIEW_FORM';
               formData = buildFormData(session.sourceDetail);
-              reply = `### Sales Order #${doc.DocNum} loaded\n\n` +
-                `**${escHtml(doc.CardName || doc.CardCode)}** — ${session.sourceDetail.lines.length} lines — Total: ${fmtN(session.sourceDetail.docTotal)}\n\nOpen the Delivery Note form:`;
+              reply = buildCard(`Sales Order #${doc.DocNum} loaded`, [
+                { label: 'Customer', value: escHtml(doc.CardName || doc.CardCode) },
+                { label: 'Lines',    value: String(session.sourceDetail.lines.length) },
+                { label: 'Total',    value: fmtN(session.sourceDetail.docTotal) },
+              ], 'Open the Delivery Note form:');
               quickReplies = ['Open Delivery Form'];
             } else {
               reply = `Sales Order #${numMatch[1]} not found or already closed. Please click an order from the list above.`;
@@ -494,7 +521,7 @@ export function createOrderToDeliveryRouter(deps) {
           if (session.selectedCustomer) {
             const docs = await fetchOpenSourceDocs(sap, session.selectedCustomer.cardCode);
             sourceList = mapSourceList(docs);
-            reply = `Select a different sales order for **${escHtml(session.selectedCustomer.cardName)}**:`;
+            reply = `Select a different sales order for <strong>${escHtml(session.selectedCustomer.cardName)}</strong>:`;
           } else {
             reply = 'Please select a sales order:';
           }

@@ -7,6 +7,7 @@
  *  5. Post IncomingPayment to SAP B1
  */
 import { Router } from 'express';
+import db, { connRepo } from '../db.mjs';
 
 const _sessions = new Map();
 
@@ -29,6 +30,80 @@ function fmtN(n, d = 2) {
 }
 function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Styled reply helpers (mirrors Sales Order Agent's card look) ───────────────
+const THEME = { border: '#047857', bg: '#f0fdf4', text: '#047857' };
+
+function buildInfoTable(rows) {
+  const trs = rows.map((r, i) =>
+    `<tr${i % 2 === 1 ? ' style="background:#f9fafb"' : ''}><td style="padding:7px 12px;font-size:12px;color:#6b7280;width:38%">${r.label}</td><td style="padding:7px 12px;font-size:12.5px;font-weight:600">${r.value}</td></tr>`
+  ).join('');
+  return `<table style="width:100%;border-collapse:collapse"><tbody>${trs}</tbody></table>`;
+}
+
+function buildCard(title, rows, footer) {
+  return `<div style="background:${THEME.bg};border:1.5px solid ${THEME.border};border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13px;font-weight:700;color:${THEME.text};margin-bottom:10px">${title}</div>
+    ${buildInfoTable(rows)}
+    ${footer ? `<div style="font-size:12.5px;color:#374151;margin-top:10px">${footer}</div>` : ''}
+  </div>`;
+}
+
+function buildSuccessCard(title, rows, footer) {
+  return `<div style="background:#f0fdf4;border:1.5px solid #10b981;border-radius:10px;padding:16px;margin:4px 0">
+    <div style="font-size:15px;font-weight:700;color:#065f46;margin-bottom:14px">✅ ${title}</div>
+    ${buildInfoTable(rows)}
+    ${footer ? `<div style="font-size:12.5px;color:#374151;margin-top:10px">${footer}</div>` : ''}
+  </div>`;
+}
+
+function buildErrorCard(title, detail) {
+  return `<div style="background:#fef2f2;border:1.5px solid #f87171;border-radius:8px;padding:12px 16px;color:#b91c1c;font-size:13px">
+    ❌ <strong>${title}</strong>${detail ? `<br><br>${detail}` : ''}
+  </div>`;
+}
+
+// ── Cache helpers ──────────────────────────────────────────────────────────────
+
+function getCompanyId() {
+  const conn = connRepo.getActive();
+  return conn ? conn.company : 'default';
+}
+
+function getCacheCustomers() {
+  const cid = getCompanyId();
+  return db.prepare(`SELECT CardCode, CardName, City FROM cache_business_partners
+    WHERE company_id=? AND CardType='cCustomer' AND Frozen='tNO' ORDER BY CardName LIMIT 500`).all(cid);
+}
+
+// ── HTML combo builder (rendered inside agent reply) ───────────────────────────
+
+function buildCustomerComboHtml(customers, label) {
+  const opts = customers.map(c =>
+    `<option value="${escHtml(c.CardCode)}">${escHtml(c.CardCode)} — ${escHtml(c.CardName)}${c.City ? ' ('+escHtml(c.City)+')' : ''}</option>`
+  ).join('');
+  const noCache = !customers.length
+    ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Customer cache is empty — go to <strong>Tools → Data Sync</strong> to load master data, or type a name below to search live.</div>` : '';
+  const customersJson = escHtml(JSON.stringify(customers.map(c => ({ code: c.CardCode, name: c.CardName, city: c.City || '' }))));
+  return `<div style="background:#f0fdf4;border:1.5px solid #047857;border-radius:8px;padding:14px;margin:6px 0" data-customers="${customersJson}">
+    ${noCache}
+    <div style="font-size:12px;font-weight:700;color:#047857;margin-bottom:8px">${label || `Select Customer (${customers.length} available)`}:</div>
+    <input type="text" placeholder="🔍 Search customer by name or code…" oninput="inpmtFilterCustomers(this)"
+      style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <select id="inpmt-cust-sel"
+        style="flex:1;border:1.5px solid #047857;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
+        <option value="">— Select a Customer —</option>
+        ${opts}
+      </select>
+      <button onclick="inpmtComboSelectCustomer()"
+        style="background:#047857;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+        Select →
+      </button>
+    </div>
+    <div style="font-size:11.5px;color:#6b7280">Type above to filter, or type a name in the chat box below to search live SAP data</div>
+  </div>`;
 }
 
 // ── SAP helpers ────────────────────────────────────────────────────────────────
@@ -348,7 +423,6 @@ export function createIncomingPaymentRouter(deps) {
       let reply        = '';
       let quickReplies = [];
       let meta         = {};
-      let bpList       = null;   // for customer search results
       let invoiceList  = null;   // for open AR invoice list
       let actionType   = null;   // 'open_form' when form should open
       let formDocs     = [];     // docs passed to open_form
@@ -366,13 +440,13 @@ export function createIncomingPaymentRouter(deps) {
 
           const invs = await fetchOpenARInvoices(sap, cardCode);
           if (!invs.length) {
-            reply = `No open AR invoices found for **${escHtml(cardName)}** (${escHtml(cardCode)}).`;
+            reply = `No open AR invoices found for <strong>${escHtml(cardName)}</strong> (${escHtml(cardCode)}).`;
             quickReplies = ['Search Another Customer', 'Start Over'];
             session.step = 'INIT';
           } else {
             session.openInvoices = mapInvoiceList(invs);
             invoiceList = session.openInvoices;
-            reply = `Found **${invs.length}** open AR invoice${invs.length !== 1 ? 's' : ''} for **${escHtml(cardName)}**.\n\nSelect the invoices to pay (or click **Pay All**):`;
+            reply = `Found <strong>${invs.length}</strong> open AR invoice${invs.length !== 1 ? 's' : ''} for <strong>${escHtml(cardName)}</strong>. Select the invoices to pay (or click <strong>Pay All</strong>):`;
             quickReplies = ['Pay All'];
           }
         }
@@ -393,7 +467,7 @@ export function createIncomingPaymentRouter(deps) {
               actionType = 'open_form';
               formDocs   = chosen;
               const totalOpen = chosen.reduce((s, d) => s + d.openAmount, 0);
-              reply = `**${chosen.length}** invoice${chosen.length !== 1 ? 's' : ''} selected — outstanding total: **${fmtN(totalOpen)}**\n\nOpening the payment form…`;
+              reply = `<strong>${chosen.length}</strong> invoice${chosen.length !== 1 ? 's' : ''} selected — outstanding total: <strong>${fmtN(totalOpen)}</strong>. Opening the payment form…`;
             }
           }
         }
@@ -413,15 +487,14 @@ export function createIncomingPaymentRouter(deps) {
 
               const totalPaid = (action.PaymentInvoices || []).reduce((s, p) => s + Number(p.SumApplied || 0), 0);
 
-              reply = `### Payment Posted Successfully!\n\n` +
-                `| Field | Value |\n|---|---|\n` +
-                `| **Payment #** | ${result.DocNum} |\n` +
-                `| **Doc Entry** | ${result.DocEntry} |\n` +
-                `| **Customer** | ${escHtml(action.CardCode)} |\n` +
-                `| **Date** | ${action.DocDate || today()} |\n` +
-                `| **Invoices Paid** | ${action.PaymentInvoices.length} |\n` +
-                `| **Total Applied** | ${fmtN(totalPaid)} |\n\n` +
-                `[Print Receipt](/api/incoming-payment/print/${result.DocEntry})\n\nWould you like to process another payment?`;
+              reply = buildSuccessCard('Payment Posted Successfully!', [
+                { label: 'Payment #',      value: `#${result.DocNum}` },
+                { label: 'Doc Entry',      value: String(result.DocEntry) },
+                { label: 'Customer',       value: escHtml(action.CardCode) },
+                { label: 'Date',           value: escHtml(action.DocDate || today()) },
+                { label: 'Invoices Paid',  value: String(action.PaymentInvoices.length) },
+                { label: 'Total Applied',  value: fmtN(totalPaid) },
+              ], `<a href="/api/incoming-payment/print/${result.DocEntry}" target="_blank" style="color:${THEME.text};font-weight:600">🖨️ Print Receipt</a><br><br>Would you like to process another payment?`);
               quickReplies = ['Yes, Process Another', 'No, Done'];
               meta = {
                 docEntry: result.DocEntry,
@@ -429,7 +502,7 @@ export function createIncomingPaymentRouter(deps) {
                 printUrl: `/api/incoming-payment/print/${result.DocEntry}`,
               };
             } catch (e) {
-              reply = `**Failed to post Incoming Payment**\n\nSAP Error: _${escHtml(e.message)}_\n\nWould you like to **retry** or **cancel**?`;
+              reply = buildErrorCard('Failed to post Incoming Payment', `SAP Error: ${escHtml(e.message)}<br><br>Would you like to <strong>retry</strong> or <strong>cancel</strong>?`);
               quickReplies = ['Open Payment Form', 'Cancel'];
             }
           }
@@ -448,24 +521,26 @@ export function createIncomingPaymentRouter(deps) {
         actionType = 'open_form';
         formDocs   = session.openInvoices;
         const totalOpen = session.openInvoices.reduce((s, d) => s + d.openAmount, 0);
-        reply = `**All ${session.openInvoices.length}** invoice${session.openInvoices.length !== 1 ? 's' : ''} selected — outstanding total: **${fmtN(totalOpen)}**\n\nOpening the payment form…`;
+        reply = `<strong>All ${session.openInvoices.length}</strong> invoice${session.openInvoices.length !== 1 ? 's' : ''} selected — outstanding total: <strong>${fmtN(totalOpen)}</strong>. Opening the payment form…`;
       }
 
       // ── INIT / new session — customer search ──────────────────────────────
       else if (session.step === 'INIT' || session.step === 'SELECT_BP') {
         if (!msg) {
-          reply = `## Incoming Payment Agent\n\n` +
-            `*Apply customer payments against open AR invoices.*\n\n` +
-            `Type a **customer name or code** to begin:`;
+          const cached = getCacheCustomers();
+          reply = `<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">💰 Welcome to the <strong>Incoming Payment Agent</strong>!</div>
+            <div style="font-size:13px;color:#374151;margin-bottom:8px">Apply customer payments against open AR invoices:</div>`
+            + buildCustomerComboHtml(cached);
           session.step = 'INIT';
         } else if (/start over|reset|cancel/i.test(msgL)) {
           Object.assign(session, initSession());
-          reply = 'Session reset. Type a customer name or code to begin:';
+          const cached = getCacheCustomers();
+          reply = 'Session reset. Select a customer below, or type a name to search live:\n\n' + buildCustomerComboHtml(cached);
           session.step = 'INIT';
         } else {
           const customers = await searchCustomers(sap, msg);
           if (!customers.length) {
-            reply = `No customers found matching **"${escHtml(msg)}"**. Please try a different name or code.`;
+            reply = `No customers found matching <strong>"${escHtml(msg)}"</strong>. Please try a different name or code.`;
             quickReplies = ['Start Over'];
           } else if (customers.length === 1) {
             const c = customers[0];
@@ -473,23 +548,19 @@ export function createIncomingPaymentRouter(deps) {
             session.step = 'SELECT_INVOICES';
             const invs = await fetchOpenARInvoices(sap, c.CardCode);
             if (!invs.length) {
-              reply = `No open AR invoices found for **${escHtml(c.CardName)}** (${escHtml(c.CardCode)}).`;
+              reply = `No open AR invoices found for <strong>${escHtml(c.CardName)}</strong> (${escHtml(c.CardCode)}).`;
               quickReplies = ['Search Another Customer', 'Start Over'];
               session.step = 'INIT';
             } else {
               session.openInvoices = mapInvoiceList(invs);
               invoiceList = session.openInvoices;
-              reply = `Found **${invs.length}** open AR invoice${invs.length !== 1 ? 's' : ''} for **${escHtml(c.CardName)}**.\n\nSelect the invoices to pay (or click **Pay All**):`;
+              reply = `Found <strong>${invs.length}</strong> open AR invoice${invs.length !== 1 ? 's' : ''} for <strong>${escHtml(c.CardName)}</strong>. Select the invoices to pay (or click <strong>Pay All</strong>):`;
               quickReplies = ['Pay All'];
             }
           } else {
-            bpList = customers.map(c => ({
-              cardCode: c.CardCode,
-              cardName: c.CardName,
-              balance:  Number(c.Balance || 0),
-            }));
-            reply = `Found **${customers.length}** customers matching **"${escHtml(msg)}"**. Select one:`;
             session.step = 'SELECT_BP';
+            reply = `Found <strong>${customers.length}</strong> customers matching <strong>"${escHtml(msg)}"</strong>. Select one:\n\n`
+              + buildCustomerComboHtml(customers, `${customers.length} matches`);
           }
         }
       }
@@ -507,12 +578,12 @@ export function createIncomingPaymentRouter(deps) {
           actionType = 'open_form';
           formDocs   = session.openInvoices;
           const totalOpen = session.openInvoices.reduce((s, d) => s + d.openAmount, 0);
-          reply = `**All ${session.openInvoices.length}** invoices selected — outstanding total: **${fmtN(totalOpen)}**\n\nOpening the payment form…`;
+          reply = `<strong>All ${session.openInvoices.length}</strong> invoices selected — outstanding total: <strong>${fmtN(totalOpen)}</strong>. Opening the payment form…`;
         } else if (session.selectedBP) {
           const invs = await fetchOpenARInvoices(sap, session.selectedBP.cardCode);
           session.openInvoices = mapInvoiceList(invs);
           invoiceList = session.openInvoices;
-          reply = `Click one or more invoices to select them, or click **Pay All**:`;
+          reply = `Click one or more invoices to select them, or click <strong>Pay All</strong>:`;
           quickReplies = ['Pay All'];
         } else {
           reply = 'Please select invoices from the list above or click Pay All.';
@@ -531,13 +602,13 @@ export function createIncomingPaymentRouter(deps) {
           session.step = 'SELECT_INVOICES';
           if (session.selectedBP && session.openInvoices.length > 0) {
             invoiceList = session.openInvoices;
-            reply = `Select invoices to pay for **${escHtml(session.selectedBP.cardName)}**:`;
+            reply = `Select invoices to pay for <strong>${escHtml(session.selectedBP.cardName)}</strong>:`;
             quickReplies = ['Pay All'];
           } else if (session.selectedBP) {
             const invs = await fetchOpenARInvoices(sap, session.selectedBP.cardCode);
             session.openInvoices = mapInvoiceList(invs);
             invoiceList = session.openInvoices;
-            reply = `Select invoices to pay for **${escHtml(session.selectedBP.cardName)}**:`;
+            reply = `Select invoices to pay for <strong>${escHtml(session.selectedBP.cardName)}</strong>:`;
             quickReplies = ['Pay All'];
           } else {
             reply = 'Please select invoices:';
@@ -584,7 +655,6 @@ export function createIncomingPaymentRouter(deps) {
       };
 
       // Optional fields only added when populated
-      if (bpList)              responseBody.bpList       = bpList;
       if (invoiceList)         responseBody.invoiceList  = invoiceList;
       if (actionType)          responseBody.action       = actionType;
       if (formDocs.length > 0) responseBody.docs         = formDocs;

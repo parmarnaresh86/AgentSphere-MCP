@@ -71,11 +71,14 @@ function buildCustomerComboHtml(customers) {
   ).join('');
   const noCache = !customers.length
     ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Customer cache is empty — go to <strong>Tools → Data Sync</strong> to load master data, or type in the box below to search live.</div>` : '';
-  return `<div style="background:#f0fdf4;border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
+  const customersJson = escHtml(JSON.stringify(customers.map(c => ({ code: c.CardCode, name: c.CardName, city: c.City || '' }))));
+  return `<div style="background:#f0fdf4;border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0" data-customers="${customersJson}">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#065f46;margin-bottom:8px">Select Customer (${customers.length} available):</div>
+    <input type="text" placeholder="🔍 Search customer by name or code…" oninput="sqFilterCustomers(this)"
+      style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-      <select id="sq-cust-sel" onchange="sqComboFilterCustomers(this)"
+      <select id="sq-cust-sel"
         style="flex:1;border:1.5px solid #10b981;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
         <option value="">— Select a Customer —</option>
         ${opts}
@@ -85,7 +88,7 @@ function buildCustomerComboHtml(customers) {
         Select →
       </button>
     </div>
-    <div style="font-size:11.5px;color:#6b7280">Or type a name / code in the box below to search</div>
+    <div style="font-size:11.5px;color:#6b7280">Type above to filter the list, or type a name / code in the chat box below to search live SAP data</div>
   </div>`;
 }
 
@@ -99,11 +102,14 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
     `<option value="${escHtml(w.WarehouseCode)}">${escHtml(w.WarehouseCode)}</option>`)].join('');
   const noCache = !items.length
     ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Item cache is empty — go to <strong>Tools → Data Sync</strong> first, or type item code below.</div>` : '';
-  return `<div style="background:#f0fdf4;border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
+  const itemsJson = escHtml(JSON.stringify(items.map(i => ({ code: i.ItemCode, name: i.ItemName, unit: i.SalesUnit || '', vat: i.SalesVATGroup || '' }))));
+  return `<div style="background:#f0fdf4;border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0" data-items="${itemsJson}">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#065f46;margin-bottom:8px">Add Line Item (${items.length} items available):</div>
     <div style="margin-bottom:8px">
       <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Item *</div>
+      <input type="text" placeholder="🔍 Search item by name or code…" oninput="sqFilterItems(this,${lineIdx})"
+        style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
       <select id="sq-item-sel-${lineIdx}" onchange="sqComboItemChange(this,${lineIdx})"
         style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
         <option value="">— Select an Item —</option>
@@ -349,10 +355,11 @@ export function createSalesQuotationRouter(deps) {
                 ...(action.comments  ? { Comments:  action.comments  } : {}),
                 DocumentLines: lines.map(l => ({
                   ItemCode:        l.itemCode,
-                  Quantity:        Number(l.qty       || 1),
-                  UnitPrice:       Number(l.unitPrice || 0),
-                  DiscountPercent: Number(l.discount  || 0),
-                  ...(l.taxCode ? { TaxCode: l.taxCode } : {}),
+                  Quantity:        Number(l.quantity        || 1),
+                  UnitPrice:       Number(l.unitPrice       || 0),
+                  DiscountPercent: Number(l.discountPercent || 0),
+                  ...(l.taxCode       ? { TaxCode: l.taxCode }             : {}),
+                  ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
                 })),
               };
 

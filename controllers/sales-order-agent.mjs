@@ -109,57 +109,55 @@ function getCacheWarehouses() {
 // ── HTML combo builders (rendered inside agent reply) ─────────────────────────
 
 function buildCustomerComboHtml(customers) {
-  const dataJson = escHtml(JSON.stringify(customers.map(c => ({ code: c.CardCode, name: c.CardName, city: c.City || '' }))));
+  const opts = customers.map(c =>
+    `<option value="${escHtml(c.CardCode)}">${escHtml(c.CardCode)} — ${escHtml(c.CardName)}${c.City ? ' ('+escHtml(c.City)+')' : ''}</option>`
+  ).join('');
   const noCache = !customers.length
     ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Customer cache is empty — go to <strong>Tools → Data Sync</strong> to load master data, or type in the box below to search live.</div>` : '';
-  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0">
+  const customersJson = escHtml(JSON.stringify(customers.map(c => ({ code: c.CardCode, name: c.CardName, city: c.City || '' }))));
+  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0" data-customers="${customersJson}">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:8px">Select Customer (${customers.length} available):</div>
-    <div id="soa-cust-combo" data-items="${dataJson}" style="display:none"></div>
-    <div style="position:relative;margin-bottom:6px">
-      <input type="text" id="soa-cust-input" autocomplete="off"
-        placeholder="Type or paste customer code / name…"
-        oninput="soaCustOnInput(this)" onfocus="soaCustOnInput(this)"
-        onkeydown="soaCustOnKeydown(event)"
-        onblur="setTimeout(function(){var dd=document.getElementById('soa-cust-dropdown'); if(dd) dd.style.display='none';},150)"
-        style="width:100%;border:1.5px solid #0070F2;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none;box-sizing:border-box">
-      <input type="hidden" id="soa-cust-code">
-      <div id="soa-cust-dropdown"
-        style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:2px;background:#fff;border:1px solid #d1d5db;border-radius:6px;max-height:220px;overflow-y:auto;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    <input type="text" placeholder="🔍 Search customer by name or code…" oninput="soaFilterCustomers(this)"
+      style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <select id="soa-cust-sel"
+        style="flex:1;border:1.5px solid #0070F2;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
+        <option value="">— Select a Customer —</option>
+        ${opts}
+      </select>
+      <button onclick="soaComboSelectCustomer()"
+        style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+        Select →
+      </button>
     </div>
-    <button onclick="soaComboSelectCustomer()"
-      style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
-      Select →
-    </button>
-    <div style="font-size:11.5px;color:#6b7280;margin-top:6px">Type to filter (${customers.length} customers), or paste a code / name to auto-select. You can also type in the chat box below to search SAP live.</div>
+    <div style="font-size:11.5px;color:#6b7280">Type above to filter the list, or type a name / code in the chat box below to search live SAP data</div>
   </div>`;
 }
 
 function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
-  const dataJson = escHtml(JSON.stringify(items.map(i => ({ code: i.ItemCode, name: i.ItemName, vat: i.SalesVATGroup || '' }))));
+  const itemOpts = items.map(i =>
+    `<option value="${escHtml(i.ItemCode)}" data-name="${escHtml(i.ItemName)}" data-unit="${escHtml(i.SalesUnit||'')}" data-vat="${escHtml(i.SalesVATGroup||'')}">${escHtml(i.ItemCode)} — ${escHtml(i.ItemName)}</option>`
+  ).join('');
   const taxOpts = [`<option value="">— None —</option>`, ...taxCodes.map(t =>
     `<option value="${escHtml(t.Code)}">${escHtml(t.Code)}${t.Name?' — '+escHtml(t.Name):''}</option>`)].join('');
   const whOpts  = [`<option value="">— Default —</option>`, ...warehouses.map(w =>
     `<option value="${escHtml(w.WarehouseCode)}">${escHtml(w.WarehouseCode)}</option>`)].join('');
   const noCache = !items.length
     ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Item cache is empty — go to <strong>Tools → Data Sync</strong> first, or type item code below.</div>` : '';
-  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0">
+  const itemsJson = escHtml(JSON.stringify(items.map(i => ({ code: i.ItemCode, name: i.ItemName, unit: i.SalesUnit || '', vat: i.SalesVATGroup || '' }))));
+  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0" data-items="${itemsJson}">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:8px">Add Line Item (${items.length} items available):</div>
-    <div id="soa-item-combo-${lineIdx}" data-items="${dataJson}" style="display:none"></div>
     <div style="margin-bottom:8px">
-      <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Item * <span style="font-weight:400;color:#9ca3af">(paste a code/name to auto-select)</span></div>
-      <div style="position:relative">
-        <input type="text" id="soa-item-input-${lineIdx}" autocomplete="off"
-          placeholder="Type or paste item code / name…"
-          oninput="soaItemOnInput(this,${lineIdx})" onfocus="soaItemOnInput(this,${lineIdx})"
-          onkeydown="soaItemOnKeydown(event,${lineIdx})"
-          onblur="setTimeout(function(){var dd=document.getElementById('soa-item-dropdown-${lineIdx}'); if(dd) dd.style.display='none';},150)"
-          style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none;box-sizing:border-box">
-        <input type="hidden" id="soa-item-code-${lineIdx}">
-        <div id="soa-item-dropdown-${lineIdx}"
-          style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:2px;background:#fff;border:1px solid #d1d5db;border-radius:6px;max-height:220px;overflow-y:auto;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
-      </div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Item *</div>
+      <input type="text" placeholder="🔍 Search item by name or code…" oninput="soaFilterItems(this,${lineIdx})"
+        style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
+      <select id="soa-item-sel-${lineIdx}" onchange="soaComboItemChange(this,${lineIdx})"
+        style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
+        <option value="">— Select an Item —</option>
+        ${itemOpts}
+      </select>
     </div>
     <div style="display:grid;grid-template-columns:80px 110px 70px 1fr 1fr;gap:8px;margin-bottom:10px">
       <div>

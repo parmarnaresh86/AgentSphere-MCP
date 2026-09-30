@@ -7,6 +7,7 @@
  *  5. Post A/R Invoice to SAP B1
  */
 import { Router } from 'express';
+import db, { connRepo } from '../db.mjs';
 
 const _sessions = new Map();
 
@@ -28,6 +29,80 @@ function fmtN(n, d = 2) {
 }
 function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Styled reply helpers (mirrors Sales Order Agent's card look) ───────────────
+const THEME = { border: '#0369a1', bg: '#f0f9ff', text: '#0369a1' };
+
+function buildInfoTable(rows) {
+  const trs = rows.map((r, i) =>
+    `<tr${i % 2 === 1 ? ' style="background:#f9fafb"' : ''}><td style="padding:7px 12px;font-size:12px;color:#6b7280;width:38%">${r.label}</td><td style="padding:7px 12px;font-size:12.5px;font-weight:600">${r.value}</td></tr>`
+  ).join('');
+  return `<table style="width:100%;border-collapse:collapse"><tbody>${trs}</tbody></table>`;
+}
+
+function buildCard(title, rows, footer) {
+  return `<div style="background:${THEME.bg};border:1.5px solid ${THEME.border};border-radius:8px;padding:14px;margin:6px 0">
+    <div style="font-size:13px;font-weight:700;color:${THEME.text};margin-bottom:10px">${title}</div>
+    ${buildInfoTable(rows)}
+    ${footer ? `<div style="font-size:12.5px;color:#374151;margin-top:10px">${footer}</div>` : ''}
+  </div>`;
+}
+
+function buildSuccessCard(title, rows, footer) {
+  return `<div style="background:#f0fdf4;border:1.5px solid #10b981;border-radius:10px;padding:16px;margin:4px 0">
+    <div style="font-size:15px;font-weight:700;color:#065f46;margin-bottom:14px">✅ ${title}</div>
+    ${buildInfoTable(rows)}
+    ${footer ? `<div style="font-size:12.5px;color:#374151;margin-top:10px">${footer}</div>` : ''}
+  </div>`;
+}
+
+function buildErrorCard(title, detail) {
+  return `<div style="background:#fef2f2;border:1.5px solid #f87171;border-radius:8px;padding:12px 16px;color:#b91c1c;font-size:13px">
+    ❌ <strong>${title}</strong>${detail ? `<br><br>${detail}` : ''}
+  </div>`;
+}
+
+// ── Cache helpers ──────────────────────────────────────────────────────────────
+
+function getCompanyId() {
+  const conn = connRepo.getActive();
+  return conn ? conn.company : 'default';
+}
+
+function getCacheCustomers() {
+  const cid = getCompanyId();
+  return db.prepare(`SELECT CardCode, CardName, City FROM cache_business_partners
+    WHERE company_id=? AND CardType='cCustomer' AND Frozen='tNO' ORDER BY CardName LIMIT 500`).all(cid);
+}
+
+// ── HTML combo builder (rendered inside agent reply) ───────────────────────────
+
+function buildCustomerComboHtml(customers, label) {
+  const opts = customers.map(c =>
+    `<option value="${escHtml(c.CardCode)}">${escHtml(c.CardCode)} — ${escHtml(c.CardName)}${c.City ? ' ('+escHtml(c.City)+')' : ''}</option>`
+  ).join('');
+  const noCache = !customers.length
+    ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Customer cache is empty — go to <strong>Tools → Data Sync</strong> to load master data, or type a name below to search live.</div>` : '';
+  const customersJson = escHtml(JSON.stringify(customers.map(c => ({ code: c.CardCode, name: c.CardName, city: c.City || '' }))));
+  return `<div style="background:#f0f9ff;border:1.5px solid #0369a1;border-radius:8px;padding:14px;margin:6px 0" data-customers="${customersJson}">
+    ${noCache}
+    <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:8px">${label || `Select Customer (${customers.length} available)`}:</div>
+    <input type="text" placeholder="🔍 Search customer by name or code…" oninput="d2arinvFilterCustomers(this)"
+      style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <select id="d2arinv-cust-sel"
+        style="flex:1;border:1.5px solid #0369a1;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
+        <option value="">— Select a Customer —</option>
+        ${opts}
+      </select>
+      <button onclick="d2arinvComboSelectCustomer()"
+        style="background:#0369a1;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+        Select →
+      </button>
+    </div>
+    <div style="font-size:11.5px;color:#6b7280">Type above to filter, or type a name in the chat box below to search live SAP data</div>
+  </div>`;
 }
 
 // ── SAP helpers ────────────────────────────────────────────────────────────────
@@ -252,7 +327,6 @@ export function createDeliveryToARInvRouter(deps) {
       let reply          = '';
       let quickReplies   = [];
       let meta           = {};
-      let customerList   = null;
       let deliveryList   = null;
       let formData       = null;
 
@@ -290,14 +364,13 @@ export function createDeliveryToARInvRouter(deps) {
               session.result = { docEntry: result.DocEntry, docNum: result.DocNum };
               session.step   = 'DONE';
 
-              reply = `### &#x2705; A/R Invoice Posted!\n\n` +
-                `| Field | Value |\n|---|---|\n` +
-                `| **Invoice #** | ${result.DocNum} |\n` +
-                `| **Doc Entry** | ${result.DocEntry} |\n` +
-                `| **Customer** | ${del.cardName || del.cardCode || '—'} |\n` +
-                `| **Source Delivery** | DN #${del.docNum} |\n` +
-                `| **Lines** | ${lines.length} |\n\n` +
-                `[&#x1F5A8;&#xFE0F; Print A/R Invoice](/api/delivery-arinv/print/${result.DocEntry})\n\nWould you like to invoice another delivery?`;
+              reply = buildSuccessCard('A/R Invoice Posted!', [
+                { label: 'Invoice #',       value: `#${result.DocNum}` },
+                { label: 'Doc Entry',       value: String(result.DocEntry) },
+                { label: 'Customer',        value: escHtml(del.cardName || del.cardCode || '—') },
+                { label: 'Source Delivery', value: `DN #${del.docNum}` },
+                { label: 'Lines',           value: String(lines.length) },
+              ], `<a href="/api/delivery-arinv/print/${result.DocEntry}" target="_blank" style="color:${THEME.text};font-weight:600">🖨️ Print A/R Invoice</a><br><br>Would you like to invoice another delivery?`);
               quickReplies = ['Yes, Invoice Another', 'No, Done'];
               meta = {
                 docEntry: result.DocEntry,
@@ -305,7 +378,7 @@ export function createDeliveryToARInvRouter(deps) {
                 printUrl: `/api/delivery-arinv/print/${result.DocEntry}`,
               };
             } catch (e) {
-              reply = `&#x274C; **Failed to post A/R Invoice**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
+              reply = buildErrorCard('Failed to post A/R Invoice', `SAP Error: ${escHtml(e.message)}<br><br>Would you like to <strong>retry</strong> or <strong>cancel</strong>?`);
               quickReplies = ['Open Invoice Form', 'Cancel'];
             }
           }
@@ -318,17 +391,16 @@ export function createDeliveryToARInvRouter(deps) {
             session.deliveryDetail = buildDeliveryDetail(doc);
             session.step = 'REVIEW_FORM';
             formData = buildFormData(session.deliveryDetail);
-            reply = `### Delivery Note #${doc.DocNum} — ${doc.CardName || doc.CardCode}\n\n` +
-              `| Field | Value |\n|---|---|\n` +
-              `| **Customer** | ${doc.CardName || '—'} (${doc.CardCode || '—'}) |\n` +
-              `| **Delivery Date** | ${session.deliveryDetail.docDate || '—'} |\n` +
-              `| **Customer Ref** | ${doc.NumAtCard || '—'} |\n` +
-              `| **Lines** | ${session.deliveryDetail.lines.length} |\n` +
-              `| **Total** | ${fmtN(session.deliveryDetail.docTotal)} |\n\n` +
-              `Open the A/R Invoice form to review lines and adjust quantities/prices:`;
+            reply = buildCard(`Delivery Note #${doc.DocNum} — ${escHtml(doc.CardName || doc.CardCode)}`, [
+              { label: 'Customer',      value: `${escHtml(doc.CardName || '—')} (${escHtml(doc.CardCode || '—')})` },
+              { label: 'Delivery Date', value: escHtml(session.deliveryDetail.docDate || '—') },
+              { label: 'Customer Ref',  value: escHtml(doc.NumAtCard || '—') },
+              { label: 'Lines',         value: String(session.deliveryDetail.lines.length) },
+              { label: 'Total',         value: fmtN(session.deliveryDetail.docTotal) },
+            ], 'Open the A/R Invoice form to review lines and adjust quantities/prices:');
             quickReplies = ['Open Invoice Form'];
           } else {
-            reply = '&#x274C; Could not load Delivery Note detail. Please try again.';
+            reply = buildErrorCard('Could not load Delivery Note detail', 'Please try again.');
           }
         }
 
@@ -339,12 +411,12 @@ export function createDeliveryToARInvRouter(deps) {
           session.step = 'SELECT_DELIVERY';
           const dels = await fetchOpenDeliveriesByCustomer(sap, cardCode);
           if (!dels.length) {
-            reply = `No open delivery notes found for **${cardName}** (${cardCode}).`;
+            reply = `No open delivery notes found for <strong>${escHtml(cardName)}</strong> (${escHtml(cardCode)}).`;
             quickReplies = ['Search Another Customer', 'Start Over'];
             session.step = 'INIT';
           } else {
             deliveryList = mapSourceList(dels);
-            reply = `Found **${dels.length}** open delivery note${dels.length !== 1 ? 's' : ''} for **${cardName}**. Click one to load its details:`;
+            reply = `Found <strong>${dels.length}</strong> open delivery note${dels.length !== 1 ? 's' : ''} for <strong>${escHtml(cardName)}</strong>. Click one to load its details:`;
           }
         }
 
@@ -356,18 +428,20 @@ export function createDeliveryToARInvRouter(deps) {
       // ── INIT / SELECT_CUSTOMER — customer search ───────────────────────────
       else if (session.step === 'INIT' || session.step === 'SELECT_CUSTOMER') {
         if (!msg) {
-          reply = `## &#x1F535; Delivery Note &#x2192; A/R Invoice Agent\n\n` +
-            `*Select a customer to view their open delivery notes, then create an A/R invoice.*\n\n` +
-            `Type a **customer name or code** to begin:`;
+          const cached = getCacheCustomers();
+          reply = `<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🔵 Welcome to the <strong>Delivery Note → A/R Invoice Agent</strong>!</div>
+            <div style="font-size:13px;color:#374151;margin-bottom:8px">Select a customer to view their open delivery notes, then create an A/R invoice:</div>`
+            + buildCustomerComboHtml(cached);
           session.step = 'INIT';
         } else if (/start over|reset|cancel/i.test(msgL)) {
           Object.assign(session, initSession());
-          reply = 'Session reset. Type a customer name or code to begin:';
+          const cached = getCacheCustomers();
+          reply = 'Session reset. Select a customer below, or type a name to search live:\n\n' + buildCustomerComboHtml(cached);
           session.step = 'INIT';
         } else {
           const customers = await searchCustomers(sap, msg);
           if (!customers.length) {
-            reply = `No customers found matching **"${msg}"**. Please try a different name or code.`;
+            reply = `No customers found matching <strong>"${escHtml(msg)}"</strong>. Please try a different name or code.`;
             quickReplies = ['Start Over'];
           } else if (customers.length === 1) {
             const c = customers[0];
@@ -375,17 +449,17 @@ export function createDeliveryToARInvRouter(deps) {
             session.step = 'SELECT_DELIVERY';
             const dels = await fetchOpenDeliveriesByCustomer(sap, c.CardCode);
             if (!dels.length) {
-              reply = `No open delivery notes found for **${c.CardName}** (${c.CardCode}).`;
+              reply = `No open delivery notes found for <strong>${escHtml(c.CardName)}</strong> (${escHtml(c.CardCode)}).`;
               quickReplies = ['Search Another Customer', 'Start Over'];
               session.step = 'INIT';
             } else {
               deliveryList = mapSourceList(dels);
-              reply = `Found **${dels.length}** open delivery note${dels.length !== 1 ? 's' : ''} for **${c.CardName}**. Click one to load its details:`;
+              reply = `Found <strong>${dels.length}</strong> open delivery note${dels.length !== 1 ? 's' : ''} for <strong>${escHtml(c.CardName)}</strong>. Click one to load its details:`;
             }
           } else {
-            customerList = customers.map(c => ({ cardCode: c.CardCode, cardName: c.CardName }));
-            reply = `Found **${customers.length}** customers matching **"${msg}"**. Select one:`;
             session.step = 'SELECT_CUSTOMER';
+            reply = `Found <strong>${customers.length}</strong> customers matching <strong>"${escHtml(msg)}"</strong>. Select one:\n\n`
+              + buildCustomerComboHtml(customers, `${customers.length} matches`);
           }
         }
       }
@@ -404,8 +478,11 @@ export function createDeliveryToARInvRouter(deps) {
               session.deliveryDetail = buildDeliveryDetail(doc);
               session.step = 'REVIEW_FORM';
               formData = buildFormData(session.deliveryDetail);
-              reply = `### Delivery Note #${doc.DocNum} loaded\n\n` +
-                `**${doc.CardName || doc.CardCode}** — ${session.deliveryDetail.lines.length} lines — Total: ${fmtN(session.deliveryDetail.docTotal)}\n\nOpen the Invoice form:`;
+              reply = buildCard(`Delivery Note #${doc.DocNum} loaded`, [
+                { label: 'Customer', value: escHtml(doc.CardName || doc.CardCode) },
+                { label: 'Lines',    value: String(session.deliveryDetail.lines.length) },
+                { label: 'Total',    value: fmtN(session.deliveryDetail.docTotal) },
+              ], 'Open the Invoice form:');
               quickReplies = ['Open Invoice Form'];
             } else {
               reply = `Delivery Note #${numMatch[1]} not found or already closed. Please click a delivery from the list above.`;
@@ -431,7 +508,7 @@ export function createDeliveryToARInvRouter(deps) {
           if (session.selectedCustomer) {
             const dels = await fetchOpenDeliveriesByCustomer(sap, session.selectedCustomer.cardCode);
             deliveryList = mapSourceList(dels);
-            reply = `Select a different delivery note for **${session.selectedCustomer.cardName}**:`;
+            reply = `Select a different delivery note for <strong>${escHtml(session.selectedCustomer.cardName)}</strong>:`;
           } else {
             reply = 'Please select a delivery note:';
           }
@@ -471,7 +548,7 @@ export function createDeliveryToARInvRouter(deps) {
         ok: true, reply, quickReplies, sessionId: sid,
         step: session.step,
         deliveryDetail: session.deliveryDetail,
-        meta, customerList, deliveryList, formData,
+        meta, deliveryList, formData,
       });
 
     } catch (e) {
