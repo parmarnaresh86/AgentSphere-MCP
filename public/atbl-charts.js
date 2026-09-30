@@ -10,16 +10,23 @@
   const PALETTE = ['#0070F3', '#00A28A', '#E9730C', '#8B37BF', '#CF4B00', '#0F5132', '#D63384', '#6F42C1', '#20C997', '#FFC107', '#6C757D', '#198754'];
   const POS = '#16A34A', NEG = '#DC2626', MUTED = '#9CA3AF';
 
-  // ── Formatting (Indian units: K / L / Cr) ──────────────────────────────────
+  // ── Formatting — follows the company currency (window.APP_CURRENCY):
+  // INR → Indian units K / L / Cr, anything else → international K / M / B.
+  const isInr = () => (window.APP_CURRENCY || {}).code === 'INR';
   function fmtC(v) {
     const n = Number(v); if (!isFinite(n)) return '';
     const a = Math.abs(n), s = n < 0 ? '-' : '';
-    if (a >= 1e7) return s + (a / 1e7).toFixed(a >= 1e9 ? 0 : 2).replace(/\.?0+$/, '') + ' Cr';
-    if (a >= 1e5) return s + (a / 1e5).toFixed(2).replace(/\.?0+$/, '') + ' L';
+    if (isInr()) {
+      if (a >= 1e7) return s + (a / 1e7).toFixed(a >= 1e9 ? 0 : 2).replace(/\.?0+$/, '') + ' Cr';
+      if (a >= 1e5) return s + (a / 1e5).toFixed(2).replace(/\.?0+$/, '') + ' L';
+    } else {
+      if (a >= 1e9) return s + (a / 1e9).toFixed(2).replace(/\.?0+$/, '') + ' B';
+      if (a >= 1e6) return s + (a / 1e6).toFixed(2).replace(/\.?0+$/, '') + ' M';
+    }
     if (a >= 1e3) return s + (a / 1e3).toFixed(1).replace(/\.0$/, '') + ' K';
     return s + (Number.isInteger(a) ? a : a.toFixed(2));
   }
-  const fmtFull = v => Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const fmtFull = v => Number(v).toLocaleString(window.APP_LOCALE || 'en-US', { maximumFractionDigits: 2 });
   const fmtPct = v => (v > 0 ? '+' : '') + Number(v).toFixed(1) + '%';
   const alpha = (hex, a) => hex + a;
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -353,39 +360,6 @@
   };
 
   // ── Analytics components ───────────────────────────────────────────────────
-  function kpiHtml(p) {
-    if (!p.s) return '';
-    // Headline on a money-type column when there is one (Net Sales, not Qty).
-    const MONEY = /sales|amount|amt|total|value|revenue|net|profit|gp|price|cost|balance|outstanding|paid/i;
-    const iPrim = Math.max(0, p.series.findIndex(s => MONEY.test(s.name)));
-    const s0 = p.series[iPrim], d = s0.data;
-    const total = sum(d), mean = avg(d);
-    const iMax = d.indexOf(Math.max(...d)), iMin = d.indexOf(Math.min(...d));
-    const cards = [
-      { k: `Total ${s0.name}`, v: fmtC(total), t: fmtFull(total) },
-      { k: 'Average', v: fmtC(mean), t: `${fmtFull(mean)} per row · ${p.n} rows` },
-      { k: 'Highest', v: fmtC(d[iMax]), sub: p.labels[iMax], t: fmtFull(d[iMax]) },
-      { k: 'Lowest', v: fmtC(d[iMin]), sub: p.labels[iMin], t: fmtFull(d[iMin]) },
-    ];
-    if (p.timeLike && p.n >= 2 && d[0]) {
-      const ch = (d[d.length - 1] - d[0]) / Math.abs(d[0]) * 100;
-      cards.push({ k: 'First → last', v: fmtPct(ch), cls: ch >= 0 ? 'up' : 'down', sub: `${p.labels[0]} → ${p.labels[p.n - 1]}` });
-    }
-    // A-vs-B only between series on a comparable scale (2026 vs 2025 sales),
-    // never Qty vs Net Sales.
-    const other = p.series.find((s, i) => i !== iPrim && sum(s.data) && Math.abs(total / sum(s.data)) >= 0.2 && Math.abs(total / sum(s.data)) <= 5);
-    if (other) {
-      const t1 = sum(other.data);
-      const ch = (total - t1) / Math.abs(t1) * 100;
-      cards.push({ k: `${s0.name} vs ${other.name}`, v: fmtPct(ch), cls: ch >= 0 ? 'up' : 'down', sub: `${fmtC(total)} vs ${fmtC(t1)}` });
-    } else if (!p.timeLike && p.allPos && p.n >= 3) {
-      const sorted = [...d].sort((a, b) => b - a);
-      let run = 0, k = 0; while (k < sorted.length && run < total * 0.8) run += sorted[k++];
-      cards.push({ k: '80% of total from', v: `${k} of ${p.n}`, sub: `top ${(k / p.n * 100).toFixed(0)}% of rows` });
-    }
-    return cards.map(c => `<div class="atbl-kpi${c.cls ? ' ' + c.cls : ''}" title="${esc(c.t || '')}"><div class="atbl-kpi-k">${esc(c.k)}</div><div class="atbl-kpi-v">${esc(c.v)}</div>${c.sub ? `<div class="atbl-kpi-s">${esc(c.sub)}</div>` : ''}</div>`).join('');
-  }
-
   function heatmapHtml(p) {
     const maxes = p.series.map(s => Math.max(...s.data.map(Math.abs), 1));
     const head = `<tr><th>${esc(p.labelCol)}</th>${p.series.map(s => `<th>${esc(s.name)}</th>`).join('')}</tr>`;
@@ -429,7 +403,6 @@
       return items.length ? `<div class="atbl-cg"><span class="atbl-cg-title">${g}</span>${items.map(chip).join('')}</div>` : '';
     }).join('');
     return `
-      <div class="atbl-kpis" id="${uid}_kpis"></div>
       <div class="atbl-chart-types">
         <span class="atbl-chart-label">★ Recommended:</span>${rec.map(id => chip(byId[id])).join('')}
         <button class="atbl-more-btn" onclick="atblToggleGallery('${uid}',this)">All ${avail.length} charts ▾</button>
@@ -452,8 +425,6 @@
     const rows = rowsFor(st);
     if (!rows.length) return;
     const p = profile(rows);
-    const kpis = document.getElementById(`${uid}_kpis`);
-    if (kpis) kpis.innerHTML = kpiHtml(profile(st.data.rows || []));
 
     const wrap = document.querySelector(`#${uid} .atbl-chart-canvas-wrap`);
     if (!wrap) return;

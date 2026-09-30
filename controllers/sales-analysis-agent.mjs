@@ -5,7 +5,9 @@
  * AR HANA views covered (sap.me0925sadp.ar.case):
  *   SalesAnalysisQuery, AverageSellingPriceQuery, BackOrderStatusQuery,
  *   CustomerOpenBalanceVSCreditLimitQuery, OnTimeDeliveryStatisticsQuery,
- *   SalesAnalysisByDocumentQuery, VW_AI_FINANCE_REPORT (custom)
+ *   SalesAnalysisByDocumentQuery
+ * (Finance Report / VW_AI_FINANCE_REPORT removed — that view doesn't exist
+ * on this deployment.)
  *
  * Brand dimensions: CogsOcrCod→Brand, CogsOcrCo2→SubBrand,
  *   CogsOcrCo3→Budget, CogsOcrCo4→Universe, CogsOcrCo5→CogsCustomer
@@ -22,7 +24,6 @@ const VIEWS = {
   custbalance: { path: 'CustomerOpenBalanceVSCreditLimitQuery', area: 'ar', dateField: null,          hasDims: false },
   ontime:      { path: 'OnTimeDeliveryStatisticsQuery',         area: 'ar', dateField: 'PostingDate', hasDims: true  },
   bydoc:       { path: 'SalesAnalysisByDocumentQuery',          area: 'ar', dateField: 'PostingDate', hasDims: false },
-  finance:     { path: 'VW_AI_FINANCE_REPORT',                  area: 'ar', dateField: 'PostingDate', hasDims: true, customDims: true },
 };
 
 const VIEW_MEASURES = {
@@ -32,7 +33,6 @@ const VIEW_MEASURES = {
   custbalance: ['OpenSalesOrderBalance','OpenDeliveryBalance','AccountReceivableBalance','CustomerBalanceTotal','CustomerCreditLimit'],
   ontime:      ['NumberOfSalesOrder','DelayedDays','AdvanceDays','AverageDeliveryVarianceDays'],
   bydoc:       ['NetSalesAmountLC','AppliedNetSalesAmountLC','OpenAmountLC','NetSalesAmountSC'],
-  finance:     ['NetAmountLC','EURValue','USDValue','DiscountEstimatePercent'],
 };
 
 function today()       { return new Date().toISOString().slice(0, 10); }
@@ -70,38 +70,45 @@ async function callAI(aiDeps, messages, systemPrompt, maxTokens=2048) {
   return '';
 }
 
-// ── HANA direct: query the view's plain-schema copy, bypassing the Service
-// Layer's /sml.svc/ proxy entirely. Some of these HANA calculation views (under
-// the sap.{company}.ar.case package) can be invalidated independently of the
-// Service Layer — a broken calc view fails the same way whether you reach it
-// through Service Layer or SQL. Where a working plain view exists directly in
-// the company schema (confirmed live for SalesAnalysisQuery /
-// SalesAnalysisByDocumentQuery), this is both faster and immune to Service
-// Layer login outages. Falls back to the Service Layer call on ANY failure —
-// wrong view name, invalidated calc view, connection down — so views that
-// aren't mirrored this way keep working exactly as before.
-async function fetchViewHana(dbDeps, viewKey, fromDate, toDate) {
-  const { getActiveConfig, getActiveType, tableRef, executeSQL } = dbDeps;
+// ── HANA direct: query the semantic-layer calculation view straight over SQL,
+// bypassing the Service Layer's /sml.svc/ OData proxy entirely. These views
+// (SalesAnalysisQuery, AverageSellingPriceQuery, etc.) are NOT plain schema
+// objects — they only exist under the "_SYS_BIC" catalog package as
+// "{namespace}.ar.case/{ViewName}" (confirmed live on STTL_SD via direct SQL).
+// Going through Service Layer's /sml.svc/ OData proxy instead caps out at its
+// configured page size (as low as 10-20 rows) because SapDirectClient sends no
+// Prefer:odata.maxpagesize header — querying the view directly sidesteps that
+// entirely. VW_AI_FINANCE_REPORT (`plainView`) is a genuine custom plain-schema
+// view, not a semantic-layer object, so it still goes through tableRef().
+// Falls back to Service Layer on any failure so it degrades gracefully.
+async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate) {
+  const { getActiveConfig, tableRef, executeSQL } = dbDeps;
   const cfg = VIEWS[viewKey];
-  const c   = getActiveConfig();
-  const isHana = getActiveType() === 'hana';
   const filters = [];
   if (cfg.dateField && fromDate) filters.push(`"${cfg.dateField}" >= '${fromDate}'`);
   if (cfg.dateField && toDate)   filters.push(`"${cfg.dateField}" <= '${toDate}'`);
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-  const sql = isHana
-    ? `SELECT * FROM ${tableRef(cfg.path, c)} ${where} LIMIT 10000`
-    : `SELECT TOP 10000 * FROM ${tableRef(cfg.path, c)} ${where}`;
+
+  if (cfg.plainView) {
+    const c = getActiveConfig();
+    const sql = `SELECT * FROM ${tableRef(cfg.path, c)} ${where} LIMIT 500000`;
+    return executeSQL(sql);
+  }
+
+  const ns = await getNamespace();
+  if (!ns) throw new Error('HANA namespace unavailable for direct view query');
+  const viewRef = `"_SYS_BIC"."${ns}.${cfg.area || 'ar'}.case/${cfg.path}"`;
+  const sql = `SELECT * FROM ${viewRef} ${where} LIMIT 500000`;
   return executeSQL(sql);
 }
 
 // ── Paginated HANA view fetch (Service Layer) ─────────────────────────────────
 // SAP B1 SML views are accessed directly at /sml.svc/{ViewName} — no namespace prefix needed.
 // (Confirmed working in chat-server.mjs line 624 for SalesAnalysisQuery)
-async function fetchView(sap, dbDeps, viewKey, fromDate, toDate) {
+async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate) {
   if (dbDeps?.isConnected?.()) {
     try {
-      const rows = await fetchViewHana(dbDeps, viewKey, fromDate, toDate);
+      const rows = await fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate);
       return rows;
     } catch (e) {
       console.warn(`[SalesAnalysis] HANA direct view "${viewKey}" failed, falling back to Service Layer:`, e.message);
@@ -137,7 +144,7 @@ async function fetchView(sap, dbDeps, viewKey, fromDate, toDate) {
       break;
     }
     all.push(...batch);
-    if (batch.length < PAGE || all.length >= 10000) break;
+    if (batch.length < PAGE || all.length >= 500000) break;
     skip += PAGE;
   }
 
@@ -173,8 +180,6 @@ function applyFilters(rows, f={}) {
   if (f.territory)   r=r.filter(x=>x.TerritoryName===f.territory||x.BusinessPartnerTerritory===f.territory||x.Territory===f.territory);
   if (f.itemGroup)   r=r.filter(x=>x.ItemGroup===f.itemGroup);
   if (f.docType)     r=r.filter(x=>x.DocumentTypeCode===f.docType);
-  if (f.market)      r=r.filter(x=>x.Market===f.market);
-  if (f.nominalType) r=r.filter(x=>x.NominalType===f.nominalType);
   return r;
 }
 
@@ -214,7 +219,6 @@ function aggregateByDim(rows, dimKey, measures) {
 function getFilterOptions(rows, viewKey) {
   const cfg = VIEWS[viewKey];
   const hasDims = cfg?.hasDims;
-  const isFinance = cfg?.customDims;
   const opts = {
     customers:   [...new Set(rows.map(r=>r.BusinessPartnerCode).filter(Boolean))].sort(),
     branches:    [...new Set(rows.map(r=>r.BranchName).filter(Boolean))].sort(),
@@ -229,11 +233,6 @@ function getFilterOptions(rows, viewKey) {
     opts.subBrands  = [...new Set(rows.map(r=>getDim(r,'subBrand')).filter(Boolean))].sort();
     opts.universes  = [...new Set(rows.map(r=>getDim(r,'universe')).filter(Boolean))].sort();
     opts.budgets    = [...new Set(rows.map(r=>getDim(r,'budget')).filter(Boolean))].sort();
-  }
-  if (isFinance) {
-    opts.markets      = [...new Set(rows.map(r=>r.Market).filter(Boolean))].sort();
-    opts.nominalTypes = [...new Set(rows.map(r=>r.NominalType).filter(Boolean))].sort();
-    opts.marketClasses= [...new Set(rows.map(r=>r.MarketClass).filter(Boolean))].sort();
   }
   return opts;
 }
@@ -250,7 +249,7 @@ function buildDataContext(viewKey, rows, totals, byCustomer, byPeriod, byBrand, 
   const VIEW_LABELS = {
     sales:'Sales Analysis',avgprice:'Average Selling Price',backorder:'Back Order Status',
     custbalance:'Customer Balance vs Credit Limit',ontime:'On-Time Delivery',
-    bydoc:'Sales Analysis By Document',finance:'Finance Report',
+    bydoc:'Sales Analysis By Document',
   };
   const measures = VIEW_MEASURES[viewKey]||[];
   const totalStr  = measures.slice(0,4).map(m=>`${m}: ${fmtN(totals[m])}`).join(', ');
@@ -292,7 +291,7 @@ export function createSalesAnalysisRouter(deps) {
 
       if (!VIEWS[view]) return res.json({ ok:false, error:`Unknown view: ${view}` });
 
-      const allRows  = await fetchView(sap, _dbDeps, view, fromDate, toDate);
+      const allRows  = await fetchView(sap, _dbDeps, getNamespace, view, fromDate, toDate);
       const filtered = applyFilters(allRows, filters);
       const measures = VIEW_MEASURES[view]||[];
       const totals   = calcTotals(filtered, measures);
@@ -323,11 +322,6 @@ export function createSalesAnalysisRouter(deps) {
       const byPeriod = aggregateBy(filtered,'PostingYearAndMonth',measures)
         .sort((a,b)=>String(a._key).localeCompare(String(b._key)));
 
-      // Finance-specific dims
-      const byMarket    = VIEWS[view].customDims ? aggregateBy(filtered,'Market',    measures).sort((a,b)=>(b[measures[0]]||0)-(a[measures[0]]||0)) : [];
-      const byNominal   = VIEWS[view].customDims ? aggregateBy(filtered,'NominalType',measures).sort((a,b)=>(b[measures[0]]||0)-(a[measures[0]]||0)) : [];
-      const byGLAccount = VIEWS[view].customDims ? aggregateBy(filtered,'GLAccount', measures,'GLAccountName').sort((a,b)=>(b[measures[0]]||0)-(a[measures[0]]||0)) : [];
-
       let aiInsight = '';
       if (USE_AI && filtered.length > 0) {
         const ctx = buildDataContext(view, filtered, totals, byCustomer, byPeriod, byBrand, { fromDate, toDate });
@@ -346,8 +340,7 @@ export function createSalesAnalysisRouter(deps) {
         byItem:     byItem.slice(0,50),
         byBrand, bySubBrand, byUniverse, byBudget,
         byTerritory, byBranch, bySalesPerson,
-        byPeriod, byMarket, byNominal,
-        byGLAccount: byGLAccount.slice(0,50),
+        byPeriod,
         rowCount: filtered.length,
         params: { fromDate, toDate, view },
       });
@@ -374,13 +367,13 @@ export function createSalesAnalysisRouter(deps) {
 
       const VIEW_LABELS = {
         sales:'Sales Analysis',avgprice:'Avg Selling Price',backorder:'Back Order Status',
-        custbalance:'Customer Balance',ontime:'On-Time Delivery',bydoc:'By Document',finance:'Finance Report',
+        custbalance:'Customer Balance',ontime:'On-Time Delivery',bydoc:'By Document',
       };
 
       let reply='', quickReplies=[];
 
       if (!userMsg && sess.step==='INIT') {
-        reply = `## 📈 Sales Analysis Dashboard\n\nI can analyze your AR/Sales data across **7 analytical views**:\n\n| View | Key Metrics |\n|---|---|\n| **Sales Analysis** | Net Sales, Gross Profit, Margin, Qty |\n| **Avg Selling Price** | Avg Price, Item Cost, GP% |\n| **Back Order Status** | Ordered, Delivered, Open Qty |\n| **Customer Balance** | Open SO, AR Balance, Credit Limit |\n| **On-Time Delivery** | Delayed/Advance Days, SO Count |\n| **By Document** | Net Sales, Applied, Open Amounts |\n| **Finance Report** | Net Amount, EUR/USD Values, Discount |\n\nCustom dimensions: **Brand · Sub-Brand · Universe · Budget · CogsCustomer**\n\n**Select a tab and click Analyze to load data.**`;
+        reply = `## 📈 Sales Analysis Dashboard\n\nI can analyze your AR/Sales data across **6 analytical views**:\n\n| View | Key Metrics |\n|---|---|\n| **Sales Analysis** | Net Sales, Gross Profit, Margin, Qty |\n| **Avg Selling Price** | Avg Price, Item Cost, GP% |\n| **Back Order Status** | Ordered, Delivered, Open Qty |\n| **Customer Balance** | Open SO, AR Balance, Credit Limit |\n| **On-Time Delivery** | Delayed/Advance Days, SO Count |\n| **By Document** | Net Sales, Applied, Open Amounts |\n\nCustom dimensions: **Brand · Sub-Brand · Universe · Budget · CogsCustomer**\n\n**Select a tab and click Analyze to load data.**`;
         quickReplies = ['Load Sales Analysis','Top customers by revenue','Brand breakdown','Gross profit analysis','Customer credit risk'];
         sess.step = 'READY';
       } else if (sess.dataContext) {
@@ -399,7 +392,6 @@ Instructions:
 - Answer analytically with specific numbers from the data
 - Use markdown tables for top-N lists
 - When asked for OData queries, return them as \`\`\`http code blocks\`\`\`
-- For finance view questions, use GL Account, Market, NominalType dimensions
 - Format currency with commas, percentages with 1 decimal
 
 ${sess.dataContext}`;

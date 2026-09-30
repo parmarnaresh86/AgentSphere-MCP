@@ -199,18 +199,6 @@ PROMISES: ${promises.slice(0, 15).map(x => `${x.cardName} ${fmtAmt(x.amount)} by
           { key: 'bucket', label: 'Bucket', fmt: 'badge' }, { key: 'amount', label: 'Balance', fmt: 'amt' },
           { key: 'share', label: 'Share', fmt: 'pct' }, { key: 'customers', label: 'Customers', fmt: 'int' }, { key: 'invoices', label: 'Invoices', fmt: 'int' },
         ] },
-      { key: 'promises', label: `Promises-to-pay (${promises.length})`, rowKey: 'id', rows: promises,
-        actions: [
-          { id: 'kept', label: 'Mark kept', kind: 'post', endpoint: '/api/collections-agent/ptp/status', extra: { status: 'kept' }, refresh: true },
-          { id: 'broken', label: 'Mark broken', kind: 'post', endpoint: '/api/collections-agent/ptp/status', extra: { status: 'broken' }, refresh: true },
-          { id: 'cancel', label: 'Cancel', kind: 'post', endpoint: '/api/collections-agent/ptp/status', extra: { status: 'cancelled' }, refresh: true, confirm: 'Cancel this promise?' },
-        ],
-        columns: [
-          { key: 'status', label: 'Status', fmt: 'badge' }, { key: 'cardName', label: 'Customer', sub: 'cardCode' },
-          { key: 'amount', label: 'Promised', fmt: 'amt' }, { key: 'promiseDate', label: 'Promise date', fmt: 'date' },
-          { key: 'daysToPromise', label: 'Days to promise', fmt: 'int' }, { key: 'paidSince', label: 'Received since', fmt: 'amt' },
-          { key: 'createdAt', label: 'Logged', fmt: 'date' }, { key: 'note', label: 'Note', wrap: true },
-        ] },
     ],
     notes: [
       `Payment behaviour uses invoices fully paid in the last ${lookbackDays / 30} months; promise outcomes are checked against incoming payments with ${PTP_GRACE_DAYS} days' grace.`,

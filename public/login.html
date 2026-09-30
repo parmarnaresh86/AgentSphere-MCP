@@ -420,9 +420,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       errEl.style.display = 'block';
       return;
     }
-    // Store token & user info
+    // Store token & user info (including permissions, so the sidebar renders
+    // correctly on the very first paint after login instead of waiting on
+    // the async /auth/me call that fires once index.html has loaded)
     localStorage.setItem('hanny_token', data.token);
-    localStorage.setItem('hanny_user',  JSON.stringify({ id: data.id, username: data.username, fullName: data.fullName, role: data.role }));
+    localStorage.setItem('hanny_user',  JSON.stringify({ id: data.id, username: data.username, fullName: data.fullName, role: data.role, permissions: data.permissions || [], isSuperAdmin: data.isSuperAdmin || false }));
     okEl.textContent = `Welcome, ${data.fullName || data.username}! Redirecting…`;
     okEl.style.display = 'block';
     setTimeout(() => window.location.replace('/'), 800);

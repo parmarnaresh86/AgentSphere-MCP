@@ -6,8 +6,10 @@
  * Input params: P_AgingDate (YYYYMMDD), P_AgingBucketSize (integer days)
  */
 import { Router } from 'express';
+import { executeSQL, isConnected, getActiveType, getActiveConfig } from '../db-connector.mjs';
 
 const _sessions = new Map();
+const _pkgCache = new Map(); // db key -> 'sap.xxx' | null, see hanaPackage()
 
 function initSession() {
   return {
@@ -22,6 +24,10 @@ function today() { return new Date().toISOString().slice(0, 10); }
 
 function formatDateParam(dateStr) {
   return (dateStr || today()).replace(/-/g, '');
+}
+
+function formatDateLiteral(dateStr) {
+  return (dateStr || today()).slice(0, 10);
 }
 
 function fmtN(n, d = 0) {
@@ -57,7 +63,69 @@ async function callAI(aiDeps, messages, systemPrompt, maxTokens = 2048) {
 }
 
 // ── HANA View caller ──────────────────────────────────────────────────────────
-async function callAgingView(sap, getNamespace, agingDate, bucketSize) {
+// Semantic-layer package for the active company, e.g. STTL_SD → sap.sttlsd.
+// Verified against _SYS_REPO (so a mismatch falls back instead of querying
+// another company's views), same convention as financial-reports-agent.mjs.
+const _dbKey = () => { const c = getActiveConfig(); return `${getActiveType()}::${c?.database || c?.schema_name || ''}`; };
+
+async function hanaPackage() {
+  if (getActiveType() !== 'hana') return null;
+  const key = _dbKey();
+  if (_pkgCache.has(key)) return _pkgCache.get(key);
+  const cfg = getActiveConfig();
+  const candidates = [process.env.FIN_HANA_PACKAGE, cfg?.database, cfg?.schema_name]
+    .filter(Boolean)
+    .map(s => s.startsWith('sap.') ? s : `sap.${String(s).toLowerCase().replace(/[^a-z0-9]/g, '')}`);
+  let pkg = null;
+  for (const c of [...new Set(candidates)]) {
+    try {
+      const rows = await executeSQL(`SELECT COUNT(*) AS "N" FROM "_SYS_REPO"."ACTIVE_OBJECT" WHERE "PACKAGE_ID" = '${c.replace(/'/g, "''")}.ap.case' AND "OBJECT_NAME" = 'VendorPaymentAgingQuery'`);
+      if (Number(rows[0]?.N || 0) > 0) { pkg = c; break; }
+    } catch { /* no _SYS_REPO access — try next candidate */ }
+  }
+  _pkgCache.set(key, pkg);
+  return pkg;
+}
+
+// Parameterized calc-view reference: "_SYS_BIC"."{pkg}.{sub}/{name}"(PLACEHOLDER = ('$$Key$$', 'Value'), ...)
+function calcViewRef(pkg, sub, name, params = {}) {
+  const ph = Object.entries(params).map(([k, v]) => `'PLACEHOLDER' = ('$$${k}$$', '${String(v).replace(/'/g, "''")}')`);
+  return `"_SYS_BIC"."${pkg}.${sub}/${name}"${ph.length ? `(${ph.join(', ')})` : ''}`;
+}
+
+// Direct HANA SQL over the calculation view — bypasses the Service Layer's
+// /sml.svc/ OData proxy entirely, which pages at 20 rows/response and was
+// silently truncating the report to the first page (9 vendors instead of the
+// real 101). Querying "_SYS_BIC" directly has no such cap.
+async function callAgingViewHana(agingDate, bucketSize) {
+  if (getActiveType() !== 'hana' || !isConnected()) throw new Error('HANA direct connection unavailable');
+  const pkg = await hanaPackage();
+  if (!pkg) throw new Error('HANA semantic-layer package not found for VendorPaymentAgingQuery');
+  const viewRef = calcViewRef(pkg, 'ap.case', 'VendorPaymentAgingQuery', {
+    P_AgingDate:       formatDateLiteral(agingDate),
+    P_AgingBucketSize: String(Number(bucketSize) || 30),
+  });
+  return executeSQL(`SELECT * FROM ${viewRef} LIMIT 500000`);
+}
+
+// Service Layer /sml.svc/ fallback (bare EntitySet, paginated via @odata.nextLink)
+// — only used if the direct HANA query above isn't available.
+async function callAgingViewServiceLayer(sap, agingDate, bucketSize) {
+  let path = `/sml.svc/VendorPaymentAgingQueryParameters(P_AgingDate='${formatDateLiteral(agingDate)}',P_AgingBucketSize=${Number(bucketSize) || 30})/VendorPaymentAgingQuery`;
+  const all = [];
+  while (path) {
+    const data = await sap.get(path);
+    if (Array.isArray(data.value)) all.push(...data.value);
+    const next = data['@odata.nextLink'];
+    path = next ? `/sml.svc/${next}` : null;
+    if (all.length >= 20000) break;
+  }
+  return all;
+}
+
+// Older namespace-prefixed POST form — last-resort fallback for deployments
+// where the view is exposed under a namespace instead of bare.
+async function callAgingViewNamespaced(sap, getNamespace, agingDate, bucketSize) {
   const ns = await getNamespace();
   if (!ns) throw new Error('HANA namespace unavailable — set SL_NAMESPACE env var or ensure HANA is reachable');
   const viewPath = `/sml.svc/${ns}.ap.case/VendorPaymentAgingQuery`;
@@ -68,6 +136,19 @@ async function callAgingView(sap, getNamespace, agingDate, bucketSize) {
     ],
   });
   return Array.isArray(data.value) ? data.value : [];
+}
+
+async function callAgingView(sap, getNamespace, agingDate, bucketSize) {
+  try {
+    return await callAgingViewHana(agingDate, bucketSize);
+  } catch (e) {
+    console.warn('[VPAging] HANA direct view failed, falling back to Service Layer:', e.message);
+  }
+  try {
+    return await callAgingViewServiceLayer(sap, agingDate, bucketSize);
+  } catch (e) {
+    return await callAgingViewNamespaced(sap, getNamespace, agingDate, bucketSize);
+  }
 }
 
 // ── Client-side filtering ─────────────────────────────────────────────────────
@@ -183,6 +264,24 @@ function calcTotals(rows) {
   return t;
 }
 
+// ── Document-level rows for the per-vendor drill-down popup ────────────────────
+function toDocumentRows(rows) {
+  return rows.map(r => ({
+    vendorCode:      r.BusinessPartnerCode  || '',
+    docNumber:       r.BaseDocumentNumber   || '',
+    installment:     r.InstallmentNumber    || 1,
+    docType:         r.DocumentTypeDisplayName || r.DocumentTypeCode || '',
+    postingDate:     r.PostingDate          || '',
+    dueDate:         r.DueDate              || '',
+    daysOutstanding: Number(r.NumberOfDaysOutstanding || 0),
+    bucket:          r.AgingBucket          || '',
+    originalAmt:     Number(r.OriginalAmountLC   || 0),
+    balanceDue:      Number(r.AgingBalanceDueLC  || 0),
+    futureRemit:     Number(r.FutureRemitLC      || 0),
+    overdue:         Number(r.OverdueLC          || 0),
+  }));
+}
+
 function getFilterOptions(rows) {
   return {
     docTypes:   [...new Set(rows.map(r => r.DocumentTypeCode        ).filter(Boolean))].sort(),
@@ -265,6 +364,7 @@ export function createVendorPaymentAgingRouter(deps) {
         ok: true,
         vendors, buckets, dimBreakdown: dimBreak,
         totals, options, aiInsight,
+        documents: toDocumentRows(filtered),
         params: { agingDate, bucketSize },
       });
     } catch (e) {

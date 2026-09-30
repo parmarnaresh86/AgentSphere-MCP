@@ -6,7 +6,8 @@
  */
 import { Router } from 'express';
 import multer from 'multer';
-import { extractPdfText, runVisionExtraction, escHtml, fmtN, today } from '../lib/ocr-extract.mjs';
+import { extractPdfText, runVisionExtraction, escHtml, fmtN, today, nameSimilarity } from '../lib/ocr-extract.mjs';
+import { searchPartners, matchPartner, searchItems, matchItem, getWarehouses, getOpenPOs, findDuplicate, normKey } from '../lib/ocr-sap-match.mjs';
 
 const _sessions = new Map();
 const _upload    = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -27,8 +28,13 @@ Return ONLY valid JSON (no markdown) with this structure:
   "quantity": 0,
   "unit": "string or null",
   "driverName": "string or null",
-  "remarks": "string or null"
+  "remarks": "string or null",
+  "poNumber": "string or null — purchase order number referenced on the challan",
+  "lines": [
+    { "itemCode": "string or null", "description": "string", "quantity": 0, "unit": "string or null" }
+  ]
 }
+"lines" lists every material row on the challan; the single materialDescription/quantity fields summarise the first row.
 Use null for strings that cannot be determined, 0 for numbers that cannot be determined.`;
 
 function buildReviewHTML(ocrData, fileName) {
@@ -55,7 +61,7 @@ function buildReviewHTML(ocrData, fileName) {
 }
 
 export function createOcrInwardAgentRouter(deps) {
-  const { requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId } = deps;
+  const { requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, cacheRepo, getActiveCompanyId } = deps;
   const aiDeps = { AI_PROVIDER, gptChatComplete, azureMessagesCreate, USE_AI };
   const router = Router();
 
@@ -73,6 +79,89 @@ export function createOcrInwardAgentRouter(deps) {
       res.json({ ok: true, ocrData, fileName: file.originalname, fileSize: file.size, mimeType });
     } catch (e) {
       console.error('[OCR-INWARD] upload error:', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // ── Form-mode endpoints (split view: document preview + editable inward entry) ──
+  const cid = () => (getActiveCompanyId ? getActiveCompanyId() : '');
+  // Same challan no. + date = same delivery (works for both raw OCR and saved form shapes)
+  const dupKey = v => {
+    const h = v?.header || v || {};
+    return h.challanNumber ? normKey(h.challanNumber, h.challanDate) : '';
+  };
+
+  router.get('/vendors', requireAuth, async (req, res) => {
+    res.json({ ok: true, vendors: await searchPartners(getActiveSap(), String(req.query.q || '').trim(), 'cSupplier') });
+  });
+
+  router.get('/items', requireAuth, async (req, res) => {
+    res.json({ ok: true, items: await searchItems(getActiveSap(), String(req.query.q || '').trim()) });
+  });
+
+  router.get('/open-pos', requireAuth, async (req, res) => {
+    res.json({ ok: true, pos: await getOpenPOs(getActiveSap(), String(req.query.cardCode || '')) });
+  });
+
+  router.post('/prepare', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const od = req.body?.ocrData || {};
+      const { partner, score } = await matchPartner(sap, { name: od.fromParty }, 'cSupplier');
+
+      let lines = Array.isArray(od.lines) ? od.lines.filter(l => l && (l.description || l.itemCode)) : [];
+      if (!lines.length && (od.materialDescription || od.quantity)) {
+        lines = [{ description: od.materialDescription || '', quantity: od.quantity || 0, unit: od.unit || '' }];
+      }
+      const matched = await Promise.all(lines.map(async l => ({ ocrLine: l, match: await matchItem(sap, l) })));
+
+      const warehouses = await getWarehouses(sap, cacheRepo, cid());
+      let warehouse = null;
+      if (od.toLocation) {
+        let best = null, bs = 0;
+        warehouses.forEach(w => { const s = Math.max(nameSimilarity(w.name, od.toLocation), nameSimilarity(w.code, od.toLocation)); if (s > bs) { bs = s; best = w; } });
+        if (best && bs >= 0.5) warehouse = { ...best, score: bs };
+      }
+
+      const pos = partner ? await getOpenPOs(sap, partner.code) : [];
+      let po = null;
+      if (od.poNumber) {
+        const ref = String(od.poNumber).replace(/\D/g, '');
+        po = pos.find(p => String(p.docNum) === ref || (p.numAtCard && normKey(p.numAtCard) === normKey(od.poNumber))) || null;
+      }
+
+      res.json({
+        ok: true,
+        vendor: partner ? { ...partner, score } : null,
+        lines: matched, warehouses, warehouse, pos, po: po ? po.docEntry : null,
+        duplicate: findDuplicate(ocrDocumentsRepo, cid(), 'inward', dupKey, od),
+      });
+    } catch (e) {
+      console.error('[OCR-INWARD] prepare error:', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  router.post('/save', requireAuth, (req, res) => {
+    try {
+      const { form, ocrData = null, fileName = '', allowDuplicate = false } = req.body || {};
+      const h = form?.header || {};
+      const lines = (form?.lines || []).filter(l => l.description || l.itemCode);
+      if (!h.challanNumber && !h.vehicleNumber) return res.status(400).json({ ok: false, error: 'Enter at least the challan no. or the vehicle no.' });
+      if (!lines.length) return res.status(400).json({ ok: false, error: 'Add at least one material line.' });
+      const dup = findDuplicate(ocrDocumentsRepo, cid(), 'inward', dupKey, form);
+      if (dup && !allowDuplicate) return res.status(409).json({ ok: false, duplicate: dup, error: `Challan ${h.challanNumber} dated ${h.challanDate || '—'} is already in the register (entry #${dup.id}).` });
+
+      const id = ocrDocumentsRepo.insert({
+        company_id: cid(), doc_type: 'inward', session_id: `inwform_${Date.now()}`,
+        file_name: fileName, uploaded_by: req.user?.username || req.user?.email || '',
+        extracted_json: ocrData, match_json: { header: h, lines }, status: 'logged',
+        sap_doc_type: h.poDocEntry ? 'PurchaseOrders' : '', sap_doc_entry: h.poDocEntry || null, sap_doc_num: h.poDocNum || null,
+        notes: [h.vendor?.code, h.remarks].filter(Boolean).join(' · '),
+      });
+      res.json({ ok: true, id });
+    } catch (e) {
+      console.error('[OCR-INWARD] save error:', e);
       res.status(500).json({ ok: false, error: e.message });
     }
   });

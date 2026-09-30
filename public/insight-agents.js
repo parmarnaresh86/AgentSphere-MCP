@@ -167,9 +167,12 @@
     const safe = String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return typeof marked !== 'undefined' ? marked.parse(safe) : esc(s).replace(/\n/g, '<br>');
   };
-  const nf0 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
-  const nf2 = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const nfN = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+  // Formatted per call (not built at load) so they pick up the company locale
+  // once refreshAppCurrency() has set window.APP_LOCALE.
+  const nfOf = opts => ({ format: v => Number(v).toLocaleString(window.APP_LOCALE || 'en-US', opts) });
+  const nf0 = nfOf({ maximumFractionDigits: 0 });
+  const nf2 = nfOf({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const nfN = nfOf({ maximumFractionDigits: 2 });
   function fmt(v, f) {
     if (v === null || v === undefined || v === '' || (typeof v === 'number' && !isFinite(v))) return '<span class="ia-muted">—</span>';
     switch (f) {

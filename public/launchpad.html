@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgentSphere Launchpad</title>
+<!-- Design preview: SAP Fiori Launchpad (S/4HANA, Horizon theme) look for AgentSphere.
+     Self-contained — icon paths are inlined from fiori-icons.js (SAP-icons v5, Apache-2.0). -->
+<style>
+@font-face{font-family:'72';font-weight:400;font-display:swap;src:url('https://cdn.jsdelivr.net/npm/@sap-theming/theming-base-content/content/Base/baseLib/baseTheme/fonts/72-Regular.woff2') format('woff2')}
+@font-face{font-family:'72';font-weight:700;font-display:swap;src:url('https://cdn.jsdelivr.net/npm/@sap-theming/theming-base-content/content/Base/baseLib/baseTheme/fonts/72-Bold.woff2') format('woff2')}
+@font-face{font-family:'72';font-weight:600;font-display:swap;src:url('https://cdn.jsdelivr.net/npm/@sap-theming/theming-base-content/content/Base/baseLib/baseTheme/fonts/72-Semibold.woff2') format('woff2')}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ---------- Morning Horizon (light) ---------- */
+:root{
+  --font:'72','72full','Segoe UI',system-ui,-apple-system,sans-serif;
+  --bg:#f5f6f7;
+  --shell:#ffffff;
+  --shell-border:#e5e5e5;
+  --surface:#ffffff;
+  --surface-alt:#eff1f2;
+  --hover:#eaecee;
+  --text:#1d2d3e;
+  --text-2:#556b82;
+  --text-3:#758ca4;
+  --border:#d9d9d9;
+  --brand:#0070f2;
+  --brand-soft:#ebf8ff;
+  --brand-ink:#0064d9;
+  --pos:#256f3a;  --pos-soft:#f5fae5;
+  --crit:#e76500; --crit-soft:#fff8d6;
+  --neg:#aa0808;  --neg-soft:#ffeaf4;
+  --info:#0070f2;
+  --tile-shadow:0 0 .125rem 0 rgba(34,53,72,.15),0 .125rem .25rem 0 rgba(34,53,72,.15);
+  --tile-shadow-hover:0 0 .125rem 0 rgba(34,53,72,.15),0 .5rem 1rem 0 rgba(34,53,72,.15);
+  --pop-shadow:0 0 .125rem 0 rgba(34,53,72,.2),0 .75rem 2rem 0 rgba(34,53,72,.2);
+  --focus:#0032a5;
+  --r-tile:1rem;
+  --r-md:.75rem;
+  --r-sm:.5rem;
+  --hero:linear-gradient(135deg,#e3f1ff 0%,#f2f7fd 45%,#f5f6f7 100%);
+  /* module accents (SAP accent palette) */
+  --a1:#0070f2; --a2:#07838f; --a3:#188918; --a4:#c35500; --a5:#8b47d7; --a6:#d20a0a; --a7:#1a8fa3; --a8:#5d36ff; --a9:#cc00dc;
+}
+/* ---------- Evening Horizon (dark) ---------- */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#12171c; --shell:#1d232a; --shell-border:#2c3540; --surface:#1d232a; --surface-alt:#232b33; --hover:#2a333d;
+    --text:#eaecee; --text-2:#a9b4be; --text-3:#8396a8; --border:#3a4552;
+    --brand:#4db1ff; --brand-soft:#15283b; --brand-ink:#8cc9ff;
+    --pos:#5dc122; --pos-soft:#1a2d17; --crit:#ffa42c; --crit-soft:#322712; --neg:#ff8888; --neg-soft:#35191c; --info:#4db1ff;
+    --tile-shadow:0 0 .125rem 0 rgba(0,0,0,.5),0 .125rem .25rem 0 rgba(0,0,0,.4);
+    --tile-shadow-hover:0 0 .125rem 0 rgba(0,0,0,.5),0 .5rem 1rem 0 rgba(0,0,0,.5);
+    --pop-shadow:0 0 .125rem 0 rgba(0,0,0,.6),0 .75rem 2rem 0 rgba(0,0,0,.6);
+    --focus:#8cc9ff;
+    --hero:linear-gradient(135deg,#16283c 0%,#151d26 50%,#12171c 100%);
+    --a1:#4db1ff; --a2:#3fd2d9; --a3:#7bd65b; --a4:#ffa42c; --a5:#c49bff; --a6:#ff8888; --a7:#5cd3e8; --a8:#9f8cff; --a9:#f27cfd;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12171c; --shell:#1d232a; --shell-border:#2c3540; --surface:#1d232a; --surface-alt:#232b33; --hover:#2a333d;
+  --text:#eaecee; --text-2:#a9b4be; --text-3:#8396a8; --border:#3a4552;
+  --brand:#4db1ff; --brand-soft:#15283b; --brand-ink:#8cc9ff;
+  --pos:#5dc122; --pos-soft:#1a2d17; --crit:#ffa42c; --crit-soft:#322712; --neg:#ff8888; --neg-soft:#35191c; --info:#4db1ff;
+  --tile-shadow:0 0 .125rem 0 rgba(0,0,0,.5),0 .125rem .25rem 0 rgba(0,0,0,.4);
+  --tile-shadow-hover:0 0 .125rem 0 rgba(0,0,0,.5),0 .5rem 1rem 0 rgba(0,0,0,.5);
+  --pop-shadow:0 0 .125rem 0 rgba(0,0,0,.6),0 .75rem 2rem 0 rgba(0,0,0,.6);
+  --focus:#8cc9ff;
+  --hero:linear-gradient(135deg,#16283c 0%,#151d26 50%,#12171c 100%);
+  --a1:#4db1ff; --a2:#3fd2d9; --a3:#7bd65b; --a4:#ffa42c; --a5:#c49bff; --a6:#ff8888; --a7:#5cd3e8; --a8:#9f8cff; --a9:#f27cfd;
+}
+
+html{font-size:16px}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:.125rem solid var(--focus);outline-offset:.125rem}
+.fi{width:1rem;height:1rem;fill:currentColor;flex:none}
+
+/* ================= Shell bar ================= */
+.shell{position:sticky;top:0;z-index:40;background:var(--shell);border-bottom:1px solid var(--shell-border)}
+.shellbar{height:3.25rem;display:flex;align-items:center;gap:.5rem;padding:0 1rem}
+.logo{display:flex;align-items:center;gap:.625rem;padding:.25rem .5rem .25rem .25rem;border-radius:var(--r-sm)}
+.logo:hover{background:var(--hover)}
+.logo-mark{width:2rem;height:2rem;border-radius:.5rem;background:linear-gradient(135deg,#0070f2,#5d36ff);display:grid;place-items:center;overflow:hidden;flex:none}
+.logo-mark img{width:100%;height:100%;object-fit:cover}
+.logo-mark span{color:#fff;font-weight:700;font-size:.875rem}
+.logo-title{font-weight:700;font-size:1rem;letter-spacing:-.01em}
+.logo-sub{font-size:.875rem;color:var(--text-2);display:flex;align-items:center;gap:.25rem;padding-left:.625rem;border-left:1px solid var(--border)}
+.shell-search{flex:1;display:flex;justify-content:center;min-width:0}
+.search{position:relative;width:min(36rem,100%)}
+.search input{width:100%;height:2.25rem;border-radius:1.125rem;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);font:inherit;font-size:.875rem;padding:0 2.25rem 0 2.5rem;transition:border-color .15s,background .15s}
+.search input::placeholder{color:var(--text-3)}
+.search input:hover{border-color:var(--text-3)}
+.search input:focus{outline:none;border-color:var(--brand);background:var(--surface);box-shadow:0 0 0 .1875rem var(--brand-soft)}
+.search .fi{position:absolute;left:.875rem;top:50%;transform:translateY(-50%);color:var(--text-2)}
+.search kbd{position:absolute;right:.625rem;top:50%;transform:translateY(-50%);font:inherit;font-size:.6875rem;color:var(--text-3);border:1px solid var(--border);border-radius:.25rem;padding:0 .3rem;line-height:1.1rem}
+.shell-actions{display:flex;align-items:center;gap:.25rem}
+.icon-btn{position:relative;width:2.25rem;height:2.25rem;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--text-2)}
+.icon-btn:hover{background:var(--hover);color:var(--text)}
+.icon-btn[aria-expanded="true"]{background:var(--brand-soft);color:var(--brand)}
+.icon-btn .fi{width:1.125rem;height:1.125rem}
+.badge{position:absolute;top:.25rem;right:.25rem;min-width:1rem;height:1rem;border-radius:.5rem;background:#d20a0a;color:#fff;font-size:.625rem;font-weight:700;display:grid;place-items:center;padding:0 .25rem;border:2px solid var(--shell)}
+.copilot-btn{display:flex;align-items:center;gap:.375rem;height:2.25rem;padding:0 .875rem;border-radius:1.125rem;background:linear-gradient(135deg,#5d36ff,#0070f2);color:#fff;font-weight:600;font-size:.8125rem;margin-right:.25rem}
+.copilot-btn:hover{filter:brightness(1.08)}
+.avatar{width:2rem;height:2rem;border-radius:50%;background:#7858ff;color:#fff;font-size:.75rem;font-weight:700;display:grid;place-items:center;margin-left:.25rem}
+.avatar-btn{border-radius:50%;padding:.125rem}
+.avatar-btn:hover{box-shadow:0 0 0 .1875rem var(--hover)}
+
+/* ================= Space tabs (Spaces & Pages menu) ================= */
+.spacebar{display:flex;gap:.125rem;padding:0 1.5rem;overflow-x:auto;scrollbar-width:none}
+.spacebar::-webkit-scrollbar{display:none}
+.space-tab{position:relative;height:2.75rem;padding:0 .875rem;display:flex;align-items:center;gap:.4375rem;font-size:.875rem;color:var(--text-2);white-space:nowrap;border-radius:var(--r-sm) var(--r-sm) 0 0}
+.space-tab:hover{color:var(--text);background:var(--hover)}
+.space-tab .fi{width:.875rem;height:.875rem}
+.space-tab[aria-selected="true"]{color:var(--brand);font-weight:700}
+.space-tab[aria-selected="true"]::after{content:"";position:absolute;left:.5rem;right:.5rem;bottom:0;height:.1875rem;border-radius:.1875rem .1875rem 0 0;background:var(--brand)}
+.space-tab .count{font-size:.6875rem;font-weight:600;color:var(--text-3);background:var(--surface-alt);border-radius:.5rem;padding:.0625rem .375rem}
+
+/* ================= Page ================= */
+main{max-width:100rem;margin:0 auto;padding:1.5rem 3rem 4rem}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;margin:.5rem 0 1.25rem;flex-wrap:wrap}
+.page-title{font-size:1.5rem;font-weight:700;letter-spacing:-.01em}
+.page-desc{color:var(--text-2);font-size:.875rem;margin-top:.25rem}
+.seg{display:inline-flex;background:var(--surface-alt);border-radius:var(--r-sm);padding:.1875rem;gap:.125rem}
+.seg button{height:1.75rem;padding:0 .75rem;border-radius:.375rem;font-size:.8125rem;color:var(--text-2);display:flex;align-items:center;gap:.375rem}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);font-weight:600;box-shadow:var(--tile-shadow)}
+
+.section{margin-top:2rem}
+.section:first-child{margin-top:0}
+.section-head{display:flex;align-items:center;gap:.625rem;margin-bottom:.75rem}
+.section-title{font-size:1rem;font-weight:700}
+.section-meta{font-size:.75rem;color:var(--text-3)}
+.section-head .link{margin-left:auto}
+.link{color:var(--brand);font-size:.875rem;font-weight:600;border-radius:.25rem;padding:.125rem .25rem}
+.link:hover{text-decoration:underline}
+
+/* ================= Tiles (sap.m.GenericTile) ================= */
+.tiles{display:flex;flex-wrap:wrap;gap:.5rem}
+.tile{position:relative;width:11rem;height:11rem;background:var(--surface);border-radius:var(--r-tile);box-shadow:var(--tile-shadow);padding:1rem;display:flex;flex-direction:column;transition:box-shadow .2s,transform .2s}
+.tile:hover{box-shadow:var(--tile-shadow-hover)}
+.tile:active{transform:scale(.98)}
+.tile.wide{width:22.5rem}
+.tile-hit{position:absolute;inset:0;border-radius:var(--r-tile);z-index:1}
+.tile-hit:focus-visible{outline-offset:-.125rem}
+.tile-title{font-size:.875rem;font-weight:600;line-height:1.25rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding-right:1.25rem}
+.tile-sub{font-size:.75rem;color:var(--text-2);line-height:1rem;margin-top:.25rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tile-body{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:.5rem}
+.tile-icon .fi{width:2rem;height:2rem;color:var(--brand)}
+.tile-kpi{display:flex;align-items:baseline;gap:.25rem;line-height:1}
+.tile-kpi .num{font-size:2.25rem;font-weight:400;letter-spacing:-.02em}
+.tile-kpi .unit{font-size:.875rem;color:var(--text-2)}
+.tile-kpi .pre{font-size:1.25rem;color:var(--text-2);align-self:flex-start;margin-top:.25rem}
+.tile-kpi .arrow{font-size:.875rem;font-weight:700}
+.tile-kpi.good .num,.tile-kpi.good .arrow{color:var(--pos)}
+.tile-kpi.crit .num,.tile-kpi.crit .arrow{color:var(--crit)}
+.tile-kpi.bad  .num,.tile-kpi.bad  .arrow{color:var(--neg)}
+.tile-foot{font-size:.75rem;color:var(--text-3);margin-top:.5rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.has-kpi .tile-icon{align-self:flex-start;margin-top:.25rem}
+.tile.has-kpi .tile-icon .fi{width:1.25rem;height:1.25rem;color:var(--text-3)}
+.star{position:absolute;top:.625rem;right:.625rem;z-index:2;width:1.5rem;height:1.5rem;border-radius:.375rem;display:grid;place-items:center;color:var(--text-3);opacity:0;transition:opacity .15s}
+.tile:hover .star,.star:focus-visible,.star[aria-pressed="true"]{opacity:1}
+.star:hover{background:var(--hover)}
+.star[aria-pressed="true"]{color:#e9a100}
+.star svg{width:.875rem;height:.875rem;fill:currentColor}
+.tag{display:inline-flex;align-items:center;gap:.25rem;height:1.25rem;padding:0 .5rem;border-radius:.625rem;font-size:.6875rem;font-weight:600}
+.tag.soon{background:var(--surface-alt);color:var(--text-2)}
+.tag.ai{background:linear-gradient(135deg,rgba(93,54,255,.14),rgba(0,112,242,.14));color:var(--a8)}
+.tile.soon{background:var(--surface-alt);box-shadow:none;border:1px dashed var(--border)}
+.tile.soon .tile-icon .fi{color:var(--text-3)}
+.tile.soon .tile-title{color:var(--text-2)}
+
+/* feature (wide) tile – copilot */
+.tile.feature{background:linear-gradient(135deg,#3c1fd1 0%,#0057d2 60%,#0070f2 100%);color:#fff}
+.tile.feature .tile-sub,.tile.feature .tile-foot{color:rgba(255,255,255,.82)}
+.tile.feature .tile-icon .fi{color:#fff}
+.tile.feature .star{color:rgba(255,255,255,.8)}
+.tile.feature .star:hover{background:rgba(255,255,255,.15)}
+.tile.feature .tag.ai{background:rgba(255,255,255,.18);color:#fff}
+
+/* list view */
+.applist{background:var(--surface);border-radius:var(--r-md);box-shadow:var(--tile-shadow);overflow:hidden}
+.applist-row{display:grid;grid-template-columns:2.5rem minmax(10rem,1.2fr) 2fr auto;align-items:center;gap:1rem;padding:.75rem 1rem;border-bottom:1px solid var(--surface-alt);text-align:left;width:100%}
+.applist-row:last-child{border-bottom:0}
+.applist-row:hover{background:var(--hover)}
+.applist-row .ico{width:2.25rem;height:2.25rem;border-radius:.625rem;display:grid;place-items:center;background:var(--brand-soft);color:var(--brand)}
+.applist-row .ico .fi{width:1.125rem;height:1.125rem}
+.applist-row .nm{font-weight:600;font-size:.875rem}
+.applist-row .ds{font-size:.8125rem;color:var(--text-2)}
+.applist-row.soon .nm{color:var(--text-2)}
+
+/* ================= My Home ================= */
+.hero{background:var(--hero);border-radius:var(--r-tile);padding:1.75rem 2rem;display:flex;align-items:center;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;margin-bottom:2rem}
+.hero h1{font-size:1.75rem;font-weight:700;letter-spacing:-.015em}
+.hero p{color:var(--text-2);font-size:.875rem;margin-top:.375rem}
+.hero-ask{display:flex;align-items:center;gap:.5rem;background:var(--surface);border-radius:1.5rem;box-shadow:var(--tile-shadow);padding:.375rem .375rem .375rem 1rem;width:min(30rem,100%)}
+.hero-ask .fi{color:var(--a8)}
+.hero-ask input{flex:1;border:0;background:none;font:inherit;font-size:.875rem;color:var(--text);min-width:0}
+.hero-ask input:focus{outline:none}
+.hero-ask input::placeholder{color:var(--text-3)}
+.hero-ask button{height:2rem;padding:0 1rem;border-radius:1rem;background:var(--brand);color:#fff;font-weight:600;font-size:.8125rem}
+:root[data-theme="dark"] .hero-ask button{color:#0b1520}
+.chips{display:flex;gap:.375rem;flex-wrap:wrap;margin-top:.875rem}
+.chip{height:1.75rem;padding:0 .75rem;border-radius:.875rem;background:var(--surface);border:1px solid var(--border);font-size:.75rem;color:var(--text-2)}
+.chip:hover{border-color:var(--brand);color:var(--brand)}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(17.5rem,1fr));gap:.75rem}
+.card{background:var(--surface);border-radius:var(--r-tile);box-shadow:var(--tile-shadow);padding:1rem 1.125rem;display:flex;flex-direction:column;gap:.625rem;text-align:left;transition:box-shadow .2s}
+.card:hover{box-shadow:var(--tile-shadow-hover)}
+.card-top{display:flex;align-items:center;gap:.625rem}
+.card-ico{width:2rem;height:2rem;border-radius:.625rem;display:grid;place-items:center;flex:none}
+.card-ico .fi{width:1rem;height:1rem}
+.card-ico.neg{background:var(--neg-soft);color:var(--neg)}
+.card-ico.crit{background:var(--crit-soft);color:var(--crit)}
+.card-ico.info{background:var(--brand-soft);color:var(--brand)}
+.card-ico.pos{background:var(--pos-soft);color:var(--pos)}
+.card-kind{font-size:.75rem;color:var(--text-2)}
+.card-age{margin-left:auto;font-size:.75rem;color:var(--text-3)}
+.card-title{font-size:.9375rem;font-weight:600;line-height:1.3}
+.card-text{font-size:.8125rem;color:var(--text-2);line-height:1.4}
+.card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.25rem}
+.card-foot .app{font-size:.75rem;color:var(--text-3);display:flex;align-items:center;gap:.375rem}
+.card-foot .app .fi{width:.75rem;height:.75rem}
+
+.apps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.5rem}
+.app-chip{display:flex;align-items:center;gap:.75rem;background:var(--surface);border-radius:var(--r-md);box-shadow:var(--tile-shadow);padding:.625rem .75rem;text-align:left;transition:box-shadow .2s}
+.app-chip:hover{box-shadow:var(--tile-shadow-hover)}
+.app-chip .sq{width:2.5rem;height:2.5rem;border-radius:.75rem;display:grid;place-items:center;color:#fff;flex:none}
+.app-chip .sq .fi{width:1.125rem;height:1.125rem}
+.app-chip .nm{font-size:.8125rem;font-weight:600;line-height:1.2}
+.app-chip .sp{font-size:.75rem;color:var(--text-2);margin-top:.125rem}
+.empty{padding:1.5rem;border:1px dashed var(--border);border-radius:var(--r-md);color:var(--text-2);font-size:.875rem;text-align:center}
+
+.insights{display:grid;grid-template-columns:repeat(auto-fill,minmax(17.5rem,1fr));gap:.75rem}
+.ins{background:var(--surface);border-radius:var(--r-tile);box-shadow:var(--tile-shadow);padding:1rem 1.125rem}
+.ins-h{display:flex;justify-content:space-between;align-items:baseline}
+.ins-t{font-size:.875rem;font-weight:600}
+.ins-s{font-size:.75rem;color:var(--text-3)}
+.ins-v{font-size:1.75rem;margin-top:.5rem;letter-spacing:-.015em}
+.ins-d{font-size:.75rem;font-weight:600;margin-left:.375rem}
+.ins-d.up{color:var(--pos)} .ins-d.down{color:var(--neg)}
+.ins svg.chart{width:100%;height:4.5rem;margin-top:.5rem;display:block}
+.bars{display:flex;flex-direction:column;gap:.5rem;margin-top:.75rem}
+.bar-row{display:grid;grid-template-columns:4.5rem 1fr 3.5rem;align-items:center;gap:.5rem;font-size:.75rem;color:var(--text-2)}
+.bar-row .trk{height:.5rem;background:var(--surface-alt);border-radius:.25rem;overflow:hidden}
+.bar-row .fil{height:100%;border-radius:.25rem}
+.bar-row .v{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
+
+.note{margin-top:3rem;font-size:.75rem;color:var(--text-3);text-align:center}
+
+/* ================= Popovers ================= */
+.pop{position:fixed;z-index:60;background:var(--surface);border-radius:var(--r-md);box-shadow:var(--pop-shadow);width:22rem;max-width:calc(100vw - 2rem);display:none;overflow:hidden}
+.pop.open{display:block;animation:pop .15s ease-out}
+@keyframes pop{from{opacity:0;transform:translateY(-.25rem)}to{opacity:1;transform:none}}
+.pop-h{padding:1rem 1.125rem .75rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--surface-alt)}
+.pop-h b{font-size:1rem}
+.notif{display:flex;gap:.75rem;padding:.875rem 1.125rem;border-bottom:1px solid var(--surface-alt)}
+.notif:last-child{border-bottom:0}
+.notif .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--brand);margin-top:.375rem;flex:none}
+.notif .dot.read{background:transparent}
+.notif .t{font-size:.8125rem;font-weight:600}
+.notif .d{font-size:.75rem;color:var(--text-2);margin-top:.125rem;line-height:1.35}
+.notif .w{font-size:.6875rem;color:var(--text-3);margin-top:.25rem}
+.me{padding:1.25rem 1.125rem;display:flex;gap:.875rem;align-items:center;border-bottom:1px solid var(--surface-alt)}
+.me .avatar{width:3rem;height:3rem;font-size:1rem;margin:0}
+.me .n{font-weight:700}
+.me .e{font-size:.75rem;color:var(--text-2);margin-top:.125rem}
+.menu{padding:.375rem}
+.menu-item{width:100%;display:flex;align-items:center;gap:.75rem;padding:.625rem .75rem;border-radius:var(--r-sm);font-size:.875rem;text-align:left}
+.menu-item:hover{background:var(--hover)}
+.menu-item .fi{color:var(--text-2)}
+.menu-label{font-size:.6875rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;padding:.625rem .75rem .375rem}
+.theme-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:.375rem;padding:0 .75rem .625rem}
+.theme-opt{border:1px solid var(--border);border-radius:var(--r-sm);padding:.5rem .25rem;font-size:.75rem;display:flex;flex-direction:column;align-items:center;gap:.375rem}
+.theme-opt[aria-pressed="true"]{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);color:var(--brand);font-weight:600}
+.swatch{width:2.5rem;height:1.5rem;border-radius:.25rem;border:1px solid var(--border)}
+
+/* ================= Toast ================= */
+.toast{position:fixed;left:50%;bottom:2rem;transform:translate(-50%,1rem);background:#1d2d3e;color:#fff;padding:.75rem 1.25rem;border-radius:var(--r-sm);font-size:.875rem;opacity:0;pointer-events:none;transition:.2s;z-index:80;box-shadow:var(--pop-shadow);max-width:calc(100vw - 2rem)}
+:root[data-theme="dark"] .toast{background:#eaecee;color:#1d2d3e}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ================= Responsive ================= */
+@media (max-width:1024px){ main{padding:1.25rem 2rem 3rem} .logo-sub{display:none} .copilot-btn span{display:none} .copilot-btn{padding:0 .625rem} }
+@media (max-width:640px){
+  .shellbar{padding:0 .5rem;gap:.25rem}
+  .logo-title{display:none}
+  .search kbd{display:none}
+  .spacebar{padding:0 .5rem}
+  main{padding:1rem 1rem 3rem}
+  .hero{padding:1.25rem}
+  .hero h1{font-size:1.375rem}
+  .tiles{gap:.5rem}
+  .tile{width:calc(50% - .25rem);height:9.25rem;padding:.75rem;border-radius:.75rem}
+  .tile.wide{width:100%}
+  .tile-icon .fi{width:1.5rem;height:1.5rem}
+  .tile-kpi .num{font-size:1.75rem}
+  .applist-row{grid-template-columns:2.25rem 1fr auto}
+  .applist-row .ds{display:none}
+  #helpBtn{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="shell">
+  <div class="shellbar">
+    <button class="logo" id="homeLogo" aria-label="Go to My Home">
+      <span class="logo-mark"><img src="assets/henny-agentic-logo.png" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'A'}))"></span>
+      <span class="logo-title">AgentSphere</span>
+      <span class="logo-sub" id="crumb">Home</span>
+    </button>
+    <div class="shell-search">
+      <label class="search">
+        <svg class="fi" viewBox="0 0 16 16"><path d="M6.5 0a6.5 6.5 0 0 1 5.18 10.43l4.1 4.1a.75.75 0 1 1-1.06 1.06l-4.1-4.1A6.5 6.5 0 1 1 6.5 0Zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+        <input id="q" type="search" placeholder="Search apps and agents" autocomplete="off" aria-label="Search apps and agents">
+        <kbd>/</kbd>
+      </label>
+    </div>
+    <div class="shell-actions">
+      <button class="copilot-btn" id="copilotBtn"><svg class="fi" data-i="ai"></svg><span>Ask Henny</span></button>
+      <button class="icon-btn" id="helpBtn" aria-label="Help"><svg class="fi" data-i="sys-help"></svg></button>
+      <button class="icon-btn" id="notifBtn" aria-label="Notifications" aria-expanded="false"><svg class="fi" data-i="message-popup"></svg><span class="badge" id="notifBadge">3</span></button>
+      <button class="avatar-btn" id="meBtn" aria-label="User menu" aria-expanded="false"><span class="avatar">PP</span></button>
+    </div>
+  </div>
+  <nav class="spacebar" id="spacebar" role="tablist" aria-label="Spaces"></nav>
+</header>
+
+<main id="main"></main>
+
+<!-- Notifications -->
+<div class="pop" id="notifPop" role="dialog" aria-label="Notifications">
+  <div class="pop-h"><b>Notifications</b><button class="link" id="markRead">Mark all as read</button></div>
+  <div id="notifList"></div>
+</div>
+
+<!-- User menu -->
+<div class="pop" id="mePop" role="dialog" aria-label="User menu">
+  <div class="me"><span class="avatar">PP</span><div><div class="n">Parth Pitroda</div><div class="e">Silver Touch Technologies · SAP B1</div></div></div>
+  <div class="menu-label">Theme</div>
+  <div class="theme-opts" id="themeOpts">
+    <button class="theme-opt" data-t="light"><span class="swatch" style="background:linear-gradient(135deg,#fff 50%,#f5f6f7 50%)"></span>Morning</button>
+    <button class="theme-opt" data-t="dark"><span class="swatch" style="background:linear-gradient(135deg,#1d232a 50%,#12171c 50%)"></span>Evening</button>
+    <button class="theme-opt" data-t="auto"><span class="swatch" style="background:linear-gradient(135deg,#fff 50%,#12171c 50%)"></span>Auto</button>
+  </div>
+  <div class="menu">
+    <button class="menu-item" data-toast="Settings"><svg class="fi" data-i="settings"></svg>Settings</button>
+    <button class="menu-item" data-toast="Company setup"><svg class="fi" data-i="building"></svg>Company &amp; connections</button>
+    <button class="menu-item" data-toast="Roles & Permissions"><svg class="fi" data-i="shield"></svg>Roles &amp; permissions</button>
+    <button class="menu-item" data-toast="Sign out"><svg class="fi" data-i="forward"></svg>Sign out</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* SAP-icons v5 path data (subset of fiori-icons.js) */
+const ICONS = /*ICONS*/{"ai":"M4.774 5.518c.23-.69 1.222-.69 1.452 0 .811 2.38 1.873 3.441 4.256 4.252.69.24.69 1.23 0 1.46-2.383.811-3.445 1.871-4.256 4.253-.23.69-1.222.69-1.452 0C3.963 13.1 2.9 12.04.518 11.23c-.69-.24-.69-1.231 0-1.461 2.383-.81 3.445-1.871 4.256-4.252Zm7.83-5.234a.417.417 0 0 1 .791 0c.44 1.298 1.02 1.877 2.32 2.317.38.13.38.669 0 .799-1.3.439-1.88 1.018-2.32 2.316a.417.417 0 0 1-.79 0c-.44-1.298-1.02-1.877-2.32-2.316a.423.423 0 0 1 0-.8c1.3-.439 1.88-1.018 2.32-2.316Z","sys-help":"M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm0 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM8 11a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm0-8a2.99 2.99 0 0 1 .75 5.884v.366a.75.75 0 0 1-1.5 0V8.231c0-.547.407-.716.904-.757.498-.042 1.346-.54 1.346-1.483A1.49 1.49 0 0 0 8 4.5c-.883 0-1.414.582-1.504 1.567A.75.75 0 0 1 5 5.991 2.99 2.99 0 0 1 8 3Z","message-popup":"M13.639 0C14.939 0 16 1.061 16 2.362v7.817c0 1.3-1.061 2.321-2.361 2.321h-9.34l-3 3.267c-.454.489-1.299.156-1.299-.51V2.361A2.367 2.367 0 0 1 2.361 0H13.64ZM2.36 1.5a.866.866 0 0 0-.861.862v10.986l1.979-2.122c.136-.119.311-.226.494-.226h9.666c.472 0 .861-.349.861-.821V2.362a.866.866 0 0 0-.861-.861H2.36ZM8 8.004a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm0-5.502a.75.75 0 0 1 .75.75v3.002a.75.75 0 1 1-1.5 0V3.25A.75.75 0 0 1 8 2.5Z","settings":"M11 6a.75.75 0 0 1 .75.75v.826a3.7 3.7 0 0 1 1.428.635l.675-.45a.75.75 0 0 1 .833 1.248l-.494.328c.609.88.495 2.057.495 2.057l.745.186a.75.75 0 0 1-.364 1.455l-.766-.192a3.706 3.706 0 0 1-1.147 1.345l.431.646a.75.75 0 0 1-1.248.832l-.575-.861a3.788 3.788 0 0 1-1.527 0l-.574.861a.75.75 0 0 1-1.248-.832l.43-.646a3.707 3.707 0 0 1-1.147-1.345l-.765.192a.75.75 0 0 1-.364-1.455l.745-.186s-.132-1.232.407-1.897l-.732-.488A.75.75 0 0 1 7.82 7.76l.85.566c.45-.367.99-.629 1.58-.75V6.75A.75.75 0 0 1 11 6Zm0 3a2.193 2.193 0 1 0 0 4.385A2.193 2.193 0 0 0 11 9ZM4 0a.75.75 0 0 1 .75.75v.348c.426.11.816.308 1.147.578l.428-.294a.75.75 0 0 1 .85 1.236l-.39.268c.283.449.21 1.277.21 1.277l.437.11a.75.75 0 0 1-.364 1.455l-.53-.133a3.01 3.01 0 0 1-.717.785l.303.454a.75.75 0 1 1-1.248.832l-.464-.695a3.08 3.08 0 0 1-.825 0l-.463.695a.75.75 0 0 1-1.248-.832l.302-.454a3.011 3.011 0 0 1-.716-.785l-.53.133a.75.75 0 0 1-.364-1.456l.436-.109s-.063-.768.214-1.283l-.384-.256a.75.75 0 0 1 .832-1.248l.442.295c.33-.268.718-.464 1.142-.573V.75A.75.75 0 0 1 4 0Zm0 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z","building":"M8 0a.75.75 0 0 1 .75.75v.913l1.998 1.776A.75.75 0 0 1 11 4v4.5h3.25a.75.75 0 0 1 .75.75v6a.75.75 0 0 1-.75.75H1.75a.753.753 0 0 1-.75-.75v-9c0-.398.352-.75.75-.75H5V4a.777.777 0 0 1 .252-.56L7.25 1.662V.75A.75.75 0 0 1 8 0ZM2.5 14.5H5V13H2.5v1.5Zm4 0h3V13h-3v1.5Zm4.5 0h2.5V13H11v1.5Zm0-3h2.5V10H11v1.5Zm-4.5 0h3V10h-3v1.5Zm-4 0H5V10H2.5v1.5Zm0-3H5V7H2.5v1.5Zm4 0h3V7h-3v1.5Zm0-4.164V5.5h3V4.336L8 3.003 6.5 4.336Z","shield":"M7.876.01a.75.75 0 0 1 .331.024l5.265 1.61a.75.75 0 0 1 .53.718V8c0 2.71-1.479 4.709-2.875 5.99a12.623 12.623 0 0 1-1.925 1.447c-.523.32-.702.404-.901.495a.751.751 0 0 1-.627 0c-.199-.092-.377-.175-.898-.496A12.567 12.567 0 0 1 4.86 13.99c-1.346-1.242-2.77-3.157-2.857-5.738l.006-6.012a.75.75 0 0 1 .52-.595L7.875.009ZM3.538 8.663c.208 1.803 1.24 3.21 2.338 4.223.481.444.965.8 1.374 1.07V9.371l-3.712-.707Zm5.212.708v4.574c.407-.27.886-.623 1.362-1.06 1.103-1.013 2.138-2.419 2.348-4.219l-3.71.705ZM3.498 2.915V7.13l3.752.715V1.761L3.498 2.916ZM8.75 7.843l3.752-.71V2.914L8.75 1.767v6.076Z","forward":"M9.205 1.486a.75.75 0 0 1 1.06-.03l4.5 4.247a.757.757 0 0 1 0 1.09l-4.5 4.252a.75.75 0 0 1-1.03-1.09L12.361 7H8.75a6.25 6.25 0 0 0-6.25 6.25v1a.75.75 0 0 1-1.5 0v-1A7.75 7.75 0 0 1 8.75 5.5h3.616l-3.13-2.955a.75.75 0 0 1-.03-1.06Z","crm-sales":"M6.25 14.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5h4.5Zm6.219-4.2.628 1.36 1.46.208c.406.058.584.57.3.867l-1.063 1.116.266 1.545a.52.52 0 0 1-.76.539l-1.3-.729-1.3.729a.521.521 0 0 1-.762-.539l.266-1.545-1.062-1.116a.522.522 0 0 1 .3-.867l1.46-.208.665-1.426a.521.521 0 0 1 .902.066ZM6.25 12a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5h4.5Zm0-2.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5h4.5Zm6.5-9.5a.75.75 0 0 1 .75.75V1l.827.004A.75.75 0 0 1 14.25 2.5h-2.317c-.25 0-.433.269-.433.5 0 .243.194.5.45.5h.9c.638 0 1.188.215 1.58.607.78.782.757 2.05-.014 2.801-.25.244-.562.415-.916.509v.333a.75.75 0 0 1-1.5 0V7.5h-1.25a.75.75 0 0 1 0-1.5h2.1c.312 0 .65-.137.65-.495 0-.362-.33-.505-.65-.505h-.9C10.79 5 10 3.994 10 3c0-1.106.905-2 2-2V.75a.75.75 0 0 1 .75-.75ZM4 4a2.5 2.5 0 0 1 2.5 2.5.5.5 0 0 1-.5.5H2a.515.515 0 0 1-.5-.5A2.5 2.5 0 0 1 4 4Zm0-4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z","sales-quote":"M9.25 0C10.216 0 11 .784 11 1.75V2h1.25c.966 0 1.75.784 1.75 1.75v.5a.75.75 0 0 1-1.5 0v-.5a.25.25 0 0 0-.25-.25h-1.27A1.749 1.749 0 0 1 9.25 5h-.5v1.25h.7a.75.75 0 0 1 0 1.5h-2A.483.483 0 0 0 7 8.2c0 .226.224.45.45.45h.8c1.054 0 1.95.896 1.95 1.95 0 .882-.629 1.65-1.452 1.879l.002.021v2h3.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 12.25 16h-8.5A1.75 1.75 0 0 1 2 14.25v-1.5a.75.75 0 0 1 1.5 0v1.5c0 .138.112.25.25.25h3.5v-1.95h-1a.75.75 0 0 1 0-1.5h2c.226 0 .45-.225.45-.45a.483.483 0 0 0-.45-.45h-.8c-1.054 0-1.95-.896-1.95-1.95 0-.987.785-1.835 1.75-1.94V5h-.5a1.749 1.749 0 0 1-1.73-1.5H3.75a.25.25 0 0 0-.25.25v.5a.75.75 0 0 1-1.5 0v-.5C2 2.784 2.783 2 3.75 2H5v-.25C5 .784 5.783 0 6.75 0h2.5ZM.415 7.08a.75.75 0 0 1 1.006.335l.75 1.5a.75.75 0 0 1-1.342.67l-.75-1.5a.75.75 0 0 1 .336-1.006Zm2.25 0a.75.75 0 0 1 1.006.335l.75 1.5a.75.75 0 0 1-1.342.67l-.75-1.5a.75.75 0 0 1 .336-1.006Zm9.664.335a.75.75 0 0 1 1.342.67l-.75 1.5a.75.75 0 0 1-1.342-.67l.75-1.5Zm2.25 0a.75.75 0 0 1 1.342.67l-.75 1.5a.75.75 0 0 1-1.342-.67l.75-1.5ZM6.75 1.5a.25.25 0 0 0-.25.25v1.5c0 .138.112.25.25.25h2.5a.25.25 0 0 0 .25-.25v-1.5a.25.25 0 0 0-.25-.25h-2.5Z","customer-order-entry":"M7.307 0c.974 0 1.764.784 1.764 1.75V2h1.165C11.21 2 12 2.784 12 3.75v.5c0 .414-.338.75-.756.75a.753.753 0 0 1-.756-.75v-.5a.251.251 0 0 0-.252-.25H9.051A1.758 1.758 0 0 1 7.307 5h-2.52a1.758 1.758 0 0 1-1.744-1.5h-1.28a.251.251 0 0 0-.251.25v10.5c0 .138.113.25.252.25h.504c.417 0 .756.336.756.75s-.339.75-.756.75h-.504A1.757 1.757 0 0 1 0 14.25V3.75C0 2.784.79 2 1.764 2h1.26v-.25c0-.966.79-1.75 1.764-1.75h2.52ZM10.9 7.543a.761.761 0 0 1 1.012.05l1.598 1.585a.752.752 0 0 1 .001 1.06L7.93 15.78a.76.76 0 0 1-.534.22h-1.6a.753.753 0 0 1-.756-.75v-1.583c0-.199.08-.39.222-.53L10.9 7.543Zm-4.35 6.434v.523h.53l4.826-4.792-.53-.523-4.826 4.792ZM5.291 9.5c.418 0 .756.336.756.75s-.338.75-.756.75H3.78a.753.753 0 0 1-.756-.75c0-.414.338-.75.756-.75h1.51Zm8.888-4.281 1.599 1.584a.745.745 0 0 1 .002 1.06l-.794.791a.783.783 0 0 1-1.07.002l-1.599-1.584a.745.745 0 0 1-.002-1.06l.91-.885a.781.781 0 0 1 .954.092ZM8.315 6.5c.418 0 .756.336.756.75S8.733 8 8.315 8H3.78a.753.753 0 0 1-.756-.75c0-.414.338-.75.756-.75h4.535Zm-3.527-5a.251.251 0 0 0-.252.25v1.5c0 .138.112.25.252.25h2.52a.25.25 0 0 0 .251-.25v-1.5a.251.251 0 0 0-.252-.25h-2.52Z","sales-order":"M9.25 0C10.216 0 11 .784 11 1.75V2h1.25c.966 0 1.75.784 1.75 1.75v.5a.75.75 0 0 1-1.5 0v-.5a.25.25 0 0 0-.25-.25h-1.27A1.749 1.749 0 0 1 9.25 5h-2.5a1.749 1.749 0 0 1-1.73-1.5H3.75a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h4.5a.75.75 0 0 1 0 1.5h-4.5A1.75 1.75 0 0 1 2 14.25V3.75C2 2.784 2.784 2 3.75 2H5v-.25C5 .784 5.784 0 6.75 0h2.5Zm4.5 6.5a.75.75 0 0 1 .75.75V8h.75a.75.75 0 0 1 0 1.5h-2.285c-.304 0-.465.316-.465.5 0 .18.136.508.465.508.39 0 .885-.008.885-.008.638 0 1.188.215 1.58.607.78.782.757 2.05-.014 2.801-.25.244-.562.415-.916.509v.833a.75.75 0 0 1-1.5 0v-.75h-1.25a.75.75 0 0 1 0-1.5s1.343.017 2.163.017c.353 0 .587-.212.587-.512 0-.29-.256-.505-.605-.505h-.945C11.79 12 11 10.994 11 10c0-.987.78-2 2-2v-.75a.75.75 0 0 1 .75-.75Zm-7-5a.25.25 0 0 0-.25.25v1.5c0 .138.112.25.25.25h2.5a.25.25 0 0 0 .25-.25v-1.5a.25.25 0 0 0-.25-.25h-2.5Z","shipping-status":"M9.75 1c.966 0 1.75.784 1.75 1.75V3h1.795c.74 0 1.4.465 1.648 1.161l.955 2.674c.068.189.102.388.102.588v2.827A1.75 1.75 0 0 1 14.25 12c-.04 0-.219.012-.298.012.097.484.047.987-.142 1.444A2.524 2.524 0 0 1 11.5 15c-1 0-1.927-.62-2.31-1.544A2.51 2.51 0 0 1 9.05 12c-.707 0-1.948 0-2.123.012.096.484.047.987-.142 1.444A2.524 2.524 0 0 1 4.475 15c-1 0-1.927-.62-2.31-1.544A2.542 2.542 0 0 1 2.022 12H1.75A1.75 1.75 0 0 1 0 10.25v-7.5C0 1.784.784 1 1.75 1h8ZM3.611 12a1.013 1.013 0 0 0-.06.883c.151.365.528.617.924.617.395 0 .772-.252.923-.617a1.013 1.013 0 0 0-.06-.883H3.61Zm7.026 0a1.013 1.013 0 0 0-.06.883c.15.365.528.617.923.617s.772-.252.924-.617a1.013 1.013 0 0 0-.06-.883h-1.727ZM1.75 2.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V8.5h-3.75a.75.75 0 0 1-.75-.75v-5a.25.25 0 0 0-.25-.25h-8ZM11.5 7h2.864l-.834-2.334a.25.25 0 0 0-.235-.166H11.5V7Z","receipt":"M5.25 0c.199 0 .39.08.53.22l.92.919.78-.93A.75.75 0 0 1 8 0h2.75a.75.75 0 0 1 .576.27l1.026 1.23h.898a.75.75 0 0 1 .75.75v13a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1-.53-.22l-.854-.853-.492.739A.75.75 0 0 1 8.25 16h-3a.75.75 0 0 1-.67-.415L4.035 14.5H2.75a.75.75 0 0 1-.75-.75v-13A.75.75 0 0 1 2.75 0h2.5ZM3.5 13l1.105.008a.75.75 0 0 1 .566.407l.543 1.085h2.135l.827-1.233a.759.759 0 0 1 1.104-.047l1.28 1.28h1.44V3H12a.75.75 0 0 1-.576-.27L10.398 1.5H8.352L7.326 2.73a.758.758 0 0 1-1.106.05L4.94 1.5H3.5V13Zm6.5-3a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm-2.75.25a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5h1.5ZM10 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm-2.75.25a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5h1.5ZM10 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm-2.75.25a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5h1.5Z","undo":"M5.795 1.486a.75.75 0 0 0-1.06-.03l-4.5 4.247a.757.757 0 0 0 0 1.09l4.5 4.252a.75.75 0 0 0 1.03-1.09L2.639 7h8.611a3.25 3.25 0 1 1 0 6.5h-6.5a.75.75 0 1 0 0 1.5h6.5a4.75 4.75 0 0 0 0-9.5H2.634l3.13-2.955a.75.75 0 0 0 .03-1.06Z","money-bills":"M12.599.064a1.75 1.75 0 0 1 2.146 1.203l.612 2.121c.392.326.643.817.643 1.364v6.828c0 1.019-1.006 1.42-1.414 1.42-.408 0-.59.004-.59.004l-10.338 2.93a1.75 1.75 0 0 1-2.155-1.202l-.553-1.91a1.773 1.773 0 0 1-.95-1.57v-6.5c0-.97.786-1.768 1.757-1.768h.299L12.599.064ZM2.944 14.313a.25.25 0 0 0 .308.171l5.18-1.464h-5.86l.372 1.293ZM2.896 4.74a1.358 1.358 0 0 1-1.34 1.17H1.5v4.181h.056c.75 0 1.354.592 1.354 1.423H7v-.502h-.25a.752.752 0 0 1 0-1.505h1.4c.2-.001.35-.218.35-.403 0-.227-.193-.39-.35-.39h-.31C6.806 8.714 6 7.855 6 6.846c0-.884.616-1.634 1.451-1.814V4.74H2.896Zm6.055 0v.25h.299a.752.752 0 0 1 0 1.505H7.84c-.182 0-.34.15-.34.351 0 .21.166.362.34.362h.31c1.052 0 1.85.906 1.85 1.896 0 .871-.621 1.695-1.5 1.871v.539h4.59c0-.805.6-1.423 1.41-1.423v-4.18h-.056a1.358 1.358 0 0 1-1.34-1.171H8.951Zm4.047-3.227-5.304 1.47h5.986l-.375-1.297a.25.25 0 0 0-.307-.173Z","customer":"M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm-.025 10.95a4.903 4.903 0 0 0-4.04 2.12A6.47 6.47 0 0 0 8 14.5a6.47 6.47 0 0 0 4.031-1.403 4.903 4.903 0 0 0-4.056-2.147ZM8 1.5a6.5 6.5 0 0 0-5.13 10.49 6.43 6.43 0 0 1 2.52-1.997 3.975 3.975 0 1 1 5.17 0 6.432 6.432 0 0 1 2.545 2.028A6.5 6.5 0 0 0 8 1.5Zm-.025 3a2.475 2.475 0 1 0 0 4.95 2.475 2.475 0 0 0 0-4.95Z","compare":"M8 0c.74 0 1.385.403 1.73 1h2.77a.75.75 0 0 1 .75.75v1.843c.617 1.419 1.282 2.88 1.653 4.386.05.206.097.44.097.646C15 9.983 13.83 11 12.5 11S10 9.983 10 8.625c0-.207.046-.44.097-.646.37-1.506 1.036-2.967 1.653-4.386V2.5H9.935A2 2 0 0 1 8.75 3.853V14.5h6.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5h6.5V3.853A2 2 0 0 1 6.065 2.5H4.25v1.093c.617 1.419 1.282 2.88 1.653 4.386.05.206.097.44.097.646C6 9.983 4.83 11 3.5 11S1 9.983 1 8.625c0-.207.046-.44.097-.646.37-1.506 1.036-2.967 1.653-4.386V1.75A.75.75 0 0 1 3.5 1h2.77C6.615.403 7.26 0 8 0Zm3.648 8h1.704c-.191-.629-.537-1.536-.852-2.313-.315.777-.66 1.684-.852 2.313Zm-9 0h1.704c-.239-.786-.544-1.552-.852-2.313-.308.761-.613 1.527-.852 2.313Z","bar-chart":"M2.25 11a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1-.75-.75v-2.5a.75.75 0 0 1 .75-.75h.5Zm4-6a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 5.75 5h.5Zm8-4a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 .75-.75h.5Zm-4 6a.75.75 0 0 1 .75.75v6.451a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1-.75-.75V7.75A.75.75 0 0 1 9.75 7h.5Z","line-chart-time-axis":"M2.986 10.048a.75.75 0 0 1 .834.214l2.64 3.08 2.994-1.281a.752.752 0 0 1 .777.113l2.303 1.92 2.061-3.708a.75.75 0 0 1 1.31.728l-2.5 4.5a.757.757 0 0 1-1.135.212L9.622 13.62l-3.076 1.32a.751.751 0 0 1-.865-.202l-2.588-3.02-1.957 1.176a.751.751 0 0 1-.772-1.287l2.622-1.56ZM11 0a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 1.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm-.25 1a.75.75 0 0 1 .75.75v1.639l.969.775a.75.75 0 0 1-.938 1.172l-1.25-1a.75.75 0 0 1-.28-.586v-2a.75.75 0 0 1 .75-.75Z","collections-management":"M.751 7.982a.75.75 0 0 1 .751.75V11.5c0 .69.56 1.251 1.252 1.251H4.62l-.437-.517a.75.75 0 0 1 .09-1.056.752.752 0 0 1 1.058.09l1.479 1.75a.749.749 0 0 1 0 .966l-1.479 1.75a.75.75 0 1 1-1.148-.967l.437-.516H2.754A2.753 2.753 0 0 1 0 11.499V8.732a.75.75 0 0 1 .751-.75Zm12.495 1.022c.415 0 .75.336.751.75v3.5c0 .966-.785 1.75-1.752 1.75H8.739a.75.75 0 1 1 0-1.5h3.505a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 .752-.75ZM7.488 11a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1ZM9.74 8.998a.75.75 0 0 1 .75.75v1.502a.75.75 0 0 1-1.501 0V9.748a.75.75 0 0 1 .75-.75ZM5.485 9a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1Zm2.003 0a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1ZM10.673.262a.75.75 0 1 1 1.14.977l-.439.51h1.872A2.753 2.753 0 0 1 16 4.499v2.768a.75.75 0 0 1-1.502 0V4.499c0-.69-.561-1.25-1.252-1.25h-1.873l.44.513a.75.75 0 1 1-1.14.976L9.17 2.988a.75.75 0 0 1 0-.976l1.502-1.75ZM5.485 7a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1Zm2.003 0a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1ZM9.49 7a.5.5 0 1 1 .001 1 .5.5 0 0 1 0-1ZM7.237 1a.75.75 0 1 1 0 1.5H3.732a.25.25 0 0 0-.25.25v3.5a.75.75 0 0 1-1.503 0v-3.5c0-.966.785-1.75 1.753-1.75h3.505Zm.997 3a.75.75 0 1 1 0 1.5H5.735a.75.75 0 1 1 0-1.5h2.499Z","cart":"M4.505 13a1.5 1.5 0 1 1 .002 3.002A1.5 1.5 0 0 1 4.505 13Zm8.01 0a1.5 1.5 0 1 1 .001 3.002A1.5 1.5 0 0 1 12.515 13ZM2.503 0c.296 0 .564.174.685.443L3.888 2h10.357c1.39 0 2.226 1.539 1.47 2.703l-2.57 3.955a.751.751 0 0 1-.63.342H5.82l-.808 1.5h8.253a.75.75 0 1 1 0 1.5h-9.51a.757.757 0 0 1-.662-1.105L4.76 7.8l-.869-2.124L2.017 1.5H.751a.75.75 0 1 1 0-1.5h1.752Zm3.852 7.5h5.752l2.348-3.614a.25.25 0 0 0-.21-.386H4.623l1.732 4Z","request":"M10.25 0C11.216 0 12 .784 12 1.75v.5a.75.75 0 0 1-1.5 0v-.5a.25.25 0 0 0-.25-.25H5.71a.25.25 0 0 0-.19.087L5 2.193V5.25a.75.75 0 0 1-.75.75H1.738c-.089.104-.238.37-.238.37v7.88c0 .138.112.25.25.25h.5a.75.75 0 0 1 0 1.5h-.5A1.75 1.75 0 0 1 0 14.25V6.37c0-.417.15-.821.42-1.139L4.38.611A1.751 1.751 0 0 1 5.71 0h4.54Zm.565 7.543a.75.75 0 0 1 1.003.05l1.586 1.585c.29.289.29.77.001 1.06L7.867 15.78a.75.75 0 0 1-.53.22H5.75a.75.75 0 0 1-.75-.75v-1.583c0-.199.08-.39.22-.53l5.595-5.594ZM6.5 13.977v.523h.526l4.787-4.792-.525-.523L6.5 13.977ZM5.25 10a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5h1.5Zm8.287-5a.72.72 0 0 1 .531.219l1.586 1.584a.75.75 0 0 1 .002 1.06l-.788.791a.75.75 0 0 1-1.061.002L12.22 7.072a.75.75 0 0 1-.002-1.06l.855-.828A.613.613 0 0 1 13.537 5ZM7.25 7a.75.75 0 0 1 0 1.5H3.74a.75.75 0 0 1 0-1.5h3.51Z","sales-document":"M11.25 0C12.216 0 13 .784 13 1.75v2.5a.75.75 0 0 1-1.5 0v-2.5a.25.25 0 0 0-.25-.25H6.71a.25.25 0 0 0-.19.087L6 2.193V5.25a.75.75 0 0 1-.75.75H2.738l-.238.37v7.88c0 .138.112.25.25.25h4.5a.75.75 0 0 1 0 1.5h-4.5A1.75 1.75 0 0 1 1 14.25V6.37c0-.417.15-.821.42-1.139L5.38.611A1.751 1.751 0 0 1 6.71 0h4.54Zm1 6.5a.75.75 0 0 1 .75.75V8h.75a.75.75 0 0 1 0 1.5h-2.258c-.259 0-.492.164-.492.5 0 .306.249.5.511.5h.839c.638 0 1.188.215 1.58.607.385.386.57.896.57 1.398a1.95 1.95 0 0 1-.584 1.403c-.25.244-.562.415-.916.509v.833a.75.75 0 0 1-1.5 0v-.75h-1.25a.75.75 0 0 1 0-1.5h2.1c.287 0 .65-.095.65-.495S12.643 12 12.35 12h-.9c-1.16 0-1.95-1.006-1.95-2 0-.987.78-2 2-2v-.75a.75.75 0 0 1 .75-.75Z","inbox":"M4.251 2a.75.75 0 0 1 0 1.5H3.75c-.69 0-1.25.56-1.25 1.25V9h2.75c.72 0 1.171.57 1.286 1.081A1.5 1.5 0 0 0 8 11.25c.855 0 1.299-.627 1.522-1.361C9.696 9.437 10.12 9 10.75 9h2.75V4.75c0-.69-.56-1.25-1.25-1.25h-.499a.75.75 0 0 1 0-1.5h.499A2.75 2.75 0 0 1 15 4.75v8.5A2.75 2.75 0 0 1 12.25 16h-8.5A2.75 2.75 0 0 1 1 13.25v-8.5A2.75 2.75 0 0 1 3.75 2h.501ZM2.5 13.25c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25V10.5h-2.598a2.998 2.998 0 0 1-5.804 0H2.5v2.75ZM8 0a.75.75 0 0 1 .75.75v4.674l.72-.72a.75.75 0 0 1 1.06 1.06l-1.997 2a.757.757 0 0 1-1.06 0l-2.003-2a.75.75 0 0 1 1.06-1.06l.72.718V.75A.75.75 0 0 1 8 0Z","accounting-document-verification":"M12.25 0C13.216 0 14 .784 14 1.75v12.5A1.75 1.75 0 0 1 12.25 16h-8.5A1.75 1.75 0 0 1 2 14.25V6.37c0-.417.15-.821.42-1.139L6.38.611A1.751 1.751 0 0 1 7.71 0h4.54ZM7.71 1.5a.25.25 0 0 0-.19.087L7 2.193V5.25a.75.75 0 0 1-.75.75H3.738c-.089.104-.238.37-.238.37v7.88c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H7.71Zm1.97 5.762a.75.75 0 0 1 1.14.976l-3 3.5a.75.75 0 0 1-1.1.042l-1.5-1.5a.75.75 0 1 1 1.06-1.06l.927.926 2.474-2.884Z","validate":"m8.207.034 5.265 1.61a.75.75 0 0 1 .53.718V8c0 2.71-1.479 4.708-2.875 5.99a12.623 12.623 0 0 1-1.925 1.446c-.134.082-.638.392-.862.494a.844.844 0 0 1-.666 0c-.312-.104-.62-.325-.898-.495A12.554 12.554 0 0 1 4.86 13.99c-1.346-1.242-2.77-3.157-2.857-5.738l.006-6.012a.75.75 0 0 1 .52-.595L7.767.034a.83.83 0 0 1 .439 0ZM3.498 2.916V8c.067 1.931.968 3.585 2.378 4.886a11.083 11.083 0 0 0 2.111 1.519c.445-.243 1.29-.755 2.125-1.52 1.236-1.135 2.39-2.762 2.39-4.885V2.916L7.988 1.535l-4.49 1.38Zm6.183 2.846a.75.75 0 0 1 1.138.977l-3 3.5a.758.758 0 0 1-1.1.042l-1.5-1.5A.75.75 0 0 1 6.28 7.72l.927.926 2.474-2.885Z","batch-payments":"M14.255 1a.75.75 0 0 1 .75.75v5.42c.71.34 1.141 1.143.95 1.974l-1.04 4.5A1.752 1.752 0 0 1 13.208 15H3.026c-.942 0-1.633-.694-1.775-1.64L.02 5.004A1.751 1.751 0 0 1 1.752 3h1.243V1.75a.75.75 0 0 1 .75-.75h10.51Zm-3.68 8.487A1.753 1.753 0 0 1 9.336 10H3.777a.251.251 0 0 0-.243.19l-.75 3a.25.25 0 0 0 .242.31h10.182a.25.25 0 0 0 .244-.193l1.04-4.5a.25.25 0 0 0-.187-.3L11.564 8.5l-.988.987ZM1.752 4.5a.25.25 0 0 0-.247.286l.694 4.708a1.75 1.75 0 0 1 .796-.808V4.5H1.752Zm4.246-2A1.5 1.5 0 0 1 4.496 4v3a1.5 1.5 0 0 1 1.502 1.5h3.338c.067 0 .13-.027.177-.073l1.323-1.301A.752.752 0 0 1 11.252 7h2.252V4a1.501 1.501 0 0 1-1.501-1.5H5.998ZM9 4a1.5 1.5 0 1 1 .001 3.001 1.5 1.5 0 0 1 0-3.001Z","supplier":"M8 0a4 4 0 0 1 2.616 7.023C12.61 7.931 14 9.927 14 12.25v1a.75.75 0 0 1-.75.75H12v.25A1.75 1.75 0 0 1 10.25 16h-4.5A1.75 1.75 0 0 1 4 14.25V14H2.75a.75.75 0 0 1-.75-.75v-1c0-2.323 1.39-4.319 3.383-5.227A4 4 0 0 1 8 0ZM5.75 11.5a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h4.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25h-4.5ZM7.798 8C5.418 8 3.5 9.911 3.5 12.25v.25H4v-.75c0-.966.784-1.75 1.75-1.75h4.5c.966 0 1.75.784 1.75 1.75v.75h.5v-.25C12.5 9.911 10.581 8 8.202 8h-.404ZM8 1.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z","horizontal-bar-chart":"M1.75 1a.75.75 0 0 1 .75.75v11.5c0 .138.112.25.25.25h11.5a.75.75 0 0 1 0 1.5H2.75A1.75 1.75 0 0 1 1 13.25V1.75A.75.75 0 0 1 1.75 1Zm6.5 9.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1 0-1.5h3.5Zm3-4a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h6.5Zm3-4.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1 0-1.5h9.5Z","monitor-payments":"M13.5 13a2.5 2.5 0 0 1 2.5 2.5.5.5 0 0 1-.5.5h-4a.515.515 0 0 1-.5-.5 2.5 2.5 0 0 1 2.5-2.5Zm-.25-12A2.75 2.75 0 0 1 16 3.75v1.48a.75.75 0 0 1-1.5 0V3.75c0-.69-.56-1.25-1.25-1.25H2.75c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h5.5a.75.75 0 0 1 0 1.5h-5.5A2.75 2.75 0 0 1 0 12.25v-8.5A2.75 2.75 0 0 1 2.75 1h10.5Zm-8.5 2a.75.75 0 0 1 .75.75v.75h.75a.75.75 0 0 1 0 1.5H4a.5.5 0 0 0 0 1h1a1.998 1.998 0 0 1 .5 3.934v.816a.75.75 0 0 1-1.5 0V11H2.75a.75.75 0 0 1 0-1.5H5a.5.5 0 0 0 0-1H4a2 2 0 1 1 0-4v-.75A.75.75 0 0 1 4.75 3Zm8.75 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm-4.25.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1 0-1.5h.5Zm1-2.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5h1.5Zm2-2.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1 0-1.5h3.5Z","lightbulb":"M10.25 14.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5h4.5ZM8 0c2.984 0 6 2.253 6 5.5 0 1.671-.945 2.757-1.663 3.661-.74.93-1.337 1.757-1.337 3.089a.75.75 0 0 1-.75.75h-4.5a.75.75 0 0 1-.75-.75c0-1.377-.604-2.227-1.337-3.15C2.953 8.208 2 7.136 2 5.5 2 2.341 5.008 0 8 0Zm0 1.5c-2.359 0-4.5 1.851-4.5 4 0 1.018.547 1.673 1.337 2.667.662.832 1.418 1.84 1.613 3.333h3.102c.2-1.46.957-2.45 1.611-3.272.782-.984 1.337-1.665 1.337-2.728 0-2.221-2.133-4-4.5-4Z","lateness":"M12.25 0c.398 0 .75.352.75.75 0 2.346-.567 3.97-1.475 5.202-.633.861-1.415 1.5-2.191 2.048.776.548 1.558 1.187 2.191 2.048C12.433 11.28 13 12.904 13 15.25a.75.75 0 0 1-.75.75h-8.5a.75.75 0 0 1-.75-.75c0-2.346.567-3.97 1.475-5.202.633-.86 1.414-1.5 2.19-2.048-.776-.548-1.557-1.187-2.19-2.048C3.567 4.72 3 3.096 3 .75A.75.75 0 0 1 3.75 0h8.5ZM8 8.904c-.906.61-1.705 1.199-2.318 2.033A5.36 5.36 0 0 0 5.073 12h5.854a5.364 5.364 0 0 0-.609-1.063C9.705 10.103 8.906 9.514 8 8.904ZM4.522 1.5c.105 1.655.56 2.749 1.16 3.563.613.834 1.412 1.422 2.318 2.032.906-.61 1.705-1.198 2.318-2.032.6-.814 1.055-1.908 1.16-3.563H4.521Z","inventory":"M9.75 1c.966 0 1.75.784 1.75 1.75V3h1.795c.74 0 1.4.465 1.648 1.161l.955 2.674c.068.189.102.388.102.588v2.827A1.75 1.75 0 0 1 14.25 12h-.3a2.502 2.502 0 0 1-1.06 2.578 2.503 2.503 0 0 1-2.779 0 2.502 2.502 0 0 1-1.063-2.566L9.05 12H6.924l.003.012a2.502 2.502 0 0 1-1.063 2.566 2.503 2.503 0 0 1-2.778 0 2.502 2.502 0 0 1-1.064-2.566L2.025 12H1.25C.56 12 0 11.44 0 10.75a.747.747 0 0 1 1.454-.25H14.25a.25.25 0 0 0 .25-.25V8.5h-3.75a.75.75 0 0 1-.75-.75v-5a.25.25 0 0 0-.25-.25h-1a.75.75 0 0 1 0-1.5h1ZM3.61 12a1.015 1.015 0 0 0-.06.883c.152.365.53.617.925.617s.772-.252.923-.617a1.014 1.014 0 0 0-.06-.883H3.61Zm7.026 0a1.015 1.015 0 0 0-.06.883c.151.365.529.617.924.617s.772-.252.924-.617a1.014 1.014 0 0 0-.06-.883h-1.728ZM1 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm5.25 0a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5Zm5.25 0h2.864l-.834-2.334a.25.25 0 0 0-.235-.166H11.5V7ZM1 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm5.25 0a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5ZM1 1a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm5.25 0a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5Z","retail-store":"M12.842 3.01a1.75 1.75 0 0 1 1.656 1.184L15.9 8.316c.213.64.098 1.331-.41 1.845s-.99.715-1.479.802v4.287a.75.75 0 0 1-1.5 0v-4.464c-.282-.122-.59-.263-.808-.546-.42.46-1.09.722-1.695.757v4.253a.75.75 0 0 1-.75.75H2.751a.75.75 0 0 1-.75-.75v-4.287c-.498-.088-1.083-.318-1.513-.791-.43-.473-.608-1.198-.4-1.82v-.004l1.423-4.162A1.752 1.752 0 0 1 3.172 3l9.67.009Zm-4.837 7.23c-1.012.982-2.723 1.033-3.698 0-.233.26-.524.424-.804.546V14.5h5.004v-3.871c-.167-.1-.356-.215-.502-.389ZM3.17 4.501a.25.25 0 0 0-.236.169L1.512 8.826v.001c-.046.13.024.29.122.403.393.456 1.169.377 1.597-.036 0 0 .38-.389.633-.621.253-.232.671-.182.89.04.219.223.324.328.711.653.387.324 1.06.317 1.463-.072l.552-.54a.752.752 0 0 1 1.051 0l.551.54c.43.415 1.117.415 1.547-.002l.548-.538a.752.752 0 0 1 1.052 0l.55.54a1.15 1.15 0 0 0 1.588-.003c.098-.09.169-.242.131-.353l-1.421-4.16a.25.25 0 0 0-.236-.168L3.168 4.5ZM13.261 0a.75.75 0 1 1 0 1.5H2.75a.75.75 0 0 1 0-1.5h10.51Z","list":"M2 13a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm12.25 0a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5h8.5ZM2 9a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm12.25 0a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5h8.5ZM2 5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm12.25 0a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5h8.5ZM2 1a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm12.25 0a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5h8.5Z","product":"M7.1.375A.75.75 0 0 1 8.126.1l6.5 3.75A.75.75 0 0 1 15 4.5v7a.75.75 0 0 1-.364.643l-6.25 3.75a.75.75 0 0 1-.772 0l-6.25-3.75A.75.75 0 0 1 1 11.5V5a.75.75 0 0 1 .323-.616l3.345-2.307a.75.75 0 0 1 .727.035l5.25 3.25A.75.75 0 0 1 11 6v3.5a.75.75 0 0 1-1.5 0V6.417L5.022 3.645 2.5 5.392v5.682L8 14.375l5.5-3.3V4.932L7.375 1.399A.75.75 0 0 1 7.101.375Zm-3.005 8.51a.75.75 0 0 1 1.02-.29l2.25 1.25a.75.75 0 1 1-.73 1.31l-2.25-1.25a.75.75 0 0 1-.29-1.02Z","blank-tag":"M13.25 2A2.75 2.75 0 0 1 16 4.75v6.5A2.75 2.75 0 0 1 13.25 14H5.32a2.75 2.75 0 0 1-2.288-1.225L.126 8.416a.75.75 0 0 1 0-.832l2.906-4.36A2.75 2.75 0 0 1 5.32 2h7.93ZM5.32 3.5a1.25 1.25 0 0 0-1.04.557L1.651 8l2.63 3.943a1.25 1.25 0 0 0 1.04.557h7.929c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H5.32Zm.18 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z","move":"M8 0a.75.75 0 0 1 .558.248l2.25 2.5a.75.75 0 0 1-1.116 1.004L8.75 2.704V7.25h4.545l-1.047-.942a.75.75 0 0 1 1.004-1.116l2.5 2.25a.75.75 0 0 1 0 1.116l-2.5 2.25a.75.75 0 0 1-1.004-1.116l1.047-.942H8.75v4.545l.942-1.047a.75.75 0 0 1 1.116 1.004l-2.25 2.5a.75.75 0 0 1-1.116 0l-2.25-2.5a.75.75 0 0 1 1.116-1.004l.942 1.047V8.75H2.705l1.047.942a.75.75 0 0 1-1.004 1.116l-2.5-2.25a.75.75 0 0 1 0-1.116l2.5-2.25a.75.75 0 0 1 1.004 1.116l-1.047.942H7.25V2.704l-.942 1.048a.75.75 0 0 1-1.116-1.004l2.25-2.5A.75.75 0 0 1 8 0Z","synchronize":"M4.25 10a.75.75 0 0 1 0 1.5H2.118c1.409 1.823 3.647 3 5.882 3 2.754 0 5.345-1.543 6.575-4.077a.75.75 0 0 1 1.35.654C14.435 14.147 11.305 16 8 16c-2.435 0-4.821-1.127-6.5-2.917v1.167a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 .75 10h3.5ZM8 0a8.864 8.864 0 0 1 6.5 2.834V1.75a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75h-3.5a.75.75 0 0 1 0-1.5h2.179c-1.37-1.887-3.59-3-5.929-3-2.657 0-5.318 1.663-6.585 4.097a.75.75 0 0 1-1.33-.694C1.598 2 4.757 0 8 0Z","history":"M7.92 0C12.394 0 16 3.55 16 8s-3.606 8-8.08 8C4.066 16 .832 13.341.02 9.778a.751.751 0 0 1 1.463-.334C2.139 12.325 4.766 14.5 7.92 14.5c3.662 0 6.58-2.895 6.58-6.5s-2.918-6.5-6.58-6.5C5.38 1.5 3.143 2.927 2.06 5h3.19a.75.75 0 0 1 0 1.5H.75A.75.75 0 0 1 0 5.75v-5a.75.75 0 0 1 1.5 0v2.362A8.155 8.155 0 0 1 7.92 0Zm-.17 3a.75.75 0 0 1 .75.75v3.866l2.703 2.04a.75.75 0 0 1-.905 1.196l-3-2.263A.751.751 0 0 1 7 7.99V3.75A.75.75 0 0 1 7.75 3Z","customer-financial-fact-sheet":"M8.25 0a.75.75 0 0 1 0 1.5H6.71a.25.25 0 0 0-.19.087L6 2.193V4.25A1.75 1.75 0 0 1 4.25 6H2.738c-.089.104-.238.37-.238.37v7.88c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-2a.75.75 0 0 1 1.5 0v2A1.75 1.75 0 0 1 11.25 16h-8.5A1.75 1.75 0 0 1 1 14.25V6.37c0-.417.15-.821.42-1.139L5.38.611A1.751 1.751 0 0 1 6.71 0h1.54ZM7 10a2.5 2.5 0 0 1 2.5 2.5.5.5 0 0 1-.5.5H5a.515.515 0 0 1-.5-.5A2.5 2.5 0 0 1 7 10Zm6.75-10a.75.75 0 0 1 .75.75v.75h.75a.75.75 0 0 1 0 1.5h-2.317c-.25 0-.433.269-.433.5 0 .243.194.5.45.5h.9c.638 0 1.188.215 1.58.607.78.782.757 2.05-.014 2.801-.25.244-.562.415-.916.509v.833a.75.75 0 0 1-1.5 0V8h-1.25a.75.75 0 0 1 0-1.5h2.1c.312 0 .65-.137.65-.495 0-.362-.33-.505-.65-.505h-.9c-1.16 0-1.95-1.006-1.95-2 0-1.106.87-2 2-2V.75a.75.75 0 0 1 .75-.75ZM7 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z","payment-approval":"M12.25 1A2.75 2.75 0 0 1 15 3.75v3.5a.75.75 0 0 1-1.5 0v-3.5c0-.69-.56-1.25-1.25-1.25h-8.5c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h4.498a.75.75 0 0 1 0 1.5H3.75A2.75 2.75 0 0 1 1 12.25v-8.5A2.75 2.75 0 0 1 3.75 1h8.5Zm2.43 9.262a.75.75 0 0 1 1.14.976l-3 3.5a.758.758 0 0 1-1.1.042l-1.5-1.5a.75.75 0 0 1 1.06-1.06l.927.926 2.474-2.884ZM7.75 3.5a.75.75 0 0 1 .75.75V5h.75a.75.75 0 0 1 0 1.5H6.933c-.25 0-.433.269-.433.5 0 .243.194.5.45.5h.9c.638 0 1.188.215 1.58.607.78.782.757 2.05-.014 2.801-.25.244-.562.415-.916.509v.833a.75.75 0 0 1-1.5 0v-.75H5.75a.75.75 0 0 1 0-1.5h2.1c.312 0 .65-.137.65-.495C8.5 9.143 8.17 9 7.85 9h-.9C5.79 9 5 7.994 5 7c0-.987.78-2 2-2v-.75a.75.75 0 0 1 .75-.75Z","wallet":"M12.25 1A2.75 2.75 0 0 1 15 3.75v8.5A2.75 2.75 0 0 1 12.25 15h-8.5A2.75 2.75 0 0 1 1 12.25v-8.5A2.75 2.75 0 0 1 3.75 1h8.5Zm-8.5 1.5c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25V12H8.75A2.75 2.75 0 0 1 6 9.25v-2.5A2.75 2.75 0 0 1 8.75 4h4.75v-.25c0-.69-.56-1.25-1.25-1.25h-8.5Zm5 3c-.69 0-1.25.56-1.25 1.25v2.5c0 .69.56 1.25 1.25 1.25h4.75v-5H8.75ZM9.5 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z","kpi-corporate-performance":"M15.195 11.998a.75.75 0 0 1 .75.75v.502a2.75 2.75 0 0 1-2.75 2.75H2.75A2.75 2.75 0 0 1 0 13.25v-.502a.75.75 0 0 1 1.5 0v.502c0 .69.56 1.25 1.25 1.25h10.445c.69 0 1.25-.56 1.25-1.25v-.502a.75.75 0 0 1 .75-.75ZM5.5 5a1.5 1.5 0 0 1 1.37 2.107l2.272 2.984c.375-.085.774-.02 1.104.179l2.768-1.574c-.115-.88.59-1.695 1.486-1.695A1.5 1.5 0 0 1 16 8.5c0 1.05-1.1 1.773-2.056 1.392l-2.973 1.69a1.499 1.499 0 0 1-1.498 1.47c-.994 0-1.722-1-1.436-1.938L5.657 7.99a1.525 1.525 0 0 1-.738-.108L2.992 9.35A1.516 1.516 0 0 1 1.5 11 1.5 1.5 0 0 1 0 9.5c0-1.076 1.113-1.807 2.114-1.367l1.899-1.445A1.516 1.516 0 0 1 5.5 5Zm1.75-4a.75.75 0 0 1 0 1.5h-4.5c-.69 0-1.25.56-1.25 1.25v1.5a.75.75 0 0 1-1.5 0v-1.5A2.75 2.75 0 0 1 2.75 1h4.5Zm7.43-.738a.75.75 0 0 1 1.14.976l-3 3.5a.758.758 0 0 1-1.1.042l-1.5-1.5a.75.75 0 1 1 1.06-1.06l.927.926L14.681.262Z","trend-down":"M.192 3.248a.75.75 0 0 1 1.06-.056l4.429 3.986s2.418-2.846 2.556-2.975a.757.757 0 0 1 1.081.058l5.182 6.01V8.75a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75h-3.5a.75.75 0 0 1 0-1.5h1.83L8.75 5.9 6.32 8.738a.773.773 0 0 1-1.07.07l-5-4.5a.75.75 0 0 1-.057-1.06Z","fx":"M7 9c.381 0 .712.271.782.643l.262 1.313 1.313.262c.372.07.643.4.643.782a.796.796 0 0 1-.643.782l-1.313.262-.262 1.313A.796.796 0 0 1 7 15a.796.796 0 0 1-.782-.643l-.262-1.313-1.313-.262A.796.796 0 0 1 4 12c0-.381.271-.712.643-.782l1.313-.262.262-1.313A.796.796 0 0 1 7 9Zm6.25-8A2.75 2.75 0 0 1 16 3.75v7.5A2.75 2.75 0 0 1 13.25 14h-.5a.75.75 0 0 1 0-1.5h.5c.69 0 1.25-.56 1.25-1.25V5.5h-13v5.75c0 .777.58 1.25 1.375 1.25a.75.75 0 0 1 0 1.5C1.289 14 0 12.846 0 11.25v-7.5A2.75 2.75 0 0 1 2.75 1h10.5ZM11 6.999a.75.75 0 0 1 .75.75v.5h.5a.75.75 0 0 1 0 1.5h-.5v.5a.75.75 0 0 1-1.5 0v-.5h-.5a.75.75 0 0 1 0-1.5h.5v-.5a.75.75 0 0 1 .75-.75ZM2.417 2.546A1.25 1.25 0 0 0 1.5 3.75V4h1.724l-.807-1.454ZM4.938 4h2.264L6.37 2.5H4.107L4.938 4Zm3.979 0h2.262l-.832-1.5H8.086L8.917 4Zm3.977 0H14.5v-.25c0-.69-.56-1.25-1.25-1.25h-1.188l.832 1.5Z","table-view":"M12.25 1A2.75 2.75 0 0 1 15 3.75v8.5A2.75 2.75 0 0 1 12.25 15h-8.5A2.75 2.75 0 0 1 1 12.25v-8.5A2.75 2.75 0 0 1 3.75 1h8.5ZM2.5 11v1.25c0 .69.56 1.25 1.25 1.25H5V11H2.5Zm4 0v2.5h3V11h-3Zm4.5 0v2.5h1.25c.69 0 1.25-.56 1.25-1.25V11H11ZM2.5 9.5H5V6.501H2.5V9.5Zm4 0h3V6.501h-3V9.5Zm4.5 0h2.5V6.501H11V9.5Zm-7.25-7c-.69 0-1.25.56-1.25 1.25v1.251H5V2.5H3.75ZM6.5 5.001h3V2.5h-3v2.501Zm4.5 0h2.5V3.75c0-.69-.56-1.25-1.25-1.25H11v2.501Z","factory":"M4.25 1a.75.75 0 0 1 .75.75V7h1.25V4.75c0-.597.695-.956 1.183-.612L10.5 6.304V4.75c0-.606.716-.963 1.2-.6l3.6 2.7c.44.33.7.85.7 1.4v6a.75.75 0 0 1-.75.75H.75a.772.772 0 0 1-.75-.75V1.603C0 1.25.402 1 .75 1h3.5ZM1.5 13.5h2v-2h-2v2Zm6.25-5.75A.74.74 0 0 1 7 8.5H5v5h9.5V8.25a.25.25 0 0 0-.1-.2L12 6.25v1.5c0 .597-.695.956-1.183.612L7.75 6.197V7.75ZM8 10a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2ZM1.5 10h2V8.5h-2V10Zm0-3h2V5.5h-2V7Zm0-3h2V2.5h-2V4Z","process":"M1.2 4.24a.75.75 0 0 1 1.06-.04l3.5 3.249a.757.757 0 0 1 0 1.098L2.26 11.8a.751.751 0 0 1-1.021-1.1l2.908-2.703L1.24 5.3a.75.75 0 0 1-.04-1.06Zm4.5 0a.75.75 0 0 1 1.06-.04l3.5 3.249a.757.757 0 0 1 0 1.098L6.76 11.8a.751.751 0 0 1-1.02-1.1l2.907-2.703L5.74 5.3a.75.75 0 0 1-.04-1.06Zm4.5 0a.75.75 0 0 1 1.06-.04l3.5 3.249a.757.757 0 0 1 0 1.098l-3.5 3.253a.751.751 0 0 1-1.02-1.1l2.907-2.703L10.24 5.3a.75.75 0 0 1-.04-1.06Z","checklist":"M12.25 4.001c.966 0 1.75.784 1.75 1.75v5.713c0 .59-.298 1.14-.791 1.464l-4.25 2.786a1.75 1.75 0 0 1-1.918 0l-4.25-2.786A1.752 1.752 0 0 1 2 11.464V5.752c0-.967.784-1.75 1.75-1.75h8.5Zm-8.5 1.5a.25.25 0 0 0-.25.25v5.713c0 .084.043.162.113.209l4.25 2.786a.25.25 0 0 0 .274 0l4.25-2.786a.251.251 0 0 0 .113-.21v-5.71a.25.25 0 0 0-.25-.25h-8.5Zm5.93 1.763a.75.75 0 1 1 1.14.977l-3 3.501a.75.75 0 0 1-1.1.042l-1.5-1.5a.75.75 0 0 1 1.06-1.061l.927.927 2.474-2.886Zm1.57-5.263a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h6.5ZM10.25 0a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5h4.5Z","tree":"M11.25 1a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h-2.5v2H13c.966 0 1.75.784 1.75 1.75V11h.5a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1-.75-.75v-2.5a.75.75 0 0 1 .75-.75h.5V9.75A.25.25 0 0 0 13 9.5H8.75V11h.5a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1-.75-.75v-2.5a.75.75 0 0 1 .75-.75h.5V9.5H3a.25.25 0 0 0-.25.25V11h.5a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-.75.75H.75a.75.75 0 0 1-.75-.75v-2.5A.75.75 0 0 1 .75 11h.5V9.75C1.25 8.784 2.034 8 3 8h4.25V6h-2.5A.75.75 0 0 1 4 5.25v-3.5A.75.75 0 0 1 4.75 1h6.5ZM1.5 13.5h1v-1h-1v1Zm6 0h1v-1h-1v1Zm6 0h1v-1h-1v1Zm-8-9h5v-2h-5v2Z","journey-arrive":"M12.25 1A2.75 2.75 0 0 1 15 3.75v8.5A2.75 2.75 0 0 1 12.25 15h-8.5A2.75 2.75 0 0 1 1 12.25v-.5a.75.75 0 0 1 1.5 0v.5c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25v-8.5c0-.69-.56-1.25-1.25-1.25h-8.5c-.69 0-1.25.56-1.25 1.25v.5a.75.75 0 0 1-1.5 0v-.5A2.75 2.75 0 0 1 3.75 1h8.5ZM7.72 5.47a.75.75 0 0 1 1.06 0l2 1.997a.75.75 0 0 1 0 1.06l-2 2.003a.75.75 0 0 1-1.06-1.06l.718-.72H.753a.75.75 0 0 1 0-1.5H8.44l-.72-.72a.75.75 0 0 1 0-1.06Z","outbox":"M3.255 1a.75.75 0 0 1 0 1.5H2.75a.25.25 0 0 0-.25.25V8h2.75a.75.75 0 0 1 .75.75c0 .794.853 1.75 2 1.75s2-.956 2-1.75a.75.75 0 0 1 .75-.75h2.75V2.75a.25.25 0 0 0-.25-.25h-.501a.75.75 0 0 1 0-1.5h.501c.966 0 1.75.783 1.75 1.75v9.5A2.75 2.75 0 0 1 12.25 15h-8.5A2.75 2.75 0 0 1 1 12.25v-9.5C1 1.783 1.784 1 2.75 1h.505ZM2.5 12.25c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25V9.5h-2.104C11.01 10.883 9.607 12 8 12s-3.011-1.117-3.396-2.5H2.5v2.75ZM8.558.248l2.25 2.5a.751.751 0 0 1-1.116 1.004l-.919-1.023v4.333a.75.75 0 0 1-1.5 0V2.68l-.965 1.073A.75.75 0 0 1 5.192 2.75L7.443.248a.757.757 0 0 1 1.115 0Z","checklist-item":"M12.25 1c.966 0 1.75.784 1.75 1.75v7.713c0 .59-.298 1.141-.791 1.465l-4.25 2.786a1.75 1.75 0 0 1-1.918 0l-4.25-2.786A1.752 1.752 0 0 1 2 10.463V2.751A1.75 1.75 0 0 1 3.75 1h8.5Zm-8.5 1.5a.25.25 0 0 0-.25.25v7.713a.25.25 0 0 0 .113.21l4.25 2.786a.25.25 0 0 0 .274 0l4.25-2.787a.25.25 0 0 0 .113-.209V2.751a.25.25 0 0 0-.25-.25h-8.5Zm5.93 2.763a.75.75 0 1 1 1.14.977l-3 3.502a.758.758 0 0 1-1.1.042l-1.5-1.501a.75.75 0 0 1 1.06-1.061l.927.927 2.474-2.886Z","sap-box":"M8.729.046a.75.75 0 0 1 .601.037l4.776 2.467a.75.75 0 0 1 .202.208l1.57 2.417a.75.75 0 0 1 .122.408v6.444a.75.75 0 0 1-.472.698l-8.076 3.221a.75.75 0 0 1-.619-.028L.409 12.635A.75.75 0 0 1 0 11.968V3.77a.75.75 0 0 1 .492-.705L8.73.046ZM2.623 3.882l3.384 1.727a.75.75 0 0 1 .204.207l1.61 2.457c.08.123.124.268.123.415l-.017 5.454 2.546-1.016v-5.45l-1.011-.533a.75.75 0 0 1-.4-.663V5.188L4.878 3.057l-2.254.826ZM1.5 11.509l4.927 2.516.015-4.78-1.088-.762a.75.75 0 0 1-.319-.614V6.79L1.5 4.993v6.516ZM6.798 2.35l3.237 1.658c.08.055.15.125.203.207l1.612 2.457a.75.75 0 0 1 .123.411v5.443L14.5 11.52v-5.5l-1.007-.526a.751.751 0 0 1-.403-.665V3.706L8.936 1.567l-2.138.784Z","refresh":"M15.25 0a.75.75 0 0 1 .75.75v5a.75.75 0 0 1-.75.75h-5a.75.75 0 0 1 0-1.5h3.517a6.5 6.5 0 1 0 .51 4.7s.084-.354.098-.425a.75.75 0 1 1 1.472.293s-.1.435-.123.522A8 8 0 1 1 14.5 3.336V.75a.75.75 0 0 1 .75-.75Z","business-objects-experience":"M2.75 12a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75Zm3.5-4a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5A.75.75 0 0 1 6.25 8Zm3.5 2a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5a.75.75 0 0 1 .75-.75Zm3.5-3a.75.75 0 0 1 .75.75v6.5a.75.75 0 0 1-1.5 0v-6.5a.75.75 0 0 1 .75-.75Zm1.25-7A1.5 1.5 0 0 1 16 1.5c0 1.007-1.004 1.758-1.964 1.426L10.99 5.668a1.499 1.499 0 0 1-2.949.175L5.978 4.296c-.2.106-.439.114-.684.062l-2.371 2.67A1.497 1.497 0 0 1 1.5 9a1.5 1.5 0 1 1 .303-2.97l2.306-2.594c-.406-.957.34-2.061 1.391-2.061.934 0 1.678.896 1.47 1.791l1.573 1.179a1.505 1.505 0 0 1 1.781-.098l2.708-2.436C12.812.898 13.56 0 14.5 0Z","target-group":"M7.5 1c.625 0 1.273.066 1.898.225a.75.75 0 0 1-.37 1.454A6.238 6.238 0 0 0 7.5 2.5c-3.293 0-6 2.707-6 6s2.707 6 6 6 6-2.707 6-6c0-.54-.047-1.036-.176-1.518a.75.75 0 0 1 1.45-.389A7.28 7.28 0 0 1 15 8.5c0 4.122-3.378 7.5-7.5 7.5S0 12.622 0 8.5C0 4.38 3.378 1 7.5 1Zm-.354 3.002a.75.75 0 0 1 .101 1.496C5.71 5.603 4.5 6.915 4.5 8.5c0 1.564 1.369 3 3 3 1.561 0 2.88-1.205 3.002-2.754a.75.75 0 0 1 1.496.117C11.815 11.206 9.831 13 7.5 13 5.017 13 3 10.87 3 8.5c0-2.346 1.792-4.338 4.146-4.498ZM12.68.262A.75.75 0 0 1 14 .75V2h1.25a.75.75 0 0 1 .487 1.32l-1.75 1.5A.751.751 0 0 1 13.5 5h-1.44L8.948 8.113a1.5 1.5 0 1 1-1.06-1.06L11 3.938V2.5c0-.179.064-.352.18-.488l1.5-1.75Z","decline":"M11.72 3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.72 3.72a.75.75 0 1 1-1.06 1.06L8 9.06l-3.72 3.72a.75.75 0 0 1-1.06-1.06L6.94 8 3.22 4.28a.75.75 0 1 1 1.06-1.06L8 6.94l3.72-3.72Z","opportunity":"M15.195 11.993a.75.75 0 0 1 .75.75v.502a2.75 2.75 0 0 1-2.75 2.75H2.75A2.75 2.75 0 0 1 0 13.245v-.502a.75.75 0 1 1 1.5 0v.502c0 .69.56 1.25 1.25 1.25h10.445c.69 0 1.25-.56 1.25-1.25v-.502a.75.75 0 0 1 .75-.75ZM5.5 4.995a1.5 1.5 0 0 1 1.37 2.108l2.272 2.983c.375-.085.775-.02 1.105.18l2.767-1.574A1.515 1.515 0 0 1 14.5 6.996a1.5 1.5 0 0 1 1.5 1.5c0 1.048-1.1 1.773-2.055 1.393l-2.974 1.691a1.499 1.499 0 0 1-1.498 1.469c-.994 0-1.721-1-1.436-1.938l-2.38-3.125a1.524 1.524 0 0 1-.737-.108L2.992 9.346A1.516 1.516 0 0 1 1.5 10.995a1.5 1.5 0 1 1 .615-2.867l1.898-1.444A1.515 1.515 0 0 1 5.5 4.995Zm1.75-4a.75.75 0 0 1 0 1.5h-4.5c-.69 0-1.25.56-1.25 1.25v1.5a.75.75 0 0 1-1.5 0v-1.5A2.75 2.75 0 0 1 2.75.995h4.5Zm6.219-.7.628 1.36 1.46.208c.406.058.584.57.3.867l-1.063 1.116.266 1.545a.52.52 0 0 1-.76.539L13 5.2l-1.3.729a.521.521 0 0 1-.761-.538l.265-1.546-1.062-1.116a.522.522 0 0 1 .3-.867l1.46-.208s.571-1.28.665-1.426a.521.521 0 0 1 .902.066Z","pie-chart":"M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm.5 8.624v5.854a6.498 6.498 0 0 0 5.863-7.81L8.5 8.625ZM7 1.576a6.502 6.502 0 0 0 0 12.847V1.576Zm1.5 5.466 5.388-1.796A6.5 6.5 0 0 0 8.5 1.521v5.521Z","vertical-bar-chart":"M14.25 13.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5h12.5ZM1.75 7a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 1.75 7Zm3-2a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5A.75.75 0 0 1 4.75 5ZM8 3a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-1.5 0v-7.5A.75.75 0 0 1 8 3Zm3.25 2a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Zm3-4a.75.75 0 0 1 .75.75v9.5a.75.75 0 0 1-1.5 0v-9.5a.75.75 0 0 1 .75-.75Z","area-chart":"M15 1.75v11.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25V1.75a.75.75 0 0 1 1.5 0v4.905l2.661-3.37a.75.75 0 0 1 .78-.26l4.367 1.149 3.45-2.99C14.238.77 15 1.114 15 1.75Zm-2.998 11.058a.75.75 0 0 1-.66.175l-3.258-.698L5.412 13.5h7.838a.25.25 0 0 0 .25-.25v-1.791l-1.498 1.349Zm.209-3.966a.751.751 0 0 1-.5.157l-4.44-.234-4.77 4.293H2.5v.118l5.19-2.359a.66.66 0 0 1 .467-.05l3.125.668 2.216-1.993.002-.002v-1.6l-1.29 1.003Zm-1.22-3.276a.75.75 0 0 1-.681.16L6.034 4.6C4.911 6.023 2.5 9.058 2.5 9.058v1.982l3.998-3.598a.75.75 0 0 1 .541-.191l4.47.234L13.5 5.938V3.392l-2.509 2.174Z","performance":"M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm0 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 10A.75.75 0 1 1 8 13a.75.75 0 0 1 0-1.5Zm-3-1.25a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm6 0a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm-.28-6.03a.75.75 0 1 1 1.06 1.06L9.447 7.612a1.5 1.5 0 1 1-1.06-1.06L10.72 4.22ZM3.75 7.25a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm8.5 0a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm-7.5-3a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM8 3a.75.75 0 1 1 0 1.5A.75.75 0 0 1 8 3Z","heatmap-chart":"M7.625 13.25a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75ZM.875 14a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm3.25 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm7.25 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm3.5 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75ZM7.75 9.5a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5Zm-3.375.5a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75Zm7 0a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75Zm-10.5.25a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm14 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75ZM11.25 6a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5Zm-6.875.25a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75Zm3.25 0a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75ZM.875 7a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm14 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm-7.25-4a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75Zm3.75 0a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75Zm3.25 0a1.375 1.375 0 1 1 0 2.75 1.375 1.375 0 0 1 0-2.75Zm-13.75.25a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm3.5 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75ZM.875 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm3.5 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm3.5 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm3.5 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Zm3.5 0a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Z","line-chart":"M1.75 1a.75.75 0 0 1 .75.75v11.5c0 .138.112.25.25.25h11.5a.75.75 0 0 1 0 1.5H2.75A1.75 1.75 0 0 1 1 13.25V1.75A.75.75 0 0 1 1.75 1Zm12.114 8.106a.75.75 0 0 1 .772 1.288l-2.5 1.5a.75.75 0 0 1-.58.08l-3.541-.945-3.044.938a.75.75 0 0 1-.442-1.434l3.25-1a.75.75 0 0 1 .414-.008l3.443.918 2.228-1.337Zm.18-3.077a.75.75 0 1 1 .412 1.442l-3.5 1a.75.75 0 0 1-.403.003L8.04 7.788 5.02 8.95a.75.75 0 0 1-.54-1.4l3.365-1.283a.75.75 0 0 1 .352.01l2.55.694 3.297-.942Zm-.324-4.81a.75.75 0 1 1 1.06 1.061l-3 3a.75.75 0 0 1-.75.187L8.052 4.55 5.064 5.93a.75.75 0 0 1-.628-1.362l3.38-1.546a.75.75 0 0 1 .405.01l2.818.867 2.68-2.68Z","alert":"M6.491 1.856C7.17.716 8.821.714 9.5 1.855l6.249 10.504c.694 1.166-.147 2.644-1.504 2.644H1.752c-1.357 0-2.197-1.478-1.504-2.644L6.491 1.856Zm1.503 9.138a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm0-7a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0v-4a1 1 0 0 0-1-1Z","time-overtime":"M8.118 0c2.982 0 5.688 1.627 7.134 4.002a.75.75 0 0 1-1.281.78C12.788 2.84 10.559 1.5 8.118 1.5 4.448 1.5 1.5 4.418 1.5 8s2.948 6.5 6.618 6.5c.58 0 .882.336.882.75s-.3.75-.882.75C3.643 16 0 12.433 0 8s3.643-8 8.118-8Zm5.632 6.5a.75.75 0 0 1 .75.75V8h.75a.75.75 0 0 1 0 1.5h-2.317c-.307 0-.433.293-.433.5 0 .207.143.5.45.5h.9c.638 0 1.188.215 1.58.607.385.386.57.896.57 1.398a1.95 1.95 0 0 1-.584 1.403c-.25.244-.562.415-.916.509v.833a.75.75 0 0 1-1.5 0v-.75h-1.25a.75.75 0 0 1 0-1.5h2.1c.312 0 .65-.137.65-.495 0-.362-.33-.505-.65-.505h-.9C11.79 12 11 10.994 11 10c0-.987.78-2 2-2v-.75a.75.75 0 0 1 .75-.75ZM8.25 3a.75.75 0 0 1 .75.75v4.24a.75.75 0 0 1-.298.599l-3 2.263a.75.75 0 0 1-.904-1.197L7.5 7.616V3.75A.75.75 0 0 1 8.25 3Z","cart-approval":"M4.5 13a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm8 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM2.356 1.008a.75.75 0 0 1 .57.418C3.9 3.459 4.95 5.474 5.964 7.5h6.116l2.53-4.14a.75.75 0 1 1 1.28.78l-2.75 4.5a.75.75 0 0 1-.64.36H5.957a96.36 96.36 0 0 1-.882 1.5h8.175a.75.75 0 0 1 0 1.5h-9.5c-.571 0-.937-.646-.644-1.136l1.495-2.491C3.663 6.521 2.71 4.441 1.778 2.5H.75a.75.75 0 0 1 0-1.5l1.606.008Zm9.325-.746a.75.75 0 0 1 1.138.976l-3 3.5a.75.75 0 0 1-1.1.042l-1.5-1.5A.75.75 0 1 1 8.28 2.22l.927.926L11.681.262Z","signature":"M3.63 11.729a.75.75 0 0 1 1.074 1.045l-1.266 1.304a.25.25 0 0 0 .178.424h7.634a.75.75 0 0 1 0 1.5H3.616c-1.546 0-2.332-1.861-1.253-2.97l1.266-1.303ZM11.627.499a1.75 1.75 0 0 1 2.464.015l1.396 1.4a1.75 1.75 0 0 1 .003 2.47l-6.359 6.397a.752.752 0 0 1-.532.221H5.75a.75.75 0 0 1-.75-.75v-2.95c0-.201.082-.395.226-.536L11.628.5ZM6.5 7.618l1.788 1.885 3.745-3.768-1.786-1.785L6.5 7.617Zm6.53-6.043a.25.25 0 0 0-.352-.003L11.32 2.9l1.77 1.77 1.336-1.343a.25.25 0 0 0 0-.353l-1.396-1.4Z","calendar":"M11.25 0a.75.75 0 0 1 .75.75V2c1.583 0 3 1.058 3 2.75v8.5A2.75 2.75 0 0 1 12.25 16h-8.5A2.75 2.75 0 0 1 1 13.25v-8.5C1 3.058 2.417 2 4 2V.75a.75.75 0 0 1 1.5 0V2h5V.75a.75.75 0 0 1 .75-.75ZM2.5 7.5v5.75c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25V7.5h-11Zm0-2.75V6h11V4.75c0-.868-.741-1.25-1.5-1.25v.75a.75.75 0 0 1-1.5 0V3.5h-5v.75a.75.75 0 0 1-1.5 0V3.5c-.759 0-1.5.382-1.5 1.25Z","dimension":"M14.646 6.126a1.252 1.252 0 0 1 1.352 1.249v5.766c0 .59-.413 1.102-.99 1.225l-7.496 1.607A1.251 1.251 0 0 1 6 14.749V8.882c0-.596.42-1.11 1.004-1.228l7.642-1.528ZM7.5 9.086v5.352l6.998-1.5V7.68L7.5 9.087Zm4.648-5.989a.75.75 0 0 1 .258 1.48L4.5 5.962V12.1a.75.75 0 1 1-1.5 0V5.753c0-.608.436-1.128 1.034-1.233l8.114-1.423Zm-3-3.085a.75.75 0 0 1 .258 1.48L1.5 2.877v6.138a.751.751 0 1 1-1.5 0V2.668C0 2.06.436 1.54 1.034 1.435L9.148.012Z","manager-insight":"M3.686.256a.75.75 0 0 1 1.128.988L1.5 5.031v10.22a.75.75 0 0 1-1.5 0V4.75a.75.75 0 0 1 .186-.495l3.5-4ZM14.25 0C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16h-9a1.75 1.75 0 0 1-1.75-1.75V6.37c0-.417.15-.821.42-1.139L7.88.611A1.751 1.751 0 0 1 9.21 0h5.04ZM9.21 1.5a.25.25 0 0 0-.19.087l-.52.606V5.25a.75.75 0 0 1-.75.75H5.238L5 6.37v7.88c0 .138.112.25.25.25h9a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H9.21ZM6.75 11a.75.75 0 0 1 .75.75v.5a.75.75 0 0 1-1.5 0v-.5a.75.75 0 0 1 .75-.75Zm2.75-1a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 9.5 10Zm2.75-1a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 .75-.75Zm-1.17-5.085a.75.75 0 0 1 1.34.67l-1.5 3a.75.75 0 0 1-.67.415H9.095L7.819 9.488a.75.75 0 0 1-1.138-.976l1.556-1.809c.142-.156.321-.203.513-.203h1.036l1.293-2.585Z","warning":"M6.492 1.856C7.17.716 8.822.714 9.5 1.855l6.25 10.504c.693 1.166-.148 2.644-1.505 2.644H1.752c-1.357 0-2.197-1.478-1.504-2.644L6.492 1.856Zm1.502 9.138a1 1 0 1 0 .001 2 1 1 0 0 0 0-2Zm0-7a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0v-4a1 1 0 0 0-1-1Z","order-status":"M11.25 0C12.216 0 13 .784 13 1.75v3a.75.75 0 0 1-1.5 0v-3a.25.25 0 0 0-.25-.25H6.71a.25.25 0 0 0-.19.087L6 2.193V5.25a.75.75 0 0 1-.75.75H2.76l-.26.37v8.88a.75.75 0 0 1-1.5 0V6.37c0-.417.15-.821.42-1.139L5.38.611A1.751 1.751 0 0 1 6.71 0h4.54ZM7.72 11.22a.75.75 0 1 1 1.06 1.06L7.56 13.5l1.22 1.22a.75.75 0 1 1-1.06 1.06L6.5 14.56l-1.22 1.22a.75.75 0 1 1-1.06-1.06l1.22-1.22-1.22-1.22a.75.75 0 1 1 1.06-1.06l1.22 1.22 1.22-1.22Zm6.53 1.28a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5ZM8.68 5.262a.75.75 0 0 1 1.14.976l-3 3.5a.75.75 0 0 1-1.1.042l-1.5-1.5a.75.75 0 1 1 1.06-1.06l.927.926 2.474-2.884ZM14.25 7.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5Z","activity-items":"M9.25 0C10.216 0 11 .784 11 1.75V2h1.25c.966 0 1.75.784 1.75 1.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.25.25 0 0 0-.25-.25h-1.27A1.749 1.749 0 0 1 9.25 5h-2.5a1.749 1.749 0 0 1-1.73-1.5H3.75a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h2.5a.75.75 0 0 1 0 1.5h-2.5A1.75 1.75 0 0 1 2 14.25V3.75C2 2.784 2.784 2 3.75 2H5v-.25C5 .784 5.784 0 6.75 0h2.5ZM10 14a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm5.25 0a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5ZM10 11a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm5.25 0a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5ZM10 8a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm5.25 0a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h2.5Zm-8.5-6.5a.25.25 0 0 0-.25.25v1.5c0 .138.112.25.25.25h2.5a.25.25 0 0 0 .25-.25v-1.5a.25.25 0 0 0-.25-.25h-2.5Z","home":"M6.121.734A2.77 2.77 0 0 1 9.673.562s4.201 3.793 4.642 4.296A2.76 2.76 0 0 1 15 6.683v6.567A2.746 2.746 0 0 1 12.25 16h-8.5A2.746 2.746 0 0 1 1 13.25v-6.5c0-.745.3-1.556.886-2.098L6.12.735h.001Zm2.74 1.102a1.272 1.272 0 0 0-1.723 0L2.905 5.754c-.24.223-.404.615-.404.997v6.5c0 .694.556 1.25 1.25 1.25H5V9.75C5 8.776 5.79 8 6.75 8h2.5c.96 0 1.75.776 1.75 1.75v4.75h1.25c.694 0 1.25-.556 1.25-1.25V6.683c0-.312-.111-.607-.313-.836L8.861 1.836ZM6.75 9.5c-.14 0-.25.11-.25.25v4.75h3V9.75c0-.14-.11-.25-.25-.25h-2.5Z"};
+
+/* Accent per space, used for My Home app chips */
+const ACCENT = {sales:'--a1',purchase:'--a2',inventory:'--a3',finance:'--a4',production:'--a5',wms:'--a7',analytics:'--a8',approvals:'--a6',autonomous:'--a9'};
+
+/* ---- Spaces → sections → tiles (mirrors data/agent-registry.json) ----
+   k: sample KPI {v,u,s:'good'|'crit'|'bad',a:'▲'|'▼'}   f: footer   soon: coming soon   ai: AI badge */
+const SPACES = [
+ {id:'sales',label:'Sales',icon:'crm-sales',sections:[
+  {title:'Order to Cash',tiles:[
+   {id:'sales-quotation-agent',t:'Sales Quotation',s:'Create quotation with AI wizard',i:'sales-quote'},
+   {id:'quotation-to-order-agent',t:'Quotation → Order',s:'Convert open quotations',i:'customer-order-entry',k:{v:'14',u:'open'}},
+   {id:'sales-order-agent',t:'Sales Orders',s:'Create, view & manage',i:'sales-order',k:{v:'38',u:'open'}},
+   {id:'delivery-agent',t:'Delivery',s:'Pick list, delivery & POD',i:'shipping-status',k:{v:'9',u:'due today',s:'crit'}},
+   {id:'ar-invoice-agent',t:'AR Invoice',s:'Invoice from delivery',i:'receipt'},
+   {id:'ar-credit-memo-agent',t:'AR Credit Memo',s:'Credit against AR invoice',i:'undo'},
+   {id:'incoming-payment-agent',t:'Incoming Payment',s:'Apply receipts to invoices',i:'money-bills'},
+  ]},
+  {title:'Master Data',tiles:[
+   {id:'customer-agent',t:'Customers',s:'Customer master records',i:'customer'},
+   {id:'quotation-comparison-agent',t:'Quotation Comparison',s:'Compare quotations by customer',i:'compare'},
+  ]},
+  {title:'Insights',tiles:[
+   {id:'sales-analysis-agent',t:'Sales Analysis',s:'Revenue · MTD',i:'bar-chart',k:{p:'$',v:'512',u:'K',s:'good',a:'▲'},f:'+8.2% vs last month'},
+   {id:'sales-forecast-agent',t:'Sales Forecast',s:'9-model auto selection',i:'line-chart-time-axis',ai:1},
+   {id:'credit-control-agent',t:'Credit Control',s:'Overdue receivables',i:'collections-management',k:{p:'$',v:'77',u:'K',s:'bad',a:'▲'},f:'23 invoices overdue'},
+  ]},
+ ]},
+ {id:'purchase',label:'Purchase',icon:'cart',sections:[
+  {title:'Procure to Pay',tiles:[
+   {id:'purchase-request-agent',t:'Purchase Request',s:'Internal requisition wizard',i:'request',k:{v:'11',u:'open'}},
+   {id:'purchase-quotation-agent',t:'Purchase Quotation',s:'RFQ, copy from PR',i:'sales-document'},
+   {id:'purchase-order-agent',t:'Purchase Orders',s:'Create or convert PR / PQ',i:'cart',k:{v:'27',u:'open'}},
+   {id:'grpo-agent',t:'Goods Receipt PO',s:'Receive open POs',i:'inbox'},
+   {id:'ap-invoice-agent',t:'AP Invoice',s:'OCR-assisted matching',i:'accounting-document-verification',ai:1},
+   {id:'three-way-match-agent',t:'3-Way Match',s:'PO ↔ GRPO ↔ Invoice',i:'validate',k:{v:'4',u:'mismatch',s:'crit'}},
+   {id:'ap-credit-memo-agent',t:'AP Credit Memo',s:'Credit against AP invoice',i:'undo'},
+   {id:'outgoing-payment-agent',t:'Outgoing Payment',s:'Pay vendors across invoices',i:'batch-payments'},
+  ]},
+  {title:'Master Data',tiles:[
+   {id:'vendor-agent',t:'Vendors',s:'Vendor master records',i:'supplier'},
+  ]},
+  {title:'Insights',tiles:[
+   {id:'purchase-analysis-agent',t:'Purchase Analysis',s:'Spend · MTD',i:'horizontal-bar-chart',k:{p:'$',v:'378',u:'K'},f:'Top vendor 18% of spend'},
+   {id:'vendor-payment-aging-agent',t:'Vendor Payment Aging',s:'AP aging buckets',i:'monitor-payments'},
+   {id:'purchasing-agent',t:'Purchase Recommendation',s:'Reorder & supplier risk',i:'lightbulb',ai:1},
+   {id:'shipment-delay-agent',t:'Shipment Delay',s:'Predicted late POs',i:'lateness',k:{v:'7',u:'at risk',s:'bad'}},
+  ]},
+ ]},
+ {id:'inventory',label:'Inventory',icon:'inventory',sections:[
+  {title:'Stock',tiles:[
+   {id:'stock-agent',t:'Stock Overview',s:'On hand · committed · available',i:'inventory'},
+   {id:'warehouse-agent',t:'Warehouses',s:'Active warehouses & sales',i:'retail-store'},
+   {id:'bin-location-agent',t:'Bin Locations',s:'Pick lines sorted by bin',i:'list'},
+   {id:'batch-agent',t:'Batches',s:'Batch-managed items',i:'product'},
+   {id:'serial-number-agent',t:'Serial Numbers',s:'Serial-managed items',i:'blank-tag',soon:1},
+  ]},
+  {title:'Movements',tiles:[
+   {id:'inventory-transfer-agent',t:'Inventory Workflow',s:'Transfer request, transfer, goods issue',i:'move'},
+   {id:'stock-replenishment-agent',t:'Stock Replenishment',s:'Items to reorder now',i:'synchronize',k:{v:'52',u:'items',s:'crit'}},
+  ]},
+  {title:'Insights',tiles:[
+   {id:'inventory-aging-agent',t:'Inventory Aging',s:'Dead & slow-moving stock',i:'history',k:{p:'$',v:'145',u:'K',s:'bad'},f:'Value tied up > 180 days'},
+  ]},
+ ]},
+ {id:'finance',label:'Finance',icon:'money-bills',sections:[
+  {title:'Receivables & Payables',tiles:[
+   {id:'ar-aging-agent',t:'AR Aging',s:'Receivable buckets',i:'customer-financial-fact-sheet',k:{p:'$',v:'698',u:'K'}},
+   {id:'ap-aging-agent',t:'AP Aging',s:'Payable buckets',i:'payment-approval',k:{p:'$',v:'443',u:'K'}},
+  ]},
+  {title:'Performance',tiles:[
+   {id:'cash-flow-agent',t:'Cash Flow',s:'Inflow / outflow forecast',i:'wallet'},
+   {id:'working-capital-agent',t:'Working Capital',s:'DSO · DPO · DSI · CCC',i:'kpi-corporate-performance',k:{v:'47',u:'days CCC',s:'good',a:'▼'}},
+   {id:'margin-erosion-agent',t:'Margin Erosion',s:'GP% decline detection',i:'trend-down',k:{v:'3',u:'items',s:'crit'}},
+  ]},
+  {title:'Accounting',tiles:[
+   {id:'tax-analysis-agent',t:'Tax Analysis',s:'GST & tax reports',i:'fx',soon:1},
+   {id:'general-ledger-agent',t:'General Ledger',s:'Journal entry queries',i:'table-view',soon:1},
+  ]},
+ ]},
+ {id:'production',label:'Production',icon:'factory',sections:[
+  {title:'Planning & Execution',tiles:[
+   {id:'production-order-agent',t:'Production Orders',s:'Orders & component lines',i:'factory',k:{v:'16',u:'released'}},
+   {id:'mrp-agent',t:'MRP',s:'Material requirements & draft POs',i:'process',ai:1},
+   {id:'material-availability-agent',t:'Material Availability',s:'Net shortfall across orders',i:'checklist',k:{v:'8',u:'short',s:'bad'}},
+   {id:'bom-agent',t:'Bill of Materials',s:'Create BOM with wizard',i:'tree'},
+  ]},
+ ]},
+ {id:'wms',label:'WMS',icon:'retail-store',sections:[
+  {title:'Inbound',tiles:[
+   {id:'grpo-receiving-agent',t:'GRPO Receiving',s:'Receive at dock',i:'journey-arrive'},
+   {id:'put-away-agent',t:'Put-Away',s:'Bin put-away',i:'outbox',soon:1},
+  ]},
+  {title:'Outbound',tiles:[
+   {id:'picking-agent',t:'Picking',s:'Pick lines by bin',i:'checklist-item',k:{v:'21',u:'lines'}},
+   {id:'packing-agent',t:'Packing',s:'Packing & staging',i:'sap-box',soon:1},
+   {id:'wms-delivery-agent',t:'Delivery & POD',s:'Delivery with proof of delivery',i:'shipping-status'},
+  ]},
+  {title:'Control',tiles:[
+   {id:'cycle-count-agent',t:'Cycle Count',s:'Cycle counting',i:'refresh',soon:1},
+  ]},
+ ]},
+ {id:'analytics',label:'Analytics',icon:'business-objects-experience',sections:[
+  {title:'Customer',tiles:[
+   {id:'customer-rfm-agent',t:'Customer RFM',s:'Segmentation',i:'target-group'},
+   {id:'customer-churn-agent',t:'Customer Churn',s:'Churn risk scoring',i:'decline',k:{v:'12',u:'at risk',s:'crit'}},
+   {id:'customer-clv-agent',t:'Customer CLV',s:'Lifetime value & tiers',i:'opportunity'},
+   {id:'revenue-concentration-agent',t:'Revenue Concentration',s:'Pareto · HHI',i:'pie-chart'},
+  ]},
+  {title:'Sales & Purchase',tiles:[
+   {id:'sales-performance-agent',t:'Sales Performance',s:'Customers, items, salespeople, YoY',i:'vertical-bar-chart'},
+   {id:'purchase-performance-agent',t:'Purchase Performance',s:'Invoices by vendor',i:'area-chart'},
+   {id:'vendor-performance-agent',t:'Vendor Performance',s:'Lead time & on-time delivery',i:'performance',k:{v:'91',u:'% OTD',s:'good'}},
+  ]},
+  {title:'Inventory & Risk',tiles:[
+   {id:'abc-xyz-agent',t:'ABC-XYZ',s:'Inventory classification',i:'heatmap-chart'},
+   {id:'demand-forecast-agent',t:'Demand Forecast',s:'Per-item, with seasonality',i:'line-chart',ai:1},
+   {id:'transaction-outliers-agent',t:'Transaction Outliers',s:'Z-score on AR / AP',i:'alert',k:{v:'5',u:'flagged',s:'crit'}},
+  ]},
+ ]},
+ {id:'approvals',label:'Approvals',icon:'payment-approval',sections:[
+  {title:'My Inbox',tiles:[
+   {id:'rush-order-approval-agent',t:'Rush Order Approval',s:'Urgency score 0–100',i:'time-overtime',k:{v:'5',u:'pending',s:'crit'}},
+   {id:'purchase-order-approval-agent',t:'Purchase Order Approval',s:'MRP draft-PO review',i:'cart-approval',k:{v:'12',u:'pending',s:'crit'}},
+   {id:'sales-invoice-approval-agent',t:'Sales Invoice Approval',s:'AR invoice workflow',i:'signature',soon:1},
+  ]},
+  {title:'Administration',tiles:[
+   {id:'roles-permissions-agent',t:'Roles & Permissions',s:'Who can approve what',i:'shield'},
+  ]},
+ ]},
+ {id:'autonomous',label:'Autonomous Agents',icon:'ai',sections:[
+  {title:'Copilot',tiles:[
+   {id:'management-copilot-agent',t:'Management Copilot',s:'Ask anything across Sales, Purchase, Inventory and Finance in plain language',i:'ai',wide:1,feature:1,ai:1,f:'Cross-module · all tools'},
+  ]},
+  {title:'End-to-End Processes',tiles:[
+   {id:'order-to-cash-agent',t:'Order-to-Cash',s:'Quote → order → delivery → invoice → payment',i:'process',ai:1},
+   {id:'procure-to-pay-agent',t:'Stock Reorder Monitor',s:'Reorder analysis & draft POs',i:'synchronize',ai:1},
+   {id:'purchase-three-way-match-agent',t:'Purchase Three Way Match',s:'Match by vendor & status',i:'validate',ai:1},
+   {id:'month-end-closing-agent',t:'Month-End Closing',s:'Close checklist automation',i:'calendar',soon:1},
+  ]},
+  {title:'Optimization & Risk',tiles:[
+   {id:'inventory-optimization-agent',t:'Inventory Optimization',s:'ABC-XYZ, EOQ, reorder point',i:'dimension',ai:1},
+   {id:'purchase-optimization-agent',t:'Purchase Optimization',s:'Sourcing decisions',i:'manager-insight',ai:1},
+   {id:'credit-risk-agent',t:'Credit Risk',s:'Collections worklist',i:'warning',ai:1,k:{v:'9',u:'high risk',s:'bad'}},
+   {id:'wms-fulfillment-agent',t:'WMS Fulfillment',s:'Orders at stock-shortage risk',i:'order-status',ai:1},
+   {id:'exception-management-agent',t:'Exception Management',s:'Activities with AI recommendations',i:'activity-items',ai:1},
+  ]},
+ ]},
+];
+
+const TODOS = [
+ {kind:'Situation',sev:'neg',icon:'warning',t:'9 customers exceed credit limit',d:'$77K overdue beyond 60 days. Review before releasing new orders.',app:'credit-control-agent',age:'Today'},
+ {kind:'Approval',sev:'crit',icon:'cart-approval',t:'12 purchase orders awaiting approval',d:'Drafts generated by MRP for next week’s production plan.',app:'purchase-order-approval-agent',age:'2h ago'},
+ {kind:'Situation',sev:'crit',icon:'validate',t:'4 AP invoices fail 3-way match',d:'Quantity or price differs from GRPO. Oldest is 5 days.',app:'three-way-match-agent',age:'Yesterday'},
+ {kind:'Task',sev:'info',icon:'time-overtime',t:'5 rush orders need a decision',d:'Highest urgency score 92 — Order 10482.',app:'rush-order-approval-agent',age:'3h ago'},
+];
+
+const NOTIFS = [
+ {t:'PO 4500123 approved',d:'Your purchase order for Apex Industries was approved by Finance.',w:'10 min ago'},
+ {t:'Shipment delay predicted',d:'3 inbound POs are likely to arrive after their due date.',w:'1 h ago'},
+ {t:'Month-end reminder',d:'Period 09/2026 closes in 1 day.',w:'Today'},
+];
+
+/* ---------------- helpers ---------------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const svg = (name, cls='fi') => `<svg class="${cls}" viewBox="0 0 16 16" aria-hidden="true"><path d="${ICONS[name]||''}"/></svg>`;
+const STAR = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .75l2.2 4.6 5.05.66-3.7 3.5.95 5-4.5-2.45-4.5 2.45.95-5-3.7-3.5 5.05-.66z"/></svg>';
+const TILE_BY_ID = {};
+SPACES.forEach(sp => sp.sections.forEach(sec => sec.tiles.forEach(t => TILE_BY_ID[t.id] = {...t, space:sp})));
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('lp.'+k); return v == null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem('lp.'+k, JSON.stringify(v)); }catch{} }
+};
+let favs = new Set(store.get('favs', ['sales-order-agent','purchase-order-agent','stock-agent','sales-analysis-agent','management-copilot-agent','ar-aging-agent']));
+let recent = store.get('recent', ['three-way-match-agent','mrp-agent','customer-agent','cash-flow-agent','delivery-agent']);
+let state = {space: location.hash.slice(1) || 'home', view: store.get('view','tiles'), appsTab:'fav'};
+
+/* ---------------- tiles ---------------- */
+function tileHTML(t){
+  const fav = favs.has(t.id);
+  const cls = ['tile', t.wide&&'wide', t.feature&&'feature', t.soon&&'soon', t.k&&'has-kpi'].filter(Boolean).join(' ');
+  const kpi = t.k ? `<div class="tile-kpi ${t.k.s||''}">${t.k.p?`<span class="pre">${t.k.p}</span>`:''}<span class="num">${esc(t.k.v)}</span><span class="unit">${esc(t.k.u||'')}</span>${t.k.a?`<span class="arrow">${t.k.a}</span>`:''}</div>` : '';
+  const badge = t.soon ? '<span class="tag soon">Coming soon</span>' : t.ai && !t.k ? '<span class="tag ai">AI</span>' : '';
+  return `<article class="${cls}">
+    <button class="tile-hit" data-open="${t.id}" aria-label="${esc(t.t)}${t.soon?' (coming soon)':''}"></button>
+    ${t.soon?'':`<button class="star" data-fav="${t.id}" aria-pressed="${fav}" aria-label="${fav?'Remove from':'Add to'} favorites">${STAR}</button>`}
+    <div class="tile-title">${esc(t.t)}</div>
+    <div class="tile-sub">${esc(t.s)}</div>
+    <div class="tile-body">
+      ${kpi || `<span class="tile-icon">${svg(t.i)}</span>`}
+      ${t.k ? `<span class="tile-icon">${svg(t.i)}</span>` : badge}
+    </div>
+    ${t.f ? `<div class="tile-foot">${esc(t.f)}</div>` : ''}
+  </article>`;
+}
+function listHTML(tiles){
+  return `<div class="applist">${tiles.map(t => `
+    <button class="applist-row ${t.soon?'soon':''}" data-open="${t.id}">
+      <span class="ico">${svg(t.i)}</span>
+      <span class="nm">${esc(t.t)}</span>
+      <span class="ds">${esc(t.s)}</span>
+      <span>${t.soon?'<span class="tag soon">Coming soon</span>':t.k?`<span class="tile-kpi ${t.k.s||''}" style="font-size:.875rem"><b class="num" style="font-size:1rem;font-weight:600">${t.k.p||''}${esc(t.k.v)}</b> <span class="unit">${esc(t.k.u||'')}</span></span>`:t.ai?'<span class="tag ai">AI</span>':''}</span>
+    </button>`).join('')}</div>`;
+}
+const block = tiles => state.view === 'list' ? listHTML(tiles) : `<div class="tiles">${tiles.map(tileHTML).join('')}</div>`;
+
+/* ---------------- space bar ---------------- */
+function renderSpacebar(){
+  const tabs = [{id:'home',label:'My Home',icon:'home'}, ...SPACES];
+  $('#spacebar').innerHTML = tabs.map(s => {
+    const n = s.sections ? s.sections.reduce((a,x)=>a+x.tiles.length,0) : 0;
+    return `<button class="space-tab" role="tab" data-space="${s.id}" aria-selected="${state.space===s.id}">${svg(s.icon)}${esc(s.label)}${n?`<span class="count">${n}</span>`:''}</button>`;
+  }).join('');
+}
+
+/* ---------------- pages ---------------- */
+function viewToggle(){
+  return `<div class="seg" role="group" aria-label="Layout">
+    <button data-view="tiles" aria-pressed="${state.view==='tiles'}">${svg('dimension')}Tiles</button>
+    <button data-view="list" aria-pressed="${state.view==='list'}">${svg('list')}List</button></div>`;
+}
+function renderSpace(sp){
+  const total = sp.sections.reduce((a,x)=>a+x.tiles.length,0);
+  const live = sp.sections.reduce((a,x)=>a+x.tiles.filter(t=>!t.soon).length,0);
+  return `<div class="page-head"><div><h1 class="page-title">${esc(sp.label)}</h1>
+      <p class="page-desc">${live} agents available${total>live?` · ${total-live} coming soon`:''}</p></div>${viewToggle()}</div>
+    ${sp.sections.map(sec => `<section class="section">
+      <div class="section-head"><h2 class="section-title">${esc(sec.title)}</h2><span class="section-meta">${sec.tiles.length}</span></div>
+      ${block(sec.tiles)}</section>`).join('')}`;
+}
+function greeting(){ const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening'; }
+function spark(points, color){
+  const w=280,h=72,max=Math.max(...points),min=Math.min(...points);
+  const xy = points.map((p,i)=>[i*(w/(points.length-1)), h-6-((p-min)/(max-min||1))*(h-14)]);
+  const line = xy.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const last = xy[xy.length-1];
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${line} L${w} ${h} L0 ${h}Z" fill="var(${color})" opacity=".12"/>
+    <path d="${line}" fill="none" stroke="var(${color})" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="var(${color})"/></svg>`;
+}
+function renderHome(){
+  const date = new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const appIds = state.appsTab==='fav' ? [...favs] : state.appsTab==='recent' ? recent : ['sales-order-agent','stock-agent','purchase-request-agent','ar-aging-agent','management-copilot-agent','delivery-agent','grpo-agent','sales-analysis-agent'];
+  const apps = appIds.map(id=>TILE_BY_ID[id]).filter(Boolean);
+  return `
+  <section class="hero">
+    <div><h1>${greeting()}, Parth</h1><p>${date} · Silver Touch Technologies · SAP Business One</p></div>
+    <div style="width:min(30rem,100%)">
+      <form class="hero-ask" id="askForm">${svg('ai')}<input id="askInput" placeholder="Ask Henny about orders, stock, payments…" aria-label="Ask Henny"><button type="submit">Ask</button></form>
+      <div class="chips">${['Top 10 customers this month','Items below reorder point','Overdue AR > 60 days','Open POs by vendor'].map(c=>`<button class="chip" data-ask="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h2 class="section-title">To-Dos</h2><span class="section-meta">${TODOS.length}</span><button class="link" data-space-go="approvals">Show all</button></div>
+    <div class="cards">${TODOS.map(c=>`
+      <button class="card" data-open="${c.app}">
+        <div class="card-top"><span class="card-ico ${c.sev}">${svg(c.icon)}</span><span class="card-kind">${c.kind}</span><span class="card-age">${c.age}</span></div>
+        <div class="card-title">${esc(c.t)}</div>
+        <div class="card-text">${esc(c.d)}</div>
+        <div class="card-foot"><span class="app">${svg(TILE_BY_ID[c.app].i)}${esc(TILE_BY_ID[c.app].t)}</span><span class="link">Open</span></div>
+      </button>`).join('')}</div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h2 class="section-title">Apps</h2>
+      <div class="seg" role="group" aria-label="Apps" style="margin-left:.5rem">
+        <button data-apps="fav" aria-pressed="${state.appsTab==='fav'}">Favorites</button>
+        <button data-apps="most" aria-pressed="${state.appsTab==='most'}">Most used</button>
+        <button data-apps="recent" aria-pressed="${state.appsTab==='recent'}">Recently used</button></div>
+      <button class="link" data-space-go="sales">App finder</button></div>
+    ${apps.length ? `<div class="apps-grid">${apps.map(a=>`
+      <button class="app-chip" data-open="${a.id}"><span class="sq" style="background:var(${ACCENT[a.space.id]})">${svg(a.i)}</span>
+        <span><div class="nm">${esc(a.t)}</div><div class="sp">${esc(a.space.label)}</div></span></button>`).join('')}</div>`
+      : `<div class="empty">No favorites yet — hover any tile and click the star to pin it here.</div>`}
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h2 class="section-title">Insights</h2><span class="section-meta">Sample data</span><button class="link" data-space-go="analytics">All analytics</button></div>
+    <div class="insights">
+      <div class="ins"><div class="ins-h"><span class="ins-t">Revenue</span><span class="ins-s">Last 12 months</span></div>
+        <div class="ins-v">$5.54M<span class="ins-d up">▲ 12.4%</span></div>${spark([28,31,29,34,33,37,36,40,38,42,41,46],'--a1')}</div>
+      <div class="ins"><div class="ins-h"><span class="ins-t">Overdue receivables</span><span class="ins-s">Aging</span></div>
+        <div class="ins-v">$219K<span class="ins-d down">▲ 4.1%</span></div>
+        <div class="bars">${[['0–30',62,'$109K','--a1'],['31–60',38,'$67K','--a4'],['61–90',18,'$31K','--a6'],['90+',7,'$12K','--a6']].map(b=>`
+          <div class="bar-row"><span>${b[0]} days</span><span class="trk"><span class="fil" style="display:block;width:${b[1]}%;background:var(${b[3]})"></span></span><span class="v">${b[2]}</span></div>`).join('')}</div></div>
+      <div class="ins"><div class="ins-h"><span class="ins-t">Gross margin</span><span class="ins-s">Last 12 months</span></div>
+        <div class="ins-v">24.8%<span class="ins-d down">▼ 0.6 pt</span></div>${spark([26.1,25.8,26.4,25.9,25.2,25.6,25.1,24.9,25.3,24.7,25.0,24.8],'--a3')}</div>
+    </div>
+  </section>
+  <p class="note">Design preview · figures are sample data</p>`;
+}
+function renderSearch(q){
+  const ql = q.toLowerCase();
+  const hits = Object.values(TILE_BY_ID).filter(t => (t.t+' '+t.s+' '+t.space.label).toLowerCase().includes(ql));
+  const bySpace = SPACES.map(sp => ({sp, tiles: hits.filter(h=>h.space.id===sp.id)})).filter(g=>g.tiles.length);
+  return `<div class="page-head"><div><h1 class="page-title">Search results</h1><p class="page-desc">${hits.length} app${hits.length===1?'':'s'} for “${esc(q)}”</p></div>${viewToggle()}</div>
+    ${bySpace.length ? bySpace.map(g=>`<section class="section"><div class="section-head"><h2 class="section-title">${esc(g.sp.label)}</h2><span class="section-meta">${g.tiles.length}</span></div>${block(g.tiles)}</section>`).join('')
+      : `<div class="empty">No apps match. Try “invoice”, “stock” or “forecast”, or ask Henny.</div>`}`;
+}
+function render(){
+  const q = $('#q').value.trim();
+  const sp = SPACES.find(s=>s.id===state.space);
+  if (!sp && state.space !== 'home') state.space = 'home';
+  $('#main').innerHTML = q ? renderSearch(q) : sp ? renderSpace(sp) : renderHome();
+  $('#crumb').textContent = q ? 'Search' : sp ? sp.label : 'Home';
+  document.title = (sp ? sp.label + ' · ' : '') + 'AgentSphere Launchpad';
+  renderSpacebar();
+}
+
+/* ---------------- actions ---------------- */
+let toastTimer;
+function toast(msg){ const el=$('#toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2200); }
+function openApp(id){
+  const t = TILE_BY_ID[id]; if(!t) return;
+  if (t.soon) return toast(`${t.t} is coming soon`);
+  recent = [id, ...recent.filter(x=>x!==id)].slice(0,8); store.set('recent', recent);
+  // Hook-up point: route into the existing chat UI, e.g. location.href = '/?agent=' + id
+  toast(`Opening ${t.t}…`);
+}
+function go(space){ state.space = space; $('#q').value=''; history.replaceState(null,'','#'+space); render(); window.scrollTo({top:0}); }
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-open],[data-fav],[data-space],[data-space-go],[data-view],[data-apps],[data-ask],[data-toast],[data-t]');
+  if (!el) return;
+  const d = el.dataset;
+  if (d.fav){ favs.has(d.fav) ? favs.delete(d.fav) : favs.add(d.fav); store.set('favs',[...favs]); render(); toast(favs.has(d.fav)?'Added to favorites':'Removed from favorites'); }
+  else if (d.open) openApp(d.open);
+  else if (d.space) go(d.space);
+  else if (d.spaceGo) go(d.spaceGo);
+  else if (d.view){ state.view=d.view; store.set('view',d.view); render(); }
+  else if (d.apps){ state.appsTab=d.apps; render(); }
+  else if (d.ask){ toast(`Asking Henny: “${d.ask}”`); }
+  else if (d.toast){ closePops(); toast(d.toast); }
+  else if (d.t){ setTheme(d.t); }
+});
+document.addEventListener('submit', e => { if (e.target.id==='askForm'){ e.preventDefault(); const v=$('#askInput').value.trim(); if(v) toast(`Asking Henny: “${v}”`); } });
+$('#q').addEventListener('input', render);
+$('#homeLogo').addEventListener('click', ()=>go('home'));
+$('#copilotBtn').addEventListener('click', ()=>openApp('management-copilot-agent'));
+$('#helpBtn').addEventListener('click', ()=>toast('Opening user manual…'));
+document.addEventListener('keydown', e => {
+  if (e.key==='/' && document.activeElement.tagName!=='INPUT'){ e.preventDefault(); $('#q').focus(); }
+  if (e.key==='Escape'){ closePops(); if(document.activeElement===$('#q') && $('#q').value){ $('#q').value=''; render(); } }
+});
+$('#spacebar').addEventListener('keydown', e => {
+  if (!['ArrowLeft','ArrowRight'].includes(e.key)) return;
+  const tabs=[...document.querySelectorAll('.space-tab')], i=tabs.indexOf(document.activeElement); if(i<0) return;
+  const n=tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length]; n.focus(); n.click();
+  document.querySelector(`.space-tab[data-space="${n.dataset.space}"]`)?.focus();
+});
+
+/* popovers */
+function closePops(){ document.querySelectorAll('.pop.open').forEach(p=>p.classList.remove('open')); document.querySelectorAll('[aria-expanded="true"]').forEach(b=>b.setAttribute('aria-expanded','false')); }
+function togglePop(btn, pop){
+  const open = !pop.classList.contains('open'); closePops(); if(!open) return;
+  const r = btn.getBoundingClientRect();
+  pop.style.top = (r.bottom + 8) + 'px';
+  pop.style.right = Math.max(16, window.innerWidth - r.right) + 'px';
+  pop.classList.add('open'); btn.setAttribute('aria-expanded','true');
+}
+$('#notifBtn').addEventListener('click', e => { e.stopPropagation(); togglePop(e.currentTarget, $('#notifPop')); });
+$('#meBtn').addEventListener('click', e => { e.stopPropagation(); togglePop(e.currentTarget, $('#mePop')); });
+document.addEventListener('click', e => { if(!e.target.closest('.pop')) closePops(); });
+let unread = true;
+function renderNotifs(){
+  $('#notifList').innerHTML = NOTIFS.map(n=>`<div class="notif"><span class="dot ${unread?'':'read'}"></span><div><div class="t">${esc(n.t)}</div><div class="d">${esc(n.d)}</div><div class="w">${n.w}</div></div></div>`).join('');
+  $('#notifBadge').style.display = unread ? '' : 'none';
+}
+$('#markRead').addEventListener('click', ()=>{ unread=false; renderNotifs(); });
+
+/* theme */
+function setTheme(t){
+  if (t==='auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+  store.set('theme', t);
+  document.querySelectorAll('.theme-opt').forEach(b=>b.setAttribute('aria-pressed', b.dataset.t===t));
+}
+
+/* static icons in the shell */
+document.querySelectorAll('svg[data-i]').forEach(s => { s.setAttribute('viewBox','0 0 16 16'); s.innerHTML = `<path d="${ICONS[s.dataset.i]||''}"/>`; });
+setTheme(store.get('theme','light'));
+renderNotifs();
+render();
+</script>
+</body>
+</html>

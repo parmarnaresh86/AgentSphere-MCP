@@ -515,42 +515,249 @@ db.exec(`
   );
 `);
 
-// All available permission keys with labels
+// All available permission keys with labels — one entry per individual sidebar
+// menu item (not per section) so roles/users can be granted access at
+// menu-item granularity. `group` identifies the collapsible sub-group within
+// a section for nested display in the admin UI; omitted for items that sit
+// directly under a section with no sub-group.
 export const ALL_PERMISSIONS = [
   { key: 'home',              label: 'Home (Chat & Dashboard)',      section: 'Home' },
   { key: 'ui.form_mode',      label: 'Form Mode Toggle (Chat/Form switch)', section: 'Home' },
-  { key: 'master.item',          label: 'Item Master',                  section: 'Master Data' },
-  { key: 'master.customer',      label: 'Customer Master',              section: 'Master Data' },
-  { key: 'master.supplier',      label: 'Supplier Master',              section: 'Master Data' },
-  { key: 'master.bom',           label: 'Bill of Material',             section: 'Master Data' },
-  { key: 'master.service_call',  label: 'Service Call Master',          section: 'Master Data' },
-  { key: 'service.sc_view',      label: 'Service Calls (View/Search)',   section: 'Service' },
-  { key: 'service.svc_call',     label: 'New Service Call (Quick)',      section: 'Service' },
-  { key: 'service.sc_form',      label: 'Service Call Management',      section: 'Service' },
-  { key: 'service.sc_wizard',    label: 'New Service Call Wizard',       section: 'Service' },
-  { key: 'sales.create',         label: 'Sales - Quick Create',          section: 'Sales' },
-  { key: 'sales.workflow',    label: 'Sales - AI Workflow',          section: 'Sales' },
-  { key: 'sales.analysis',    label: 'Sales - Analysis',             section: 'Sales' },
-  { key: 'purchase.create',   label: 'Purchase - Quick Create',      section: 'Purchase' },
-  { key: 'purchase.workflow', label: 'Purchase - AI Workflow',       section: 'Purchase' },
-  { key: 'purchase.analysis', label: 'Purchase - Analysis',          section: 'Purchase' },
-  { key: 'finance',           label: 'Finance & Collections',        section: 'Finance' },
-  { key: 'inventory',         label: 'Inventory & Stock',            section: 'Inventory' },
-  { key: 'ai.supply',         label: 'AI - Supply Chain Agents',     section: 'AI Agents' },
-  { key: 'ai.sales',          label: 'AI - Sales & Pricing Agents',  section: 'AI Agents' },
-  { key: 'ai.crm',            label: 'AI - CRM & Activity Agents',   section: 'AI Agents' },
-  { key: 'analytics',         label: 'Analytics & BI Models',        section: 'Analytics' },
-  { key: 'forecast',          label: 'Forecast Tools',               section: 'Forecast' },
-  { key: 'tools.builder',     label: 'DB Query Builder',             section: 'Tools' },
-  { key: 'tools.udt',         label: 'UDT Management',               section: 'Tools' },
-  { key: 'tools.library',     label: 'Query Library',                section: 'Tools' },
-  { key: 'tools.db',          label: 'DB Connection',                section: 'Tools' },
-  { key: 'tools.data_sync',   label: 'Data Sync (SAP to Local Cache)', section: 'Tools' },
-  { key: 'tools.schema',      label: 'Schema Registry',              section: 'Tools' },
-  { key: 'tools.reports',     label: 'Reports Engine',               section: 'Tools' },
-  { key: 'admin.users',       label: 'User Management',              section: 'Admin' },
-  { key: 'admin.roles',       label: 'Roles & Permissions',          section: 'Admin' },
+
+  // Master Data
+  { key: 'master.item',          label: 'Item Master',          section: 'Master Data' },
+  { key: 'master.customer',      label: 'Customer Master',      section: 'Master Data' },
+  { key: 'master.gstin_check',   label: 'GSTIN Check',          section: 'Master Data' },
+  { key: 'master.bp_check',      label: 'BP Duplicate Check',   section: 'Master Data' },
+  { key: 'master.supplier',      label: 'Supplier Master',      section: 'Master Data' },
+  { key: 'master.bom',           label: 'Bill of Material',     section: 'Master Data' },
+  { key: 'master.service_call',  label: 'Service Call',         section: 'Master Data' },
+
+  // Service Call
+  { key: 'service.sc_view',    label: 'Service Call Dashboard', section: 'Service Call' },
+  { key: 'service.svc_call',   label: 'New Service Call',       section: 'Service Call' },
+  { key: 'service.sc_form',    label: 'Service Call',           section: 'Service Call' },
+  { key: 'service.sc_wizard',  label: 'New Call Wizard',        section: 'Service Call' },
+
+  // Sales — O2C : Quick Create
+  { key: 'sales.create.quotation', label: 'Quotation',        section: 'Sales — O2C', group: 'Quick Create' },
+  { key: 'sales.create.order',     label: 'Sales Order',      section: 'Sales — O2C', group: 'Quick Create' },
+  { key: 'sales.create.delivery',  label: 'Delivery',         section: 'Sales — O2C', group: 'Quick Create' },
+  { key: 'sales.create.pod',       label: 'Confirm POD',      section: 'Sales — O2C', group: 'Quick Create' },
+  { key: 'sales.create.invoice',   label: 'AR Invoice',       section: 'Sales — O2C', group: 'Quick Create' },
+  { key: 'sales.create.payment',   label: 'Incoming Payment', section: 'Sales — O2C', group: 'Quick Create' },
+  { key: 'sales.create.atp',       label: 'ATP Check',        section: 'Sales — O2C', group: 'Quick Create' },
+
+  // Sales — O2C : AI Workflow
+  { key: 'sales.workflow.sales_order',       label: 'Sales Order',        section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.quotation',         label: 'Sales Quotation',    section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.quote_compare',     label: 'Quotation Compare',  section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.quote_to_order',    label: 'Quot → Order',       section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.order_to_delivery', label: 'Order → Delivery',   section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.delivery_to_arinv', label: 'Delivery → AR Inv',  section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.arinv_to_arcm',     label: 'AR Inv → Credit',    section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.incoming_payment',  label: 'Incoming Payment',   section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.sales_analysis_link', label: 'Sales Analysis',  section: 'Sales — O2C', group: 'AI Workflow' },
+
+  // Sales — O2C : Sales Analysis
+  { key: 'sales.analysis.open_orders',     label: 'Open Orders',       section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.open_quotations', label: 'Open Quotations',   section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.top_customers',   label: 'Top Customers',     section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.monthly_trend',   label: 'Monthly Trend',     section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.quarterly_sales', label: 'Quarterly Sales',   section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.top_items',       label: 'Top Items',         section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.by_salesperson',  label: 'By Salesperson',    section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.by_gross_profit', label: 'By Gross Profit',   section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.by_gp_margin',    label: 'By GP Margin',      section: 'Sales — O2C', group: 'Sales Analysis' },
+  { key: 'sales.analysis.by_warehouse',    label: 'By Warehouse',      section: 'Sales — O2C', group: 'Sales Analysis' },
+
+  // Purchase — P2P : Quick Create
+  { key: 'purchase.create.purchase_order',   label: 'Purchase Order',    section: 'Purchase — P2P', group: 'Quick Create' },
+  { key: 'purchase.create.grpo',             label: 'Goods Receipt PO',  section: 'Purchase — P2P', group: 'Quick Create' },
+  { key: 'purchase.create.ap_invoice',       label: 'A/P Invoice',       section: 'Purchase — P2P', group: 'Quick Create' },
+  { key: 'purchase.create.outgoing_payment', label: 'Pay Vendor',        section: 'Purchase — P2P', group: 'Quick Create' },
+
+  // Purchase — P2P : AI Workflow
+  { key: 'purchase.workflow.pr_agent',        label: 'Purchase Request Agent', section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.po_agent',        label: 'Purchase Order',         section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.pr_to_po',        label: 'PR → PO',                section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.po_to_grpo',      label: 'PO → GRPO',              section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.grpo_to_apinv',   label: 'GRPO → AP Inv',          section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.three_way_match', label: '3-Way Match',            section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.apinv_to_apcm',   label: 'AP Inv → Credit',        section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.outgoing_payment',label: 'Outgoing Payment',       section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.vp_aging',        label: 'AP Aging Report',        section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.purchase_analysis_link', label: 'Purchase Analysis', section: 'Purchase — P2P', group: 'AI Workflow' },
+
+  // Purchase — P2P : Procurement Analysis
+  { key: 'purchase.analysis.purchase_analysis', label: 'Purchase Analysis', section: 'Purchase — P2P', group: 'Procurement Analysis' },
+  { key: 'purchase.analysis.top_vendors',       label: 'Top Vendors',       section: 'Purchase — P2P', group: 'Procurement Analysis' },
+  { key: 'purchase.analysis.vendor_list',       label: 'Vendor List',       section: 'Purchase — P2P', group: 'Procurement Analysis' },
+  { key: 'purchase.analysis.customer_list',     label: 'Customer List',     section: 'Purchase — P2P', group: 'Procurement Analysis' },
+
+  // Finance
+  { key: 'finance.ar_aging',            label: 'AR Aging',              section: 'Finance', group: 'AR & Collections' },
+  { key: 'finance.overdue_30',          label: 'Overdue 30 Days',       section: 'Finance', group: 'AR & Collections' },
+  { key: 'finance.overdue_60',          label: 'Overdue 60 Days',       section: 'Finance', group: 'AR & Collections' },
+  { key: 'finance.ap_aging',            label: 'AP Aging',              section: 'Finance', group: 'AR & Collections' },
+  { key: 'finance.financial_dashboard', label: 'Financial Dashboard',   section: 'Finance' },
+  { key: 'finance.customer_aging',      label: 'Customer Aging Detail', section: 'Finance' },
+  { key: 'finance.reports.balance_sheet', label: 'Balance Sheet',        section: 'Finance', group: 'Financial Reports' },
+  { key: 'finance.reports.profit_loss',   label: 'Profit & Loss',        section: 'Finance', group: 'Financial Reports' },
+  { key: 'finance.reports.trial_balance', label: 'Trial Balance',        section: 'Finance', group: 'Financial Reports' },
+
+  // Inventory
+  { key: 'inventory.stock_levels',   label: 'Stock Levels',     section: 'Inventory', group: 'Stock & Warehouse' },
+  { key: 'inventory.in_stock_items', label: 'In-Stock Items',   section: 'Inventory', group: 'Stock & Warehouse' },
+  { key: 'inventory.pick_list',      label: 'Pick List',        section: 'Inventory', group: 'Stock & Warehouse' },
+  { key: 'inventory.atp_check',      label: 'ATP Check',        section: 'Inventory', group: 'Stock & Warehouse' },
+
+  // Inventory : AI Workflow — these post stock-moving documents, so the
+  // inventory-agent controller also enforces them server-side per request.
+  { key: 'inventory.workflow.transfer_request',      label: 'Stock Transfer Request',      section: 'Inventory', group: 'AI Workflow' },
+  { key: 'inventory.workflow.transfer_from_request', label: 'Stock Transfer from Request', section: 'Inventory', group: 'AI Workflow' },
+  { key: 'inventory.workflow.transfer_direct',       label: 'Stock Transfer (Direct)',     section: 'Inventory', group: 'AI Workflow' },
+  { key: 'inventory.workflow.goods_issue',           label: 'Goods Issue',                 section: 'Inventory', group: 'AI Workflow' },
+  { key: 'inventory.workflow.goods_receipt',         label: 'Goods Receipt',               section: 'Inventory', group: 'AI Workflow' },
+
+  // AI Agents : Finance & Credit
+  { key: 'ai.finance.collections',   label: 'Collections & Receivables', section: 'AI Agents', group: 'Finance & Credit' },
+  { key: 'ai.finance.cashflow',      label: 'Cash Flow Forecast',        section: 'AI Agents', group: 'Finance & Credit' },
+  { key: 'ai.finance.creditrisk',    label: 'Credit Risk',               section: 'AI Agents', group: 'Finance & Credit' },
+  { key: 'ai.finance.appayment',     label: 'AP Payment Optimization',   section: 'AI Agents', group: 'Finance & Credit' },
+  { key: 'ai.finance.profitability', label: 'Profitability',             section: 'AI Agents', group: 'Finance & Credit' },
+  { key: 'ai.finance.marginleak',    label: 'Margin Leakage',            section: 'AI Agents', group: 'Finance & Credit' },
+  { key: 'ai.finance.commission',    label: 'Sales Commission',          section: 'AI Agents', group: 'Finance & Credit' },
+  { key: 'ai.finance.monthend',      label: 'Month-End Closing',         section: 'AI Agents', group: 'Finance & Credit' },
+
+  // AI Agents : Supply Chain
+  { key: 'ai.supply.mrp_auto_po',       label: 'MRP Auto-PO',              section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.procurement_agent', label: 'Stock Reorder Monitor',    section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.three_way_match',   label: 'Purchase Three Way Match', section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.production_agent',  label: 'Production Agent',         section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.purchasing_agent',  label: 'Purchase Recommendation',  section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.rush_orders',       label: 'Rush Orders',              section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.shipment_delay',    label: 'Shipment Delays',          section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.inv_opt',           label: 'Inventory Optimization',   section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.dead_stock',        label: 'Dead Stock',               section: 'AI Agents', group: 'Supply Chain' },
+  { key: 'ai.supply.vendor_perf',       label: 'Vendor Performance',       section: 'AI Agents', group: 'Supply Chain' },
+
+  // AI Agents : OCR Processing
+  { key: 'ai.ocr.po_scan',  label: 'Scan Purchase Order',  section: 'AI Agents', group: 'OCR Processing' },
+  { key: 'ai.ocr.expense',  label: 'Scan Expense Invoice', section: 'AI Agents', group: 'OCR Processing' },
+  { key: 'ai.ocr.apinv',    label: 'Scan A/P Invoice',     section: 'AI Agents', group: 'OCR Processing' },
+  { key: 'ai.ocr.inward',   label: 'Scan Inward',          section: 'AI Agents', group: 'OCR Processing' },
+  { key: 'ai.ocr.gatepass', label: 'Scan Gate Pass',       section: 'AI Agents', group: 'OCR Processing' },
+  { key: 'ai.ocr.document', label: 'Scan Document Mode',  section: 'AI Agents', group: 'OCR Processing' },
+
+  // AI Agents : Sales & Pricing
+  { key: 'ai.sales.dynamic_pricing',    label: 'Dynamic Pricing',       section: 'AI Agents', group: 'Sales & Pricing' },
+  { key: 'ai.sales.order_intelligence', label: 'Order Intelligence',    section: 'AI Agents', group: 'Sales & Pricing' },
+  { key: 'ai.sales.product_forecast',   label: 'Product Forecasting',   section: 'AI Agents', group: 'Sales & Pricing' },
+  { key: 'ai.sales.followup',           label: 'Sales Follow-up',       section: 'AI Agents', group: 'Sales & Pricing' },
+  { key: 'ai.sales.quote_intel',        label: 'Quotation Intelligence',section: 'AI Agents', group: 'Sales & Pricing' },
+  { key: 'ai.sales.mail_po',            label: 'Mail PO → SO',          section: 'AI Agents', group: 'Sales & Pricing' },
+  { key: 'ai.sales.po_workflow',        label: 'PO → Sales Order',      section: 'AI Agents', group: 'Sales & Pricing' },
+
+  // AI Agents : CRM & Service
+  { key: 'ai.crm.activity_agent',  label: 'Activity Agent',  section: 'AI Agents', group: 'CRM & Service' },
+  { key: 'ai.crm.prompt_activity', label: 'Prompt Activity', section: 'AI Agents', group: 'CRM & Service' },
+
+  // Analytics AI
+  { key: 'analytics.inv.abc_xyz',             label: 'ABC-XYZ Classification', section: 'Analytics AI', group: 'Inventory' },
+  { key: 'analytics.inv.stockout_prediction', label: 'Stockout Prediction',    section: 'Analytics AI', group: 'Inventory' },
+  { key: 'analytics.inv.dead_slow_stock',     label: 'Dead/Slow Stock',        section: 'Analytics AI', group: 'Inventory' },
+  { key: 'analytics.inv.reorder_points',      label: 'Reorder Points (ROP)',   section: 'Analytics AI', group: 'Inventory' },
+  { key: 'analytics.inv.eoq',                 label: 'EOQ Calculator',         section: 'Analytics AI', group: 'Inventory' },
+
+  { key: 'analytics.cust.rfm',                   label: 'RFM Segmentation',      section: 'Analytics AI', group: 'Customer Intelligence' },
+  { key: 'analytics.cust.churn',                  label: 'Churn Prediction',      section: 'Analytics AI', group: 'Customer Intelligence' },
+  { key: 'analytics.cust.clv',                    label: 'Customer CLV',          section: 'Analytics AI', group: 'Customer Intelligence' },
+  { key: 'analytics.cust.revenue_concentration',  label: 'Revenue Concentration', section: 'Analytics AI', group: 'Customer Intelligence' },
+  { key: 'analytics.cust.quote_win_rate',         label: 'Quotation Win Rate',    section: 'Analytics AI', group: 'Customer Intelligence' },
+
+  { key: 'analytics.fin.working_capital',      label: 'Working Capital (CCC)', section: 'Analytics AI', group: 'Finance' },
+  { key: 'analytics.fin.margin_erosion',       label: 'Margin Erosion',        section: 'Analytics AI', group: 'Finance' },
+  { key: 'analytics.fin.transaction_outliers', label: 'Transaction Outliers',  section: 'Analytics AI', group: 'Finance' },
+  { key: 'analytics.fin.cash_flow_forecast',   label: 'Cash Flow Forecast',    section: 'Analytics AI', group: 'Finance' },
+
+  { key: 'analytics.vend.lead_time',        label: 'Vendor Lead Time',      section: 'Analytics AI', group: 'Vendor / Procurement' },
+  { key: 'analytics.vend.on_time_delivery', label: 'On-Time Delivery',      section: 'Analytics AI', group: 'Vendor / Procurement' },
+  { key: 'analytics.vend.concentration',    label: 'Vendor Concentration',  section: 'Analytics AI', group: 'Vendor / Procurement' },
+
+  { key: 'analytics.fcast.sales_forecast',  label: 'Sales Forecast',        section: 'Analytics AI', group: 'Forecasting' },
+  { key: 'analytics.fcast.demand_forecast', label: 'Demand Forecast',       section: 'Analytics AI', group: 'Forecasting' },
+  { key: 'analytics.fcast.seasonality',     label: 'Seasonality Detection', section: 'Analytics AI', group: 'Forecasting' },
+
+  // Forecast
+  { key: 'forecast.demand_forecast', label: 'Demand Forecast',    section: 'Forecast', group: 'Forecasting Tools' },
+  { key: 'forecast.b1_forecast',     label: 'Forecast with B1',   section: 'Forecast', group: 'Forecasting Tools' },
+  { key: 'forecast.dashboard',       label: 'Forecast Dashboard', section: 'Forecast', group: 'Forecasting Tools' },
+
+  // Tools
+  { key: 'tools.ai_model',   label: 'AI Model Selector',              section: 'Tools' },
+  { key: 'tools.chat_panel', label: 'AI Chat Panel',                  section: 'Tools' },
+  { key: 'tools.data_sync',  label: 'Data Sync (SAP to Local Cache)', section: 'Tools' },
+  { key: 'tools.db',         label: 'DB Connection',                  section: 'Tools' },
+  { key: 'tools.builder',    label: 'DB Query Builder', section: 'Tools', group: 'Developer Tools' },
+  { key: 'tools.udt_create', label: 'Create UDT',       section: 'Tools', group: 'Developer Tools' },
+  { key: 'tools.udt_view',   label: 'View UDTs',        section: 'Tools', group: 'Developer Tools' },
+  { key: 'tools.library',    label: 'Query Library',    section: 'Tools', group: 'Developer Tools' },
+  { key: 'tools.schema',     label: 'Schema Registry',  section: 'Tools', group: 'Developer Tools' },
+  { key: 'tools.reports',    label: 'Reports Engine',   section: 'Tools', group: 'Developer Tools' },
+
+  // Admin
+  { key: 'admin.users',              label: 'User Management',    section: 'Admin' },
+  { key: 'admin.roles',              label: 'Roles & Permissions',section: 'Admin' },
+  { key: 'admin.user_rights',        label: 'User Rights',        section: 'Admin' },
+  { key: 'admin.company_setup',      label: 'Company Setup',      section: 'Admin' },
+  { key: 'admin.developer_settings', label: 'Developer Settings',section: 'Admin' },
+  { key: 'admin.ai_credits',         label: 'AI Credits & Usage', section: 'Admin' },
 ];
+
+// ── Legacy → item-level permission migration map ──────────────────────────────
+// Before this upgrade, permissions gated whole menu sections/groups at once
+// (e.g. one 'sales.create' key covered all 7 Quick Create forms). These keys
+// no longer appear in ALL_PERMISSIONS above; this map lets the one-time
+// migration below expand any role/user still holding an old key into the
+// equivalent set of new item-level keys, so nobody's access changes.
+export const LEGACY_PERMISSION_CHILDREN = {
+  'sales.create':    ['sales.create.quotation','sales.create.order','sales.create.delivery','sales.create.pod','sales.create.invoice','sales.create.payment','sales.create.atp'],
+  'sales.workflow':  ['sales.workflow.sales_order','sales.workflow.quotation','sales.workflow.quote_compare','sales.workflow.quote_to_order','sales.workflow.order_to_delivery','sales.workflow.delivery_to_arinv','sales.workflow.arinv_to_arcm','sales.workflow.incoming_payment','sales.workflow.sales_analysis_link'],
+  'sales.analysis':  ['sales.analysis.open_orders','sales.analysis.open_quotations','sales.analysis.top_customers','sales.analysis.monthly_trend','sales.analysis.quarterly_sales','sales.analysis.top_items','sales.analysis.by_salesperson','sales.analysis.by_gross_profit','sales.analysis.by_gp_margin','sales.analysis.by_warehouse'],
+  'purchase.create':   ['purchase.create.purchase_order','purchase.create.grpo','purchase.create.ap_invoice','purchase.create.outgoing_payment'],
+  'purchase.workflow': ['purchase.workflow.pr_agent','purchase.workflow.po_agent','purchase.workflow.pr_to_po','purchase.workflow.po_to_grpo','purchase.workflow.grpo_to_apinv','purchase.workflow.three_way_match','purchase.workflow.apinv_to_apcm','purchase.workflow.outgoing_payment','purchase.workflow.vp_aging','purchase.workflow.purchase_analysis_link'],
+  'purchase.analysis': ['purchase.analysis.purchase_analysis','purchase.analysis.top_vendors','purchase.analysis.vendor_list','purchase.analysis.customer_list'],
+  'finance':    ['finance.ar_aging','finance.overdue_30','finance.overdue_60','finance.ap_aging','finance.financial_dashboard','finance.customer_aging','finance.reports.balance_sheet','finance.reports.profit_loss','finance.reports.trial_balance'],
+  'inventory':  ['inventory.stock_levels','inventory.in_stock_items','inventory.pick_list','inventory.atp_check'],
+  'ai.supply':  ['ai.supply.mrp_auto_po','ai.supply.procurement_agent','ai.supply.three_way_match','ai.supply.production_agent','ai.supply.purchasing_agent','ai.supply.rush_orders','ai.supply.shipment_delay','ai.supply.inv_opt','ai.supply.dead_stock','ai.supply.vendor_perf'],
+  'ai.ocr':     ['ai.ocr.po_scan','ai.ocr.expense','ai.ocr.apinv','ai.ocr.inward','ai.ocr.gatepass','ai.ocr.document'],
+  'ai.sales':   ['ai.sales.dynamic_pricing','ai.sales.order_intelligence','ai.sales.product_forecast','ai.sales.followup','ai.sales.quote_intel','ai.sales.mail_po','ai.sales.po_workflow'],
+  'ai.crm':     ['ai.crm.activity_agent','ai.crm.prompt_activity'],
+  'analytics':  ['analytics.inv.abc_xyz','analytics.inv.stockout_prediction','analytics.inv.dead_slow_stock','analytics.inv.reorder_points','analytics.inv.eoq','analytics.cust.rfm','analytics.cust.churn','analytics.cust.clv','analytics.cust.revenue_concentration','analytics.cust.quote_win_rate','analytics.fin.working_capital','analytics.fin.margin_erosion','analytics.fin.transaction_outliers','analytics.fin.cash_flow_forecast','analytics.vend.lead_time','analytics.vend.on_time_delivery','analytics.vend.concentration','analytics.fcast.sales_forecast','analytics.fcast.demand_forecast','analytics.fcast.seasonality'],
+  'forecast':   ['forecast.demand_forecast','forecast.b1_forecast','forecast.dashboard'],
+  'tools.udt':  ['tools.udt_create','tools.udt_view'],
+};
+
+// Special case: the 8 "Finance & Credit" AI agent items had no permission
+// gate of their own before — they were visible to anyone who could see the
+// AI Agents section at all (i.e. held any one of these 5 legacy keys).
+const AI_FINANCE_CHILDREN    = ['ai.finance.collections','ai.finance.cashflow','ai.finance.creditrisk','ai.finance.appayment','ai.finance.profitability','ai.finance.marginleak','ai.finance.commission','ai.finance.monthend'];
+const AI_FINANCE_TRIGGER_KEYS = ['ai.supply','ai.ocr','ai.sales','ai.crm','finance'];
+
+// Special case: User Rights / Company Setup / Developer Settings had no
+// permission gate of their own — they appeared whenever the whole Admin
+// section was revealed (i.e. admin.users or admin.roles was granted).
+const ADMIN_EXTRA_CHILDREN  = ['admin.user_rights','admin.company_setup','admin.developer_settings'];
+const ADMIN_TRIGGER_KEYS    = ['admin.users','admin.roles'];
+
+// Special case: GSTIN Check / BP Duplicate Check had no permission gate of
+// their own — they appeared whenever Customer Master was granted. Unlike the
+// LEGACY_PERMISSION_CHILDREN map above, 'master.customer' is NOT a removed
+// key (it still gates the Customer Master menu item itself), so it must be
+// additively granted here, never deleted.
+const MASTER_CUSTOMER_EXTRA_CHILDREN = ['master.gstin_check','master.bp_check'];
+const MASTER_CUSTOMER_TRIGGER_KEYS   = ['master.customer'];
 
 export const roleRepo = {
   list:    db.prepare(`SELECT * FROM roles ORDER BY id`),
@@ -622,7 +829,17 @@ export const userPermRepo = {
 const seedRoles = [
   { name:'superadmin', desc:'Full access — all permissions, cannot be modified', perms: ALL_PERMISSIONS.map(p=>p.key) },
   { name:'admin',      desc:'Manage users, view all data, configure settings',   perms: ALL_PERMISSIONS.map(p=>p.key) },
-  { name:'user',       desc:'Standard user — basic sales and purchase access',   perms: ['home','ui.form_mode','sales.create','sales.workflow','sales.analysis','purchase.create','purchase.workflow','purchase.analysis','finance','inventory'] },
+  { name:'user',       desc:'Standard user — basic sales and purchase access',   perms: [
+      'home','ui.form_mode',
+      ...LEGACY_PERMISSION_CHILDREN['sales.create'],
+      ...LEGACY_PERMISSION_CHILDREN['sales.workflow'],
+      ...LEGACY_PERMISSION_CHILDREN['sales.analysis'],
+      ...LEGACY_PERMISSION_CHILDREN['purchase.create'],
+      ...LEGACY_PERMISSION_CHILDREN['purchase.workflow'],
+      ...LEGACY_PERMISSION_CHILDREN['purchase.analysis'],
+      ...LEGACY_PERMISSION_CHILDREN['finance'],
+      ...LEGACY_PERMISSION_CHILDREN['inventory'],
+    ] },
 ];
 for (const r of seedRoles) {
   const existing = db.prepare(`SELECT id FROM roles WHERE name=?`).get(r.name);
@@ -633,19 +850,105 @@ for (const r of seedRoles) {
   } else if (r.name === 'superadmin') {
     // superadmin is fixed/immutable by design — always force the full set
     roleRepo.setPermissions(existing.id, r.perms);
-  } else {
-    // admin/user are editable via Roles & Permissions — never overwrite an
-    // existing role's saved permissions on startup (that would silently undo
-    // admin edits every restart). Only backfill permission keys that didn't
-    // exist yet when this role's row was created, so newly-added features
-    // don't just vanish for roles that predate them.
-    const current = new Set(roleRepo.getPermissions(existing.id));
-    const missing = r.perms.filter(k => !current.has(k));
-    if (missing.length) {
-      roleRepo.setPermissions(existing.id, [...current, ...missing]);
-      console.log(`✓ Role '${r.name}': backfilled new permission(s) ${missing.join(', ')}`);
+  }
+  // admin/user are editable via Roles & Permissions and, once the role row
+  // exists, are never touched here again — not even to "backfill" keys that
+  // are absent from their current stored set. An absent key on an existing
+  // role is indistinguishable from "an admin deliberately unchecked this",
+  // and re-adding it on every restart would silently undo that edit forever
+  // (this previously happened to the 'admin' role in practice). A newly
+  // introduced permission key reaching an existing role is instead handled
+  // by an explicit, one-time migration entry (see LEGACY_PERMISSION_CHILDREN
+  // and expandLegacyKeys below) — a deliberate decision, not a blanket sync.
+}
+
+// ── One-time migration: expand legacy group-level permission keys into the
+// new per-menu-item keys, so existing roles/users keep exactly the access
+// they had before menus were split to item-level granularity. Purely
+// additive (never removes a new key) and self-terminating: it deletes the
+// legacy key once expanded, so there is nothing left to re-expand on the
+// next boot, and an admin's later deliberate revocation of a child key
+// sticks.
+function expandLegacyKeys(keys) {
+  const set = new Set(keys);
+  const toAdd = new Set();
+  const legacyPresent = [];
+  // Only queue a child key if it isn't already held — otherwise every role
+  // holding a still-valid trigger key (e.g. 'admin.roles', 'finance') would
+  // report a "migration" on every single boot even though nothing changed.
+  const addIfMissing = k => { if (!set.has(k)) toAdd.add(k); };
+  if (AI_FINANCE_TRIGGER_KEYS.some(k => set.has(k)))       AI_FINANCE_CHILDREN.forEach(addIfMissing);
+  if (ADMIN_TRIGGER_KEYS.some(k => set.has(k)))            ADMIN_EXTRA_CHILDREN.forEach(addIfMissing);
+  if (MASTER_CUSTOMER_TRIGGER_KEYS.some(k => set.has(k)))  MASTER_CUSTOMER_EXTRA_CHILDREN.forEach(addIfMissing);
+  for (const [legacy, children] of Object.entries(LEGACY_PERMISSION_CHILDREN)) {
+    if (set.has(legacy)) {
+      children.forEach(addIfMissing);
+      legacyPresent.push(legacy);
     }
   }
+  return { toAdd: [...toAdd], legacyPresent };
+}
+
+for (const role of roleRepo.list.all()) {
+  if (role.name === 'superadmin') continue; // always gets the full current set already
+  const current = roleRepo.getPermissions(role.id);
+  const { toAdd, legacyPresent } = expandLegacyKeys(current);
+  if (toAdd.length || legacyPresent.length) {
+    const next = new Set(current);
+    toAdd.forEach(k => next.add(k));
+    legacyPresent.forEach(k => next.delete(k));
+    roleRepo.setPermissions(role.id, [...next]);
+    console.log(`✓ Role '${role.name}': migrated legacy permission(s) [${legacyPresent.join(', ')}] → ${toAdd.length} item-level key(s)`);
+  }
+}
+{
+  const userIds = db.prepare(`SELECT DISTINCT user_id FROM user_permissions`).all().map(r => r.user_id);
+  for (const uid of userIds) {
+    const overrides = db.prepare(`SELECT perm_key, granted FROM user_permissions WHERE user_id=?`).all(uid);
+    const granted = overrides.filter(o => o.granted).map(o => o.perm_key);
+    const { toAdd, legacyPresent } = expandLegacyKeys(granted);
+    if (toAdd.length || legacyPresent.length) {
+      const keep = overrides.filter(o => !legacyPresent.includes(o.perm_key));
+      const additions = toAdd.map(k => ({ perm_key: k, granted: 1 }));
+      db.transaction(() => {
+        db.prepare(`DELETE FROM user_permissions WHERE user_id=?`).run(uid);
+        const ins = db.prepare(`INSERT INTO user_permissions(user_id,perm_key,granted) VALUES(?,?,?)`);
+        for (const o of [...keep, ...additions]) ins.run(uid, o.perm_key, o.granted ? 1 : 0);
+      })();
+      console.log(`✓ User #${uid}: migrated legacy permission override(s) [${legacyPresent.join(', ')}] → ${toAdd.length} item-level key(s)`);
+    }
+  }
+}
+
+// ── One-time grants for newly introduced menu items. Unlike expandLegacyKeys
+// above (which re-runs every boot), each entry here is applied exactly once
+// and recorded, so an admin who later revokes the new key keeps it revoked.
+db.exec(`CREATE TABLE IF NOT EXISTS permission_grants_applied (name TEXT PRIMARY KEY, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+const ONE_TIME_GRANTS = [
+  // Financial Reports (Balance Sheet / P&L / Trial Balance) → whoever could
+  // already see the Financial Dashboard.
+  { name: 'finance.reports.v1', trigger: ['finance.financial_dashboard'],
+    keys: ['finance.reports.balance_sheet','finance.reports.profit_loss','finance.reports.trial_balance'] },
+  // Inventory AI Workflow (transfers / goods issue / goods receipt) → only
+  // whoever can already manage roles, since these post stock movements;
+  // admins then assign them to other roles via Roles & Permissions.
+  { name: 'inventory.workflow.v1', trigger: ['admin.roles'],
+    keys: ['inventory.workflow.transfer_request','inventory.workflow.transfer_from_request','inventory.workflow.transfer_direct','inventory.workflow.goods_issue','inventory.workflow.goods_receipt'] },
+];
+for (const g of ONE_TIME_GRANTS) {
+  if (db.prepare(`SELECT 1 FROM permission_grants_applied WHERE name=?`).get(g.name)) continue;
+  db.transaction(() => {
+    const insRole = db.prepare(`INSERT OR IGNORE INTO role_permissions(role_id,perm_key) VALUES(?,?)`);
+    for (const role of roleRepo.list.all()) {
+      if (role.name === 'superadmin') continue;
+      if (roleRepo.getPermissions(role.id).some(k => g.trigger.includes(k))) g.keys.forEach(k => insRole.run(role.id, k));
+    }
+    const insUser = db.prepare(`INSERT OR IGNORE INTO user_permissions(user_id,perm_key,granted) VALUES(?,?,1)`);
+    const users = db.prepare(`SELECT DISTINCT user_id FROM user_permissions WHERE granted=1 AND perm_key IN (${g.trigger.map(() => '?').join(',')})`).all(...g.trigger);
+    for (const u of users) g.keys.forEach(k => insUser.run(u.user_id, k));
+    db.prepare(`INSERT INTO permission_grants_applied(name) VALUES(?)`).run(g.name);
+  })();
+  console.log(`✓ Permission grant '${g.name}' applied`);
 }
 
 // ── Master Data Cache (company-wise SAP mirrors) ──────────────────────────────
@@ -1286,6 +1589,26 @@ try { db.exec(`ALTER TABLE chat_sessions ADD COLUMN preview TEXT DEFAULT ''`); }
 // filter to the caller's own sessions instead of exposing every user's
 // conversations — it originally had no ownership check at all.
 try { db.exec(`ALTER TABLE chat_sessions ADD COLUMN user_id INTEGER`); } catch {}
+// title: user-set name for the thread (rename in the history popup); falls
+// back to preview when empty.
+try { db.exec(`ALTER TABLE chat_sessions ADD COLUMN title TEXT DEFAULT ''`); } catch {}
+
+// Display transcript of each thread — one row per visible user/assistant
+// turn, written for EVERY engine. chat_sessions.messages only ever held the
+// AI engines' (Claude/GPT) wire format, so Standard / DB Direct / V2
+// conversations never showed up in history at all.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_turns (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    role       TEXT NOT NULL CHECK (role IN ('user','assistant')),
+    text       TEXT NOT NULL,
+    engine     TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_turns_session ON chat_turns (session_id, id)`);
+const TURN_MAX_LEN = 200000; // a big table reply is fine; a runaway payload isn't
 
 // Stored messages are the raw Claude/GPT-4o tool-calling wire format (content
 // blocks, tool_use/tool_result turns, etc.) — not something to show a human
@@ -1306,6 +1629,20 @@ function extractDisplayText(messages) {
     // role === 'tool' (GPT) or 'system': internal, skip
   }
   return out;
+}
+
+// True for text a person typed as a question/command worth re-running —
+// false for payloads/data (JSON bodies, table dumps, tool results) and for
+// throwaway replies ("2" suggestion picks, yes/no write confirmations).
+const CONFIRM_RE = /^(y|yes|yeah|yep|ok|okay|confirm|go ahead|proceed|n|no|nope|cancel|stop|abort)[.!]?$/i;
+export function isReusablePrompt(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 2000) return false;
+  if (/^\d{1,2}\s*[.):]?$/.test(t) || CONFIRM_RE.test(t)) return false;
+  if (/^[\[{]/.test(t)) { try { JSON.parse(t); return false; } catch {} }
+  if (/^\s*\|.*\|\s*$/m.test(t) && t.split('\n').length > 2) return false; // pasted markdown table
+  if (/^data:[\w/+.-]+;base64,/.test(t)) return false;
+  return true;
 }
 
 export const chatSessionRepo = {
@@ -1332,21 +1669,94 @@ export const chatSessionRepo = {
   },
   delete(sessionId) {
     db.prepare(`DELETE FROM chat_sessions WHERE session_id=?`).run(sessionId);
+    db.prepare(`DELETE FROM chat_turns WHERE session_id=?`).run(sessionId);
+  },
+  // Records one visible exchange of a thread (any engine). Creates the
+  // thread row if this is its first turn; an anonymous thread is claimed by
+  // the first logged-in caller to continue it, never reassigned after that.
+  appendExchange(sessionId, userId, userText, replyText, engine = '') {
+    const u = String(userText || '').slice(0, TURN_MAX_LEN);
+    const a = String(replyText || '').slice(0, TURN_MAX_LEN);
+    if (!sessionId || (!u && !a)) return;
+    const owner = db.prepare(`SELECT user_id FROM chat_sessions WHERE session_id=?`).get(sessionId)?.user_id;
+    if (owner != null && userId != null && owner !== userId) return; // not their thread — don't write into it
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO chat_sessions (session_id, messages, updated_at, preview, user_id)
+        VALUES (?, '[]', CURRENT_TIMESTAMP, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+          updated_at = CURRENT_TIMESTAMP,
+          user_id    = COALESCE(chat_sessions.user_id, excluded.user_id),
+          preview    = CASE WHEN COALESCE(chat_sessions.preview,'') = '' THEN excluded.preview ELSE chat_sessions.preview END
+      `).run(sessionId, isReusablePrompt(u) ? u.slice(0, 120) : '', userId);
+      const ins = db.prepare(`INSERT INTO chat_turns (session_id, role, text, engine) VALUES (?,?,?,?)`);
+      if (u) ins.run(sessionId, 'user', u, engine);
+      if (a) ins.run(sessionId, 'assistant', a, engine);
+    })();
   },
   // Most-recently-active conversations belonging to userId, newest first,
   // for the history sidebar — was unfiltered (every user's sessions),
   // returns nothing for an unknown caller rather than falling back to "all".
-  list(limit = 50, userId = null) {
+  // q: optional search over title, preview and every turn's text.
+  list(limit = 50, userId = null, q = '') {
     if (userId == null) return [];
-    return db.prepare(`SELECT session_id, preview, updated_at FROM chat_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT ?`).all(userId, limit);
+    const like = q ? `%${String(q).replace(/[\\%_]/g, m => '\\' + m)}%` : null;
+    // Search matches what the user typed (title/prompts), never reply data.
+    const rows = db.prepare(`
+      SELECT c.session_id, c.preview, c.title, c.updated_at, c.messages
+      FROM chat_sessions c
+      WHERE c.user_id = ?
+        AND (? IS NULL OR c.title LIKE ? ESCAPE '\\' OR c.preview LIKE ? ESCAPE '\\'
+             OR EXISTS (SELECT 1 FROM chat_turns t WHERE t.session_id = c.session_id AND t.role = 'user' AND t.text LIKE ? ESCAPE '\\'))
+      ORDER BY c.updated_at DESC LIMIT ?
+    `).all(userId, like, like, like, like, limit);
+    return rows.map(({ messages, ...r }) => {
+      const prompts = chatSessionRepo._prompts(r.session_id, messages);
+      // preview was stored raw — may be a JSON payload; show the first real prompt instead
+      const preview = isReusablePrompt(r.preview) ? r.preview : (prompts[0]?.text.slice(0, 120) || '');
+      return { ...r, preview, prompt_count: prompts.length };
+    }).filter(r => r.prompt_count > 0 || r.title);
+  },
+  // Only the reusable prompts a user typed in a thread, oldest first,
+  // de-duplicated (a re-asked prompt keeps its latest time).
+  _prompts(sessionId, messagesJson) {
+    const seen = new Map();
+    for (const t of chatSessionRepo._turns(sessionId, messagesJson)) {
+      if (t.role !== 'user') continue;
+      const text = String(t.text).trim();
+      if (!isReusablePrompt(text)) continue;
+      seen.delete(text);
+      seen.set(text, { text, at: t.created_at || null });
+    }
+    return [...seen.values()];
+  },
+  promptsForUser(sessionId, userId) {
+    const row = db.prepare(`SELECT messages, user_id FROM chat_sessions WHERE session_id=?`).get(sessionId);
+    if (!row || row.user_id == null || row.user_id !== userId) return null;
+    return chatSessionRepo._prompts(sessionId, row.messages);
+  },
+  isOwnedBy(sessionId, userId) {
+    const row = db.prepare(`SELECT user_id FROM chat_sessions WHERE session_id=?`).get(sessionId);
+    return !!row && row.user_id != null && row.user_id === userId;
+  },
+  rename(sessionId, userId, title) {
+    return db.prepare(`UPDATE chat_sessions SET title=? WHERE session_id=? AND user_id=?`)
+      .run(String(title || '').trim().slice(0, 120), sessionId, userId).changes > 0;
+  },
+  // Visible turns of a thread: the all-engine transcript when there is one,
+  // else (threads from before chat_turns existed) parsed from the AI wire format.
+  _turns(sessionId, messagesJson) {
+    const turns = db.prepare(`SELECT role, text, engine, created_at FROM chat_turns WHERE session_id=? ORDER BY id`).all(sessionId);
+    if (turns.length) return turns;
+    try { return extractDisplayText(JSON.parse(messagesJson || '[]')); } catch { return []; }
   },
   // Full conversation as displayable {role, text} turns, for loading a past
   // session back into the chat UI. Unscoped — used internally within the
   // same request that owns sessionId, not exposed directly over HTTP.
   getDisplayable(sessionId) {
-    const messages = chatSessionRepo.get(sessionId);
-    if (!messages) return null;
-    return extractDisplayText(messages);
+    const row = db.prepare(`SELECT messages FROM chat_sessions WHERE session_id=?`).get(sessionId);
+    if (!row) return null;
+    return chatSessionRepo._turns(sessionId, row.messages);
   },
   // Ownership-checked variant for the HTTP route that lets a user reload a
   // past conversation — returns null for a session that doesn't exist OR
@@ -1355,12 +1765,76 @@ export const chatSessionRepo = {
   getDisplayableForUser(sessionId, userId) {
     const row = db.prepare(`SELECT messages, user_id FROM chat_sessions WHERE session_id=?`).get(sessionId);
     if (!row || row.user_id == null || row.user_id !== userId) return null;
-    try { return extractDisplayText(JSON.parse(row.messages)); } catch { return null; }
+    return chatSessionRepo._turns(sessionId, row.messages);
   },
   // Drop conversations untouched for maxAgeMs — call occasionally to keep the table small.
   prune(maxAgeMs) {
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
     db.prepare(`DELETE FROM chat_sessions WHERE updated_at < ?`).run(cutoff);
+    db.prepare(`DELETE FROM chat_turns WHERE session_id NOT IN (SELECT session_id FROM chat_sessions)`).run();
+  },
+};
+
+// ── Prompt history & saved prompts ──────────────────────────────────────────
+// Saved prompts used to live only in the browser's localStorage, so they were
+// lost on another PC/browser or after clearing site data. One row per
+// (user, kind, text): kind 'saved' = bookmarked by the user, kind 'history' =
+// recorded automatically from /api/chat (re-asking bumps use_count/last_used_at
+// instead of adding a duplicate row).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_prompts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    kind         TEXT NOT NULL CHECK (kind IN ('saved','history')),
+    text         TEXT NOT NULL,
+    source       TEXT DEFAULT '',
+    engine       TEXT DEFAULT '',
+    use_count    INTEGER NOT NULL DEFAULT 1,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, kind, text)
+  )
+`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_user_prompts_recent ON user_prompts (user_id, kind, last_used_at DESC)`);
+
+const PROMPT_MAX_LEN = 2000;
+const HISTORY_KEEP   = 200; // per user — oldest history rows beyond this are dropped
+
+export const promptRepo = {
+  list(userId, kind, limit = 50) {
+    return db.prepare(`
+      SELECT id, text, source, engine, use_count, created_at, last_used_at
+      FROM user_prompts WHERE user_id=? AND kind=?
+      ORDER BY last_used_at DESC, id DESC LIMIT ?
+    `).all(userId, kind, limit);
+  },
+  // Insert, or bump use_count/last_used_at when the same text already exists.
+  upsert(userId, kind, text, { source = '', engine = '' } = {}) {
+    const t = String(text || '').trim().slice(0, PROMPT_MAX_LEN);
+    if (!t) return null;
+    db.prepare(`
+      INSERT INTO user_prompts (user_id, kind, text, source, engine)
+      VALUES (?,?,?,?,?)
+      ON CONFLICT(user_id, kind, text) DO UPDATE SET
+        use_count = use_count + 1, last_used_at = CURRENT_TIMESTAMP,
+        source = COALESCE(NULLIF(excluded.source,''), source),
+        engine = COALESCE(NULLIF(excluded.engine,''), engine)
+    `).run(userId, kind, t, source || '', engine || '');
+    if (kind === 'history') {
+      db.prepare(`
+        DELETE FROM user_prompts WHERE user_id=? AND kind='history' AND id NOT IN (
+          SELECT id FROM user_prompts WHERE user_id=? AND kind='history'
+          ORDER BY last_used_at DESC, id DESC LIMIT ?)
+      `).run(userId, userId, HISTORY_KEEP);
+    }
+    return db.prepare(`SELECT id, text, source, engine, use_count, created_at, last_used_at FROM user_prompts WHERE user_id=? AND kind=? AND text=?`).get(userId, kind, t);
+  },
+  // Ownership-scoped — deleting another user's row is a silent no-op.
+  delete(userId, id) {
+    return db.prepare(`DELETE FROM user_prompts WHERE id=? AND user_id=?`).run(id, userId).changes > 0;
+  },
+  clear(userId, kind) {
+    return db.prepare(`DELETE FROM user_prompts WHERE user_id=? AND kind=?`).run(userId, kind).changes;
   },
 };
 

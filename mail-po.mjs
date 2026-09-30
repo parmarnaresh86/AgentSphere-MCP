@@ -34,6 +34,7 @@ let _pollTimer = null;
 let _running   = false;
 let _logs      = [];         // ring buffer — last 100 entries
 let _onPdf     = null;       // callback(pdfBuffer, fromEmail, subject) → Promise<{docNum,docEntry,message}>
+let _attempted = new Set();  // UIDs the poller already tried — failed ones stay unread for manual review, but aren't retried every poll
 
 function log(level, msg) {
   const entry = { ts: new Date().toISOString(), level, msg };
@@ -94,7 +95,7 @@ async function _poll() {
   }
 }
 
-// ── Fetch unseen emails with PDF attachments ────────────────────────────────
+// ── Fetch unseen emails with PDF attachments (does NOT mark as seen) ─────────
 function _fetchUnseen(cfg) {
   return new Promise((resolve, reject) => {
     const imap = new Imap({
@@ -104,24 +105,34 @@ function _fetchUnseen(cfg) {
       authTimeout: 10000, connTimeout: 15000,
     });
 
-    const mails = [];
+    const mails   = [];
+    const parsing = [];   // simpleParser is async — wait for all before resolving
 
     imap.once("ready", () => {
-      imap.openBox(cfg.folder, false, (err) => {
+      imap.openBox(cfg.folder, true, (err) => {
         if (err) { imap.end(); return reject(err); }
 
         const today = new Date(); today.setHours(0, 0, 0, 0);
         imap.search(["UNSEEN", ["SINCE", today], ["SUBJECT", "purchase order"]], (err, uids) => {
-          if (err || !uids?.length) { imap.end(); return resolve([]); }
+          if (err) { imap.end(); return reject(err); }   // keep _attempted on transient errors
+          if (!uids?.length) { _attempted.clear(); imap.end(); return resolve([]); }
 
-          const fetch = imap.fetch(uids, { bodies: "", markSeen: true });
+          // Forget UIDs that are no longer unread; skip ones already attempted
+          _attempted = new Set(uids.filter(u => _attempted.has(u)));
+          const fresh = uids.filter(u => !_attempted.has(u));
+          if (!fresh.length) { imap.end(); return resolve([]); }
+
+          const fetch = imap.fetch(fresh, { bodies: "", markSeen: false });
 
           fetch.on("message", (msg, seqno) => {
             const chunks = [];
+            let uid = null;
             msg.on("body", (stream) => {
               stream.on("data", (chunk) => chunks.push(chunk));
             });
-            msg.once("end", async () => {
+            msg.once("attributes", (attrs) => { uid = attrs.uid; });
+            msg.once("end", () => parsing.push((async () => {
+              if (uid != null) _attempted.add(uid);   // also covers mails with no PDF — don't re-download them every poll
               try {
                 const raw = Buffer.concat(chunks);
                 const parsed = await simpleParser(raw);
@@ -131,7 +142,7 @@ function _fetchUnseen(cfg) {
                 );
                 if (pdfAttachments.length > 0) {
                   mails.push({
-                    seqno,
+                    seqno, uid,
                     from:    parsed.from?.text || "",
                     subject: parsed.subject    || "",
                     pdfs:    pdfAttachments.map(a => ({ name: a.filename, buffer: a.content })),
@@ -140,7 +151,7 @@ function _fetchUnseen(cfg) {
               } catch (e) {
                 log("WARN", `Parse error seqno=${seqno}: ${e.message}`);
               }
-            });
+            })()));
           });
 
           fetch.once("end", () => { imap.end(); });
@@ -149,7 +160,7 @@ function _fetchUnseen(cfg) {
     });
 
     imap.once("error",  reject);
-    imap.once("end",    () => resolve(mails));
+    imap.once("end",    () => Promise.all(parsing).then(() => resolve(mails)));
     imap.connect();
   });
 }
@@ -157,6 +168,8 @@ function _fetchUnseen(cfg) {
 // ── Process one email ───────────────────────────────────────────────────────
 async function _processMail(mail, cfg) {
   log("INFO", `Processing email from=${mail.from} subject="${mail.subject}" pdfs=${mail.pdfs.length}`);
+  if (mail.uid != null) _attempted.add(mail.uid);
+  let allPosted = mail.pdfs.length > 0;
 
   for (const pdf of mail.pdfs) {
     log("INFO", `  PDF: ${pdf.name} (${pdf.buffer.length} bytes)`);
@@ -179,9 +192,41 @@ async function _processMail(mail, cfg) {
       log("ERROR", `  → ${e.message}`);
     }
 
+    if (!success) allPosted = false;
+
     // Reply to sender
     await _sendReply(cfg, mail.from, mail.subject, pdf.name, resultMsg);
   }
+
+  // Only mark read once every PDF in the email became a Sales Order in SAP —
+  // anything else stays unread so it keeps showing in the inbox list.
+  if (allPosted && mail.uid != null) {
+    try { await markSeen(mail.uid); } catch (e) { log("WARN", `  → Could not mark uid=${mail.uid} as read: ${e.message}`); }
+  }
+}
+
+// ── Mark a single email as read (call only after its SO is posted) ──────────
+export function markSeen(uid) {
+  const cfg = getMailConfig();
+  return new Promise((resolve, reject) => {
+    const imap = new Imap({
+      user: cfg.user, password: cfg.password, host: cfg.host, port: cfg.port, tls: cfg.tls,
+      tlsOptions: { rejectUnauthorized: false }, authTimeout: 10000, connTimeout: 15000,
+    });
+    imap.once("ready", () => {
+      imap.openBox(cfg.folder, false, (err) => {
+        if (err) { imap.end(); return reject(err); }
+        imap.addFlags([uid], "\\Seen", (err2) => {
+          imap.end();
+          if (err2) return reject(err2);
+          log("INFO", `Marked uid=${uid} as read`);
+          resolve(true);
+        });
+      });
+    });
+    imap.once("error", reject);
+    imap.connect();
+  });
 }
 
 // ── Public: send acknowledgment ─────────────────────────────────────────────
@@ -262,7 +307,7 @@ export function fetchInbox() {
   });
 }
 
-// ── Fetch single email by UID (marks as seen) ────────────────────────────────
+// ── Fetch single email by UID (readonly — stays unread until SO is posted) ──
 export function fetchEmail(uid) {
   const cfg = getMailConfig();
   return new Promise((resolve, reject) => {
@@ -271,9 +316,9 @@ export function fetchEmail(uid) {
       tlsOptions: { rejectUnauthorized: false }, authTimeout: 10000, connTimeout: 15000,
     });
     imap.once("ready", () => {
-      imap.openBox(cfg.folder, false, (err) => {
+      imap.openBox(cfg.folder, true, (err) => {
         if (err) { imap.end(); return reject(err); }
-        const f = imap.fetch([uid], { bodies: "", markSeen: true });
+        const f = imap.fetch([uid], { bodies: "", markSeen: false });
         const allChunks = [];
         f.on("message", (msg) => {
           msg.on("body", (stream) => stream.on("data", d => allChunks.push(d)));

@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>AI Credits &amp; Usage — SAP B1</title>
+
+<script>
+(function(){
+  const token = localStorage.getItem('hanny_token');
+  if (!token) { window.location.replace('/login.html'); return; }
+  fetch('/auth/me', { headers: { 'x-auth-token': token } })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(u => {
+      const perms = u.permissions || [];
+      if (u.role !== 'superadmin' && !perms.includes('admin.ai_credits')) {
+        alert('AI Credits & Usage is available to admin users only.');
+        window.location.replace('/');
+      }
+    })
+    .catch(() => { localStorage.removeItem('hanny_token'); window.location.replace('/login.html'); });
+})();
+</script>
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E; --blue:#0070F2; --blue-lt:#E8F4FF; --bg:#F5F6F7;
+  --white:#fff; --text:#32363A; --muted:#6A6D70; --faint:#8A8D90; --border:#E0E0E0; --grid:#EEF0F2;
+  --green:#107E3E; --green-lt:#E3F5E9; --amber:#B25E00; --amber-lt:#FFF3E0; --red:#BB0000; --red-lt:#FDECEC;
+  --violet:#5B3DB5; --violet-lt:#EFEAFB;
+  --series-1:#2a78d6; --series-2:#eb6834;
+  --r:6px; --font:'Segoe UI',system-ui,sans-serif;
+}
+html,body{height:100%;font-family:var(--font);color:var(--text);background:var(--bg);font-size:13px}
+body{display:flex;flex-direction:column}
+button{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+
+.topbar{background:var(--shell);color:#fff;height:44px;display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
+.topbar a{color:rgba(255,255,255,.7);text-decoration:none;font-size:12px;display:flex;align-items:center;gap:4px}
+.topbar a:hover{color:#fff}
+.topbar h1{font-size:14px;font-weight:700;flex:1}
+
+/* ── header: tabs + range ─────────────────────────────── */
+.head{background:var(--white);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;flex-shrink:0}
+.tabs{display:flex;gap:2px;overflow-x:auto;flex:1;min-width:0}
+.tab{background:none;border:none;border-bottom:3px solid transparent;padding:13px 14px 10px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab .count{background:var(--bg);color:var(--muted);font-size:10.5px;border-radius:9px;padding:1px 7px}
+.range{display:flex;align-items:center;gap:6px;padding:8px 0;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.seg button{background:var(--white);border:none;border-right:1px solid var(--border);padding:6px 11px;font-size:12px;cursor:pointer;color:var(--muted);font-weight:600}
+.seg button:last-child{border-right:none}
+.seg button.on{background:var(--blue-lt);color:var(--blue)}
+input[type=date],input[type=text],input[type=number],input[type=search],select{border:1.5px solid var(--border);border-radius:var(--r);padding:6px 9px;font-size:12.5px;outline:none;background:var(--white);color:var(--text);font-family:inherit}
+input:focus,select:focus{border-color:var(--blue)}
+
+.wrap{flex:1;overflow-y:auto;padding:20px}
+.page{max-width:1320px;margin:0 auto}
+.view{display:none}
+.view.active{display:block}
+
+/* ── cards / kpis ─────────────────────────────────────── */
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:18px}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
+.card-h h3{font-size:13.5px;font-weight:700}
+.card-h .sub{font-size:11.5px;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden}
+.kpi .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.kpi .val{font-size:24px;font-weight:700;margin-top:6px;letter-spacing:-.01em}
+.kpi .foot{font-size:11.5px;color:var(--muted);margin-top:4px}
+.kpi.hero{background:linear-gradient(135deg,#1d3b5c,#0f5bb5);color:#fff;border:none}
+.kpi.hero .lbl,.kpi.hero .foot{color:rgba(255,255,255,.75)}
+.meter{height:6px;background:var(--grid);border-radius:4px;overflow:hidden;margin-top:10px}
+.meter > i{display:block;height:100%;border-radius:4px;background:var(--blue)}
+.kpi.hero .meter{background:rgba(255,255,255,.2)}
+.kpi.hero .meter > i{background:#fff}
+.grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:16px}
+.grid2b{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:980px){.grid2,.grid2b{grid-template-columns:1fr}}
+
+/* ── charts ───────────────────────────────────────────── */
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;overflow:visible}
+.chart .axis text{font-size:10.5px;fill:var(--faint)}
+.chart .gridline{stroke:var(--grid);stroke-width:1}
+.chart .hit{fill:transparent;cursor:crosshair}
+.legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin-bottom:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.tip{position:fixed;pointer-events:none;background:#1f2933;color:#fff;border-radius:6px;padding:8px 10px;font-size:11.5px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.2);z-index:100;display:none;min-width:150px}
+.tip b{font-weight:700}
+.tip .row{display:flex;justify-content:space-between;gap:14px}
+.tip .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.hbars{display:flex;flex-direction:column;gap:10px}
+.hbar{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;align-items:center;gap:10px;font-size:12px}
+.hbar .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.hbar .nm small{display:block;color:var(--faint);font-size:10.5px}
+.hbar .track{height:10px;background:var(--grid);border-radius:4px;overflow:hidden}
+.hbar .track i{display:block;height:100%;background:var(--series-1);border-radius:0 4px 4px 0}
+.hbar .v{font-weight:600;min-width:64px;text-align:right}
+.empty{color:var(--muted);font-size:12.5px;text-align:center;padding:32px 10px}
+.empty .ico{font-size:28px;display:block;margin-bottom:6px;opacity:.6}
+
+/* ── tables ───────────────────────────────────────────── */
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.toolbar .spacer{flex:1}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--white)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{background:#FAFBFC;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--grid);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#FAFCFF}
+th.r,td.r{text-align:right}
+.user-cell{display:flex;align-items:center;gap:10px}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--blue-lt);color:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0}
+.user-cell .sub{font-size:11px;color:var(--faint)}
+.usage-cell{min-width:170px}
+.usage-cell .meter{margin-top:5px;height:5px}
+.usage-cell .t{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:10px;padding:2px 9px;white-space:nowrap}
+.pill.ok{background:var(--green-lt);color:var(--green)}
+.pill.low{background:var(--amber-lt);color:var(--amber)}
+.pill.out{background:var(--red-lt);color:var(--red)}
+.pill.unl{background:var(--violet-lt);color:var(--violet)}
+.pill.blk{background:#ECEDEE;color:#44474a}
+.pill.tag{background:var(--bg);color:var(--muted);font-weight:600}
+.role{font-size:10.5px;color:var(--muted);text-transform:capitalize}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px;font-size:12px;color:var(--muted)}
+.pager .btns{display:flex;gap:6px}
+
+/* ── buttons ──────────────────────────────────────────── */
+.btn{border:1px solid var(--border);background:var(--white);border-radius:var(--r);padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:#c5c8cc;background:#FAFBFC}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-primary:hover{background:#0058C7;border-color:#0058C7}
+.btn-danger{color:var(--red)}
+.btn-sm{padding:4px 9px;font-size:11.5px}
+.icon-btn{border:none;background:none;cursor:pointer;color:var(--muted);padding:4px 6px;border-radius:4px;font-size:14px}
+.icon-btn:hover{background:var(--bg);color:var(--text)}
+.actions{display:flex;gap:4px;justify-content:flex-end}
+
+/* ── menu ─────────────────────────────────────────────── */
+.menu{position:fixed;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:5px;z-index:60;min-width:190px;display:none}
+.menu button{display:flex;width:100%;background:none;border:none;text-align:left;padding:8px 10px;font-size:12.5px;border-radius:5px;cursor:pointer;color:var(--text);gap:8px}
+.menu button:hover{background:var(--bg)}
+.menu hr{border:none;border-top:1px solid var(--grid);margin:4px 0}
+
+/* ── modal / drawer ───────────────────────────────────── */
+.overlay{position:fixed;inset:0;background:rgba(20,28,38,.45);display:none;z-index:70;align-items:center;justify-content:center;padding:16px}
+.overlay.show{display:flex}
+.modal{background:var(--white);border-radius:10px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden}
+.modal-h{padding:16px 20px;border-bottom:1px solid var(--grid);display:flex;justify-content:space-between;align-items:center}
+.modal-h h3{font-size:14.5px}
+.modal-b{padding:18px 20px}
+.modal-f{padding:14px 20px;border-top:1px solid var(--grid);display:flex;justify-content:flex-end;gap:8px;background:#FAFBFC}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px}
+.field input,.field select{width:100%;padding:8px 10px;font-size:13px}
+.field .hint{font-size:11px;color:var(--faint);margin-top:4px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.money{position:relative}
+.money span{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px}
+.money input{padding-left:22px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{border:1px solid var(--border);background:var(--white);border-radius:14px;padding:3px 11px;font-size:11.5px;cursor:pointer;font-weight:600;color:var(--muted)}
+.chip:hover{border-color:var(--blue);color:var(--blue)}
+.preview{background:var(--bg);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.preview b{color:var(--text)}
+
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,100%);background:var(--bg);z-index:80;visibility:hidden;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}
+.drawer.show{transform:none;visibility:visible;box-shadow:-10px 0 40px rgba(0,0,0,.18)}
+.drawer-h{background:var(--white);padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.drawer-h .avatar{width:40px;height:40px;font-size:15px}
+.drawer-h h3{font-size:15px}
+.drawer-b{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+.mini-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.mini-kpis .kpi .val{font-size:19px}
+.subtabs{display:flex;gap:6px}
+.subtabs button{border:1px solid var(--border);background:var(--white);border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;font-weight:600;color:var(--muted)}
+.subtabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+
+.switch{position:relative;width:40px;height:22px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;background:#c9ccd0;border-radius:11px;cursor:pointer;transition:.15s}
+.switch span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s}
+.switch input:checked + span{background:var(--green)}
+.switch input:checked + span::before{transform:translateX(18px)}
+.set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:16px 0;border-bottom:1px solid var(--grid)}
+.set-row:last-child{border-bottom:none}
+.set-row h4{font-size:13px;margin-bottom:3px}
+.set-row p{font-size:12px;color:var(--muted);max-width:520px}
+.set-row .ctl{width:160px;flex-shrink:0}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:#1f2933;color:#fff;padding:10px 18px;border-radius:8px;font-size:12.5px;opacity:0;transition:.2s;z-index:120;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.toast.err{background:var(--red)}
+.banner{display:flex;gap:10px;align-items:center;background:var(--amber-lt);color:var(--amber);border-radius:8px;padding:10px 14px;font-size:12.5px;margin-bottom:16px}
+.banner b{font-weight:700}
+.bulkbar{display:none;align-items:center;gap:8px;background:var(--blue-lt);border:1px solid #bcdcff;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12.5px;color:#0b4ea2}
+.bulkbar.show{display:flex}
+input[type=checkbox]{width:15px;height:15px;accent-color:var(--blue);cursor:pointer}
+.p-text{max-width:420px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45;color:var(--text)}
+tr.p-row{cursor:pointer}
+tr.p-row.open{background:var(--blue-lt)}
+tr.p-row .caret{display:inline-block;transition:transform .15s;color:var(--faint);font-size:10px}
+tr.p-row.open .caret{transform:rotate(90deg)}
+tr.p-detail > td{background:#FAFCFF;padding:14px 18px 16px}
+.p-full{white-space:pre-wrap;background:var(--white);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.5;max-height:180px;overflow:auto;margin-bottom:12px}
+.mchips{display:flex;flex-wrap:wrap;gap:4px}
+.mchip{display:inline-flex;gap:5px;align-items:baseline;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:1px 8px;font-size:11px;white-space:nowrap;color:var(--muted)}
+.mchip b{color:var(--text);font-weight:600}
+.calls-tbl{border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--white)}
+.calls-tbl th{background:var(--white)}
+.calc{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.calc input{width:110px}
+@media (max-width:640px){.wrap{padding:14px}.head{padding:0 12px}.mini-kpis{grid-template-columns:1fr}.frow{grid-template-columns:1fr}.set-row{flex-direction:column}.set-row .ctl{width:100%}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</a>
+  <h1>💳 AI Credits &amp; Usage</h1>
+</div>
+
+<div class="head">
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-view="overview">📊 Overview</button>
+    <button class="tab" data-view="users">👥 User Credits <span class="count" id="cnt-users">0</span></button>
+    <button class="tab" data-view="prompts">💬 Prompt History</button>
+    <button class="tab" data-view="pricing">🏷️ Model Pricing <span class="count" id="cnt-models">0</span></button>
+    <button class="tab" data-view="usage">🧾 Usage History</button>
+    <button class="tab" data-view="tx">📒 Credit Log</button>
+    <button class="tab" data-view="settings">⚙️ Settings</button>
+  </div>
+  <div class="range" id="range-ctl">
+    <div class="seg" id="range-seg">
+      <button data-d="7">7D</button><button data-d="30" class="on">30D</button><button data-d="90">90D</button><button data-d="0">All</button>
+    </div>
+    <input type="date" id="r-from" title="From"/><input type="date" id="r-to" title="To"/>
+  </div>
+</div>
+
+<div class="wrap"><div class="page">
+
+  <!-- ═════════ OVERVIEW ═════════ -->
+  <section class="view active" id="view-overview">
+    <div class="banner" id="exhausted-banner" style="display:none"></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h3>Daily AI spend</h3><span class="sub" id="daily-sub"></span></div>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>Input cost</span><span><i style="background:var(--series-2)"></i>Output cost</span></div>
+        <div class="chart" id="chart-daily"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Spend by model</h3><span class="sub">USD</span></div>
+        <div class="hbars" id="chart-models"></div>
+      </div>
+    </div>
+    <div class="grid2b">
+      <div class="card">
+        <div class="card-h"><h3>Top users by spend</h3><button class="btn btn-sm" onclick="go('users')">All users →</button></div>
+        <div class="hbars" id="chart-users"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Spend by feature</h3><span class="sub">Where AI is being used</span></div>
+        <div class="hbars" id="chart-features"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-h"><h3>Most expensive prompts</h3><button class="btn btn-sm" onclick="go('prompts')">All prompts →</button></div>
+      <div class="hbars" id="chart-prompts"></div>
+    </div>
+  </section>
+
+  <!-- ═════════ USERS ═════════ -->
+  <section class="view" id="view-users">
+    <div class="toolbar">
+      <input type="search" id="u-search" placeholder="Search user…" style="width:220px"/>
+      <select id="u-filter">
+        <option value="">All statuses</option><option value="ok">Active</option><option value="low">Low balance</option>
+        <option value="out">Exhausted</option><option value="unl">Unlimited</option><option value="blk">Blocked</option>
+      </select>
+      <span class="spacer"></span>
+      <button class="btn" onclick="exportUsersCsv()">⬇ Export</button>
+    </div>
+    <div class="bulkbar" id="bulkbar">
+      <b id="bulk-count">0</b> selected
+      <span style="flex:1"></span>
+      <button class="btn btn-sm btn-primary" onclick="openCreditModal('grant', selectedIds())">＋ Add credit</button>
+      <button class="btn btn-sm" onclick="openCreditModal('set_limit', selectedIds())">Set limit</button>
+      <button class="btn btn-sm" onclick="confirmAction('reset_usage', selectedIds())">Reset usage</button>
+      <button class="btn btn-sm" onclick="clearSel()">Clear</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:34px"><input type="checkbox" id="u-all"/></th>
+          <th>User</th><th>Status</th><th>Credit usage</th>
+          <th class="r">Allowed</th><th class="r">Used</th><th class="r">Remaining</th>
+          <th class="r">Calls</th><th class="r">Tokens (in / out)</th><th>Last used</th><th class="r">Actions</th>
+        </tr></thead>
+        <tbody id="u-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═════════ PROMPT HISTORY ═════════ -->
+  <section class="view" id="view-prompts">
+    <div class="kpis" id="p-stats"></div>
+    <div class="toolbar">
+      <input type="search" id="p-q" placeholder="Search prompt text, user, feature…" style="width:260px"/>
+      <select id="p-user"><option value="">All users</option></select>
+      <select id="p-model"><option value="">All models</option></select>
+      <span class="spacer"></span>
+      <button class="btn" onclick="exportPromptsCsv()">⬇ Export CSV</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:24px"></th><th>Date &amp; time</th><th>User</th><th>Prompt</th><th>Feature</th><th>Credit by model</th><th class="r">AI calls</th><th class="r">Tokens (in / out)</th><th class="r">Prompt cost</th></tr></thead>
+        <tbody id="p-body"></tbody>
+      </table>
+    </div>
+    <div class="pager" id="p-pager"></div>
+  </section>
+
+  <!-- ═════════ PRICING ═════════ -->
+  <section class="view" id="view-pricing">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>How cost is calculated</h3></div>
+      <div style="font-size:12.5px;color:var(--muted);line-height:1.7">
+        Cost per call = <b style="color:var(--text)">input tokens ÷ 1,000,000 × input price</b> + <b style="color:var(--text)">output tokens ÷ 1,000,000 × output price</b>.
+        A model id returned by the provider is matched exactly first, then by the longest prefix (e.g. <code>gpt-4o</code> prices <code>gpt-4o-2024-08-06</code>), then falls back to the <b>Default (*)</b> row.
+        Rates are snapshotted onto each usage row, so changing a price never rewrites past history.
+      </div>
+      <div class="calc" style="margin-top:12px">
+        Quick calculator:
+        <select id="calc-model"></select>
+        <input type="number" id="calc-in" value="1000000" min="0" title="Input tokens"/> in
+        <input type="number" id="calc-out" value="1000000" min="0" title="Output tokens"/> out
+        = <b id="calc-res" class="num" style="color:var(--text);font-size:14px">$0.00</b>
+      </div>
+    </div>
+    <div class="toolbar"><span class="spacer"></span><button class="btn btn-primary" onclick="openModelModal()">＋ Add model price</button></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Model id</th><th>Display name</th><th>Provider</th><th class="r">Input / 1M</th><th class="r">Output / 1M</th><th>Status</th><th class="r">Calls</th><th class="r">Spend</th><th class="r">Actions</th></tr></thead>
+        <tbody id="m-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═════════ USAGE HISTORY ═════════ -->
+  <section class="view" id="view-usage">
+    <div class="toolbar">
+      <input type="search" id="h-q" placeholder="Search user, model, feature…" style="width:240px"/>
+      <select id="h-user"><option value="">All users</option></select>
+      <select id="h-model"><option value="">All models</option></select>
+      <span class="spacer"></span>
+      <button class="btn" onclick="exportUsageCsv()">⬇ Export CSV</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Date &amp; time</th><th>User</th><th>Model</th><th>Feature</th><th class="r">Input tok</th><th class="r">Output tok</th><th class="r">Input $</th><th class="r">Output $</th><th class="r">Total $</th><th class="r">Balance after</th></tr></thead>
+        <tbody id="h-body"></tbody>
+      </table>
+    </div>
+    <div class="pager" id="h-pager"></div>
+  </section>
+
+  <!-- ═════════ CREDIT LOG ═════════ -->
+  <section class="view" id="view-tx">
+    <div class="toolbar">
+      <select id="t-user"><option value="">All users</option></select>
+      <span class="spacer"></span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Date &amp; time</th><th>User</th><th>Action</th><th class="r">Amount</th><th class="r">Allowed after</th><th class="r">Used after</th><th>Note</th><th>By</th></tr></thead>
+        <tbody id="t-body"></tbody>
+      </table>
+    </div>
+    <div class="pager" id="t-pager"></div>
+  </section>
+
+  <!-- ═════════ SETTINGS ═════════ -->
+  <section class="view" id="view-settings">
+    <div class="card" style="max-width:820px">
+      <div class="set-row">
+        <div><h4>Enforce credit limits</h4><p>When on, a user whose remaining credit reaches $0 cannot make further AI calls until an admin adds credit. When off, usage is still tracked and priced but never blocked.</p></div>
+        <label class="switch"><input type="checkbox" id="s-enforce"/><span></span></label>
+      </div>
+      <div class="set-row">
+        <div><h4>Default allowance for new users</h4><p>Credit given automatically the first time a user without an account makes an AI call or appears in the list.</p></div>
+        <div class="ctl money"><span>$</span><input type="number" id="s-default" min="0" step="0.01"/></div>
+      </div>
+      <div class="set-row">
+        <div><h4>Low-balance warning</h4><p>Flag a user as “Low balance” once their remaining credit drops below this share of their allowance.</p></div>
+        <div class="ctl" style="display:flex;align-items:center;gap:6px"><input type="number" id="s-low" min="0" max="100" style="width:100%"/> %</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
+        <span style="font-size:11.5px;color:var(--faint)" id="s-meta"></span>
+        <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+      </div>
+    </div>
+  </section>
+
+</div></div>
+
+<!-- row menu -->
+<div class="menu" id="row-menu"></div>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<!-- credit modal -->
+<div class="overlay" id="credit-ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="cm-title">Add credit</h3><button class="icon-btn" onclick="closeOv('credit-ov')">✕</button></div>
+    <div class="modal-b">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px" id="cm-who"></div>
+      <div class="field">
+        <label id="cm-lbl">Amount (USD)</label>
+        <div class="money"><span>$</span><input type="number" id="cm-amount" step="0.01"/></div>
+        <div class="chips" id="cm-chips"></div>
+        <div class="hint" id="cm-hint"></div>
+      </div>
+      <div class="field"><label>Note (optional)</label><input type="text" id="cm-note" maxlength="300" placeholder="e.g. October top-up"/></div>
+      <div class="preview" id="cm-preview"></div>
+    </div>
+    <div class="modal-f"><button class="btn" onclick="closeOv('credit-ov')">Cancel</button><button class="btn btn-primary" id="cm-save">Apply</button></div>
+  </div>
+</div>
+
+<!-- model modal -->
+<div class="overlay" id="model-ov">
+  <div class="modal">
+    <div class="modal-h"><h3 id="mm-title">Add model price</h3><button class="icon-btn" onclick="closeOv('model-ov')">✕</button></div>
+    <div class="modal-b">
+      <div class="field"><label>Model id</label><input type="text" id="mm-model" placeholder="e.g. claude-sonnet-4-6 or gpt-4o"/><div class="hint">As returned by the provider. A trailing * or a prefix matches versioned ids.</div></div>
+      <div class="frow">
+        <div class="field"><label>Display name</label><input type="text" id="mm-name" placeholder="Claude Sonnet 4.6"/></div>
+        <div class="field"><label>Provider</label>
+          <select id="mm-provider"><option value="anthropic">anthropic</option><option value="azure">azure</option><option value="azure-gpt">azure-gpt</option><option value="openai">openai</option><option value="any">any</option></select>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="field"><label>Input price / 1M tokens</label><div class="money"><span>$</span><input type="number" id="mm-in" min="0" step="0.01" value="2"/></div></div>
+        <div class="field"><label>Output price / 1M tokens</label><div class="money"><span>$</span><input type="number" id="mm-out" min="0" step="0.01" value="4"/></div></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="checkbox" id="mm-active" checked/> Active</label>
+    </div>
+    <div class="modal-f"><button class="btn" onclick="closeOv('model-ov')">Cancel</button><button class="btn btn-primary" id="mm-save">Save</button></div>
+  </div>
+</div>
+
+<!-- user history drawer -->
+<div class="overlay" id="drawer-ov" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-h">
+    <div class="avatar" id="d-av"></div>
+    <div style="flex:1;min-width:0"><h3 id="d-name"></h3><div style="font-size:11.5px;color:var(--muted)" id="d-sub"></div></div>
+    <button class="btn btn-sm btn-primary" id="d-add">＋ Add credit</button>
+    <button class="icon-btn" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-b">
+    <div class="mini-kpis" id="d-kpis"></div>
+    <div class="card">
+      <div class="card-h"><h3>Daily spend</h3><span class="sub" id="d-range"></span></div>
+      <div class="chart" id="d-chart"></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Credit used by model</h3><span class="sub">All time</span></div>
+      <div class="hbars" id="d-models"></div>
+    </div>
+    <div class="subtabs"><button class="on" data-dt="prompts">Prompts</button><button data-dt="usage">AI calls</button><button data-dt="tx">Credit changes</button></div>
+    <div class="tbl-wrap"><table><thead id="d-thead"></thead><tbody id="d-body"></tbody></table></div>
+    <div class="pager" id="d-pager"></div>
+  </div>
+</aside>
+
+<script>
+// ── helpers ────────────────────────────────────────────────────────────────
+const tok = () => localStorage.getItem('hanny_token') || '';
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'x-auth-token': tok(), 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const data = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+function usd(n, dp) {
+  n = Number(n) || 0;
+  if (dp == null) dp = Math.abs(n) >= 100 ? 2 : Math.abs(n) >= 1 ? 2 : Math.abs(n) >= 0.01 ? 4 : 6;
+  if (n === 0) return '$0.00';
+  return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: Math.min(dp, 2), maximumFractionDigits: dp });
+}
+function compact(n) {
+  n = Number(n) || 0;
+  if (n >= 1e9) return (n / 1e9).toFixed(2).replace(/\.?0+$/, '') + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(Math.round(n));
+}
+const int = (n) => (Number(n) || 0).toLocaleString();
+// Server timestamps are UTC "YYYY-MM-DD HH:MM:SS"
+const toDate = (s) => s ? new Date(s.replace(' ', 'T') + 'Z') : null;
+function when(s) {
+  const d = toDate(s); if (!d) return '—';
+  return d.toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function ago(s) {
+  const d = toDate(s); if (!d) return '<span style="color:var(--faint)">Never</span>';
+  const m = Math.round((Date.now() - d) / 60000);
+  const t = m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago';
+  return `<span title="${esc(when(s))}">${t}</span>`;
+}
+const initials = (u) => (u.full_name || u.username || '?').split(/\s+/).map(p => p[0]).join('').slice(0, 2).toUpperCase();
+function featureName(p) {
+  if (!p) return 'Background / system';
+  if (p === '/api/chat') return 'AI Chat';
+  const seg = p.replace(/^\/api\//, '').split('/')[0] || p;
+  return seg.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+let toastT;
+function toast(msg, err) {
+  const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(toastT); toastT = setTimeout(() => t.className = 'toast', 2600);
+}
+const closeOv = (id) => $(id).classList.remove('show');
+
+// ── state ──────────────────────────────────────────────────────────────────
+const S = { view: 'overview', users: [], models: [], settings: null, selected: new Set(),
+            hPage: 1, tPage: 1, drawerUser: null, dTab: 'usage', dPage: 1 };
+
+// ── range ──────────────────────────────────────────────────────────────────
+function iso(d) { return d.toISOString().slice(0, 10); }
+function setRangeDays(days) {
+  document.querySelectorAll('#range-seg button').forEach(b => b.classList.toggle('on', Number(b.dataset.d) === days));
+  if (days) { const to = new Date(); const from = new Date(Date.now() - (days - 1) * 864e5); $('r-from').value = iso(from); $('r-to').value = iso(to); }
+  else { $('r-from').value = ''; $('r-to').value = ''; }
+}
+function rangeQs() {
+  const p = new URLSearchParams();
+  if ($('r-from').value) p.set('from', $('r-from').value);
+  if ($('r-to').value) p.set('to', $('r-to').value);
+  return p;
+}
+document.querySelectorAll('#range-seg button').forEach(b => b.onclick = () => { setRangeDays(Number(b.dataset.d)); refresh(); });
+['r-from', 'r-to'].forEach(id => $(id).onchange = () => { document.querySelectorAll('#range-seg button').forEach(b => b.classList.remove('on')); refresh(); });
+
+// ── tabs ───────────────────────────────────────────────────────────────────
+function go(view) {
+  S.view = view;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+  $('range-ctl').style.visibility = ['overview', 'prompts', 'usage', 'tx'].includes(view) ? 'visible' : 'hidden';
+  try { localStorage.setItem('aicredits_tab', view); } catch {}
+  refresh();
+}
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => go(t.dataset.view));
+
+function refresh() {
+  ({ overview: loadOverview, users: loadUsers, prompts: loadPrompts, pricing: loadModels, usage: loadUsage, tx: loadTx, settings: loadSettings })[S.view]?.();
+}
+
+// ── charts ─────────────────────────────────────────────────────────────────
+const tip = $('tip');
+function showTip(html, ev) {
+  tip.innerHTML = html; tip.style.display = 'block';
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY - h - 10;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (y < 8) y = ev.clientY + 16;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+const hideTip = () => tip.style.display = 'none';
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+}
+
+/** Stacked daily bars (input + output cost) filling every day of the range. */
+function dailyChart(el, rows, from, to, height = 230) {
+  const map = Object.fromEntries(rows.map(r => [r.day, r]));
+  let days = [];
+  const start = from ? new Date(from + 'T00:00:00Z') : (rows[0] ? new Date(rows[0].day + 'T00:00:00Z') : null);
+  const end = to ? new Date(to + 'T00:00:00Z') : (rows.length ? new Date(rows[rows.length - 1].day + 'T00:00:00Z') : null);
+  if (start && end) for (let d = new Date(start); d <= end && days.length < 400; d = new Date(d.getTime() + 864e5)) days.push(iso(d));
+  if (!days.length || !rows.length) { el.innerHTML = '<div class="empty"><span class="ico">📉</span>No AI usage in this period yet.</div>'; return; }
+
+  const pts = days.map(day => {
+    const r = map[day] || {};
+    const total = Number(r.total_cost) || 0;
+    const ic = Number(r.input_cost) || 0, oc = Number(r.output_cost) || 0;
+    return { day, total, ic, oc, calls: r.calls || 0, it: r.input_tokens || 0, ot: r.output_tokens || 0 };
+  });
+  const W = Math.max(el.clientWidth, 300), H = height, padL = 52, padR = 8, padT = 10, padB = 24;
+  const max = niceMax(Math.max(...pts.map(p => p.total)));
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const bw = iw / pts.length, bar = Math.max(2, Math.min(28, bw - (bw > 8 ? 4 : 1)));
+  const y = (v) => padT + ih - (v / max) * ih;
+  let g = '';
+  for (let i = 0; i <= 4; i++) {
+    const v = max * i / 4, yy = y(v);
+    g += `<line class="gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>`;
+    g += `<text x="${padL - 8}" y="${yy + 3.5}" text-anchor="end">${usd(v, v < 1 ? 3 : 0).replace(/\.?0+$/, m => m.startsWith('.') ? '' : m)}</text>`;
+  }
+  const every = Math.ceil(pts.length / Math.max(2, Math.floor(iw / 64)));
+  let bars = '', labels = '', hits = '';
+  pts.forEach((p, i) => {
+    const cx = padL + i * bw + bw / 2, x = cx - bar / 2;
+    if (p.total > 0) {
+      const hi = (p.ic / max) * ih, ho = (p.oc / max) * ih;
+      const gap = ho > 2 && hi > 2 ? 2 : 0;
+      const r = Math.min(4, bar / 2);
+      // input at the baseline, output stacked on top with a 2px surface gap; rounded data-end
+      bars += `<rect x="${x}" y="${padT + ih - hi}" width="${bar}" height="${Math.max(hi, 0)}" fill="var(--series-1)"/>`;
+      if (ho > 0) {
+        const top = padT + ih - hi - gap - ho;
+        bars += `<path d="M${x},${top + ho} V${top + r} Q${x},${top} ${x + r},${top} H${x + bar - r} Q${x + bar},${top} ${x + bar},${top + r} V${top + ho} Z" fill="var(--series-2)"/>`;
+      }
+    }
+    if (i % every === 0) {
+      const d = new Date(p.day + 'T00:00:00Z');
+      labels += `<text x="${cx}" y="${H - 6}" text-anchor="middle">${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })}</text>`;
+    }
+    hits += `<rect class="hit" data-i="${i}" x="${padL + i * bw}" y="${padT}" width="${bw}" height="${ih}"/>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Daily AI spend"><g class="axis">${g}${labels}</g>${bars}<line x1="${padL}" x2="${W - padR}" y1="${padT + ih}" y2="${padT + ih}" stroke="#d5d8dc"/>${hits}</svg>`;
+  el.querySelectorAll('.hit').forEach(h => {
+    h.onmousemove = (ev) => {
+      const p = pts[h.dataset.i];
+      const d = new Date(p.day + 'T00:00:00Z').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      showTip(`<b>${d}</b>
+        <div class="row"><span><i class="sw" style="background:var(--series-1)"></i>Input</span><span>${usd(p.ic)}</span></div>
+        <div class="row"><span><i class="sw" style="background:var(--series-2)"></i>Output</span><span>${usd(p.oc)}</span></div>
+        <div class="row" style="border-top:1px solid rgba(255,255,255,.2);margin-top:3px;padding-top:3px"><span>Total</span><b>${usd(p.total)}</b></div>
+        <div class="row" style="opacity:.7"><span>${int(p.calls)} calls</span><span>${compact(p.it + p.ot)} tokens</span></div>`, ev);
+    };
+    h.onmouseleave = hideTip;
+  });
+}
+
+function hbars(el, items, emptyMsg) {
+  if (!items.length) { el.innerHTML = `<div class="empty"><span class="ico">📭</span>${emptyMsg}</div>`; return; }
+  const max = Math.max(...items.map(i => i.value), 1e-9);
+  el.innerHTML = items.map((it, k) => `
+    <div class="hbar" data-k="${k}">
+      <div class="nm" title="${esc(it.label)}">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</div>
+      <div class="track"><i style="width:${Math.max(1.5, it.value / max * 100)}%"></i></div>
+      <div class="v num">${usd(it.value)}</div>
+    </div>`).join('');
+  el.querySelectorAll('.hbar').forEach(r => {
+    const it = items[r.dataset.k];
+    r.onmousemove = (ev) => it.tip && showTip(it.tip, ev);
+    r.onmouseleave = hideTip;
+    if (it.onclick) { r.style.cursor = 'pointer'; r.onclick = it.onclick; }
+  });
+}
+
+// ── overview ───────────────────────────────────────────────────────────────
+async function loadOverview() {
+  try {
+    const qs = rangeQs();
+    const s = await api('/api/ai-credits/summary?' + qs);
+    S.settings = s.settings;
+    const t = s.totals, c = s.credit;
+    const remaining = Math.max(0, c.allowed - c.used);
+    const pct = c.allowed > 0 ? Math.min(100, c.used / c.allowed * 100) : 0;
+    const days = s.byDay.length || 1;
+    $('kpis').innerHTML = `
+      <div class="kpi hero">
+        <div class="lbl">AI spend · selected period</div>
+        <div class="val num">${usd(t.total_cost, 2)}</div>
+        <div class="foot">${int(t.calls)} calls · avg ${usd(t.calls ? t.total_cost / t.calls : 0)} per call</div>
+      </div>
+      <div class="kpi">
+        <div class="lbl">Credit allocated</div>
+        <div class="val num">${usd(c.allowed, 2)}</div>
+        <div class="meter"><i style="width:${pct}%;background:${pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--amber)' : 'var(--blue)'}"></i></div>
+        <div class="foot">${usd(c.used, 2)} used · ${usd(remaining, 2)} left (${(100 - pct).toFixed(0)}%)</div>
+      </div>
+      <div class="kpi">
+        <div class="lbl">Input tokens</div>
+        <div class="val num">${compact(t.input_tokens)}</div>
+        <div class="foot">${usd(t.input_cost)} input cost</div>
+      </div>
+      <div class="kpi">
+        <div class="lbl">Output tokens</div>
+        <div class="val num">${compact(t.output_tokens)}</div>
+        <div class="foot">${usd(t.output_cost)} output cost</div>
+      </div>
+      <div class="kpi">
+        <div class="lbl">Prompts</div>
+        <div class="val num">${int(s.prompts.n)}</div>
+        <div class="foot">avg ${usd(s.prompts.avg_cost)} · max ${usd(s.prompts.max_cost)} per prompt</div>
+      </div>
+      <div class="kpi">
+        <div class="lbl">Active users</div>
+        <div class="val num">${int(t.active_users)}</div>
+        <div class="foot">${c.exhausted ? `<span style="color:var(--red);font-weight:700">⛔ ${c.exhausted} out of credit</span>` : '✓ nobody is out of credit'}</div>
+      </div>`;
+    const b = $('exhausted-banner');
+    if (c.exhausted && s.settings.enforce) {
+      b.style.display = 'flex';
+      b.innerHTML = `⚠️ <span><b>${c.exhausted} user${c.exhausted > 1 ? 's have' : ' has'} run out of AI credit</b> and can't use AI features right now.</span><span style="flex:1"></span><button class="btn btn-sm" onclick="go('users');$('u-filter').value='out';renderUsers()">Review →</button>`;
+    } else b.style.display = 'none';
+    if (!s.settings.enforce) {
+      b.style.display = 'flex';
+      b.innerHTML = `ℹ️ <span>Credit limits are <b>not enforced</b> — usage is tracked but never blocked.</span><span style="flex:1"></span><button class="btn btn-sm" onclick="go('settings')">Settings →</button>`;
+    }
+
+    $('daily-sub').textContent = `${usd(t.total_cost / days)} / active day`;
+    dailyChart($('chart-daily'), s.byDay, $('r-from').value, $('r-to').value);
+
+    hbars($('chart-models'), s.byModel.map(m => ({
+      label: m.model, sub: `${int(m.calls)} calls · priced as ${m.priced_as}`, value: m.total_cost,
+      tip: `<b>${esc(m.model)}</b><div class="row"><span>Input</span><span>${compact(m.input_tokens)} tok</span></div><div class="row"><span>Output</span><span>${compact(m.output_tokens)} tok</span></div><div class="row"><span>Cost</span><b>${usd(m.total_cost)}</b></div>`,
+    })), 'No model usage yet.');
+    hbars($('chart-users'), s.topUsers.map(u => ({
+      label: u.username || 'system', sub: `${int(u.calls)} calls · ${compact(u.tokens)} tokens`, value: u.total_cost,
+      onclick: u.user_id ? () => openDrawer(u.user_id) : null,
+      tip: u.user_id ? `<b>${esc(u.username)}</b><div>Click for full history</div>` : '<b>System</b><div>Background jobs, not billed to a user</div>',
+    })), 'No user usage yet.');
+    hbars($('chart-features'), s.byFeature.map(f => ({
+      label: featureName(f.feature), sub: `${int(f.calls)} calls`, value: f.total_cost,
+      tip: `<b>${esc(featureName(f.feature))}</b><div style="opacity:.7">${esc(f.feature || '—')}</div>`,
+    })), 'No feature usage yet.');
+    hbars($('chart-prompts'), s.topPrompts.map(p => ({
+      label: p.prompt || '(no text)', sub: `${p.username} · ${featureName(p.feature)} · ${p.calls} AI call${p.calls === 1 ? '' : 's'} · ${when(p.created_at)}`, value: p.total_cost,
+      onclick: () => { S.pOpen = p.id; go('prompts'); },
+      tip: `<b>${esc((p.prompt || '').slice(0, 160))}</b><div style="opacity:.7">Click to open in Prompt History</div>`,
+    })), 'No prompts yet.');
+  } catch (e) { toast(e.message, true); }
+}
+
+// ── users ──────────────────────────────────────────────────────────────────
+function statusOf(u) {
+  if (u.blocked) return 'blk';
+  if (u.unlimited) return 'unl';
+  if (u.remaining_usd <= 0) return 'out';
+  const low = (S.settings?.low_balance_pct ?? 20) / 100;
+  if (u.allowed_usd > 0 && u.remaining_usd / u.allowed_usd < low) return 'low';
+  return 'ok';
+}
+const STATUS = { ok: ['ok', '● Active'], low: ['low', '▲ Low balance'], out: ['out', '⛔ Exhausted'], unl: ['unl', '∞ Unlimited'], blk: ['blk', '🚫 Blocked'] };
+
+async function loadUsers() {
+  try {
+    const [users, settings] = await Promise.all([api('/api/ai-credits/users'), S.settings ? S.settings : api('/api/ai-credits/settings')]);
+    S.settings = settings; S.users = users;
+    $('cnt-users').textContent = users.length;
+    fillUserSelects();
+    renderUsers();
+  } catch (e) { toast(e.message, true); }
+}
+function renderUsers() {
+  const q = $('u-search').value.trim().toLowerCase(), f = $('u-filter').value;
+  const list = S.users.filter(u => (!q || (u.username + ' ' + (u.full_name || '')).toLowerCase().includes(q)) && (!f || statusOf(u) === f));
+  if (!list.length) { $('u-body').innerHTML = `<tr><td colspan="11"><div class="empty"><span class="ico">🔍</span>No users match.</div></td></tr>`; updateBulk(); return; }
+  $('u-body').innerHTML = list.map(u => {
+    const st = statusOf(u), [cls, label] = STATUS[st];
+    const pct = u.unlimited ? 0 : u.allowed_usd > 0 ? Math.min(100, u.used_usd / u.allowed_usd * 100) : (u.used_usd > 0 ? 100 : 0);
+    const col = st === 'out' ? 'var(--red)' : st === 'low' ? 'var(--amber)' : 'var(--blue)';
+    return `<tr>
+      <td><input type="checkbox" class="u-chk" data-id="${u.user_id}" ${S.selected.has(u.user_id) ? 'checked' : ''}/></td>
+      <td><div class="user-cell"><div class="avatar">${esc(initials(u))}</div><div><div style="font-weight:600">${esc(u.full_name || u.username)}</div><div class="sub">@${esc(u.username)} · <span class="role">${esc(u.role)}</span></div></div></div></td>
+      <td><span class="pill ${cls}">${label}</span></td>
+      <td class="usage-cell">${u.unlimited ? '<span style="font-size:11.5px;color:var(--muted)">No limit applied</span>' :
+        `<div class="t"><span>${pct.toFixed(1)}% used</span></div><div class="meter"><i style="width:${pct}%;background:${col}"></i></div>`}</td>
+      <td class="r num">${u.unlimited ? '∞' : usd(u.allowed_usd, 2)}</td>
+      <td class="r num">${usd(u.used_usd)}</td>
+      <td class="r num" style="font-weight:700;color:${st === 'out' ? 'var(--red)' : 'var(--text)'}">${u.unlimited ? '∞' : usd(u.remaining_usd)}</td>
+      <td class="r num">${int(u.calls)}</td>
+      <td class="r num" style="color:var(--muted)">${compact(u.input_tokens)} / ${compact(u.output_tokens)}</td>
+      <td style="white-space:nowrap">${ago(u.last_used)}</td>
+      <td><div class="actions">
+        <button class="btn btn-sm btn-primary" onclick="openCreditModal('grant',[${u.user_id}])">＋ Credit</button>
+        <button class="btn btn-sm" onclick="openDrawer(${u.user_id})">History</button>
+        <button class="icon-btn" onclick="openRowMenu(event,${u.user_id})" title="More">⋯</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.querySelectorAll('.u-chk').forEach(c => c.onchange = () => { const id = Number(c.dataset.id); c.checked ? S.selected.add(id) : S.selected.delete(id); updateBulk(); });
+  updateBulk();
+}
+$('u-search').oninput = renderUsers;
+$('u-filter').onchange = renderUsers;
+$('u-all').onchange = (e) => {
+  document.querySelectorAll('.u-chk').forEach(c => { c.checked = e.target.checked; const id = Number(c.dataset.id); e.target.checked ? S.selected.add(id) : S.selected.delete(id); });
+  updateBulk();
+};
+const selectedIds = () => [...S.selected];
+function clearSel() { S.selected.clear(); $('u-all').checked = false; renderUsers(); }
+function updateBulk() { $('bulk-count').textContent = S.selected.size; $('bulkbar').classList.toggle('show', S.selected.size > 0); }
+
+function openRowMenu(ev, id) {
+  ev.stopPropagation();
+  const u = S.users.find(x => x.user_id === id); if (!u) return;
+  const m = $('row-menu');
+  m.innerHTML = `
+    <button onclick="openCreditModal('set_limit',[${id}])">🎯 Set exact limit</button>
+    <button onclick="openCreditModal('grant',[${id}],true)">➖ Deduct credit</button>
+    <button onclick="confirmAction('reset_usage',[${id}])">↺ Reset used to $0</button>
+    <hr>
+    <button onclick="doAction('${u.unlimited ? 'limited' : 'unlimited'}',[${id}])">${u.unlimited ? '🔢 Apply credit limit' : '∞ Make unlimited'}</button>
+    <button onclick="doAction('${u.blocked ? 'unblock' : 'block'}',[${id}])" style="color:${u.blocked ? 'var(--green)' : 'var(--red)'}">${u.blocked ? '✅ Unblock AI access' : '🚫 Block AI access'}</button>`;
+  m.style.display = 'block';
+  const r = ev.target.getBoundingClientRect();
+  m.style.top = Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8) + 'px';
+  m.style.left = Math.max(8, r.right - m.offsetWidth) + 'px';
+}
+document.addEventListener('click', () => $('row-menu').style.display = 'none');
+
+async function doAction(action, ids, body = {}) {
+  try {
+    if (ids.length === 1) await api(`/api/ai-credits/users/${ids[0]}/${action}`, { method: 'POST', body: JSON.stringify(body) });
+    else await api(`/api/ai-credits/bulk/${action}`, { method: 'POST', body: JSON.stringify({ ...body, user_ids: ids }) });
+    toast({ grant: 'Credit updated', set_limit: 'Limit set', reset_usage: 'Usage reset', unlimited: 'Now unlimited', limited: 'Limit applied', block: 'AI access blocked', unblock: 'AI access restored' }[action] + (ids.length > 1 ? ` for ${ids.length} users` : ''));
+    await loadUsers();
+    if (S.drawerUser) openDrawer(S.drawerUser, true);
+  } catch (e) { toast(e.message, true); }
+}
+function confirmAction(action, ids) {
+  const who = ids.length === 1 ? (S.users.find(u => u.user_id === ids[0])?.username || 'this user') : `${ids.length} users`;
+  if (action === 'reset_usage' && !confirm(`Reset used credit to $0 for ${who}? Usage history is kept; only the counter is cleared.`)) return;
+  doAction(action, ids);
+}
+
+function openCreditModal(action, ids, deduct = false) {
+  if (!ids.length) return;
+  const users = ids.map(id => S.users.find(u => u.user_id === id)).filter(Boolean);
+  const one = users.length === 1 ? users[0] : null;
+  $('cm-title').textContent = action === 'set_limit' ? 'Set credit limit' : deduct ? 'Deduct credit' : 'Add credit';
+  $('cm-who').innerHTML = one ? `For <b>${esc(one.full_name || one.username)}</b> — currently ${usd(one.allowed_usd, 2)} allowed, ${usd(one.used_usd)} used.` : `For <b>${users.length} selected users</b>.`;
+  $('cm-lbl').textContent = action === 'set_limit' ? 'New total allowance (USD)' : deduct ? 'Amount to deduct (USD)' : 'Amount to add (USD)';
+  $('cm-hint').textContent = action === 'set_limit' ? 'Replaces the current allowance. Used credit is unchanged.' : deduct ? 'Reduces the allowance. It will not go below $0.' : 'Added on top of the current allowance.';
+  $('cm-amount').value = ''; $('cm-note').value = '';
+  $('cm-chips').innerHTML = [5, 10, 25, 50, 100].map(v => `<button type="button" class="chip" data-v="${v}">$${v}</button>`).join('');
+  $('cm-chips').querySelectorAll('.chip').forEach(c => c.onclick = () => { $('cm-amount').value = c.dataset.v; preview(); });
+  const preview = () => {
+    const a = Math.abs(Number($('cm-amount').value) || 0);
+    if (!one) { $('cm-preview').innerHTML = `<span>Applies to ${users.length} users</span><b>${action === 'set_limit' ? 'Limit ' : deduct ? '−' : '+'}${usd(a, 2)} each</b>`; return; }
+    const allowed = action === 'set_limit' ? a : Math.max(0, one.allowed_usd + (deduct ? -a : a));
+    $('cm-preview').innerHTML = `<span>New allowance <b>${usd(allowed, 2)}</b></span><span>Remaining <b style="color:${allowed - one.used_usd <= 0 ? 'var(--red)' : 'var(--green)'}">${usd(allowed - one.used_usd)}</b></span>`;
+  };
+  $('cm-amount').oninput = preview; preview();
+  $('cm-save').onclick = async () => {
+    const a = Number($('cm-amount').value);
+    if (!Number.isFinite(a) || a < 0 || $('cm-amount').value === '') return toast('Enter a valid amount', true);
+    closeOv('credit-ov');
+    await doAction(action, ids, { amount: deduct ? -a : a, note: $('cm-note').value.trim() });
+  };
+  $('credit-ov').classList.add('show');
+  setTimeout(() => $('cm-amount').focus(), 50);
+}
+
+function exportUsersCsv() {
+  const cols = ['username', 'full_name', 'role', 'status', 'allowed_usd', 'used_usd', 'remaining_usd', 'calls', 'input_tokens', 'output_tokens', 'last_used'];
+  const rows = S.users.map(u => ({ ...u, status: STATUS[statusOf(u)][1].replace(/^\S+\s/, '') }));
+  const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [cols.join(','), ...rows.map(r => cols.map(c => cell(r[c])).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `ai-credits-users-${iso(new Date())}.csv`; a.click();
+}
+
+// ── drawer: one user's history ─────────────────────────────────────────────
+async function openDrawer(id, keep) {
+  S.drawerUser = id;
+  if (!keep) { S.dTab = 'prompts'; S.dPage = 1; }
+  if (!S.users.length) await loadUsers();
+  const u = S.users.find(x => x.user_id === id); if (!u) return;
+  $('d-av').textContent = initials(u);
+  $('d-name').textContent = u.full_name || u.username;
+  $('d-sub').innerHTML = `@${esc(u.username)} · <span class="role">${esc(u.role)}</span> · <span class="pill ${STATUS[statusOf(u)][0]}">${STATUS[statusOf(u)][1]}</span>`;
+  $('d-add').onclick = () => openCreditModal('grant', [id]);
+  const pct = u.allowed_usd > 0 ? Math.min(100, u.used_usd / u.allowed_usd * 100) : 0;
+  $('d-kpis').innerHTML = `
+    <div class="kpi"><div class="lbl">Allowed</div><div class="val num">${u.unlimited ? '∞' : usd(u.allowed_usd, 2)}</div></div>
+    <div class="kpi"><div class="lbl">Used</div><div class="val num">${usd(u.used_usd)}</div>${u.unlimited ? '' : `<div class="meter"><i style="width:${pct}%"></i></div>`}</div>
+    <div class="kpi"><div class="lbl">Remaining</div><div class="val num" style="color:${u.remaining_usd <= 0 && !u.unlimited ? 'var(--red)' : 'var(--green)'}">${u.unlimited ? '∞' : usd(u.remaining_usd)}</div></div>`;
+  document.querySelectorAll('.subtabs button').forEach(b => b.classList.toggle('on', b.dataset.dt === S.dTab));
+  $('drawer').classList.add('show'); $('drawer-ov').classList.add('show');
+
+  // last 30 days chart for this user
+  const to = new Date(), from = new Date(Date.now() - 29 * 864e5);
+  $('d-range').textContent = 'Last 30 days';
+  try {
+    const qs = new URLSearchParams({ user_id: id, from: iso(from), to: iso(to), limit: 200 });
+    const all = [];
+    for (let p = 1; p <= 10; p++) { qs.set('page', p); const r = await api('/api/ai-credits/usage?' + qs); all.push(...r.rows); if (all.length >= r.total || !r.rows.length) break; }
+    const byDay = {};
+    for (const x of all) { const k = x.created_at.slice(0, 10); const d = (byDay[k] ||= { day: k, total_cost: 0, input_cost: 0, output_cost: 0, calls: 0, input_tokens: 0, output_tokens: 0 }); d.total_cost += x.total_cost; d.input_cost += x.input_cost; d.output_cost += x.output_cost; d.calls++; d.input_tokens += x.input_tokens; d.output_tokens += x.output_tokens; }
+    dailyChart($('d-chart'), Object.values(byDay).sort((a, b) => a.day.localeCompare(b.day)), iso(from), iso(to), 170);
+  } catch (e) { $('d-chart').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  api(`/api/ai-credits/users/${id}/models`).then(ms => hbars($('d-models'), ms.map(m => ({
+    label: m.model, sub: `${int(m.prompts)} prompts · ${int(m.calls)} calls · ${compact(m.input_tokens)} in / ${compact(m.output_tokens)} out`, value: m.total_cost,
+  })), 'No AI usage yet.')).catch(() => {});
+  loadDrawerTable();
+}
+function closeDrawer() { $('drawer').classList.remove('show'); $('drawer-ov').classList.remove('show'); S.drawerUser = null; }
+document.querySelectorAll('.subtabs button').forEach(b => b.onclick = () => { S.dTab = b.dataset.dt; S.dPage = 1; document.querySelectorAll('.subtabs button').forEach(x => x.classList.toggle('on', x === b)); loadDrawerTable(); });
+async function loadDrawerTable() {
+  const id = S.drawerUser; if (!id) return;
+  try {
+    if (S.dTab === 'prompts') {
+      $('d-thead').innerHTML = '<tr><th>When</th><th>Prompt</th><th>Credit by model</th><th class="r">Cost</th></tr>';
+      const r = await api(`/api/ai-credits/prompts?user_id=${id}&limit=15&page=${S.dPage}`);
+      $('d-body').innerHTML = r.rows.length ? r.rows.map(x => `<tr>
+        <td style="white-space:nowrap">${when(x.created_at)}<div style="font-size:11px;color:var(--faint)">${esc(featureName(x.feature))}</div></td>
+        <td><div class="p-text" style="max-width:240px" title="${esc(x.prompt)}">${esc(x.prompt || '(no text)')}</div></td>
+        <td>${modelChips(x.models)}</td>
+        <td class="r num" style="font-weight:700">${usd(x.total_cost)}</td></tr>`).join('')
+        : '<tr><td colspan="4"><div class="empty"><span class="ico">💬</span>No prompts yet.</div></td></tr>';
+      pager($('d-pager'), r, (p) => { S.dPage = p; loadDrawerTable(); });
+    } else if (S.dTab === 'usage') {
+      $('d-thead').innerHTML = '<tr><th>When</th><th>Model</th><th>Feature</th><th class="r">Tokens in / out</th><th class="r">Cost</th><th class="r">Balance</th></tr>';
+      const r = await api(`/api/ai-credits/usage?user_id=${id}&limit=15&page=${S.dPage}`);
+      $('d-body').innerHTML = r.rows.length ? r.rows.map(x => `<tr>
+        <td style="white-space:nowrap">${when(x.created_at)}</td><td>${esc(x.model)}</td><td>${esc(featureName(x.feature))}</td>
+        <td class="r num">${int(x.input_tokens)} / ${int(x.output_tokens)}${x.estimated ? ' <span title="Estimated — provider did not report usage">≈</span>' : ''}</td>
+        <td class="r num" style="font-weight:600">${usd(x.total_cost)}</td><td class="r num">${x.balance_after == null ? '—' : usd(x.balance_after)}</td></tr>`).join('')
+        : '<tr><td colspan="6"><div class="empty"><span class="ico">🧾</span>No AI usage yet.</div></td></tr>';
+      pager($('d-pager'), r, (p) => { S.dPage = p; loadDrawerTable(); });
+    } else {
+      $('d-thead').innerHTML = '<tr><th>When</th><th>Action</th><th class="r">Amount</th><th class="r">Allowed after</th><th>Note / by</th></tr>';
+      const r = await api(`/api/ai-credits/transactions?user_id=${id}&limit=15&page=${S.dPage}`);
+      $('d-body').innerHTML = r.rows.length ? r.rows.map(x => `<tr>
+        <td style="white-space:nowrap">${when(x.created_at)}</td><td>${txPill(x.type)}</td><td class="r num">${txAmount(x)}</td>
+        <td class="r num">${usd(x.allowed_after, 2)}</td><td>${esc(x.note || '—')}<div style="font-size:11px;color:var(--faint)">by ${esc(x.performed_by || '—')}</div></td></tr>`).join('')
+        : '<tr><td colspan="5"><div class="empty">No credit changes yet.</div></td></tr>';
+      pager($('d-pager'), r, (p) => { S.dPage = p; loadDrawerTable(); });
+    }
+  } catch (e) { toast(e.message, true); }
+}
+
+// ── pricing ────────────────────────────────────────────────────────────────
+async function loadModels() {
+  try {
+    S.models = await api('/api/ai-credits/models');
+    $('cnt-models').textContent = S.models.length;
+    $('m-body').innerHTML = S.models.map(m => `<tr>
+      <td><code style="font-size:12px">${esc(m.model)}</code>${m.model === '*' ? ' <span class="pill tag">fallback</span>' : ''}</td>
+      <td>${esc(m.display_name || '—')}</td>
+      <td><span class="pill tag">${esc(m.provider || '—')}</span></td>
+      <td class="r num" style="font-weight:600">${usd(m.input_per_1m, 2)}</td>
+      <td class="r num" style="font-weight:600">${usd(m.output_per_1m, 2)}</td>
+      <td>${m.is_active ? '<span class="pill ok">● Active</span>' : '<span class="pill blk">Inactive</span>'}</td>
+      <td class="r num">${int(m.calls)}</td>
+      <td class="r num">${usd(m.cost)}</td>
+      <td><div class="actions">
+        <button class="btn btn-sm" onclick="openModelModal(${m.id})">Edit</button>
+        ${m.model === '*' ? '' : `<button class="icon-btn" title="Delete" onclick="deleteModel(${m.id})">🗑</button>`}
+      </div></td></tr>`).join('');
+    const sel = $('calc-model'), cur = sel.value;
+    sel.innerHTML = S.models.map(m => `<option value="${m.id}">${esc(m.display_name || m.model)}</option>`).join('');
+    if (cur) sel.value = cur;
+    calc();
+  } catch (e) { toast(e.message, true); }
+}
+function calc() {
+  const m = S.models.find(x => String(x.id) === $('calc-model').value) || S.models[0];
+  if (!m) return;
+  const c = (Number($('calc-in').value) || 0) / 1e6 * m.input_per_1m + (Number($('calc-out').value) || 0) / 1e6 * m.output_per_1m;
+  $('calc-res').textContent = usd(c);
+}
+['calc-model', 'calc-in', 'calc-out'].forEach(id => $(id).oninput = calc);
+
+function openModelModal(id) {
+  const m = id ? S.models.find(x => x.id === id) : null;
+  $('mm-title').textContent = m ? 'Edit model price' : 'Add model price';
+  $('mm-model').value = m?.model || ''; $('mm-model').disabled = m?.model === '*';
+  $('mm-name').value = m?.display_name || '';
+  $('mm-provider').value = m?.provider || 'anthropic';
+  $('mm-in').value = m ? m.input_per_1m : 2; $('mm-out').value = m ? m.output_per_1m : 4;
+  $('mm-active').checked = m ? !!m.is_active : true;
+  $('mm-save').onclick = async () => {
+    const body = { model: $('mm-model').value.trim(), display_name: $('mm-name').value.trim(), provider: $('mm-provider').value,
+                   input_per_1m: Number($('mm-in').value), output_per_1m: Number($('mm-out').value), is_active: $('mm-active').checked };
+    if (!body.model) return toast('Model id is required', true);
+    try {
+      await api(m ? `/api/ai-credits/models/${m.id}` : '/api/ai-credits/models', { method: m ? 'PUT' : 'POST', body: JSON.stringify(body) });
+      closeOv('model-ov'); toast(m ? 'Price updated' : 'Model added'); loadModels();
+    } catch (e) { toast(e.message, true); }
+  };
+  $('model-ov').classList.add('show');
+}
+async function deleteModel(id) {
+  const m = S.models.find(x => x.id === id);
+  if (!confirm(`Delete the price for "${m.model}"? Calls to it will be priced by the Default (*) rate. Past history is unaffected.`)) return;
+  try { await api(`/api/ai-credits/models/${id}`, { method: 'DELETE' }); toast('Deleted'); loadModels(); } catch (e) { toast(e.message, true); }
+}
+
+// ── usage history ──────────────────────────────────────────────────────────
+function fillUserSelects() {
+  for (const id of ['h-user', 't-user', 'p-user']) {
+    const sel = $(id), cur = sel.value;
+    sel.innerHTML = '<option value="">All users</option>' + S.users.map(u => `<option value="${u.user_id}">${esc(u.full_name || u.username)}</option>`).join('');
+    sel.value = cur;
+  }
+}
+function usageQs() {
+  const p = rangeQs();
+  if ($('h-user').value) p.set('user_id', $('h-user').value);
+  if ($('h-model').value) p.set('model', $('h-model').value);
+  if ($('h-q').value.trim()) p.set('q', $('h-q').value.trim());
+  return p;
+}
+async function loadUsage() {
+  try {
+    if (!S.users.length) { S.users = await api('/api/ai-credits/users'); fillUserSelects(); }
+    const p = usageQs(); p.set('page', S.hPage); p.set('limit', 25);
+    const r = await api('/api/ai-credits/usage?' + p);
+    const msel = $('h-model'), cur = msel.value;
+    msel.innerHTML = '<option value="">All models</option>' + r.models.map(m => `<option>${esc(m)}</option>`).join(''); msel.value = cur;
+    $('h-body').innerHTML = r.rows.length ? r.rows.map(x => `<tr>
+      <td style="white-space:nowrap">${when(x.created_at)}</td>
+      <td>${x.user_id ? `<a href="#" onclick="openDrawer(${x.user_id});return false" style="color:var(--blue);text-decoration:none;font-weight:600">${esc(x.username)}</a>` : '<span style="color:var(--faint)">system</span>'}</td>
+      <td>${esc(x.model)}${x.priced_as !== x.model ? `<div style="font-size:10.5px;color:var(--faint)">priced as ${esc(x.priced_as)}</div>` : ''}</td>
+      <td title="${esc(x.feature)}">${esc(featureName(x.feature))}</td>
+      <td class="r num">${int(x.input_tokens)}${x.estimated ? ' <span title="Estimated — provider did not report usage">≈</span>' : ''}</td>
+      <td class="r num">${int(x.output_tokens)}</td>
+      <td class="r num" style="color:var(--muted)" title="@ ${usd(x.input_rate, 2)} / 1M">${usd(x.input_cost)}</td>
+      <td class="r num" style="color:var(--muted)" title="@ ${usd(x.output_rate, 2)} / 1M">${usd(x.output_cost)}</td>
+      <td class="r num" style="font-weight:700">${usd(x.total_cost)}</td>
+      <td class="r num">${x.balance_after == null ? '—' : usd(x.balance_after)}</td></tr>`).join('')
+      : '<tr><td colspan="10"><div class="empty"><span class="ico">🧾</span>No AI usage matches these filters.</div></td></tr>';
+    pager($('h-pager'), r, (pg) => { S.hPage = pg; loadUsage(); });
+  } catch (e) { toast(e.message, true); }
+}
+let hT;
+$('h-q').oninput = () => { clearTimeout(hT); hT = setTimeout(() => { S.hPage = 1; loadUsage(); }, 300); };
+$('h-user').onchange = $('h-model').onchange = () => { S.hPage = 1; loadUsage(); };
+async function exportUsageCsv() {
+  const p = usageQs(); p.set('format', 'csv');
+  const r = await fetch('/api/ai-credits/usage?' + p, { headers: { 'x-auth-token': tok() } });
+  if (!r.ok) return toast('Export failed', true);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = `ai-usage-${iso(new Date())}.csv`; a.click();
+}
+
+// ── prompt history ─────────────────────────────────────────────────────────
+function modelChips(models) {
+  if (!models?.length) return '<span style="color:var(--faint)">—</span>';
+  return `<div class="mchips">${models.map(m => `<span class="mchip" title="${int(m.calls)} call(s) · ${int(m.input_tokens)} in / ${int(m.output_tokens)} out">${esc(m.model)} <b>${usd(m.total_cost)}</b></span>`).join('')}</div>`;
+}
+function promptsQs() {
+  const p = rangeQs();
+  if ($('p-user').value) p.set('user_id', $('p-user').value);
+  if ($('p-model').value) p.set('model', $('p-model').value);
+  if ($('p-q').value.trim()) p.set('q', $('p-q').value.trim());
+  return p;
+}
+async function loadPrompts() {
+  try {
+    if (!S.users.length) { S.users = await api('/api/ai-credits/users'); fillUserSelects(); }
+    const p = promptsQs(); p.set('page', S.pPage || 1); p.set('limit', 25);
+    const [r, meta] = await Promise.all([api('/api/ai-credits/prompts?' + p), api('/api/ai-credits/usage?limit=1')]);
+    const msel = $('p-model'), cur = msel.value;
+    msel.innerHTML = '<option value="">All models</option>' + meta.models.map(m => `<option>${esc(m)}</option>`).join(''); msel.value = cur;
+    $('p-stats').innerHTML = `
+      <div class="kpi"><div class="lbl">Prompts</div><div class="val num">${int(r.total)}</div><div class="foot">matching the filters</div></div>
+      <div class="kpi"><div class="lbl">Credit used</div><div class="val num">${usd(r.stats.cost, 2)}</div><div class="foot">by these prompts</div></div>
+      <div class="kpi"><div class="lbl">Avg per prompt</div><div class="val num">${usd(r.stats.avg_cost)}</div><div class="foot">all AI calls of a prompt combined</div></div>
+      <div class="kpi"><div class="lbl">Most expensive</div><div class="val num">${usd(r.stats.max_cost)}</div><div class="foot">single prompt</div></div>`;
+    $('p-body').innerHTML = r.rows.length ? r.rows.map(x => `
+      <tr class="p-row" data-id="${x.id}">
+        <td><span class="caret">▶</span></td>
+        <td style="white-space:nowrap">${when(x.created_at)}</td>
+        <td>${x.user_id ? `<a href="#" onclick="event.stopPropagation();openDrawer(${x.user_id});return false" style="color:var(--blue);text-decoration:none;font-weight:600">${esc(x.username)}</a>` : '<span style="color:var(--faint)">system</span>'}</td>
+        <td><div class="p-text" title="${esc(x.prompt)}">${esc(x.prompt || '(no text)')}</div></td>
+        <td style="white-space:nowrap">${esc(featureName(x.feature))}</td>
+        <td>${modelChips(x.models)}</td>
+        <td class="r num">${int(x.calls)}</td>
+        <td class="r num" style="color:var(--muted)">${compact(x.input_tokens)} / ${compact(x.output_tokens)}</td>
+        <td class="r num" style="font-weight:700">${usd(x.total_cost)}</td>
+      </tr>`).join('')
+      : '<tr><td colspan="9"><div class="empty"><span class="ico">💬</span>No prompts match these filters.</div></td></tr>';
+    $('p-body').querySelectorAll('.p-row').forEach(tr => tr.onclick = () => togglePrompt(tr));
+    pager($('p-pager'), r, (pg) => { S.pPage = pg; loadPrompts(); });
+    if (S.pOpen) { const tr = $('p-body').querySelector(`.p-row[data-id="${S.pOpen}"]`); S.pOpen = null; if (tr) togglePrompt(tr); }
+  } catch (e) { toast(e.message, true); }
+}
+async function togglePrompt(tr) {
+  const next = tr.nextElementSibling;
+  if (next?.classList.contains('p-detail')) { next.remove(); tr.classList.remove('open'); return; }
+  tr.classList.add('open');
+  const d = document.createElement('tr'); d.className = 'p-detail';
+  d.innerHTML = `<td colspan="9"><div class="empty">Loading…</div></td>`;
+  tr.after(d);
+  try {
+    const p = await api('/api/ai-credits/prompts/' + tr.dataset.id);
+    d.firstElementChild.innerHTML = `
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Prompt #${p.id}${p.session_id ? ` · session ${esc(p.session_id.slice(0, 8))}` : ''}</div>
+      <div class="p-full">${esc(p.prompt || '(no text)')}</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">${p.calls} AI call${p.calls === 1 ? '' : 's'} made for this prompt</div>
+      <div class="calls-tbl"><table>
+        <thead><tr><th>#</th><th>Time</th><th>Model</th><th class="r">Input tok</th><th class="r">Output tok</th><th class="r">Rate in / out (1M)</th><th class="r">Cost</th><th class="r">Balance after</th></tr></thead>
+        <tbody>${p.calls.map((c, i) => `<tr>
+          <td>${i + 1}</td><td style="white-space:nowrap">${when(c.created_at)}</td>
+          <td>${esc(c.model)}${c.priced_as !== c.model ? `<div style="font-size:10.5px;color:var(--faint)">priced as ${esc(c.priced_as)}</div>` : ''}</td>
+          <td class="r num">${int(c.input_tokens)}${c.estimated ? ' ≈' : ''}</td><td class="r num">${int(c.output_tokens)}</td>
+          <td class="r num" style="color:var(--muted)">${usd(c.input_rate, 2)} / ${usd(c.output_rate, 2)}</td>
+          <td class="r num" style="font-weight:600">${usd(c.total_cost)}</td>
+          <td class="r num">${c.balance_after == null ? '—' : usd(c.balance_after)}</td></tr>`).join('')}
+          <tr><td colspan="6" style="text-align:right;font-weight:700">Prompt total</td><td class="r num" style="font-weight:700">${usd(p.total_cost)}</td><td></td></tr>
+        </tbody></table></div>`;
+  } catch (e) { d.firstElementChild.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+let pT;
+$('p-q').oninput = () => { clearTimeout(pT); pT = setTimeout(() => { S.pPage = 1; loadPrompts(); }, 300); };
+$('p-user').onchange = $('p-model').onchange = () => { S.pPage = 1; loadPrompts(); };
+async function exportPromptsCsv() {
+  const p = promptsQs(); p.set('format', 'csv');
+  const r = await fetch('/api/ai-credits/prompts?' + p, { headers: { 'x-auth-token': tok() } });
+  if (!r.ok) return toast('Export failed', true);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = `ai-prompts-${iso(new Date())}.csv`; a.click();
+}
+
+// ── credit log ─────────────────────────────────────────────────────────────
+const TX = { grant: ['ok', 'Credit added'], set_limit: ['unl', 'Limit set'], reset_usage: ['low', 'Usage reset'], unlimited: ['unl', 'Made unlimited'], limited: ['tag', 'Limit applied'], block: ['out', 'Blocked'], unblock: ['ok', 'Unblocked'] };
+function txPill(t) { const [c, l] = TX[t] || ['tag', t]; return `<span class="pill ${c}">${l}</span>`; }
+function txAmount(x) {
+  if (x.type === 'grant' && x.amount_usd < 0) return `<span style="color:var(--red)">−${usd(-x.amount_usd, 2)}</span>`;
+  if (x.type === 'grant') return `<span style="color:var(--green)">+${usd(x.amount_usd, 2)}</span>`;
+  if (x.type === 'set_limit') return (x.amount_usd >= 0 ? '+' : '−') + usd(Math.abs(x.amount_usd), 2);
+  if (x.type === 'reset_usage') return `${usd(x.amount_usd)} cleared`;
+  return '—';
+}
+async function loadTx() {
+  try {
+    if (!S.users.length) { S.users = await api('/api/ai-credits/users'); fillUserSelects(); }
+    const p = rangeQs(); p.set('page', S.tPage); p.set('limit', 25);
+    if ($('t-user').value) p.set('user_id', $('t-user').value);
+    const r = await api('/api/ai-credits/transactions?' + p);
+    $('t-body').innerHTML = r.rows.length ? r.rows.map(x => `<tr>
+      <td style="white-space:nowrap">${when(x.created_at)}</td>
+      <td>${x.user_id ? `<a href="#" onclick="openDrawer(${x.user_id});return false" style="color:var(--blue);text-decoration:none;font-weight:600">${esc(x.username)}</a>` : esc(x.username || '—')}</td>
+      <td>${txPill(x.type)}</td><td class="r num">${txAmount(x)}</td>
+      <td class="r num">${usd(x.allowed_after, 2)}</td><td class="r num">${usd(x.used_after)}</td>
+      <td>${esc(x.note || '—')}</td><td>${esc(x.performed_by || '—')}</td></tr>`).join('')
+      : '<tr><td colspan="8"><div class="empty"><span class="ico">📒</span>No credit changes in this period.</div></td></tr>';
+    pager($('t-pager'), r, (pg) => { S.tPage = pg; loadTx(); });
+  } catch (e) { toast(e.message, true); }
+}
+$('t-user').onchange = () => { S.tPage = 1; loadTx(); };
+
+function pager(el, r, onPage) {
+  const pages = Math.max(1, Math.ceil(r.total / r.limit));
+  const a = r.total ? (r.page - 1) * r.limit + 1 : 0, b = Math.min(r.total, r.page * r.limit);
+  el.innerHTML = `<span>${int(a)}–${int(b)} of ${int(r.total)}</span><div class="btns">
+    <button class="btn btn-sm" ${r.page <= 1 ? 'disabled' : ''} data-p="${r.page - 1}">← Prev</button>
+    <span style="padding:4px 6px">Page ${r.page} / ${pages}</span>
+    <button class="btn btn-sm" ${r.page >= pages ? 'disabled' : ''} data-p="${r.page + 1}">Next →</button></div>`;
+  el.querySelectorAll('button[data-p]').forEach(b => b.onclick = () => onPage(Number(b.dataset.p)));
+}
+
+// ── settings ───────────────────────────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const s = S.settings = await api('/api/ai-credits/settings');
+    $('s-enforce').checked = !!s.enforce; $('s-default').value = s.default_allowance_usd; $('s-low').value = s.low_balance_pct;
+    $('s-meta').textContent = s.updated_by ? `Last changed by ${s.updated_by} · ${when(s.updated_at)}` : '';
+  } catch (e) { toast(e.message, true); }
+}
+async function saveSettings() {
+  try {
+    S.settings = await api('/api/ai-credits/settings', { method: 'PUT', body: JSON.stringify({
+      enforce: $('s-enforce').checked, default_allowance_usd: Number($('s-default').value), low_balance_pct: Number($('s-low').value) }) });
+    toast('Settings saved'); loadSettings();
+  } catch (e) { toast(e.message, true); }
+}
+
+// ── boot ───────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDrawer(); closeOv('credit-ov'); closeOv('model-ov'); } });
+let resizeT; addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => S.view === 'overview' && loadOverview(), 200); });
+setRangeDays(30);
+(async () => {
+  try { S.settings = await api('/api/ai-credits/settings'); } catch {}
+  let first = 'overview';
+  try { first = localStorage.getItem('aicredits_tab') || 'overview'; } catch {}
+  go(document.querySelector(`.tab[data-view="${first}"]`) ? first : 'overview');
+  api('/api/ai-credits/models').then(m => $('cnt-models').textContent = m.length).catch(() => {});
+  api('/api/ai-credits/users').then(u => { S.users = u; $('cnt-users').textContent = u.length; fillUserSelects(); }).catch(() => {});
+})();
+</script>
+</body>
+</html>

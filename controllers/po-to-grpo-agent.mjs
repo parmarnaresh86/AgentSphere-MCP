@@ -32,16 +32,18 @@ function sapDate(s) { const d = s || today(); return d.length === 10 ? `${d}T00:
 
 // ── SAP helpers ────────────────────────────────────────────────────────────────
 async function fetchAllOpenPOs(sap) {
-  // Try with $select first (headers only — much faster); fall back if SAP rejects
+  // DocType eq 'dDocument_Items' excludes Service-type POs — those settle straight to an
+  // AP Invoice (no goods movement), so they can never be received as a GRPO.
   const params = {
-    $filter:  `DocumentStatus eq 'bost_Open'`,
+    $filter:  `DocumentStatus eq 'bost_Open' and DocType eq 'dDocument_Items'`,
     $orderby: 'DocDate asc',
     $top:     200,
   };
+  // Try with $select first (headers only — much faster); fall back if SAP rejects
   try {
     const r = await sap.get('/PurchaseOrders', {
       ...params,
-      $select: 'DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,DocumentStatus',
+      $select: 'DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,DocumentStatus,DocType',
     });
     if (Array.isArray(r.value)) return r.value;
   } catch { /* $select rejected — fall through */ }
@@ -131,6 +133,7 @@ function buildPODetail(full, mgmtMap = {}) {
         unitPrice:  Number(l.UnitPrice || l.Price || 0),
         warehouse:  l.WarehouseCode || '',
         managedBy:  mgmtMap[l.ItemCode] || 'none',
+        factor:     Number(l.UnitsOfMeasurment || 1) || 1,   // inventory units per purchase unit
       })),
   };
 }

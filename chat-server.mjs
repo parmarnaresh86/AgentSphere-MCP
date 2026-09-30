@@ -30,6 +30,7 @@ import { createOrderIntelligenceRouter }    from './controllers/order-intelligen
 import { createShipmentDelayRouter }        from './controllers/shipment-delay-agent.mjs';
 import { createPurchaseRequestAgentRouter } from './controllers/pr-agent.mjs';
 import { createPurchaseOrderAgentRouter } from './controllers/po-agent.mjs';
+import { createInventoryAgentRouter } from './controllers/inventory-agent.mjs';
 import { createSalesOrderAgentRouter } from './controllers/sales-order-agent.mjs';
 import { createPRtoPOAgentRouter } from './controllers/pr-to-po-agent.mjs';
 import { createPOtoGRPOAgentRouter } from './controllers/po-to-grpo-agent.mjs';
@@ -57,9 +58,10 @@ import { createDeliveryToARInvRouter }      from './controllers/delivery-to-arin
 import { createARInvToARCMRouter }          from './controllers/arinv-to-arcm-agent.mjs';
 import { createIncomingPaymentRouter }      from './controllers/incoming-payment-agent.mjs';
 import { createOutgoingPaymentRouter }      from './controllers/outgoing-payment-agent.mjs';
-import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo, chatSessionRepo, customAgentsRepo, localTablesRepo, workflowInstancesRepo } from "./db.mjs";
+import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo, chatSessionRepo, customAgentsRepo, localTablesRepo, workflowInstancesRepo, promptRepo, isReusablePrompt } from "./db.mjs";
 import { createDataSyncRouter } from './controllers/data-sync.mjs';
 import { createFinancialAgentRouter } from './controllers/financial-agent.mjs';
+import { createFinancialReportsRouter } from './controllers/financial-reports-agent.mjs';
 import { createActivityAgentRouter } from './controllers/activity-agent.mjs';
 import { createVendorPaymentAgingRouter } from './controllers/vendor-payment-aging-agent.mjs';
 import { createCollectionsAgentRouter }          from './controllers/collections-agent.mjs';
@@ -84,6 +86,8 @@ import { loadCompanyContext, buildSqlContext, buildAiSummary, buildDimBlock, bui
 import { REPORT_CATEGORIES, listReports, getReport, runReport as runReportSQL } from "./reports-engine.mjs";
 import { handleV2Chat, classifyIntent, generateSQL, lintSql, buildMultiTabExcelReport, decideReportShape, callAI as callAIForSql } from "./analytics-v2.mjs";
 import { matchTemplate } from "./query-templates.mjs";
+import { installAiUsageMeter, setAiContextResolver, recordAiUsage, currentAiContext } from "./lib/ai-credits.mjs";
+import { createAiCreditsRouter } from "./controllers/ai-credits.mjs";
 
 dotenv.config();
 
@@ -227,6 +231,19 @@ const _reqCtx = new AsyncLocalStorage();
 
 function esc(s) { return String(s || "").replace(/'/g, "''"); }
 
+// Service Layer pages results (default 20/page) — follow nextLink via $skip so
+// aggregates aren't computed over the first page only.
+async function slGetAll(path, params = {}, max = 50000) {
+  const out = [];
+  while (out.length < max) {
+    const r = await getActiveSap().get(path, { ...params, $skip: out.length });
+    const page = Array.isArray(r?.value) ? r.value : [];
+    out.push(...page);
+    if (!page.length || !(r["odata.nextLink"] || r["@odata.nextLink"])) break;
+  }
+  return out;
+}
+
 // ── Request-scoped query log (reset per /api/chat call) ───────────────────────
 let _reqQueryLog = [];
 function _logQ(entry) { _reqQueryLog.push(entry); }
@@ -243,6 +260,7 @@ const NAMESPACE_MAP = {
   "ME0925_SADP":       "sap.me0925sadp",
   "WMS_DEV_UK":        "sap.me0925sadp",
   "SBO_DEMO_UK":       "sap.me0925sadp",
+  "STTL_SD":           "sap.sttlsd",
 };
 
 // ── Follow-up context: stores last brand/dimension result so the user can drill down ─
@@ -483,6 +501,8 @@ const SA_FIELD_TO_SQL = {
   BusinessPartnerName:        h => h ? `T0."CardName"`   : `T0.CardName`,
   ItemCode:                   h => h ? `T1."ItemCode"`   : `T1.ItemCode`,
   ItemDescription:            h => h ? `T1."Dscription"` : `T1.Dscription`,
+  // Needs the OITM T2 / OITB T3 joins — added by the SQL-first block when present
+  ItemGroup:                  h => h ? `IFNULL(T3."ItmsGrpNam",'(none)')` : `ISNULL(T3.ItmsGrpNam,'(none)')`,
   WarehouseCode:              h => h ? `T1."WhsCode"`    : `T1.WhsCode`,
   SalesEmployeeOrBuyerNumber: h => h ? `T0."SlpCode"`   : `T0.SlpCode`,
   PostingYear:                h => h ? `YEAR(T0."DocDate")`                                                          : `YEAR(T0.DocDate)`,
@@ -607,18 +627,38 @@ const SA_DIMENSIONS = [
 // ── Detect which dimensions a message is requesting ──────────────────────────
 // Returns { groupBy[], dimCols[], dimLabels[] } based on SA_DIMENSIONS registry.
 // Falls back to customer grouping if nothing matched.
-function detectDimensions(msg) {
-  const m = msg.toLowerCase().replace(/[^\w\s]/g, ' ');
-  const groupBy = [], dimCols = [], dimLabels = [];
+// Aliases are matched longest-first on word boundaries, and each match is blanked
+// out of the message so a shorter alias can't re-match inside it — otherwise
+// "item group wise" would also hit the bare "item" alias and group by ItemCode,
+// and "report" would hit "rep" (salesperson).
+const _SA_ALIAS_INDEX = SA_DIMENSIONS
+  .flatMap(dim => dim.aliases.filter(Boolean).map(alias => ({
+    dim, len: alias.length,
+    re: new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}s?\\b`, 'g'),
+  })))
+  .sort((a, b) => b.len - a.len);
 
-  for (const dim of SA_DIMENSIONS) {
-    if (dim.aliases.some(alias => m.includes(alias))) {
-      if (!groupBy.includes(dim.hanaField)) {
-        groupBy.push(dim.hanaField);
-        dim.dimCols.forEach(c => { if (!dimCols.includes(c)) dimCols.push(c); });
-        dim.dimLabels.forEach(l => { if (!dimLabels.includes(l)) dimLabels.push(l); });
-      }
+function detectDimensions(msg) {
+  let m = msg.toLowerCase().replace(/[^\w\s]/g, ' ');
+  const hits = [];
+
+  for (const { dim, re } of _SA_ALIAS_INDEX) {
+    re.lastIndex = 0;
+    let match;
+    while ((match = re.exec(m))) {
+      hits.push({ dim, pos: match.index });
+      m = m.slice(0, match.index) + ' '.repeat(match[0].length) + m.slice(match.index + match[0].length);
     }
+  }
+
+  // Preserve the order the user mentioned dimensions in
+  hits.sort((a, b) => a.pos - b.pos);
+  const groupBy = [], dimCols = [], dimLabels = [];
+  for (const { dim } of hits) {
+    if (groupBy.includes(dim.hanaField)) continue;
+    groupBy.push(dim.hanaField);
+    dim.dimCols.forEach(c => { if (!dimCols.includes(c)) dimCols.push(c); });
+    dim.dimLabels.forEach(l => { if (!dimLabels.includes(l)) dimLabels.push(l); });
   }
   return { groupBy, dimCols, dimLabels };
 }
@@ -1545,6 +1585,10 @@ async function aiGenerateSQL(question) {
     `- "this year" = ${thisYear} (${thisYear}-01-01 to ${today})\n` +
     `- AR invoices: JOIN OINV T0 with INV1 T1 ON T0.DocEntry=T1.DocEntry\n` +
     `- Brand/cost-centre grouping: INV1.CogsOcrCod (dim1), CogsOcrCo2 (dim2), etc.\n` +
+    `- Revenue / sales amount = SUM(line.LineTotal * (1 - IFNULL(header.DiscPrcnt,0)/100)) in local currency, excl. VAT. Never use DocTotal (includes VAT/freight) for revenue and never sum DocTotal after joining lines (it repeats per line)\n` +
+    `- Net revenue = AR invoices (OINV/INV1) MINUS AR credit memos (ORIN/RIN1): UNION ALL the two with credit memo amounts negated, then aggregate\n` +
+    `- ALWAYS exclude cancelled documents: header.CANCELED = 'N' (this excludes both cancelled originals 'Y' and cancellation documents 'C')\n` +
+    `- Item group grouping: LEFT JOIN OITM T2 ON T1.ItemCode=T2.ItemCode LEFT JOIN OITB T3 ON T2.ItmsGrpCod=T3.ItmsGrpCod and GROUP BY T3.ItmsGrpNam ONLY (do not also group by ItemCode unless asked for items)\n` +
     `- DocStatus: 'O'=Open, 'C'=Closed, 'W'=Cancelled\n` +
     `- For HANA use double-quoted identifiers: "SCHEMA"."TABLE"."COLUMN"`
   }];
@@ -1885,38 +1929,67 @@ async function demoReply(message) {
       try {
         const cfg    = getActiveConfig();
         const isHana = getActiveType() === 'hana';
-        const inv0   = tableRef('OINV', cfg);
-        const inv1   = tableRef('INV1', cfg);
+        const q      = c => isHana ? `"${c}"` : c;
         const sqlDims = params.groupBy
           .map((field, idx) => ({ field, idx, fn: SA_FIELD_TO_SQL[field] }))
           .filter(d => d.fn);
-        if (sqlDims.length) {
-          const LT   = isHana ? `T1."LineTotal"` : `T1.LineTotal`;
-          const GP   = isHana ? `T1."GrssProfit"` : `T1.GrssProfit`;
-          const QTY  = isHana ? `T1."Quantity"` : `T1.Quantity`;
-          const DE   = isHana ? `T0."DocEntry"` : `T0.DocEntry`;
-          const JOIN = isHana ? `T0."DocEntry"=T1."DocEntry"` : `T0.DocEntry=T1.DocEntry`;
-          const dateFilter = isHana
-            ? `T0."DocDate" BETWEEN '${slFromDate}' AND '${slToDate}'`
-            : `T0.DocDate BETWEEN '${slFromDate}' AND '${slToDate}'`;
+        // Only run when every requested dimension has a SQL mapping — otherwise the
+        // missing ones would be silently dropped and the totals regrouped wrongly.
+        if (sqlDims.length && sqlDims.length === params.groupBy.length) {
+          // Revenue = invoices − credit memos, excluding cancelled docs (CANCELED='Y')
+          // and their cancellation counterparts (CANCELED='C').
+          const DOC_TABLES = { '13':['OINV','INV1'], '14':['ORIN','RIN1'], '15':['ODPI','DPI1'],
+                               '16':['ORDN','RDN1'], '17':['ORDR','RDR1'], '23':['ODLN','DLN1'] };
+          const legs = params.objTypeFilter
+            ? [{ tables: DOC_TABLES[params.objTypeFilter], sign: 1 }]
+            : [{ tables: DOC_TABLES['13'], sign: 1 }, { tables: DOC_TABLES['14'], sign: -1 }];
+
+          // LineTotal is before the document-level discount; apply it so figures match the GL
+          const DISC = isHana ? `IFNULL(T0."DiscPrcnt",0)/100` : `ISNULL(T0.DiscPrcnt,0)/100`;
+          const LT   = `T1.${q('LineTotal')}`;
+          const SALES = `SUM(${LT} * (1 - ${DISC}))`;
+          const GP    = `SUM(T1.${q('GrssProfit')} - ${LT} * ${DISC})`;
+          const QTY   = `SUM(T1.${q('Quantity')})`;
+
+          // Value filters parsed from params.$filter (values already escaped by esc())
+          const where = [`T0.${q('DocDate')} BETWEEN '${slFromDate}' AND '${slToDate}'`, `T0.${q('CANCELED')} = 'N'`];
+          const f = params.$filter || '';
+          const fv = name => f.match(new RegExp(`${name} eq '((?:[^']|'')*)'`))?.[1];
+          if (fv('BusinessPartnerCode')) where.push(`T0.${q('CardCode')} = '${fv('BusinessPartnerCode')}'`);
+          if (fv('ItemCode'))            where.push(`T1.${q('ItemCode')} = '${fv('ItemCode')}'`);
+          if (fv('WarehouseCode'))       where.push(`T1.${q('WhsCode')} = '${fv('WarehouseCode')}'`);
+          const slp = f.match(/SalesEmployeeOrBuyerNumber eq (-?\d+)/)?.[1];
+          if (slp) where.push(`T0.${q('SlpCode')} = ${slp}`);
+          const qtr = f.match(/PostingQuarter eq ([1-4])/)?.[1];
+          if (qtr) where.push(`MONTH(T0.${q('DocDate')}) BETWEEN ${qtr*3-2} AND ${qtr*3}`);
+
+          const needsItemGroup = params.groupBy.includes('ItemGroup');
           const selectDims  = sqlDims.map(d => `${d.fn(isHana)} AS DIM${d.idx}`).join(', ');
           const groupByExpr = sqlDims.map(d => d.fn(isHana)).join(', ');
-          const timeDims    = sqlDims.filter(d => /PostingYear|Month|Quarter/.test(d.field));
-          const orderExpr   = timeDims.length
-            ? timeDims.map(d => `DIM${d.idx} ASC`).join(', ') + ', SALES DESC'
-            : 'SALES DESC';
-          const sqlFirst = `SELECT ${selectDims}, SUM(${LT}) AS SALES, SUM(${GP}) AS GP, SUM(${QTY}) AS QTY, COUNT(DISTINCT ${DE}) AS DOCS FROM ${inv0} T0 INNER JOIN ${inv1} T1 ON ${JOIN} WHERE ${dateFilter} GROUP BY ${groupByExpr} ORDER BY ${orderExpr}`;
-          console.log(`[SA-SQL] dims=${sqlDims.map(d=>d.field).join('+')} SQL=${sqlFirst.slice(0,180)}...`);
-          const sqlRows = await executeSQL(sqlFirst);
-          console.log(`[SA-SQL] rows=${sqlRows.length}`);
-          if (sqlRows.length) {
-            const mapped = sqlRows.map(r => {
-              const obj = { NetSalesAmountLC: Number(r.SALES || 0), GrossProfitLC: Number(r.GP || 0), QuantityInInventoryUoM: Number(r.QTY || 0) };
+          const descCol     = params.groupBy.includes('ItemCode') ? `, MAX(T1.${q('Dscription')}) AS ITEMDESC` : '';
+
+          const mapped = [];
+          for (const { tables: [hdr, lin], sign } of legs) {
+            const itemJoins = needsItemGroup
+              ? ` LEFT JOIN ${tableRef('OITM', cfg)} T2 ON T1.${q('ItemCode')}=T2.${q('ItemCode')}`
+              + ` LEFT JOIN ${tableRef('OITB', cfg)} T3 ON T2.${q('ItmsGrpCod')}=T3.${q('ItmsGrpCod')}`
+              : '';
+            const sqlFirst = `SELECT ${selectDims}, ${SALES} AS SALES, ${GP} AS GP, ${QTY} AS QTY${descCol}`
+              + ` FROM ${tableRef(hdr, cfg)} T0 INNER JOIN ${tableRef(lin, cfg)} T1 ON T0.${q('DocEntry')}=T1.${q('DocEntry')}${itemJoins}`
+              + ` WHERE ${where.join(' AND ')} GROUP BY ${groupByExpr}`;
+            console.log(`[SA-SQL] ${hdr} dims=${sqlDims.map(d=>d.field).join('+')} SQL=${sqlFirst.slice(0,220)}...`);
+            const sqlRows = await executeSQL(sqlFirst);
+            console.log(`[SA-SQL] ${hdr} rows=${sqlRows.length}`);
+            for (const r of sqlRows) {
+              const obj = { NetSalesAmountLC: sign * Number(r.SALES || 0), GrossProfitLC: sign * Number(r.GP || 0),
+                            QuantityInInventoryUoM: sign * Number(r.QTY || 0) };
               sqlDims.forEach(d => { obj[d.field] = r[`DIM${d.idx}`] ?? ''; });
-              return obj;
-            });
-            data = { value: mapped, _source: 'SQL' };
+              if (descCol) obj.ItemDescription = r.ITEMDESC ?? '';
+              mapped.push(obj);
+            }
           }
+          // _aggregateSA() in formatSalesAnalysis merges the invoice and credit-memo legs per group
+          if (mapped.length) data = { value: mapped, _source: 'SQL' };
         }
       } catch(eSql) { console.log(`[SA-SQL] failed: ${eSql.message} — falling through to SMLSVC`); }
     }
@@ -1977,7 +2050,10 @@ async function demoReply(message) {
                        : params.objTypeFilter === '14' ? "/CreditNotes"
                        : params.objTypeFilter === '16' ? "/Returns"
                        : "/Invoices";
-      const slFilter = `DocDate ge '${slFromDate}' and DocDate le '${slToDate}'`;
+      const slFilter = `DocDate ge '${slFromDate}' and DocDate le '${slToDate}' and Cancelled eq 'tNO'`;
+      // "All transactions" revenue = invoices − credit memos
+      const slLegs = params.objTypeFilter ? [{ endpoint: slEndpoint, sign: 1 }]
+                   : [{ endpoint: "/Invoices", sign: 1 }, { endpoint: "/CreditNotes", sign: -1 }];
 
       // Determine if we need DocumentLines expansion (for line-level dims)
       const LINE_DIMS = ["ItemCode","ItemDescription","WarehouseCode","WarehouseName","ItemGroup"];
@@ -1997,35 +2073,50 @@ async function demoReply(message) {
         if (params.groupBy.includes("WarehouseCode") || params.groupBy.includes("WarehouseName")) {
           lineSelectFields.add("WarehouseCode");
         }
+        const byItemGroup = params.groupBy.includes("ItemGroup");
+        if (byItemGroup) lineSelectFields.add("ItemCode");
         const slExpand = `DocumentLines($select=${[...lineSelectFields].join(',')})`;
-        _logQ({ method: 'SL GET', endpoint: slEndpoint, filter: slFilter, expand: slExpand, tier: 'Tier 3 Line-Level' });
+        const hdrSelect = "DocEntry,DocDate,DocNum,CardCode,CardName,DocTotal,DiscountPercent";
 
-        try {
-          const r = await getActiveSap().get(slEndpoint, {
-            $filter: slFilter, $expand: slExpand,
-            $select: "DocEntry,DocDate,DocNum,CardCode,CardName,DocTotal",
-            $top: 500,
-          });
-          allDocs = Array.isArray(r.value) ? r.value : [];
-          console.log(`[SA-T3] expand(select) docs=${allDocs.length}`);
-        } catch(e3a) {
-          console.log(`[SA-T3] expand(select) failed: ${e3a.message} — retrying full expand`);
+        for (const { endpoint, sign } of slLegs) {
+          _logQ({ method: 'SL GET', endpoint, filter: slFilter, expand: slExpand, tier: 'Tier 3 Line-Level' });
+          let docs = [];
           try {
-            const r = await getActiveSap().get(slEndpoint, {
-              $filter: slFilter, $expand: "DocumentLines",
-              $select: "DocEntry,DocDate,DocNum,CardCode,CardName,DocTotal", $top: 500,
-            });
-            allDocs = Array.isArray(r.value) ? r.value : [];
-            console.log(`[SA-T3] expand(full) docs=${allDocs.length}`);
-          } catch(e3b) {
-            console.log(`[SA-T3] full expand failed: ${e3b.message}`);
+            docs = await slGetAll(endpoint, { $filter: slFilter, $expand: slExpand, $select: hdrSelect });
+            console.log(`[SA-T3] ${endpoint} expand(select) docs=${docs.length}`);
+          } catch(e3a) {
+            console.log(`[SA-T3] ${endpoint} expand(select) failed: ${e3a.message} — retrying full expand`);
+            try {
+              docs = await slGetAll(endpoint, { $filter: slFilter, $expand: "DocumentLines", $select: hdrSelect });
+              console.log(`[SA-T3] ${endpoint} expand(full) docs=${docs.length}`);
+            } catch(e3b) {
+              console.log(`[SA-T3] ${endpoint} full expand failed: ${e3b.message}`);
+            }
           }
+          docs.forEach(d => { d._sign = sign; });
+          allDocs.push(...docs);
         }
         _reqQueryLog[_reqQueryLog.length - 1].rows = allDocs.length;
+
+        // Item → group name lookup (DocumentLines carry no item group)
+        const itemGroupOf = new Map();
+        if (byItemGroup && allDocs.length) {
+          try {
+            const [groups, items] = await Promise.all([
+              slGetAll("/ItemGroups", { $select: "Number,GroupName" }),
+              slGetAll("/Items", { $select: "ItemCode,ItemsGroupCode" }, 500000),
+            ]);
+            const groupName = new Map(groups.map(g => [String(g.Number), g.GroupName]));
+            for (const it of items) itemGroupOf.set(it.ItemCode, groupName.get(String(it.ItemsGroupCode)) || "(none)");
+          } catch(eIG) {
+            console.log(`[SA-T3] item group lookup failed: ${eIG.message}`);
+          }
+        }
 
         // Aggregate over DocumentLines
         const map = new Map();
         for (const doc of allDocs) {
+          const netFactor = doc._sign * (1 - Number(doc.DiscountPercent || 0) / 100);
           for (const line of (doc.DocumentLines || [])) {
             const keyParts = [];
             if (ccDimFields.length > 0) {
@@ -2033,6 +2124,8 @@ async function demoReply(message) {
             }
             if (params.groupBy.includes("ItemCode")) keyParts.push(line.ItemCode || "(none)");
             if (params.groupBy.includes("WarehouseCode")) keyParts.push(line.WarehouseCode || "(none)");
+            const itemGroup = byItemGroup ? (itemGroupOf.get(line.ItemCode) || "(none)") : null;
+            if (byItemGroup) keyParts.push(itemGroup);
             if (!keyParts.length) keyParts.push("all");
 
             const key = keyParts.join("||");
@@ -2048,11 +2141,12 @@ async function demoReply(message) {
                 e.WarehouseCode = line.WarehouseCode || "(none)";
                 e.WarehouseName = line.WarehouseCode || "(none)";
               }
+              if (byItemGroup) e.ItemGroup = itemGroup;
               map.set(key, e);
             }
             const e = map.get(key);
-            e.NetSalesAmountLC += Number(line.LineTotal || 0);
-            e.QuantityInInventoryUoM += Number(line.Quantity || 0);
+            e.NetSalesAmountLC += Number(line.LineTotal || 0) * netFactor;
+            e.QuantityInInventoryUoM += Number(line.Quantity || 0) * doc._sign;
           }
         }
         const rows = [...map.values()];
@@ -2070,24 +2164,27 @@ async function demoReply(message) {
           ccDimFields.forEach(f => { rec[f] = "(none)"; });
           if (params.groupBy.includes("ItemCode")) { rec.ItemCode = "(none)"; rec.ItemDescription = "(none)"; }
           if (params.groupBy.includes("WarehouseCode")) { rec.WarehouseCode = "(none)"; rec.WarehouseName = "(none)"; }
+          if (byItemGroup) rec.ItemGroup = "(none)";
           data = { value: [rec] };
         }
 
       } else {
         // ── Header-level: customer, salesperson, date period (no expand needed) ─
-        _logQ({ method: 'SL GET', endpoint: slEndpoint, filter: slFilter, tier: 'Tier 3 Header-Level' });
-        try {
-          const r = await getActiveSap().get(slEndpoint, {
-            $filter: slFilter,
-            $select: "DocEntry,DocDate,CardCode,CardName,DocTotal,SalesPersonCode",
-            $top: 500,
-          });
-          allDocs = Array.isArray(r.value) ? r.value : [];
-          _reqQueryLog[_reqQueryLog.length - 1].rows = allDocs.length;
-          console.log(`[SA-T3-H] header docs=${allDocs.length}`);
-        } catch(e3h) {
-          console.log(`[SA-T3-H] failed: ${e3h.message}`);
+        for (const { endpoint, sign } of slLegs) {
+          _logQ({ method: 'SL GET', endpoint, filter: slFilter, tier: 'Tier 3 Header-Level' });
+          try {
+            const docs = await slGetAll(endpoint, {
+              $filter: slFilter,
+              $select: "DocEntry,DocDate,CardCode,CardName,DocTotal,SalesPersonCode",
+            });
+            docs.forEach(d => { d._sign = sign; });
+            allDocs.push(...docs);
+            console.log(`[SA-T3-H] ${endpoint} header docs=${docs.length}`);
+          } catch(e3h) {
+            console.log(`[SA-T3-H] ${endpoint} failed: ${e3h.message}`);
+          }
         }
+        _reqQueryLog[_reqQueryLog.length - 1].rows = allDocs.length;
 
         const map = new Map();
         for (const doc of allDocs) {
@@ -2135,7 +2232,7 @@ async function demoReply(message) {
             map.set(key, e);
           }
           const e = map.get(key);
-          e.NetSalesAmountLC += Number(doc.DocTotal || 0);
+          e.NetSalesAmountLC += Number(doc.DocTotal || 0) * doc._sign;
         }
         const rows = [...map.values()];
         console.log(`[SA-T3-H] ${rows.length} groups from ${allDocs.length} docs`);
@@ -2458,8 +2555,10 @@ RESPONSE FORMAT — always follow this structure:
    customer") — if the user picks it, ask ONE clarifying question for that value.
 
 NUMBER FORMATTING:
-- Always use comma separators: 1,23,456
-- Currency always labeled (GBP / USD / EUR)
+- Always use US-style comma separators every 3 digits: 1,234,567.89 (NEVER Indian grouping like 12,34,567)
+- All money is in US Dollars — prefix with $ (e.g. $1,234,567.89). Never use ₹, INR, Rs, lakh (L) or crore (Cr)
+- Large figures in prose may be abbreviated K / M / B: $12.5K, $1.23M, $4.5B
+- A document in a foreign currency (DocCurrency ≠ local) may show its own currency code next to the amount
 - Percentages always 2 decimal places: 28.50%
 - Quantities as whole numbers with units
 
@@ -2814,10 +2913,36 @@ CONVENIENCE TOOL vs call_service_layer — WHEN TO USE EACH
                                        purchase-side docs, payments, specific statuses,
                                        any filter not covered by a convenience tool above
 
+═══════════════════════════════════════════════════════════
+FINANCE & CFO QUESTIONS — balance sheet, P&L, trial balance, EBITDA, ratios
+═══════════════════════════════════════════════════════════
+Financial statements come from the GENERAL LEDGER (journal lines rolled up by the chart of accounts),
+NOT from A/R or A/P invoice totals — invoices miss COGS postings, payroll, depreciation, provisions and JEs.
+${isConnected() ? `- Call query_hana_direct and say in the question that it must use JDT1 JOIN OACT (GL), the period, and which lines you need,
+  e.g. "P&L from JDT1/OACT for 2026-04-01..2026-09-30 by drawer with Revenue, COGS, Gross profit, Opex, EBITDA, Net profit, excluding closing entries TransType -3".` : `- P&L: query_sml_view viewName='ProfitAndLossQuery' (or KPIProfitAndLossQuery for headline KPIs) with a PostingDate range.
+- Balance sheet: query_sml_view viewName='BalanceSheetQuery' (or KPIBalanceSheetQuery) as at a date.
+- Cash flow: CashFlowStatementQuery / KPICashFlowStatementQuery · Budget vs actual: BudgetVSActualQuery · GL detail: GeneralLedgerAccountQuery / TransactionalJournalQuery.
+- Chart of accounts: call_service_layer /ChartOfAccounts ($select=Code,Name,AccountType,FatherAccountKey,AccountLevel,Balance) · journal entries: /JournalEntries (filter ReferenceDate).`}
+- Signs: assets & expenses = Debit − Credit; liabilities, equity & income = Credit − Debit. Balance sheet = drawers Assets/Liabilities/Equity; P&L = Revenue, Cost of sales, Expenses and below.
+- Definitions (state the formula you used):
+  Gross profit = Revenue − Cost of sales · GP% = GP ÷ Revenue
+  OPEX = operating expenses excl. depreciation/amortisation, interest and income tax
+  EBITDA = Revenue − COGS − OPEX (= PBT + interest + depreciation + amortisation) · EBIT = EBITDA − D&A
+  PBT = EBIT − finance cost ± non-operating items · PAT/Net profit = PBT − tax · Net margin = PAT ÷ Revenue
+  Working capital = current assets − current liabilities · Current ratio = CA ÷ CL · Quick ratio = (CA − inventory) ÷ CL
+  Debt/Equity = borrowings ÷ equity · Interest coverage = EBIT ÷ interest · ROE = PAT ÷ equity · ROA = PAT ÷ total assets
+  DSO = receivables ÷ revenue × days · DPO = payables ÷ COGS × days · DIO = inventory ÷ COGS × days · CCC = DSO + DIO − DPO
+- "This year"/"FY" in finance = the company's fiscal year as set in SAP posting periods (OFPR/OACP — usually Jan – Dec for a US company) unless the user says calendar year — state the dates.
+- Present a P&L as: Revenue → Cost of sales → Gross profit (GP%) → Opex → EBITDA (%) → D&A → EBIT → Finance cost → PBT → Tax → Net profit,
+  and a balance sheet as Assets (non-current, current) = Liabilities (non-current, current) + Equity (incl. current period profit), with a difference check.
+- Always compare with the previous period / same period last year when available, and give a short CFO-style insight
+  (margin movement, biggest cost changes, liquidity risk). If an item (e.g. depreciation) has no postings, say so — never invent it.
+
 O2C WORKFLOW:
 - create_sales_quotation → create_sales_order → create_delivery → confirm_delivery_pod → create_ar_invoice → apply_incoming_payment
 
 DECISION RULE:
+- Balance sheet / P&L / EBITDA / ratios / TB  → General Ledger, see FINANCE & CFO QUESTIONS above (never invoice totals)
 - Analytics / reporting question              → ${isConnected() ? "use query_hana_direct (sml.svc tools are unavailable right now)" : "use query_sml_view with the most relevant view"}
 - "open sales orders" / "open quotations"     → get_open_orders() / get_open_quotations()
 - Single specific item stock / detail         → call_service_layer /Items('{code}') or /Items?$filter=contains(ItemName,'...')
@@ -2958,6 +3083,10 @@ async function gptChatCompleteStream(body, onDelta) {
   }
   const message = { role: "assistant", content: content || null };
   const toolCalls = calls.filter(Boolean);
+  // Azure's stream carries no usage block, so meter it from an estimate.
+  const _c = currentAiContext();
+  recordAiUsage({ user: _c.user, model: body.model || "gpt-4o", provider: "azure-gpt", feature: _c.feature, prompt: _c.prompt,
+    inputTokens: estimateTokens(body.messages || []), outputTokens: Math.ceil((content.length + JSON.stringify(toolCalls).length) / 3.5), estimated: true });
   if (toolCalls.length) message.tool_calls = toolCalls;
   return { choices: [{ message, finish_reason: finish }] };
 }
@@ -3203,8 +3332,30 @@ app.use((req, _res, next) => {
     const activeConn = connRepo.getActive();
     if (activeConn) sessionSap = _getPoolClient(activeConn);
   }
-  _reqCtx.run({ sap: sessionSap }, next);
+  // token/path feed the AI credit meter (user resolved lazily, only when an AI call happens)
+  _reqCtx.run({ sap: sessionSap, token, path: req.path, req }, next);
 });
+
+// AI credits — meter every LLM call against the requesting user's credit.
+setAiContextResolver(() => {
+  const store = _reqCtx.getStore();
+  if (!store) return null;
+  if (store.user === undefined) store.user = store.token ? sessionRepo.verify(store.token) : null;
+  // One prompt record per request — read lazily so multipart routes (OCR
+  // uploads) have their body parsed by the time the first AI call happens.
+  if (!store.aiPrompt) {
+    const b = store.req?.body || {};
+    const text = [b.message, b.prompt, b.question, b.query, b.text, b.userMessage, b.input]
+      .find(v => typeof v === "string" && v.trim());
+    const file = store.req?.file?.originalname || store.req?.files?.[0]?.originalname;
+    store.aiPrompt = {
+      text: text ? text.trim() : (file ? `[file] ${file}` : `${store.req?.method || ""} ${store.path}`.trim()),
+      sessionId: typeof b.sessionId === "string" ? b.sessionId : "",
+    };
+  }
+  return { user: store.user, feature: store.path, prompt: store.aiPrompt };
+});
+installAiUsageMeter();
 
 // Never cache HTML so the browser always gets the latest version
 app.use((req, res, next) => {
@@ -3262,7 +3413,8 @@ app.post("/auth/login", (req, res) => {
   if (!user || !verifyPassword(password, user.password_hash))
     return res.status(401).json({ error: "Invalid username or password" });
   const token = sessionRepo.create(user.id);
-  res.json({ token, id: user.id, username: user.username, fullName: user.full_name, role: user.role });
+  const permissions = userPermRepo.getEffective(user.id, user.role);
+  res.json({ token, id: user.id, username: user.username, fullName: user.full_name, role: user.role, permissions, isSuperAdmin: user.role === 'superadmin' });
 });
 
 // POST /auth/logout
@@ -3925,7 +4077,19 @@ app.post("/api/chat", async (req, res) => {
     res.flushHeaders();
     res.write(`data: ${JSON.stringify({ type: "step", text: "Understanding your question…" })}\n\n`);
   }
+  const typedMessage = message; // before "2" → suggestion-text resolution below
   const sendReply = (payload) => {
+    // Some branches omit sessionId; always return it so the client's next
+    // message continues this same thread instead of starting a new one.
+    payload = { ...payload, sessionId: payload?.sessionId || sid };
+    // Every engine's reply leaves through here, so this is the one place
+    // that records the visible exchange into the thread's transcript
+    // (history popup). Never allowed to break the reply itself.
+    try {
+      if (typeof payload?.reply === "string" && payload.reply) {
+        chatSessionRepo.appendExchange(payload.sessionId || sid, callerUser?.user_id ?? null, typedMessage, payload.reply, engine || "");
+      }
+    } catch (e) { console.error("[chat-turns]", e.message); }
     if (isStreaming) { res.write(`data: ${JSON.stringify({ type: "result", ...payload })}\n\n`); res.end(); }
     else res.json(payload);
   };
@@ -3949,6 +4113,15 @@ app.post("/api/chat", async (req, res) => {
   // or drop the pending action entirely (on no, or on an unrelated reply —
   // never execute a stale write the user may have moved on from).
   const pendingWrite = !suggestionPick && _pendingWrites.get(sid);
+
+  // Prompt history (logged-in callers only). Skips numeric suggestion picks
+  // and yes/no answers to a pending write — those aren't prompts worth
+  // re-running. Never allowed to break the chat itself.
+  if (callerUser && !suggestionPick && !pendingWrite && isReusablePrompt(message)) {
+    try { promptRepo.upsert(callerUser.user_id, "history", message, { engine: engine || "" }); }
+    catch (e) { console.error("[prompt-history]", e.message); }
+  }
+
   if (pendingWrite) {
     _pendingWrites.delete(sid);
     const trimmed = message.trim();
@@ -4180,7 +4353,7 @@ app.post("/api/chat", async (req, res) => {
           const cfg = getActiveConfig();
           let companyContext = "";
           try { companyContext = buildSqlContext(); } catch {}
-          const currency = await getCompanyCurrency().catch(() => ({ code: "INR", symbol: "₹" }));
+          const currency = await getCompanyCurrency().catch(() => ({ code: "USD", symbol: "$" }));
           const baseOpts = {
             history: _analystHistory.get(sid) || [],
             executeSQL, scanTablesSchema, dbType: getActiveType(),
@@ -4542,7 +4715,38 @@ app.post("/api/reset", (req,res) => { chatSessionRepo.delete(req.body.sessionId)
 // with no filter at all. Both now scope strictly to req.user.user_id.
 app.get("/api/chat/sessions", requireAuth, (req, res) => {
   try {
-    res.json({ ok: true, sessions: chatSessionRepo.list(50, req.user.user_id) });
+    const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100) : "";
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 300);
+    res.json({ ok: true, sessions: chatSessionRepo.list(limit, req.user.user_id, q) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Just the prompts the user typed in a thread (no replies/data) — what the
+// history panel shows, so a prompt can be picked and reused.
+app.get("/api/chat/sessions/:id/prompts", requireAuth, (req, res) => {
+  try {
+    const prompts = chatSessionRepo.promptsForUser(req.params.id, req.user.user_id);
+    if (!prompts) return res.status(404).json({ ok: false, error: "Session not found" });
+    res.json({ ok: true, sessionId: req.params.id, prompts });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Rename a thread. Body: { title } — empty title falls back to the first prompt.
+app.patch("/api/chat/sessions/:id", requireAuth, (req, res) => {
+  try {
+    const ok = chatSessionRepo.rename(req.params.id, req.user.user_id, req.body?.title);
+    if (!ok) return res.status(404).json({ ok: false, error: "Session not found" });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Ownership-checked delete for the history popup (/api/reset has no auth
+// check, so it isn't used for deleting threads from history).
+app.delete("/api/chat/sessions/:id", requireAuth, (req, res) => {
+  try {
+    if (!chatSessionRepo.isOwnedBy(req.params.id, req.user.user_id)) return res.status(404).json({ ok: false, error: "Session not found" });
+    chatSessionRepo.delete(req.params.id);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -4554,13 +4758,57 @@ app.get("/api/chat/sessions/:id", requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── Saved prompts & prompt history ──────────────────────────────────────────
+// Per-user, stored in SQLite (promptRepo). History is recorded automatically
+// by /api/chat; saved prompts are bookmarked explicitly from the UI.
+const PROMPT_KINDS = new Set(["saved", "history"]);
+
+app.get("/api/prompts", requireAuth, (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    res.json({
+      ok: true,
+      saved:   promptRepo.list(req.user.user_id, "saved", limit),
+      history: promptRepo.list(req.user.user_id, "history", limit),
+    });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Body: { text, source? } — saves (bookmarks) a prompt. Idempotent.
+// Body: { items: [{text, source}] } — bulk import (one-time localStorage migration).
+app.post("/api/prompts/saved", requireAuth, (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 100) : [req.body || {}];
+    const saved = items.map(i => promptRepo.upsert(req.user.user_id, "saved", i.text, { source: i.source })).filter(Boolean);
+    if (!saved.length) return res.status(400).json({ ok: false, error: "text required" });
+    res.json({ ok: true, saved });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.delete("/api/prompts/:id", requireAuth, (req, res) => {
+  try {
+    const ok = promptRepo.delete(req.user.user_id, parseInt(req.params.id, 10));
+    if (!ok) return res.status(404).json({ ok: false, error: "Prompt not found" });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// DELETE /api/prompts?kind=history — clears all of the caller's history (or saved).
+app.delete("/api/prompts", requireAuth, (req, res) => {
+  try {
+    const kind = String(req.query.kind || "");
+    if (!PROMPT_KINDS.has(kind)) return res.status(400).json({ ok: false, error: "kind must be 'saved' or 'history'" });
+    res.json({ ok: true, removed: promptRepo.clear(req.user.user_id, kind) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ── Analytics AI summary ──────────────────────────────────────────────────────
 // ── Export a whole chat answer (KPIs + every table/chart + points) ───────────
 // Body: { title, kpis: [{label, value, unit, change_pct, yoy_pct, def}],
 //         tables: [{ name, rows, chartType }], points: [string] }
 // Sheets: "KPIs", "Points to note", then one sheet per table/chart
 // (charts get a native chart image via generateMultiTabExcelReport).
-function answerExportTabs({ kpis = [], tables = [], points = [] }, currencySymbol = "₹") {
+function answerExportTabs({ kpis = [], tables = [], points = [] }, currencySymbol = "$") {
   const tabs = [];
   const fmtPct = v => (typeof v === "number" ? `${v > 0 ? "+" : ""}${v.toFixed(1)}%` : "");
   if (kpis.length) tabs.push({ name: "KPIs", chartType: "none", rows: kpis.map(k => ({
@@ -4579,7 +4827,7 @@ function answerExportTabs({ kpis = [], tables = [], points = [] }, currencySymbo
 
 app.post("/api/export/answer-xlsx", requireAuth, async (req, res) => {
   try {
-    const currency = await getCompanyCurrency().catch(() => ({ symbol: "₹" }));
+    const currency = await getCompanyCurrency().catch(() => ({ symbol: "$" }));
     const tabs = answerExportTabs(req.body || {}, currency.symbol);
     if (!tabs.length) return res.status(400).json({ error: "Nothing to export in this answer." });
     const url = await generateMultiTabExcelReport(req.body.title || "chat-answer", tabs);
@@ -4601,7 +4849,7 @@ app.post("/api/export/answer-email", requireAuth, async (req, res) => {
     if (!host || !user) return res.status(400).json({ error: "Mail is not configured — set SMTP in Settings → Mail first." });
     const port = Number(cfg.smtp_port || process.env.MAIL_SMTP_PORT || 587);
     const attachments = [];
-    const currency = await getCompanyCurrency().catch(() => ({ symbol: "₹" }));
+    const currency = await getCompanyCurrency().catch(() => ({ symbol: "$" }));
     const tabs = answerExportTabs(req.body || {}, currency.symbol);
     if (tabs.length) {
       const url = await generateMultiTabExcelReport(req.body.title || "chat-answer", tabs);
@@ -4771,7 +5019,7 @@ app.delete("/api/db-connections/:id", requireAuth, async (req, res) => {
 });
 
 app.get("/api/db-connections/status", requireAuth, async (_req, res) => {
-  const currency = await getCompanyCurrency().catch(() => ({ code: "INR", symbol: "₹" }));
+  const currency = await getCompanyCurrency().catch(() => ({ code: "USD", symbol: "$" }));
   res.json({ connected: isConnected(), db_type: getActiveType(), currency, config: getActiveConfig() ? { host: getActiveConfig().host, database: getActiveConfig().database, db_type: getActiveConfig().db_type } : null });
 });
 
@@ -5867,6 +6115,7 @@ app.use('/api/workflow/po', createPoWorkflowAgentRouter({ requireAuth, getActive
 
 // ── Branding routes — extracted to controllers/branding.mjs ──
 app.use('/api/branding', createBrandingRouter({ requireAuth }));
+app.use('/api/ai-credits', createAiCreditsRouter({ requireAuth }));
 
 // ── Mail-PO→SO Agent routes — extracted to controllers/mail-po-agent.mjs ──
 app.use('/api/mail-po', createMailPoAgentRouter({ requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER }));
@@ -5889,6 +6138,11 @@ app.use('/api/pr-agent', createPurchaseRequestAgentRouter({
 // ── Standalone Purchase Order Agent routes ─────────────────────────────────
 app.use('/api/po-agent', createPurchaseOrderAgentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 
+// ── Inventory Workflow Agent (stock transfer request / transfer / goods issue / goods receipt) ──
+app.use('/api/inventory-agent', createInventoryAgentRouter({
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+}));
+
 // ── Standalone Sales Order Agent routes ────────────────────────────────────
 app.use('/api/sales-order-agent', createSalesOrderAgentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 
@@ -5910,16 +6164,16 @@ app.use('/api/grpo-apinv', createGRPOtoAPInvAgentRouter({
 // ── OCR Processing suite routes ─────────────────────────────────────────────
 const getActiveCompanyId = () => connRepo.getActive()?.company || 'default';
 app.use('/api/ocr-po-scan', createOcrPoScanAgentRouter({
-  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, cacheRepo, getActiveCompanyId,
 }));
 app.use('/api/ocr-expense', createOcrExpenseAgentRouter({
   requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, cacheRepo, getActiveCompanyId,
 }));
 app.use('/api/ocr-inward', createOcrInwardAgentRouter({
-  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, cacheRepo, getActiveCompanyId,
 }));
 app.use('/api/ocr-gatepass', createOcrGatePassAgentRouter({
-  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
 }));
 app.use('/api/ocr-document', createOcrDocumentAgentRouter({
   requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
@@ -5957,6 +6211,10 @@ app.use('/api', createDataSyncRouter({ requireAuth, getActiveSap }));
 
 // ── Financial Agent routes — real-time P&L / Cash Flow, direct HANA/MSSQL ────
 app.use('/api', createFinancialAgentRouter({ requireAuth }));
+
+// ── Financial Reports agents — Balance Sheet / P&L / Trial Balance on SAP's
+//    standard HANA calculation views (JDT1 fallback on MSSQL) ─────────────────
+app.use('/api/fin-reports', createFinancialReportsRouter({ requireAuth, USE_AI }));
 
 // ── AP Invoice to AP Credit Memo Agent routes ───────────────────────────────
 app.use('/api/apinv-apcm', createAPInvToAPCMAgentRouter({

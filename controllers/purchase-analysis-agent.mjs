@@ -75,24 +75,30 @@ async function callAI(aiDeps, messages, systemPrompt, maxTokens = 2048) {
   return '';
 }
 
-// ── HANA direct: query the view's plain-schema copy, bypassing the Service
-// Layer's /sml.svc/ proxy entirely — see sales-analysis-agent.mjs for the full
-// rationale (some of these calc views can be invalidated independently of the
-// Service Layer, so this only helps for the ones actually deployed as a
-// working plain view in the company schema; falls back to Service Layer on
-// ANY failure, so unmirrored views keep working exactly as before).
-async function fetchViewHana(dbDeps, viewKey, fromDate, toDate) {
-  const { getActiveConfig, getActiveType, tableRef, executeSQL } = dbDeps;
+// ── HANA direct: query the semantic-layer calculation view straight over SQL,
+// bypassing the Service Layer's /sml.svc/ OData proxy entirely. These views
+// are NOT plain schema objects — they only exist under the "_SYS_BIC" catalog
+// package as "{namespace}.ap.case/{ViewName}" (confirmed live on STTL_SD via
+// direct SQL: e.g. "_SYS_BIC"."sap.sttlsd.ap.case/PurchaseAnalysisQuery"
+// returns 165k+ rows). Going through Service Layer's /sml.svc/ OData proxy
+// instead caps out at its configured page size (as low as 10-20 rows) because
+// SapDirectClient sends no Prefer:odata.maxpagesize header, which is the
+// actual cause of "only 10 or 20 rows" — querying the view directly sidesteps
+// that entirely. Falls back to Service Layer on any failure (e.g. namespace
+// resolution fails, HANA connection down) so it degrades gracefully.
+async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate) {
+  const { executeSQL } = dbDeps;
   const cfg = VIEWS[viewKey];
-  const c   = getActiveConfig();
-  const isHana = getActiveType() === 'hana';
+  const ns  = await getNamespace();
+  if (!ns) throw new Error('HANA namespace unavailable for direct view query');
   const filters = [];
   if (cfg.dateField && fromDate) filters.push(`"${cfg.dateField}" >= '${fromDate}'`);
   if (cfg.dateField && toDate)   filters.push(`"${cfg.dateField}" <= '${toDate}'`);
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-  const sql = isHana
-    ? `SELECT * FROM ${tableRef(cfg.path, c)} ${where} LIMIT 10000`
-    : `SELECT TOP 10000 * FROM ${tableRef(cfg.path, c)} ${where}`;
+  const viewRef = `"_SYS_BIC"."${ns}.ap.case/${cfg.path}"`;
+  // No row cap other than a generous safety ceiling — this is the whole point
+  // of querying the view directly instead of through Service Layer's paging.
+  const sql = `SELECT * FROM ${viewRef} ${where} LIMIT 500000`;
   return executeSQL(sql);
 }
 
@@ -100,19 +106,14 @@ async function fetchViewHana(dbDeps, viewKey, fromDate, toDate) {
 async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, extraFilter) {
   if (dbDeps?.isConnected?.()) {
     try {
-      return await fetchViewHana(dbDeps, viewKey, fromDate, toDate);
+      return await fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate);
     } catch (e) {
       console.warn(`[PurchaseAnalysis] HANA direct view "${viewKey}" failed, falling back to Service Layer:`, e.message);
     }
   }
 
-  const ns = await getNamespace();
-  if (!ns) throw new Error('HANA namespace unavailable');
-
   const cfg = VIEWS[viewKey];
   if (!cfg) throw new Error(`Unknown view: ${viewKey}`);
-
-  const basePath = `/sml.svc/${ns}.ap.case/${cfg.path}`;
 
   const filters = [];
   if (cfg.dateField && fromDate) filters.push(`${cfg.dateField} ge '${fromDate}'`);
@@ -122,6 +123,11 @@ async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, e
   const params = {};
   if (filters.length) params.$filter = filters.join(' and ');
 
+  // These views are exposed as bare (unprefixed) EntitySets on this HANA
+  // deployment — namespace-prefixed access (sap.xxx.ap.case/...) returns
+  // "View ... not exist or not exposed." here. Try bare first; if that fails,
+  // fall back to the namespace-prefixed path used by other deployments.
+  let basePath = `/sml.svc/${cfg.path}`;
   const PAGE = 2000;
   let skip = 0;
   const all = [];
@@ -132,11 +138,28 @@ async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, e
       const r = await sap.get(basePath, { ...params, $top: PAGE, $skip: skip });
       batch = Array.isArray(r.value) ? r.value : [];
     } catch (e) {
-      console.warn(`[PurchaseAnalysis] fetch ${viewKey} skip=${skip}:`, e.message);
-      break;
+      if (skip === 0) {
+        const ns = await getNamespace();
+        if (ns) {
+          try {
+            basePath = `/sml.svc/${ns}.ap.case/${cfg.path}`;
+            const r = await sap.get(basePath, { ...params, $top: PAGE, $skip: skip });
+            batch = Array.isArray(r.value) ? r.value : [];
+          } catch (e2) {
+            console.warn(`[PurchaseAnalysis] fetch ${viewKey} skip=${skip}:`, e2.message);
+            break;
+          }
+        } else {
+          console.warn(`[PurchaseAnalysis] fetch ${viewKey} skip=${skip}:`, e.message);
+          break;
+        }
+      } else {
+        console.warn(`[PurchaseAnalysis] fetch ${viewKey} skip=${skip}:`, e.message);
+        break;
+      }
     }
     all.push(...batch);
-    if (batch.length < PAGE || all.length >= 10000) break;
+    if (batch.length < PAGE || all.length >= 500000) break;
     skip += PAGE;
   }
 

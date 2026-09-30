@@ -99,21 +99,41 @@ async function callAI(aiDeps, messages, system, maxTokens = 700) {
 }
 
 // ── SAP helpers ────────────────────────────────────────────────────────────────
-async function searchItems(sap, query) {
+// SAP Service Layer string filters are case-sensitive and tolower() is not supported,
+// so search the common casings: as typed, UPPER, lower, Title
+function caseVariants(q) {
+  const title = q.charAt(0).toUpperCase() + q.slice(1).toLowerCase();
+  return [...new Set([q, q.toUpperCase(), q.toLowerCase(), title])];
+}
+
+async function searchItems(sap, query, top = 15) {
   const q = (query || '').trim();
-  const esc = q.replace(/'/g, "''");
   const baseFilter = `ItemType eq 'itItems' and Frozen eq 'tNO'`;
-  const filter = esc
-    ? `(ItemCode eq '${esc}' or contains(ItemName,'${esc}') or contains(ItemCode,'${esc}')) and ${baseFilter}`
-    : baseFilter;
-  try {
+  const anyOf = fn => `(${caseVariants(q).map(v => fn(v.replace(/'/g, "''"))).join(' or ')}) and ${baseFilter}`;
+  const fetchItems = async filter => {
     const r = await sap.get('/Items', {
       $select: 'ItemCode,ItemName,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,MinInventory,PurchaseUnit,SalesUnit',
       $filter: filter,
-      $top: 15,
+      $top: top,
       $orderby: 'ItemName asc',
     });
     return Array.isArray(r.value) ? r.value : [];
+  };
+  try {
+    if (!q) return await fetchItems(baseFilter);
+    // Code/name starting with the text first (so "B" finds "Batch01"), then "contains" matches.
+    // One query per field: Service Layer drops rows when ItemCode and ItemName conditions are OR-ed together.
+    const lists = await Promise.all([
+      fetchItems(anyOf(e => `ItemCode eq '${e}'`)),
+      fetchItems(anyOf(e => `startswith(ItemCode,'${e}')`)),
+      fetchItems(anyOf(e => `startswith(ItemName,'${e}')`)),
+      fetchItems(anyOf(e => `contains(ItemCode,'${e}')`)),
+      fetchItems(anyOf(e => `contains(ItemName,'${e}')`)),
+    ]);
+    const seen = new Set();
+    return lists.flat()
+      .filter(it => !seen.has(it.ItemCode) && seen.add(it.ItemCode))
+      .slice(0, top);
   } catch (e) {
     console.error('[PR-Agent] item search error:', e.message);
     return [];
@@ -129,6 +149,58 @@ async function getItemDetails(sap, itemCode) {
   } catch {
     return null;
   }
+}
+
+// Case-insensitive lookup by item code (e.g. "BATCH01" finds "Batch01")
+async function findItemByCode(sap, itemCode) {
+  const exact = await getItemDetails(sap, itemCode);
+  if (exact?.ItemCode) return exact;
+  const hit = (await searchItems(sap, itemCode))
+    .find(r => r.ItemCode.toUpperCase() === itemCode.toUpperCase());
+  return hit ? (await getItemDetails(sap, hit.ItemCode) || hit) : null;
+}
+
+// Create a new item in SAP B1 item master (used by the "New Item" flow)
+async function createItemMaster(sap, line) {
+  return sap.post('/Items', {
+    ItemCode:      line.itemCode,
+    ItemName:      line.itemName || line.itemCode,
+    ItemType:      'itItems',
+    InventoryItem: 'tYES',
+    SalesItem:     'tYES',
+    PurchaseItem:  'tYES',
+    ...(line.warehouseCode ? { DefaultWarehouse: line.warehouseCode } : {}),
+  });
+}
+
+// Active warehouses for the warehouse picker; the item's default warehouse goes first
+async function getWarehouses(sap, defaultCode = '') {
+  try {
+    const r = await sap.get('/Warehouses', {
+      $select: 'WarehouseCode,WarehouseName',
+      $filter: "Inactive eq 'tNO'",
+      $orderby: 'WarehouseCode asc',
+      $top: 200,
+    });
+    const list = (Array.isArray(r.value) ? r.value : [])
+      .map(w => ({ code: w.WarehouseCode, name: w.WarehouseName || '' }));
+    const d = list.findIndex(w => w.code.toUpperCase() === String(defaultCode).toUpperCase());
+    if (d > 0) list.unshift(...list.splice(d, 1));
+    if (d >= 0) list[0] = { ...list[0], isDefault: true };
+    return list;
+  } catch (e) {
+    console.error('[PR-Agent] warehouse list error:', e.message);
+    return [];
+  }
+}
+
+// Resolve user input ("01", "01 — Main", chip text) to a warehouse code from the list
+function resolveWarehouse(msg, list) {
+  const code = (msg.includes(' — ') ? msg.split(' — ')[0] : msg).trim();
+  if (!list.length) return code.toUpperCase() || null;   // list unavailable — accept as typed
+  const hit = list.find(w => w.code.toUpperCase() === code.toUpperCase())
+           || list.find(w => w.name.toUpperCase() === code.toUpperCase());
+  return hit ? hit.code : undefined;                       // undefined = not a valid warehouse
 }
 
 async function searchVendors(sap, query) {
@@ -248,6 +320,7 @@ export function createPurchaseRequestAgentRouter(deps) {
       let meta = {};
       let itemList    = null;   // combo list for item selection
       let vendorComboList = null; // combo list for vendor selection
+      let warehouseList = null;   // combo list for warehouse selection
 
       // ── INIT ──────────────────────────────────────────────────────────────────
       if (session.step === 'INIT' || !msg) {
@@ -260,7 +333,7 @@ export function createPurchaseRequestAgentRouter(deps) {
       else if (session.step === 'ITEM_TYPE') {
         if (/\bnew\b|create|fresh|not.*(in|exist)/i.test(msgL)) {
           session.step = 'NEW_ITEM_CODE';
-          reply = `Got it — you want to request a **new item**.\n\n> ⚠️ The item code you enter **must already exist** in the SAP B1 item master. If it doesn't, the PR will fail when posting.\n\nPlease enter the **Item Code**:`;
+          reply = `Got it — you want to request a **new item**.\n\n> ℹ️ If this item code is not yet in the SAP B1 item master, it will be **created automatically** when the PR is posted.\n\nPlease enter the **Item Code**:`;
         } else {
           session.step = 'ITEM_SEARCH';
           // Pre-fetch top items so user can click directly without typing
@@ -349,7 +422,26 @@ export function createPurchaseRequestAgentRouter(deps) {
           r.ItemCode.toLowerCase() === msgL || r.ItemName.toLowerCase() === msgL);
         if (!selected && results.length === 1) selected = results[0];
 
-        if (!selected) {
+        // Free text that isn't in the current list → run a fresh SAP search
+        if (!selected && !numM && !msg.includes(' — ')) {
+          const fresh = await searchItems(sap, msg);
+          const exact = fresh.find(r => r.ItemCode.toUpperCase() === msg.trim().toUpperCase());
+          if (exact || fresh.length === 1) {
+            selected = exact || fresh[0];
+            results.splice(0, results.length, ...fresh);
+          } else if (fresh.length > 1) {
+            session.currentItem = { searchResults: fresh };
+            reply = `Found **${fresh.length}** item(s) matching "**${msg}**" — select one:`;
+            itemList = fresh.map(it => ({
+              code: it.ItemCode, name: it.ItemName,
+              onStock: Number(it.QuantityOnStock || 0),
+              minStock: Number(it.MinInventory || 0),
+            }));
+          }
+        }
+
+        if (itemList) { /* fresh search results already shown */ }
+        else if (!selected) {
           reply = `Could not find that item — please select from the list:`;
           itemList = results.map(it => ({
             code: it.ItemCode, name: it.ItemName,
@@ -385,14 +477,21 @@ export function createPurchaseRequestAgentRouter(deps) {
           session.currentItem.unitPrice = Number(it.LastPurchasePrice || 0);
           session.step = 'WAREHOUSE';
           const defWhs = it.DefaultWarehouse || '';
-          reply = `**${qty} ${session.currentItem.unit}** noted.\n\nWhich **warehouse** should this be requested for?${defWhs ? `\n\n_(Default warehouse for this item: **${defWhs}**)_` : ''}`;
+          session._warehouses = await getWarehouses(sap, defWhs);
+          warehouseList = session._warehouses;
+          reply = `**${qty} ${session.currentItem.unit}** noted.\n\n**Select the warehouse** this should be requested for, or choose **Skip**:${defWhs ? `\n\n_(Default warehouse for this item: **${defWhs}**)_` : ''}`;
           quickReplies = defWhs ? [defWhs, 'Skip'] : ['Skip'];
         }
       }
 
       // ── WAREHOUSE ─────────────────────────────────────────────────────────────
+      else if (session.step === 'WAREHOUSE' && !/skip|none|n\/a/i.test(msgL)
+               && resolveWarehouse(msg, session._warehouses || []) === undefined) {
+        reply = `Warehouse **${msg}** was not found — please select one from the list:`;
+        warehouseList = session._warehouses;
+      }
       else if (session.step === 'WAREHOUSE') {
-        const whs = /skip|none|n\/a/i.test(msgL) ? null : msg.trim().toUpperCase() || null;
+        const whs = /skip|none|n\/a/i.test(msgL) ? null : resolveWarehouse(msg, session._warehouses || []);
         session.currentItem.warehouseCode = whs;
 
         // Commit current item to prLines
@@ -440,9 +539,17 @@ export function createPurchaseRequestAgentRouter(deps) {
         const code = msg.trim().toUpperCase();
         if (!code) { reply = 'Please enter the item code:'; }
         else {
-          session.currentItem = { isNew: true, itemCode: code };
-          session.step = 'NEW_ITEM_NAME';
-          reply = `Item code: **${code}**\n\nPlease enter the **item name / description**:`;
+          const existing = await findItemByCode(sap, code);
+          if (existing?.ItemCode) {
+            // Already in item master — treat as existing, skip name entry
+            session.currentItem = { isNew: false, itemCode: existing.ItemCode, itemName: existing.ItemName };
+            session.step = 'NEW_ITEM_QTY';
+            reply = `Item **${existing.ItemCode}** — ${existing.ItemName} already exists in SAP, so it will be used as is.\n\nHow many units do you want to request?`;
+          } else {
+            session.currentItem = { isNew: true, itemCode: code };
+            session.step = 'NEW_ITEM_NAME';
+            reply = `Item code: **${code}** _(new — will be created in SAP on posting)_\n\nPlease enter the **item name / description**:`;
+          }
         }
       }
 
@@ -468,14 +575,21 @@ export function createPurchaseRequestAgentRouter(deps) {
           session.currentItem.unit = 'EA';
           session.currentItem.unitPrice = 0;
           session.step = 'NEW_ITEM_WAREHOUSE';
-          reply = `**${qty} units** noted.\n\nWhich **warehouse** should this be requested for? (type a warehouse code or **skip**):`;
+          session._warehouses = await getWarehouses(sap);
+          warehouseList = session._warehouses;
+          reply = `**${qty} units** noted.\n\n**Select the warehouse** this should be requested for, or choose **Skip**:`;
           quickReplies = ['Skip'];
         }
       }
 
       // ── NEW_ITEM_WAREHOUSE ────────────────────────────────────────────────────
+      else if (session.step === 'NEW_ITEM_WAREHOUSE' && !/skip|none/i.test(msgL)
+               && resolveWarehouse(msg, session._warehouses || []) === undefined) {
+        reply = `Warehouse **${msg}** was not found — please select one from the list:`;
+        warehouseList = session._warehouses;
+      }
       else if (session.step === 'NEW_ITEM_WAREHOUSE') {
-        const whs = /skip|none/i.test(msgL) ? null : msg.trim().toUpperCase() || null;
+        const whs = /skip|none/i.test(msgL) ? null : resolveWarehouse(msg, session._warehouses || []);
 
         session.prLines.push({
           itemCode:      session.currentItem.itemCode,
@@ -484,7 +598,7 @@ export function createPurchaseRequestAgentRouter(deps) {
           unit:          'EA',
           unitPrice:     0,
           warehouseCode: whs || '',
-          isNew:         true,
+          isNew:         session.currentItem.isNew !== false,
         });
         session.currentItem = null;
 
@@ -556,13 +670,14 @@ export function createPurchaseRequestAgentRouter(deps) {
       }
 
       // ── DUE_DATE ──────────────────────────────────────────────────────────────
+      else if (session.step === 'DUE_DATE' && !/skip|today|now/i.test(msgL)
+               && (!parseDate(msg.trim()) || isNaN(Date.parse(parseDate(msg.trim()))) || parseDate(msg.trim()) < today())) {
+        // Unreadable or past date — ask again instead of silently using today
+        reply = `**${msg}** is not a valid future date. Please pick a date from the calendar or type it as YYYY-MM-DD / DD-MM-YYYY:`;
+        quickReplies = [datePlusDays(7), datePlusDays(14), 'Skip (today)'];
+      }
       else if (session.step === 'DUE_DATE') {
-        if (/skip|today|now/i.test(msgL)) {
-          session.dueDate = today();
-        } else {
-          const parsed = parseDate(msg.trim());
-          session.dueDate = parsed || today();
-        }
+        session.dueDate = /skip|today|now/i.test(msgL) ? today() : parseDate(msg.trim());
         session.step = 'COMMENTS';
         reply = `Due date set to **${session.dueDate}**.\n\nAny **comments or notes** for this purchase request?\n_(type your notes or "skip")_`;
         quickReplies = ['Skip', 'Urgent — please expedite', 'Standard procurement process'];
@@ -583,6 +698,23 @@ export function createPurchaseRequestAgentRouter(deps) {
         if (/yes|post|confirm|submit|✅/i.test(msgL) && !/no|cancel/i.test(msgL)) {
           session.step = 'POSTING';
           try {
+            // Create any new items in the item master first, otherwise SAP rejects the PR lines
+            const created = [];
+            for (const l of session.prLines.filter(x => x.isNew && !x._created)) {
+              const exists = await findItemByCode(sap, l.itemCode);
+              if (exists?.ItemCode) {
+                l.itemCode = exists.ItemCode; // use SAP's exact casing
+              } else {
+                try {
+                  await createItemMaster(sap, l);
+                  created.push(l.itemCode);
+                } catch (e) {
+                  throw new Error(`Could not create new item ${l.itemCode} in item master: ${e.message}`);
+                }
+              }
+              l._created = true;
+            }
+
             const prPayload = {
               DocDate:      sapDate(today()),
               DocDueDate:   sapDate(session.dueDate || today()),
@@ -609,6 +741,7 @@ export function createPurchaseRequestAgentRouter(deps) {
               `| **Required By** | ${session.dueDate || today()} |\n` +
               `| **Vendor** | ${session.vendor ? `${session.vendor.cardCode} — ${session.vendor.cardName}` : '_(Open)_'} |\n` +
               `| **Lines** | ${session.prLines.length} |\n\n` +
+              (created.length ? `🆕 New item(s) created in item master: **${created.join(', ')}**\n\n` : '') +
               `[🖨️ Print Requisition](/api/pr-agent/print/${result.DocEntry}){:target="_blank"}\n\n` +
               `Would you like to create **another purchase request**?`;
             quickReplies = ['Yes, New PR', 'No, Done'];
@@ -684,12 +817,25 @@ export function createPurchaseRequestAgentRouter(deps) {
         meta,
         itemList,
         vendorList: vendorComboList,
+        warehouseList,
       });
 
     } catch (e) {
       console.error('[PR-Agent] chat error:', e);
       res.status(500).json({ ok: false, error: e.message });
     }
+  });
+
+  // GET /items?q= — live item search for the item combo (full item master) ────────
+  router.get('/items', requireAuth, async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json({ ok: true, items: [] });
+    const results = await searchItems(getActiveSap(), q, 50);
+    res.json({ ok: true, items: results.map(it => ({
+      code: it.ItemCode, name: it.ItemName,
+      onStock: Number(it.QuantityOnStock || 0),
+      minStock: Number(it.MinInventory || 0),
+    })) });
   });
 
   // POST /reset ─────────────────────────────────────────────────────────────────

@@ -41,6 +41,13 @@ const USE_AI = !!(
 // Ordered by specificity â€” more specific patterns first to avoid false matches.
 const INTENT_PATTERNS = [
 
+  // Financial statements / CFO terms — first, so "gross profit", "margin" or
+  // "cash flow" inside a P&L / balance-sheet question go to the GL, not sales.
+  {
+    intent: 'finance',
+    re: /\b(balance.?sheet|p\s?&\s?l|pnl|profit.?(and|&).?loss|income.?statement|trial.?balance|general.?ledger|chart.?of.?accounts?|ebitda|ebit|pbt|pat|net.?profit|net.?income|operating.?profit|opex|operating.?expense|cogs|cost.?of.?(goods|sales)|retained.?earnings|net.?worth|working.?capital|current.?ratio|quick.?ratio|debt.?(to|\/).?equity|interest.?coverage|roe|roa|roce|dso|dpo|dio|cash.?conversion|financial.?(statement|ratio|position)s?|budget.?vs|vs.?budget|expense.?(head|analysis|breakdown))\b/i,
+  },
+
   // â”€â”€ Service (check before sales so "service invoice" doesn't go to sales) â”€â”€
   {
     intent: 'service',
@@ -228,8 +235,8 @@ Negative stock: OITW.OnHand < 0`,
   finance: `
 PRIORITY TABLES FOR THIS QUERY:
   OJDT  â€” Journal Entry header    (TransId,TransType,RefDate,DueDate,Memo,Ref1,Ref2,Ref3,CreatedBy,UserSign,BaseRef,StornoDate,TransTypeName,Series)
-  JDT1  â€” Journal Entry lines     (TransId,Line_ID,Account,ShortName,Debit,Credit,SYSDebit,SYSCredit,FCDebit,FCCredit,RefDate,DueDate,LineMemo,ContraAct,OcrCode,OcrCode2,OcrCode3,OcrCode4,OcrCode5,FCCurrency,BalDueDeb,BalDueCred)
-  OACT  â€” Chart of Accounts       (AcctCode,AcctName,GroupMask,ActType,Blocked,CurrTotal,LocTotal,FormatCode,Finanse,ExternalCode,CurrencyOnly,AcctCurrency)
+  JDT1  â€” Journal Entry lines     (TransId,Line_ID,Account,ShortName,Debit,Credit,SYSDeb,SYSCred,FCDebit,FCCredit,RefDate,DueDate,TaxDate,TransType,BaseRef,LineMemo,ContraAct,ProfitCode,OcrCode2,OcrCode3,OcrCode4,OcrCode5,Project,BPLId,FCCurrency,BalDueDeb,BalDueCred)
+  OACT  â€” Chart of Accounts       (AcctCode,AcctName,FormatCode,GroupMask,Levels,FatherNum,Postable,ActType,Finanse,LocManTran,CurrTotal,ActCurr,Frozen)
   ORCT  â€” Incoming Payments       (DocEntry,DocNum,CardCode,CardName,DocDate,DocTotal,TrsfrRef,TransId,JrnlMemo,PaymentSum)
   RCT2  â€” Incoming Payment Lines  (DocNum,InvType,DocEntry,SumApplied,AppliedFC,Currency,DiscountSum,WTAmnt)
   OVPM  â€” Outgoing Payments       (DocEntry,DocNum,CardCode,CardName,DocDate,DocTotal,TrsfrRef,TransId,JrnlMemo)
@@ -237,10 +244,21 @@ PRIORITY TABLES FOR THIS QUERY:
   ODPS  â€” Deposits                (AbsEntry,DepDate,BankCode,AcctNum,DepTotal,ReciptSum,CheckSum,TransfSum,JrnlMemo)
   OVTG  â€” Tax Groups              (Code,Name,Rate,EUVat,VatDueDate,Category,Inactive)
   ORTT  â€” Exchange Rates          (Currency,RateDate,Rate)
-  OFPR  â€” Fiscal Periods          (AbsEntry,F_Year,PeriodCode,PeriodName,StartDate,EndDate,Active,LockedAU)
-  OBST  â€” Budget Scenarios        (AbsId,Name,Description,Active)
+  OFPR  â€” Fiscal Periods          (AbsEntry,Code,Name,F_RefDate,T_RefDate,Category=fiscal year,PeriodStat)
+  OBGS  — Budget Scenarios        (AbsId,Name,FinancYear)
+  OBGT  — Budget per account (AcctCode,Instance→OBGS.AbsId,FinancYear,DebLTotal,CredLTotal)
+  BGT1  — Budget per month   (AcctCode,Instance,Line_ID=month 0-11 of FY,DebLTotal,CredLTotal)
+  OPRC  — Cost centres       (PrcCode,PrcName,DimCode) — JDT1.ProfitCode=dim1, OcrCode2..5=dims 2-5
   OCSH  â€” Cash Flow Line          (TransId,ActType,Descript,Amount,Currency,Date1)
-Key: JDT1.OcrCode=CostCentreDim1 | TransType 13=AR Invoice 18=AP Invoice 24=IncomingPay 46=OutgoingPay 30=Journal
+TransType: -2=Opening balance -3=Period-end closing 13=AR Invoice 14=AR Credit Memo 15=Delivery 18=AP Invoice 19=AP Credit Memo 20=GRPO 24=Incoming Payment 25=Deposit 30=Journal Entry 46=Outgoing Payment 59=Goods Receipt 60=Goods Issue 67=Inv Transfer 162=Inv Revaluation 202=Production
+GENERAL-LEDGER RULES (balance sheet, P&L, trial balance, EBITDA, gross profit from GL, expenses, ratios):
+  - Statements come from JDT1 JOIN OACT ON OACT.AcctCode = JDT1.Account — NOT from OINV/OPCH. Period filter = JDT1.RefDate.
+  - OACT.GroupMask = drawer. Typical: 1 Assets, 2 Liabilities, 3 Capital/Equity, 4 Revenue, 5 Cost of Sales, 6 Operating Expenses, 7 Non-operating/Financing, 8 Other/Tax. Balance sheet = 1-3, P&L = 4+.
+  - Signs: assets & expenses = SUM(Debit-Credit); liabilities, equity, revenue = SUM(Credit-Debit).
+  - P&L for a period: exclude TransType = -3 (closing entries). Balance sheet as at date: all lines with RefDate <= date, plus current profit = SUM(Credit-Debit) of drawers 4+ up to that date.
+  - Gross profit = Revenue(4) - Cost of sales(5). EBITDA = Revenue - COGS - Opex excluding depreciation/amortisation, interest and tax accounts (find them with LOWER(AcctName) LIKE '%depreci%' / '%interest%' / '%tax%').
+  - Group accounts under their parent title: LEFT JOIN OACT P ON P.AcctCode = OACT.FatherNum. Never use OACT.CurrTotal for a period or as-at date.
+  - Compute subtotals, margins % and ratios in the SELECT (SUM(CASE WHEN GroupMask = 4 THEN Credit-Debit ELSE 0 END) AS Revenue, ...).
 IncomingPayment joins: ORCT.DocEntry â†’ RCT2.DocNum â†’ RCT2.DocEntry=OINV.DocEntry`,
 
   goods_movement: `

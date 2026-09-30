@@ -10,6 +10,7 @@
  * the chat reply — the frontend just injects it, no separate combo-list JS.
  */
 import { Router } from 'express';
+import { itemPriceRoute } from '../lib/item-price.mjs';
 import db, { connRepo, cacheRepo } from '../db.mjs';
 
 const _sessions = new Map();
@@ -162,13 +163,14 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
     <div style="display:grid;grid-template-columns:80px 110px 70px 1fr 1fr;gap:8px;margin-bottom:10px">
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Qty *</div>
-        <input type="number" id="soa-qty-${lineIdx}" value="1" min="0.001" step="0.001"
+        <input type="number" id="soa-qty-${lineIdx}" value="1" min="0.001" step="0.001" onchange="soaComboLoadPrice(${lineIdx})"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
       </div>
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Unit Price</div>
-        <input type="number" id="soa-price-${lineIdx}" placeholder="auto" min="0" step="0.01"
+        <input type="number" id="soa-price-${lineIdx}" placeholder="auto" min="0" step="0.01" oninput="this.dataset.manual='1'"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
+        <div id="soa-price-note-${lineIdx}" style="font-size:10.5px;color:#6b7280;margin-top:2px;min-height:13px"></div>
       </div>
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Disc%</div>
@@ -398,10 +400,10 @@ export function createSalesOrderAgentRouter(deps) {
               reply = `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:10px;padding:16px;margin:4px 0">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
                   <div style="font-size:15px;font-weight:700;color:#1d4ed8">✅ Sales Order Created Successfully</div>
-                  <button onclick="window.open('${printUrl}','_blank')"
-                    style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">
+                  <a href="${printUrl}" target="_blank"
+                    style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;text-decoration:none">
                     🖨️ Print
-                  </button>
+                  </a>
                 </div>
                 <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
                   <tbody>
@@ -615,6 +617,9 @@ export function createSalesOrderAgentRouter(deps) {
   });
 
   // ── POST /reset ────────────────────────────────────────────────────────────
+  // ── GET /item-price — customer price for the item picked in the Add Line combo ─
+  router.get('/item-price', requireAuth, itemPriceRoute(getActiveSap, sid => _sessions.get(sid)?.selectedCustomer?.cardCode));
+
   router.post('/reset', requireAuth, (req, res) => {
     const { sessionId } = req.body || {};
     if (sessionId) _sessions.delete(sessionId);

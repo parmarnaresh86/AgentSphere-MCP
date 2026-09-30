@@ -94,8 +94,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .fg.w-date input{width:130px}
 .fg.w-bucket select{width:110px}
 .fg.w-vendor input{width:170px}
-.fg.w-dim select{width:150px}
-.fg.w-branch select{width:130px}
 .fg.w-doctype select{width:130px}
 .fg.w-bucket-size select{width:100px}
 .analyze-btn{
@@ -122,15 +120,34 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 /* ── Main area ─────────────────────────────────────────────────────────────── */
 .main-area{display:flex;flex:1;min-height:0;overflow:hidden}
 
-/* ── Chat panel ────────────────────────────────────────────────────────────── */
-.chat-panel{
-  display:flex;flex-direction:column;width:380px;flex-shrink:0;
-  border-right:1px solid var(--border);background:var(--white);
+/* ── Chat popup ────────────────────────────────────────────────────────────── */
+.chat-fab{
+  position:fixed;bottom:24px;right:24px;z-index:200;
+  width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+  background:linear-gradient(135deg,var(--orange),#B85A0A);
+  box-shadow:0 4px 16px rgba(233,115,12,.45);
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .15s,box-shadow .15s;
 }
+.chat-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(233,115,12,.55)}
+.chat-panel{
+  display:none;flex-direction:column;
+  position:fixed;bottom:88px;right:24px;z-index:199;
+  width:380px;height:560px;max-height:calc(100vh - 132px);
+  background:var(--white);border-radius:14px;
+  box-shadow:0 8px 40px rgba(0,0,0,.22);overflow:hidden;
+  animation:chatPopIn .18s ease;
+}
+@keyframes chatPopIn{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 .chat-topbar{
   background:var(--white);border-bottom:1px solid var(--border);
   padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;
 }
+.chat-close-btn{
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:20px;line-height:1;padding:0 2px;flex-shrink:0;
+}
+.chat-close-btn:hover{color:var(--text)}
 .chat-topbar-avatar{
   width:30px;height:30px;border-radius:50%;background:var(--orange);
   display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;flex-shrink:0;
@@ -257,23 +274,10 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .chart-tab.active{background:var(--orange);color:#fff;border-color:var(--orange)}
 .chart-wrap{position:relative;height:200px}
 
-/* Dimension breakdown */
-.dim-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:4px}
-.dim-card{
-  background:var(--bg);border:1px solid var(--border);border-radius:var(--r);
-  padding:8px 10px;cursor:pointer;transition:border-color .15s;
-}
-.dim-card:hover{border-color:var(--orange)}
-.dim-card.selected{border-color:var(--orange);background:#FFF8F0}
-.dim-name{font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:2px}
-.dim-amount{font-size:13px;font-weight:700;color:var(--orange)}
-.dim-overdue{font-size:10.5px;color:var(--red)}
-.dim-vendors{font-size:10.5px;color:var(--muted)}
-
 /* Vendor table */
 .table-card{
   background:var(--white);border:1px solid var(--border);border-radius:6px;
-  box-shadow:var(--shadow);overflow:hidden;
+  box-shadow:var(--shadow);overflow:hidden;flex-shrink:0;
 }
 .table-header{
   display:flex;align-items:center;justify-content:space-between;
@@ -309,6 +313,7 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 #vendor-table th.sort-asc .sort-icon::after{content:'▲';opacity:1}
 #vendor-table th.sort-desc .sort-icon::after{content:'▼';opacity:1}
 #vendor-table td{padding:6px 10px;border-bottom:1px solid #F0F0F0;white-space:nowrap}
+#vendor-table tbody tr{cursor:pointer}
 #vendor-table tr:hover td{background:var(--blue-light)}
 #vendor-table .amt{text-align:right;font-variant-numeric:tabular-nums}
 #vendor-table .overdue-cell{color:var(--red);font-weight:600}
@@ -319,6 +324,44 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 #vendor-table .days-30{background:#FFF3CD;color:#856404}
 #vendor-table .days-60{background:#FFE4CC;color:#7D3C0C}
 #vendor-table .days-90{background:#FFE0E0;color:var(--red)}
+
+/* Vendor document-detail popup */
+.vd-overlay{
+  display:none;position:fixed;inset:0;z-index:400;
+  background:rgba(20,25,35,.5);align-items:center;justify-content:center;padding:20px;
+}
+.vd-overlay.show{display:flex}
+.vd-card{
+  background:var(--white);border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.3);
+  width:820px;max-width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;
+  animation:vdIn .16s ease;
+}
+@keyframes vdIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+.vd-header{
+  padding:14px 18px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+  background:linear-gradient(135deg,#FFF8F0,#FFF3E5);
+}
+.vd-title{font-size:14.5px;font-weight:700;color:var(--text)}
+.vd-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.vd-close{background:none;border:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:0 2px}
+.vd-close:hover{color:var(--text)}
+.vd-kpis{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+  padding:12px 18px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);
+}
+.vd-kpi{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+.vd-kpi-label{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.vd-kpi-val{font-size:15px;font-weight:700;color:var(--text);margin-top:2px}
+.vd-table-wrap{flex:1;overflow:auto}
+.vd-table{border-collapse:collapse;width:100%;font-size:12px;min-width:680px}
+.vd-table th{
+  background:#F5F6F7;padding:7px 10px;text-align:left;font-size:10.5px;font-weight:700;
+  color:var(--muted);border-bottom:2px solid var(--border);position:sticky;top:0;white-space:nowrap;
+}
+.vd-table td{padding:6px 10px;border-bottom:1px solid #F0F0F0;white-space:nowrap}
+.vd-table tr:hover td{background:var(--blue-light)}
+.vd-table .amt{text-align:right;font-variant-numeric:tabular-nums}
 
 /* No-data placeholder */
 .no-data{
@@ -340,7 +383,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 
 /* Responsive */
 @media(max-width:1100px){
-  .chat-panel{display:none}
   .kpi-row{grid-template-columns:repeat(2,1fr)}
 }
 @media(max-width:768px){
@@ -367,7 +409,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
   </div>
   <span class="shell-subtitle">AP Analytics &amp; Aging Report</span>
   <div class="shell-spacer"></div>
-  <button class="shell-btn" id="toggle-chat-btn" onclick="toggleChat()">⬡ Chat</button>
   <button class="shell-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
   <span class="shell-badge" id="status-badge">READY</span>
 </div>
@@ -391,25 +432,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
     <label>Vendor</label>
     <input type="text" id="f-vendor" placeholder="Code or name…"/>
   </div>
-  <div class="fg w-dim">
-    <label>Dimension</label>
-    <select id="f-dimension">
-      <option value="">All Dimensions</option>
-      <optgroup label="Predefined">
-        <option value="BRAND">Brand</option>
-        <option value="SUB-BRAND">Sub-Brand</option>
-        <option value="UNIVERSAL">Universal</option>
-        <option value="NATIONAL">National</option>
-        <option value="LOCAL">Local</option>
-        <option value="IMPORT">Import</option>
-      </optgroup>
-      <optgroup label="From Data" id="dim-data-group"></optgroup>
-    </select>
-  </div>
-  <div class="fg w-branch">
-    <label>Branch</label>
-    <select id="f-branch"><option value="">All Branches</option></select>
-  </div>
   <div class="fg w-doctype">
     <label>Doc Type</label>
     <select id="f-doctype"><option value="">All Types</option></select>
@@ -430,38 +452,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 
 <!-- ── Main area ──────────────────────────────────────────────────────────── -->
 <div class="main-area">
-
-  <!-- ── Chat panel ──────────────────────────────────────────────────────── -->
-  <div class="chat-panel">
-    <div class="chat-topbar">
-      <div class="chat-topbar-avatar">📊</div>
-      <div style="flex:1">
-        <div class="chat-topbar-name">Aging Assistant</div>
-        <div class="chat-topbar-status">
-          <span class="status-dot"></span>
-          <span id="chat-status-text">Ready</span>
-        </div>
-      </div>
-    </div>
-
-    <div id="messages">
-      <div class="no-data">
-        <div class="no-data-icon">📊</div>
-        <div class="no-data-text">Set filters and click <strong>Analyze</strong></div>
-        <div class="no-data-hint">I'll answer questions about your AP aging data</div>
-      </div>
-    </div>
-
-    <div class="input-area">
-      <div class="input-row">
-        <textarea id="user-input" rows="1" placeholder="Ask about aging data…" autocomplete="off"></textarea>
-        <button class="send-btn" id="send-btn" onclick="sendFromInput()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        </button>
-      </div>
-      <div class="input-hint"><strong>Enter</strong> to send &nbsp;|&nbsp; <strong>Shift+Enter</strong> for new line</div>
-    </div>
-  </div>
 
   <!-- ── Analytics panel ─────────────────────────────────────────────────── -->
   <div class="analytics-panel">
@@ -497,42 +487,39 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
         <div id="insight-body"></div>
       </div>
 
-      <!-- Charts row -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <!-- Aging bucket chart -->
+      <!-- Aging bucket, Vendor-wise & Top 10 outstanding charts — one row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
         <div class="chart-card">
           <div class="card-header">
             <div>
-              <div class="card-title">Aging Bucket Breakdown</div>
-              <div class="card-sub" id="chart-sub">Balance due by bucket</div>
+              <div class="card-title" style="font-size:11.5px">Aging Bucket Breakdown</div>
+              <div class="card-sub" id="chart-sub" style="font-size:10px">Balance due by bucket</div>
             </div>
             <div class="chart-tabs">
               <div class="chart-tab active" onclick="switchChartType('balance',this)">Balance</div>
               <div class="chart-tab" onclick="switchChartType('overdue',this)">Overdue</div>
             </div>
           </div>
-          <div class="chart-wrap"><canvas id="aging-chart"></canvas></div>
+          <div class="chart-wrap" style="height:210px"><canvas id="aging-chart"></canvas></div>
         </div>
-
-        <!-- Dimension breakdown chart -->
         <div class="chart-card">
           <div class="card-header">
             <div>
-              <div class="card-title">Dimension Analysis</div>
-              <div class="card-sub">Balance due by vendor group</div>
+              <div class="card-title" style="font-size:11.5px">Vendor-wise Balance Due</div>
+              <div class="card-sub" style="font-size:10px">Top vendors by balance due</div>
             </div>
           </div>
-          <div class="chart-wrap"><canvas id="dim-chart"></canvas></div>
+          <div class="chart-wrap" style="height:210px"><canvas id="vendor-chart"></canvas></div>
         </div>
-      </div>
-
-      <!-- Dimension quick-select cards -->
-      <div class="chart-card" id="dim-card-section" style="display:none">
-        <div class="card-header">
-          <div class="card-title">Dimension Groups</div>
-          <div class="card-sub">Click to filter</div>
+        <div class="chart-card">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:11.5px">Top 10 Vendors by Outstanding</div>
+              <div class="card-sub" style="font-size:10px">Overdue amount, highest first</div>
+            </div>
+          </div>
+          <div class="chart-wrap" style="height:210px"><canvas id="top-overdue-chart"></canvas></div>
         </div>
-        <div class="dim-grid" id="dim-grid"></div>
       </div>
 
       <!-- Vendor table -->
@@ -552,8 +539,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
             <thead>
               <tr id="table-head">
                 <th onclick="sortTable('name')" data-col="name">Vendor <span class="sort-icon"></span></th>
-                <th onclick="sortTable('group')" data-col="group">Group / Dimension <span class="sort-icon"></span></th>
-                <th onclick="sortTable('branch')" data-col="branch">Branch <span class="sort-icon"></span></th>
                 <th onclick="sortTable('balanceDue')" data-col="balanceDue" class="sort-desc">Balance Due <span class="sort-icon"></span></th>
                 <th onclick="sortTable('overdue')" data-col="overdue">Overdue <span class="sort-icon"></span></th>
                 <th onclick="sortTable('futureRemit')" data-col="futureRemit">Future Remit <span class="sort-icon"></span></th>
@@ -561,7 +546,7 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
               </tr>
             </thead>
             <tbody id="vendor-tbody">
-              <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">
+              <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">
                 <div style="font-size:24px;margin-bottom:8px">📋</div>
                 Click <strong>Analyze</strong> to load vendor aging data
               </td></tr>
@@ -575,6 +560,77 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 
 </div><!-- /main-area -->
 
+<!-- ── Floating chat FAB ──────────────────────────────────────────────────── -->
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()" title="Ask Aging Assistant">
+  <svg id="chat-fab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+  <span id="chat-fab-close" style="display:none;font-size:22px;color:#fff;line-height:1">&times;</span>
+</button>
+
+<!-- ── Popup chat panel ───────────────────────────────────────────────────── -->
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-topbar">
+    <div class="chat-topbar-avatar">📊</div>
+    <div style="flex:1">
+      <div class="chat-topbar-name">Aging Assistant</div>
+      <div class="chat-topbar-status">
+        <span class="status-dot"></span>
+        <span id="chat-status-text">Ready</span>
+      </div>
+    </div>
+    <button class="chat-close-btn" onclick="toggleChat()" title="Close">&times;</button>
+  </div>
+
+  <div id="messages">
+    <div class="no-data">
+      <div class="no-data-icon">📊</div>
+      <div class="no-data-text">Set filters and click <strong>Analyze</strong></div>
+      <div class="no-data-hint">I'll answer questions about your AP aging data</div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="user-input" rows="1" placeholder="Ask about aging data…" autocomplete="off"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendFromInput()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+    <div class="input-hint"><strong>Enter</strong> to send &nbsp;|&nbsp; <strong>Shift+Enter</strong> for new line</div>
+  </div>
+</div>
+
+<!-- ── Vendor document-detail popup ──────────────────────────────────────── -->
+<div class="vd-overlay" id="vendor-detail-overlay" onclick="if(event.target===this) closeVendorDetail()">
+  <div class="vd-card">
+    <div class="vd-header">
+      <div>
+        <div class="vd-title" id="vd-vendor-name">—</div>
+        <div class="vd-sub" id="vd-vendor-code">—</div>
+      </div>
+      <button class="vd-close" onclick="closeVendorDetail()" title="Close">&times;</button>
+    </div>
+    <div class="vd-kpis" id="vd-kpis"></div>
+    <div class="vd-table-wrap">
+      <table class="vd-table">
+        <thead>
+          <tr>
+            <th>Doc #</th>
+            <th>Type</th>
+            <th>Posting Date</th>
+            <th>Due Date</th>
+            <th class="amt">Days</th>
+            <th>Bucket</th>
+            <th class="amt">Original</th>
+            <th class="amt">Balance Due</th>
+            <th class="amt">Overdue</th>
+          </tr>
+        </thead>
+        <tbody id="vd-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 let sessionId = null;
@@ -586,15 +642,10 @@ let showBuckets = false;
 let sortCol = 'balanceDue';
 let sortDir = 'desc';
 let agingChart = null;
-let dimChart = null;
+let vendorChart = null;
+let topOverdueChart = null;
 let chartMode = 'balance';
 let currentAgingContext = '';
-
-// Predefined dimension labels
-const PREDEFINED_DIMS = {
-  'BRAND': 'Brand', 'SUB-BRAND': 'Sub-Brand', 'UNIVERSAL': 'Universal',
-  'NATIONAL': 'National', 'LOCAL': 'Local', 'IMPORT': 'Import',
-};
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -753,8 +804,6 @@ async function runAnalyze() {
     bucketSize: parseInt(document.getElementById('f-bucket-size').value) || 30,
     filters: {
       vendorSearch: document.getElementById('f-vendor').value.trim() || undefined,
-      dimension:    document.getElementById('f-dimension').value    || undefined,
-      branch:       document.getElementById('f-branch').value       || undefined,
       docType:      document.getElementById('f-doctype').value      || undefined,
       agingBucket:  document.getElementById('f-bucket-filter').value|| undefined,
       onlyOverdue:  document.getElementById('f-overdue-only').checked || undefined,
@@ -777,8 +826,7 @@ async function runAnalyze() {
 
     updateKPIs(data.totals, params.agingDate);
     updateFilterOptions(data.options);
-    updateCharts(data.buckets, data.dimBreakdown);
-    updateDimCards(data.dimBreakdown);
+    updateCharts(data.buckets, allVendors);
     renderTable();
 
     if (data.aiInsight) {
@@ -792,7 +840,7 @@ async function runAnalyze() {
 
     setStatus('ready', 'READY');
     appendMessage('bot', `✅ Loaded aging as of **${params.agingDate}** — **${data.totals.vendorCount}** vendors, balance due **${fmtN(data.totals.balanceDue)}**.${data.totals.overdue > 0 ? ` ⚠️ Overdue: **${fmtN(data.totals.overdue)}**` : ''}\n\nAsk me anything about this data.`,
-      ['Show top overdue vendors', 'Aging bucket summary', 'Filter by dimension', 'Vendors over 90 days']);
+      ['Show top overdue vendors', 'Aging bucket summary', 'Vendors over 90 days', 'Cash flow risk']);
   } catch (e) {
     setStatus('error', 'ERROR');
     appendMessage('bot', `❌ Failed to load aging data: **${e.message}**\n\nPlease check your HANA connection and try again.`);
@@ -803,16 +851,14 @@ async function runAnalyze() {
 
 // ── Build context string for chat ────────────────────────────────────────────
 function buildContextString(data) {
-  const { vendors, totals, buckets, dimBreakdown, params } = data;
+  const { vendors, totals, buckets, params } = data;
   const top = (vendors || []).slice(0, 15);
   const buckStr = (buckets || []).map(b => `  ${b.bucket}: ${fmtN(b.balanceDue)} (${b.vendorCount} vendors)`).join('\n');
-  const dimStr  = (dimBreakdown || []).slice(0, 8).map(d => `  ${d.dimension}: ${fmtN(d.balanceDue)} balance, ${fmtN(d.overdue)} overdue`).join('\n');
   const topStr  = top.map((v, i) => `  ${i+1}. ${v.name} (${v.code}): Balance ${fmtN(v.balanceDue)}, Overdue ${fmtN(v.overdue)}, ${v.maxDaysOutstanding} days max`).join('\n');
 
   return `VENDOR PAYMENT AGING — As of: ${params?.agingDate} | Bucket: ${params?.bucketSize} days
 TOTALS: Balance Due ${fmtN(totals.balanceDue)}, Overdue ${fmtN(totals.overdue)}, Future ${fmtN(totals.futureRemit)}, Vendors: ${totals.vendorCount}
 AGING BUCKETS:\n${buckStr}
-DIMENSIONS:\n${dimStr}
 TOP VENDORS:\n${topStr}`;
 }
 
@@ -831,16 +877,6 @@ function updateKPIs(t, agingDate) {
 // ── Filter options ────────────────────────────────────────────────────────────
 function updateFilterOptions(opts) {
   if (!opts) return;
-
-  const branchSel = document.getElementById('f-branch');
-  const curBranch = branchSel.value;
-  branchSel.innerHTML = '<option value="">All Branches</option>';
-  (opts.branches || []).forEach(b => {
-    const o = document.createElement('option');
-    o.value = b; o.textContent = b;
-    if (b === curBranch) o.selected = true;
-    branchSel.appendChild(o);
-  });
 
   const docSel = document.getElementById('f-doctype');
   const curDoc = docSel.value;
@@ -861,16 +897,6 @@ function updateFilterOptions(opts) {
     if (b === curBkt) o.selected = true;
     bucketSel.appendChild(o);
   });
-
-  // Add dynamic dimensions
-  const dimGroup = document.getElementById('dim-data-group');
-  dimGroup.innerHTML = '';
-  const predefined = new Set(Object.keys(PREDEFINED_DIMS));
-  (opts.dimensions || []).filter(d => !predefined.has(d)).forEach(d => {
-    const o = document.createElement('option');
-    o.value = d; o.textContent = d;
-    dimGroup.appendChild(o);
-  });
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
@@ -878,9 +904,10 @@ const BUCKET_COLORS = [
   '#107E3E','#0070F2','#E9730C','#F0AB00','#BB0000','#9333EA','#0891B2',
 ];
 
-function updateCharts(buckets, dimBreakdown) {
+function updateCharts(buckets, vendors) {
   renderAgingChart(buckets);
-  renderDimChart(dimBreakdown);
+  renderVendorChart(vendors);
+  renderTopOverdueChart(vendors);
 }
 
 function renderAgingChart(buckets) {
@@ -925,36 +952,6 @@ function renderAgingChart(buckets) {
   });
 }
 
-function renderDimChart(dimBreakdown) {
-  const ctx = document.getElementById('dim-chart').getContext('2d');
-  if (dimChart) dimChart.destroy();
-  if (!dimBreakdown || !dimBreakdown.length) return;
-
-  const top    = dimBreakdown.slice(0, 7);
-  const labels = top.map(d => d.dimension || 'Unassigned');
-  const data   = top.map(d => d.balanceDue);
-
-  dimChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: BUCKET_COLORS.map(c => c + 'CC'),
-        borderColor: BUCKET_COLORS,
-        borderWidth: 1.5,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 12 } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtN(ctx.raw)}` } },
-      },
-    },
-  });
-}
-
 function switchChartType(mode, el) {
   chartMode = mode;
   document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
@@ -962,41 +959,83 @@ function switchChartType(mode, el) {
   if (agingData) renderAgingChart(agingData.buckets);
 }
 
-// ── Dimension cards ───────────────────────────────────────────────────────────
-function updateDimCards(dimBreakdown) {
-  if (!dimBreakdown || !dimBreakdown.length) { document.getElementById('dim-card-section').style.display = 'none'; return; }
-  document.getElementById('dim-card-section').style.display = '';
-  const grid = document.getElementById('dim-grid');
-  grid.innerHTML = '';
+function truncName(s, n = 22) {
+  s = s || '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
 
-  // "All" card
-  const allCard = document.createElement('div');
-  allCard.className = 'dim-card selected';
-  allCard.id = 'dim-card-ALL';
-  allCard.onclick = () => selectDimCard('');
-  allCard.innerHTML = `<div class="dim-name">All Dimensions</div><div class="dim-amount">${fmtN(agingData?.totals?.balanceDue || 0)}</div><div class="dim-vendors">${agingData?.totals?.vendorCount || 0} vendors</div>`;
-  grid.appendChild(allCard);
+function renderVendorChart(vendors) {
+  const canvas = document.getElementById('vendor-chart');
+  if (!canvas) return;
+  if (vendorChart) vendorChart.destroy();
 
-  dimBreakdown.forEach(d => {
-    const card = document.createElement('div');
-    card.className = 'dim-card';
-    card.id = `dim-card-${d.dimension}`;
-    card.onclick = () => selectDimCard(d.dimension);
-    card.innerHTML = `<div class="dim-name">${escHtml(d.dimension || 'Unassigned')}</div><div class="dim-amount">${fmtN(d.balanceDue)}</div><div class="dim-overdue">Overdue: ${fmtN(d.overdue)}</div><div class="dim-vendors">${d.vendorCount} vendors</div>`;
-    grid.appendChild(card);
+  const top = [...(vendors || [])].sort((a, b) => b.balanceDue - a.balanceDue).slice(0, 12);
+  const labels = top.map(v => truncName(v.name || v.code));
+  const data   = top.map(v => v.balanceDue);
+
+  vendorChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Balance Due',
+        data,
+        backgroundColor: '#0070F2CC',
+        borderColor: '#0070F2',
+        borderWidth: 1.5,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: ctx => ' ' + fmtN(ctx.raw) } },
+      },
+      scales: {
+        x: { grid: { color: '#F0F0F0' }, ticks: { font: { size: 10 }, callback: v => fmtN(v) } },
+        y: { grid: { display: false }, ticks: { font: { size: 10.5 } } },
+      },
+    },
   });
 }
 
-function selectDimCard(dim) {
-  document.querySelectorAll('.dim-card').forEach(c => c.classList.remove('selected'));
-  const id = `dim-card-${dim || 'ALL'}`;
-  document.getElementById(id)?.classList.add('selected');
-  document.getElementById('f-dimension').value = dim;
-  // Re-render table with filter
-  if (agingData) {
-    const filtered = dim ? allVendors.filter(v => v.group === dim) : allVendors;
-    renderTableFromVendors(filtered);
-  }
+function renderTopOverdueChart(vendors) {
+  const canvas = document.getElementById('top-overdue-chart');
+  if (!canvas) return;
+  if (topOverdueChart) topOverdueChart.destroy();
+
+  const top = [...(vendors || [])].filter(v => v.overdue > 0).sort((a, b) => b.overdue - a.overdue).slice(0, 10);
+  const labels = top.map(v => truncName(v.name || v.code));
+  const data   = top.map(v => v.overdue);
+
+  topOverdueChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Overdue',
+        data,
+        backgroundColor: '#BB0000CC',
+        borderColor: '#BB0000',
+        borderWidth: 1.5,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: ctx => ' ' + fmtN(ctx.raw) } },
+      },
+      scales: {
+        x: { grid: { color: '#F0F0F0' }, ticks: { font: { size: 10 }, callback: v => fmtN(v) } },
+        y: { grid: { display: false }, ticks: { font: { size: 10.5 } } },
+      },
+    },
+  });
 }
 
 // ── Vendor table ──────────────────────────────────────────────────────────────
@@ -1016,7 +1055,7 @@ function renderTableFromVendors(vendors) {
 
   const tbody = document.getElementById('vendor-tbody');
   if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">No vendors match the current filters</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No vendors match the current filters</td></tr>';
     return;
   }
 
@@ -1028,10 +1067,8 @@ function renderTableFromVendors(vendors) {
         bucketCells += `<td class="amt">${fmtN(v.buckets?.[b] || 0)}</td>`;
       });
     }
-    return `<tr>
+    return `<tr onclick="showVendorDetail('${escHtml(v.code)}')" title="Click for document-wise detail">
       <td><div style="font-weight:600;font-size:12px">${escHtml(v.name || v.code)}</div><div style="font-size:10.5px;color:var(--muted)">${escHtml(v.code)}</div></td>
-      <td>${escHtml(v.group || '—')}</td>
-      <td>${escHtml(v.branch || '—')}</td>
       <td class="amt">${fmtN(v.balanceDue)}</td>
       <td class="amt overdue-cell">${v.overdue > 0 ? fmtN(v.overdue) : '<span style="color:var(--green)">Current</span>'}</td>
       <td class="amt">${fmtN(v.futureRemit)}</td>
@@ -1040,6 +1077,59 @@ function renderTableFromVendors(vendors) {
     </tr>`;
   }).join('');
 }
+
+// ── Vendor document-detail popup ────────────────────────────────────────────
+function fmtDate(d) {
+  if (!d) return '—';
+  const s = String(d).slice(0, 10);
+  const parts = s.split('-');
+  return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : s;
+}
+
+function showVendorDetail(code) {
+  const vendor = allVendors.find(v => v.code === code);
+  const docs = (agingData?.documents || []).filter(d => d.vendorCode === code)
+    .sort((a, b) => (b.daysOutstanding || 0) - (a.daysOutstanding || 0));
+
+  document.getElementById('vd-vendor-name').textContent = vendor ? (vendor.name || vendor.code) : code;
+  document.getElementById('vd-vendor-code').textContent = vendor ? `${vendor.code} · ${docs.length} document${docs.length === 1 ? '' : 's'}` : code;
+
+  const totals = docs.reduce((acc, d) => {
+    acc.original += d.originalAmt; acc.balanceDue += d.balanceDue;
+    acc.overdue += d.overdue; acc.futureRemit += d.futureRemit;
+    return acc;
+  }, { original: 0, balanceDue: 0, overdue: 0, futureRemit: 0 });
+
+  document.getElementById('vd-kpis').innerHTML = `
+    <div class="vd-kpi"><div class="vd-kpi-label">Original</div><div class="vd-kpi-val">${fmtN(totals.original)}</div></div>
+    <div class="vd-kpi"><div class="vd-kpi-label">Balance Due</div><div class="vd-kpi-val">${fmtN(totals.balanceDue)}</div></div>
+    <div class="vd-kpi"><div class="vd-kpi-label">Overdue</div><div class="vd-kpi-val" style="color:var(--red)">${fmtN(totals.overdue)}</div></div>
+    <div class="vd-kpi"><div class="vd-kpi-label">Future Remit</div><div class="vd-kpi-val" style="color:var(--blue)">${fmtN(totals.futureRemit)}</div></div>`;
+
+  const tbody = document.getElementById('vd-tbody');
+  tbody.innerHTML = docs.length ? docs.map(d => `
+    <tr>
+      <td>${escHtml(String(d.docNumber || '—'))}${d.installment > 1 ? ` <span style="color:var(--muted);font-size:10px">#${d.installment}</span>` : ''}</td>
+      <td>${escHtml(d.docType || '—')}</td>
+      <td>${fmtDate(d.postingDate)}</td>
+      <td>${fmtDate(d.dueDate)}</td>
+      <td class="amt">${d.daysOutstanding}</td>
+      <td>${escHtml(d.bucket || '—')}</td>
+      <td class="amt">${fmtN(d.originalAmt)}</td>
+      <td class="amt">${fmtN(d.balanceDue)}</td>
+      <td class="amt" style="${d.overdue > 0 ? 'color:var(--red);font-weight:600' : ''}">${d.overdue > 0 ? fmtN(d.overdue) : '<span style="color:var(--green)">Current</span>'}</td>
+    </tr>`).join('') : '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No documents found</td></tr>';
+
+  document.getElementById('vendor-detail-overlay').classList.add('show');
+}
+
+function closeVendorDetail() {
+  document.getElementById('vendor-detail-overlay').classList.remove('show');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeVendorDetail();
+});
 
 function sortTable(col) {
   if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
@@ -1082,9 +1172,9 @@ function toggleBucketColumns() {
 // ── Export CSV ────────────────────────────────────────────────────────────────
 function exportCsv() {
   if (!allVendors.length) { alert('No data to export. Run Analyze first.'); return; }
-  const headers = ['Code', 'Vendor Name', 'Group/Dimension', 'Branch', 'Balance Due', 'Overdue', 'Future Remit', 'Max Days Outstanding'];
+  const headers = ['Code', 'Vendor Name', 'Balance Due', 'Overdue', 'Future Remit', 'Max Days Outstanding'];
   const rows = allVendors.map(v => [
-    v.code, v.name, v.group, v.branch,
+    v.code, v.name,
     v.balanceDue.toFixed(2), v.overdue.toFixed(2), v.futureRemit.toFixed(2), v.maxDaysOutstanding,
   ]);
   const csv = [headers, ...rows].map(r => r.map(c => `"${String(c || '').replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -1099,8 +1189,6 @@ function exportCsv() {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function clearFilters() {
   document.getElementById('f-vendor').value = '';
-  document.getElementById('f-dimension').value = '';
-  document.getElementById('f-branch').value = '';
   document.getElementById('f-doctype').value = '';
   document.getElementById('f-bucket-filter').value = '';
   document.getElementById('f-overdue-only').checked = false;
@@ -1124,15 +1212,17 @@ async function safeJson(r) {
 }
 
 // ── Fullscreen & chat toggle ───────────────────────────────────────────────
-let _chatVisible = true;
+let _chatVisible = false;
 function toggleChat() {
-  const panel = document.querySelector('.chat-panel');
-  const btn = document.getElementById('toggle-chat-btn');
+  const panel = document.getElementById('chat-panel');
+  const fabIcon = document.getElementById('chat-fab-icon');
+  const fabClose = document.getElementById('chat-fab-close');
   if (!panel) return;
   _chatVisible = !_chatVisible;
-  panel.style.display = _chatVisible ? '' : 'none';
-  btn.textContent = _chatVisible ? '⬡ Chat' : '⬢ Chat';
-  btn.classList.toggle('active', !_chatVisible);
+  panel.style.display = _chatVisible ? 'flex' : 'none';
+  fabIcon.style.display = _chatVisible ? 'none' : '';
+  fabClose.style.display = _chatVisible ? '' : 'none';
+  if (_chatVisible) document.getElementById('user-input').focus();
 }
 function toggleFullscreen() {
   if (!document.fullscreenElement) {

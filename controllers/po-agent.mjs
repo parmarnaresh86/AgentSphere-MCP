@@ -69,7 +69,32 @@ async function getDefaultUoMCode(itemCode, sap) {
 
 function getCacheTaxCodes() {
   const cid = getCompanyId();
-  return db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
+  return db.prepare(`SELECT Code, Name, Rate FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
+}
+
+// Qty × Unit Price, less line discount, plus tax computed off the selected tax code's rate.
+function calcLineAmounts(quantity, unitPrice, discountPercent, taxRate) {
+  const net     = Number(quantity || 0) * Number(unitPrice || 0) * (1 - (Number(discountPercent || 0) / 100));
+  const taxAmt  = net * (Number(taxRate || 0) / 100);
+  return { netAmount: net, taxAmount: taxAmt, lineTotal: net + taxAmt };
+}
+
+function sumTotals(lines) {
+  return lines.reduce((acc, l) => {
+    acc.net   += Number(l.netAmount  || 0);
+    acc.tax   += Number(l.taxAmount  || 0);
+    acc.total += Number(l.lineTotal  || 0);
+    return acc;
+  }, { net: 0, tax: 0, total: 0 });
+}
+
+function totalsFooterHtml(lines) {
+  const t = sumTotals(lines);
+  return `<div style="display:flex;justify-content:flex-end;gap:20px;padding:8px 6px 2px;border-top:1px solid #bfdbfe;margin-top:2px;font-size:12.5px">
+    <div style="color:#374151">Subtotal: <strong>${t.net.toFixed(2)}</strong></div>
+    <div style="color:#374151">Tax: <strong>${t.tax.toFixed(2)}</strong></div>
+    <div style="color:#0070F2;font-weight:700">Grand Total: ${t.total.toFixed(2)}</div>
+  </div>`;
 }
 
 function getCacheWarehouses() {
@@ -85,9 +110,12 @@ function buildVendorComboHtml(vendors) {
   ).join('');
   const noCache = !vendors.length
     ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Vendor cache is empty — go to <strong>Tools → Data Sync</strong> to load master data, or type in the box below to search live.</div>` : '';
-  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0">
+  const vendorsJson = escHtml(JSON.stringify(vendors.map(v => ({ code: v.CardCode, name: v.CardName, city: v.City || '' }))));
+  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0" data-vendors="${vendorsJson}">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:8px">Select Vendor (${vendors.length} available):</div>
+    <input type="text" placeholder="🔍 Search vendor by name or code…" oninput="poaFilterVendors(this)"
+      style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
       <select id="poa-vendor-sel"
         style="flex:1;border:1.5px solid #0070F2;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
@@ -99,7 +127,7 @@ function buildVendorComboHtml(vendors) {
         Select →
       </button>
     </div>
-    <div style="font-size:11.5px;color:#6b7280">Or type a name / code in the box below to search</div>
+    <div style="font-size:11.5px;color:#6b7280">Type above to filter the list, or type a name / code in the chat box below to search live SAP data</div>
   </div>`;
 }
 
@@ -107,17 +135,20 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
   const itemOpts = items.map(i =>
     `<option value="${escHtml(i.ItemCode)}" data-name="${escHtml(i.ItemName)}" data-unit="${escHtml(i.PurchaseUnit||'')}" data-vat="${escHtml(i.PurchVATGroup||'')}">${escHtml(i.ItemCode)} — ${escHtml(i.ItemName)}</option>`
   ).join('');
-  const taxOpts = [`<option value="">— None —</option>`, ...taxCodes.map(t =>
-    `<option value="${escHtml(t.Code)}">${escHtml(t.Code)}${t.Name?' — '+escHtml(t.Name):''}</option>`)].join('');
+  const taxOpts = [`<option value="" data-rate="0">— None —</option>`, ...taxCodes.map(t =>
+    `<option value="${escHtml(t.Code)}" data-rate="${Number(t.Rate||0)}">${escHtml(t.Code)}${t.Name?' — '+escHtml(t.Name):''} (${Number(t.Rate||0)}%)</option>`)].join('');
   const whOpts  = [`<option value="">— Default —</option>`, ...warehouses.map(w =>
     `<option value="${escHtml(w.WarehouseCode)}">${escHtml(w.WarehouseCode)}</option>`)].join('');
   const noCache = !items.length
     ? `<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠️ Item cache is empty — go to <strong>Tools → Data Sync</strong> first, or type item code below.</div>` : '';
-  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0">
+  const itemsJson = escHtml(JSON.stringify(items.map(i => ({ code: i.ItemCode, name: i.ItemName, unit: i.PurchaseUnit || '', vat: i.PurchVATGroup || '' }))));
+  return `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0" data-items="${itemsJson}">
     ${noCache}
     <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:8px">Add Line Item (${items.length} items available):</div>
     <div style="margin-bottom:8px">
       <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Item *</div>
+      <input type="text" placeholder="🔍 Search item by name or code…" oninput="poaFilterItems(this,${lineIdx})"
+        style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:6px;box-sizing:border-box;outline:none">
       <select id="poa-item-sel-${lineIdx}" onchange="poaComboItemChange(this,${lineIdx})"
         style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;background:#fff;outline:none">
         <option value="">— Select an Item —</option>
@@ -127,22 +158,22 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
     <div style="display:grid;grid-template-columns:80px 110px 70px 1fr 1fr;gap:8px;margin-bottom:10px">
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Qty *</div>
-        <input type="number" id="poa-qty-${lineIdx}" value="1" min="0.001" step="0.001"
+        <input type="number" id="poa-qty-${lineIdx}" value="1" min="0.001" step="0.001" oninput="poaCalcLine(${lineIdx})"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
       </div>
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Unit Price *</div>
-        <input type="number" id="poa-price-${lineIdx}" placeholder="0.00" min="0" step="0.01"
+        <input type="number" id="poa-price-${lineIdx}" placeholder="0.00" min="0" step="0.01" oninput="poaCalcLine(${lineIdx})"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
       </div>
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Disc%</div>
-        <input type="number" id="poa-disc-${lineIdx}" value="0" min="0" max="100"
+        <input type="number" id="poa-disc-${lineIdx}" value="0" min="0" max="100" oninput="poaCalcLine(${lineIdx})"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
       </div>
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Tax Code</div>
-        <select id="poa-tax-${lineIdx}"
+        <select id="poa-tax-${lineIdx}" onchange="poaCalcLine(${lineIdx})"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:12.5px;background:#fff">${taxOpts}</select>
       </div>
       <div>
@@ -150,6 +181,11 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
         <select id="poa-wh-${lineIdx}"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:12.5px;background:#fff">${whOpts}</select>
       </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:16px;margin:-4px 0 10px;font-size:12px;color:#374151">
+      <div>Net: <strong id="poa-net-${lineIdx}">0.00</strong></div>
+      <div>Tax: <strong id="poa-taxamt-${lineIdx}">0.00</strong></div>
+      <div>Line Total: <strong id="poa-linetotal-${lineIdx}" style="color:#0070F2">0.00</strong></div>
     </div>
     <div style="display:flex;gap:8px">
       <button onclick="poaComboAddItem(${lineIdx})"
@@ -184,12 +220,20 @@ async function searchVendors(sap, query) {
 
 function linesSummaryTable(lines) {
   const rows = lines.map((l, i) =>
-    `<tr><td style="padding:4px 8px;font-size:12.5px">${i+1}</td><td style="padding:4px 8px;font-size:12.5px">${escHtml(l.itemCode)}</td><td style="padding:4px 8px;font-size:12.5px;text-align:right">${l.quantity}</td><td style="padding:4px 8px;font-size:12.5px;text-align:right">${l.unitPrice??'—'}</td><td style="padding:4px 8px;font-size:12.5px">${escHtml(l.taxCode||'')}</td></tr>`
+    `<tr>
+      <td style="padding:4px 8px;font-size:12.5px">${i+1}</td>
+      <td style="padding:4px 8px;font-size:12.5px">${escHtml(l.itemCode)}</td>
+      <td style="padding:4px 8px;font-size:12.5px;text-align:right">${l.quantity}</td>
+      <td style="padding:4px 8px;font-size:12.5px;text-align:right">${l.unitPrice??'—'}</td>
+      <td style="padding:4px 8px;font-size:12.5px">${escHtml(l.taxCode||'')}</td>
+      <td style="padding:4px 8px;font-size:12.5px;text-align:right">${Number(l.taxAmount||0).toFixed(2)}</td>
+      <td style="padding:4px 8px;font-size:12.5px;text-align:right;font-weight:600">${Number(l.lineTotal||0).toFixed(2)}</td>
+    </tr>`
   ).join('');
   return `<table style="width:100%;border-collapse:collapse;font-size:12px">
-    <tr style="background:#dbeafe"><th style="padding:4px 8px;text-align:left">#</th><th style="padding:4px 8px;text-align:left">Item</th><th style="padding:4px 8px;text-align:right">Qty</th><th style="padding:4px 8px;text-align:right">Price</th><th style="padding:4px 8px;text-align:left">Tax</th></tr>
+    <tr style="background:#dbeafe"><th style="padding:4px 8px;text-align:left">#</th><th style="padding:4px 8px;text-align:left">Item</th><th style="padding:4px 8px;text-align:right">Qty</th><th style="padding:4px 8px;text-align:right">Price</th><th style="padding:4px 8px;text-align:left">Tax</th><th style="padding:4px 8px;text-align:right">Tax Amt</th><th style="padding:4px 8px;text-align:right">Total</th></tr>
     ${rows}
-  </table>`;
+  </table>${totalsFooterHtml(lines)}`;
 }
 
 // ── Print layout ───────────────────────────────────────────────────────────────
@@ -246,7 +290,7 @@ function renderPOPrint(doc) {
 </style></head><body>
 <div class="watermark">PURCHASE ORDER</div>
 <div class="print-btn">
-  <button class="btn-close" onclick="window.close()">✕ Close</button>
+  <button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'poa-print-close'},'*') : window.close()">✕ Close</button>
   <button class="btn-print" onclick="window.print()">🖨️ Print</button>
 </div>
 <div class="header">
@@ -359,6 +403,7 @@ export function createPurchaseOrderAgentRouter(deps) {
                   <td style="padding:6px 10px;font-size:12.5px;text-align:right">${l.discountPercent || 0}%</td>
                   <td style="padding:6px 10px;font-size:12.5px">${escHtml(l.taxCode||'')}</td>
                   <td style="padding:6px 10px;font-size:12.5px">${escHtml(l.warehouseCode||'')}</td>
+                  <td style="padding:6px 10px;font-size:12.5px;text-align:right;font-weight:600">${Number(l.lineTotal||0).toFixed(2)}</td>
                 </tr>`).join('');
 
               const printUrl = `/api/po-agent/print/${result.DocEntry}`;
@@ -366,7 +411,7 @@ export function createPurchaseOrderAgentRouter(deps) {
               reply = `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:10px;padding:16px;margin:4px 0">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
                   <div style="font-size:15px;font-weight:700;color:#1d4ed8">✅ Purchase Order Created Successfully</div>
-                  <button onclick="window.open('${printUrl}','_blank')"
+                  <button onclick="poaShowPrintModal('${printUrl}')"
                     style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">
                     🖨️ Print
                   </button>
@@ -396,11 +441,13 @@ export function createPurchaseOrderAgentRouter(deps) {
                         <th style="padding:6px 10px;text-align:right">Disc%</th>
                         <th style="padding:6px 10px;text-align:left">Tax</th>
                         <th style="padding:6px 10px;text-align:left">WH</th>
+                        <th style="padding:6px 10px;text-align:right">Total</th>
                       </tr>
                     </thead>
                     <tbody>${linesHtml}</tbody>
                   </table>
                 </div>
+                ${totalsFooterHtml(lines)}
               </div>`;
               quickReplies = ['Create New Purchase Order'];
               meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
@@ -435,7 +482,9 @@ export function createPurchaseOrderAgentRouter(deps) {
             reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ A Purchase Order needs a <strong>unit price</strong> greater than 0 for every line. Please enter a price.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
           } else {
             if (!session._lines) session._lines = [];
-            session._lines.push(action);
+            const taxRate = getCacheTaxCodes().find(t => t.Code === action.taxCode)?.Rate || 0;
+            const amounts = calcLineAmounts(action.quantity, action.unitPrice, action.discountPercent, taxRate);
+            session._lines.push({ ...action, ...amounts });
             session._lineIdx = (session._lineIdx || 0) + 1;
             const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
             reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:8px 14px;margin-bottom:8px">

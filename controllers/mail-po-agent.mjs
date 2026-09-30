@@ -348,12 +348,18 @@ PO TEXT:\n${cached.pdfText.substring(0, 8000)}`;
 
   // ── Create SO from email + send acknowledgment ────────────────────────────
   router.post('/create-so-mail', requireAuth, async (req, res) => {
-    const { fromEmail, subject, cardCode, poNumber, poDate, deliveryDate, currency, notes, lines = [], allowDuplicateRef } = req.body || {};
+    const { uid, fromEmail, subject, cardCode, poNumber, poDate, deliveryDate, currency, notes, lines = [], allowDuplicateRef } = req.body || {};
     if (!cardCode) return res.status(400).json({ ok: false, error: "cardCode required" });
     try {
       const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty)||1, UnitPrice: parseFloat(l.unitPrice)||0, ...(l.uomCode && l.uomCode !== "Manual" ? { UoMCode: l.uomCode } : {}) }));
       if (!docLines.length) return res.json({ ok: false, error: "No valid item lines to create SO" });
       const { DocNum: docNum } = await createSoDirect(getActiveSap(), { cardCode, docDate: poDate, docDueDate: deliveryDate, numAtCard: poNumber, currency, comments: notes || "", docLines, allowDuplicateRef });
+
+      // SO is in SAP — now (and only now) mark this one email as read
+      if (uid) {
+        try { await mailPo.markSeen(Number(uid)); _pdfCache.delete(String(uid)); }
+        catch (e) { console.warn("[MAIL-PO] Mark-as-read failed:", e.message); }
+      }
 
       // Send acknowledgment email
       let ackSent = false;

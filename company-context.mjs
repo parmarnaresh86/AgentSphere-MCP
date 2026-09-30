@@ -259,25 +259,41 @@ ORSC  Resource Master
 OJDT  Journal Entry Header
   TransId(PK int), TransType(int), RefDate(date), TaxDate(date), DueDate(date),
   Memo, Ref1, Ref2, Ref3, CreatedBy(→OUSR), DataSource, TransCode,
-  SystemRate(num), Indicator, BaseRef, BatchNum(int), Canceled('Y'/'N')
-  TransType: 13=AR Inv, 14=AP Inv, 15=AR CM, 16=AP CM, 18=JE,
-             20=Incoming Pmt, 21=Deposit, 24=Outgoing Pmt,
-             30=SO, 67=GRPO, 69=Goods Issue, 76=Goods Receipt
+  SystemRate(num), Indicator, BaseRef, BatchNum(int), StornoToTr(int), AutoStorno('Y'/'N')
+  TransType: -2=Opening Bal, -3=Period-end Closing, 13=AR Inv, 14=AR CM, 15=Delivery,
+             16=Sales Return, 18=AP Inv, 19=AP CM, 20=GRPO, 21=Goods Return,
+             24=Incoming Pmt, 25=Deposit, 30=Journal Entry, 46=Outgoing Pmt,
+             59=Goods Receipt, 60=Goods Issue, 67=Inv Transfer, 69=Landed Cost,
+             162=Inv Revaluation, 202=Production Order
 
-JDT1  Journal Entry Lines
-  TransId(→OJDT), Line_ID(int), Account(→OACT),
-  Debit(num), Credit(num), SYSDebit(num), SYSCredit(num),
-  FCDebit(num), FCCredit(num), FCCurrency, SystemRate(num),
-  RefDate(date), DueDate(date), LineMemo, ContraAct(→OACT),
-  CostingCode(→OPRC dim1), CostingCode2(dim2), CostingCode3(dim3),
-  CostingCode4(dim4), CostingCode5(dim5),
-  CardCode(→OCRD), CardName, BalDueDeb(num), BalDueCred(num)
+JDT1  Journal Entry Lines (the General Ledger — source for P&L, Balance Sheet, Trial Balance)
+  TransId(→OJDT), Line_ID(int), Account(→OACT), ShortName(BP CardCode on BP lines, else = Account),
+  Debit(num), Credit(num), SYSDeb(num), SYSCred(num),
+  FCDebit(num), FCCredit(num), FCCurrency,
+  RefDate(date = posting date), DueDate(date), TaxDate(date), TransType(int), BaseRef,
+  LineMemo, ContraAct(→OACT), ProfitCode(→OPRC dim1), OcrCode2(dim2), OcrCode3(dim3),
+  OcrCode4(dim4), OcrCode5(dim5), Project, BPLId(→OBPL branch),
+  BalDueDeb(num), BalDueCred(num)
 
 OACT  Chart of Accounts
-  AcctCode(PK), AcctName, GroupMask, Levels(int),
-  ActType('A'Asset/'L'Liability/'R'Revenue/'E'Expenditure/'O'Other),
-  Blocked('tYES'/'tNO'), ExternalCode, ForceActive('tYES'/'tNO'),
-  CurrTotal(num), LocTotal(num), Balance(num)
+  AcctCode(PK), AcctName, FormatCode, GroupMask(int drawer: typically 1 Assets, 2 Liabilities,
+  3 Equity, 4 Revenue, 5 Cost of Sales, 6 Operating Exp, 7 Non-operating/Financing, 8 Other/Tax),
+  Levels(int, 1 = drawer title), FatherNum(→OACT parent), Postable('Y' account/'N' title),
+  ActType('I'Income/'E'Expenditure/'N'Other), Finanse('Y' = cash/bank account),
+  LocManTran('Y' = control account), Frozen('Y'/'N'),
+  CurrTotal(num, all-time balance — not for periods)
+
+OBGS  Budget Scenario
+  AbsId(PK int), Name, FinancYear(date)
+
+OBGT  Budget per Account (annual)
+  AcctCode(→OACT), Instance(→OBGS.AbsId), FinancYear(date), DebLTotal(num), CredLTotal(num)
+
+BGT1  Budget per Account per Month
+  AcctCode(→OACT), Instance(→OBGS.AbsId), Line_ID(int month 0-11 of FY), DebLTotal(num), CredLTotal(num)
+
+OFPR  Posting Periods (fiscal calendar)
+  AbsEntry(PK int), Code, Name, F_RefDate(date), T_RefDate(date), Category(fiscal year), PeriodStat
 
 ORCT  Incoming Payment Header
   DocEntry(PK int), DocNum, CardCode(→OCRD), CardName,
@@ -302,14 +318,6 @@ VPM2  Outgoing Payment — Applied Invoices
 ODPS  Deposit Header
   DepNum(PK int), DepDate(date), DepTotal(num),
   BankCode, BnkAccount, Comments, Canceled('tNO'/'tYES')
-
-OFPR  Budget Header
-  PrjCode(PK int), PrjName, BudgetYear(int), Active('tYES'/'tNO')
-
-FPR1  Budget Lines (by Account)
-  PrjCode(→OFPR), AcctCode(→OACT),
-  Jan(num), Feb(num), Mar(num), Apr(num), May(num), Jun(num),
-  Jul(num), Aug(num), Sep(num), Oct(num), Nov(num), Dec(num)
 
 OBST  Bank Statement Header
   AbsEntry(PK int), BankCode, AcctCode, StmtDate(date),

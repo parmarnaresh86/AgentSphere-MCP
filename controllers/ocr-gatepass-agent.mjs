@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { extractPdfText, runVisionExtraction, escHtml, today } from '../lib/ocr-extract.mjs';
+import { searchPartners, matchPartner, findDuplicate, normKey } from '../lib/ocr-sap-match.mjs';
 
 const _sessions = new Map();
 const _upload    = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -58,7 +59,7 @@ function buildReviewHTML(ocrData, fileName) {
 }
 
 export function createOcrGatePassAgentRouter(deps) {
-  const { requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId } = deps;
+  const { requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId } = deps;
   const aiDeps = { AI_PROVIDER, gptChatComplete, azureMessagesCreate, USE_AI };
   const router = Router();
 
@@ -76,6 +77,57 @@ export function createOcrGatePassAgentRouter(deps) {
       res.json({ ok: true, ocrData, fileName: file.originalname, fileSize: file.size, mimeType });
     } catch (e) {
       console.error('[OCR-GATEPASS] upload error:', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // ── Form-mode endpoints (split view: document preview + editable gate pass entry) ──
+  const cid = () => (getActiveCompanyId ? getActiveCompanyId() : '');
+  const dupKey = v => {
+    const h = v?.header || v || {};
+    return h.passNumber ? normKey(h.passNumber, h.passDate) : '';
+  };
+
+  // Any business partner (customer, vendor or lead) — visitors come from both sides.
+  router.get('/partners', requireAuth, async (req, res) => {
+    res.json({ ok: true, partners: await searchPartners(getActiveSap(), String(req.query.q || '').trim(), null) });
+  });
+
+  router.post('/prepare', requireAuth, async (req, res) => {
+    try {
+      const od = req.body?.ocrData || {};
+      let partner = null, score = 0;
+      if (od.company) {
+        try { ({ partner, score } = await matchPartner(getActiveSap(), { name: od.company }, null)); } catch {}
+      }
+      res.json({
+        ok: true,
+        partner: partner ? { ...partner, score } : null,
+        duplicate: findDuplicate(ocrDocumentsRepo, cid(), 'gatepass', dupKey, od),
+      });
+    } catch (e) {
+      console.error('[OCR-GATEPASS] prepare error:', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  router.post('/save', requireAuth, (req, res) => {
+    try {
+      const { form, ocrData = null, fileName = '', allowDuplicate = false } = req.body || {};
+      const h = form?.header || {};
+      if (!h.personOrVehicle) return res.status(400).json({ ok: false, error: 'Enter the visitor name or vehicle number.' });
+      const dup = findDuplicate(ocrDocumentsRepo, cid(), 'gatepass', dupKey, form);
+      if (dup && !allowDuplicate) return res.status(409).json({ ok: false, duplicate: dup, error: `Gate pass ${h.passNumber} dated ${h.passDate || '—'} is already in the register (entry #${dup.id}).` });
+
+      const id = ocrDocumentsRepo.insert({
+        company_id: cid(), doc_type: 'gatepass', session_id: `gpform_${Date.now()}`,
+        file_name: fileName, uploaded_by: req.user?.username || req.user?.email || '',
+        extracted_json: ocrData, match_json: { header: h }, status: 'logged',
+        notes: [h.partner?.code, h.purpose].filter(Boolean).join(' · '),
+      });
+      res.json({ ok: true, id });
+    } catch (e) {
+      console.error('[OCR-GATEPASS] save error:', e);
       res.status(500).json({ ok: false, error: e.message });
     }
   });

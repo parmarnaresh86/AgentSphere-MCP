@@ -180,7 +180,7 @@ let _currencyCache = null; // { key, code, symbol }
 /**
  * Returns { code, symbol } for the currently active company, read live from
  * OADM.MainCurncy and cached until the connection changes. Falls back to
- * INR (this app's original default) if the lookup fails for any reason.
+ * USD (this app's default) if the lookup fails for any reason.
  */
 export async function getCompanyCurrency() {
   const cfg = _activeConfig;
@@ -191,7 +191,7 @@ export async function getCompanyCurrency() {
   // (USD, INR…) but SAP B1 lets admins define it as a bare symbol instead
   // (this company's is literally "$"), so it can't always be looked up in
   // CURRENCY_SYMBOLS as if it were an ISO code.
-  let raw = "INR";
+  let raw = "USD";
   if (isConnected()) {
     try {
       // HANA folds unquoted identifiers to uppercase, but SAP B1-on-HANA
@@ -201,7 +201,7 @@ export async function getCompanyCurrency() {
       const rows = await executeSQL(`SELECT ${col} AS MainCurncy FROM ${tableRef("OADM", cfg)}`);
       const val = rows?.[0]?.MainCurncy ?? rows?.[0]?.MAINCURNCY ?? rows?.[0]?.mainCurncy;
       if (val) raw = String(val).trim();
-    } catch { /* keep INR default — e.g. module not licensed, permissions */ }
+    } catch { /* keep USD default — e.g. module not licensed, permissions */ }
   }
   const isIsoCode = /^[A-Za-z]{3}$/.test(raw);
   const code = isIsoCode ? raw.toUpperCase() : raw;

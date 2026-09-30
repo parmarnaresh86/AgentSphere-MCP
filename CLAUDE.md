@@ -67,7 +67,7 @@ All controllers share the same `callAI()` pattern: try GPT → Azure Claude → 
 
 | File | Purpose |
 |---|---|
-| `db.mjs` | SQLite via `better-sqlite3`. Tables: `users`, `connections`, `auth_sessions`, `db_connections`, `query_cache`, `mail_config` |
+| `db.mjs` | SQLite via `better-sqlite3`. Tables: `users`, `connections`, `auth_sessions`, `db_connections`, `query_cache`, `mail_config`, `user_prompts` (saved prompts + prompt history) |
 | `db-connector.mjs` | Direct DB connections (MSSQL via `mssql`, HANA via `hdb`). Exports `executeSQL`, `connectDB`, `tableRef`. SELECT-only guard enforced here. |
 | `nlp-engine.mjs` | Rule-based NLP for SAP B1 entities. Matches entity patterns → calls Service Layer OData → returns markdown table. No AI needed. |
 | `data/sap-schema.json` | SAP B1 schema registry (OData paths, field names, filter examples) used as AI context. |

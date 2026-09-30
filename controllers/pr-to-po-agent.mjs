@@ -192,9 +192,16 @@ function buildPOSummary(session) {
   mergedLines.forEach((l, i) => {
     const lt = (l.qty || 0) * (l.unitPrice || 0);
     grand += lt;
-    out += `| ${i+1} | **${l.itemCode}** | ${l.itemName || '—'} | ${fmtN(l.qty,0)} | ${l.unit||'EA'} | ${l.unitPrice > 0 ? fmtN(l.unitPrice) : '—'} | ${lt > 0 ? fmtN(lt) : '—'} | ${l.warehouseCode || '—'} |\n`;
+    // Raw <input> tags — marked passes inline HTML through unmodified, so these render as
+    // real editable fields right in the chat table, wired to the same ptpoEditLine()/
+    // ptpoSyncLine() the PO Builder sidebar cards use (shared by index via data-idx).
+    const priceInput = `<input type="number" class="ptpo-price-input" data-idx="${i}" min="0" step="0.01" value="${l.unitPrice || ''}" placeholder="0.00" oninput="ptpoEditLine(${i},'unitPrice',this.value,false)" onchange="ptpoEditLine(${i},'unitPrice',this.value,true)" style="width:70px;padding:2px 5px;font-size:12px;border:1px solid ${l.unitPrice > 0 ? '#ccc' : '#f59e0b'};border-radius:4px;text-align:right">`;
+    const whInput    = `<input type="text" class="ptpo-wh-input" data-idx="${i}" value="${String(l.warehouseCode || '').replace(/"/g, '&quot;')}" placeholder="Whs" onchange="ptpoEditLine(${i},'warehouseCode',this.value,true)" style="width:50px;padding:2px 5px;font-size:12px;border:1px solid #ccc;border-radius:4px">`;
+    out += `| ${i+1} | **${l.itemCode}** | ${l.itemName || '—'} | ${fmtN(l.qty,0)} | ${l.unit||'EA'} | ${priceInput} | <span data-lt="${i}">${lt > 0 ? fmtN(lt) : '—'}</span> | ${whInput} |\n`;
   });
-  if (grand > 0) out += `\n**Estimated Total: ${fmtN(grand)}**`;
+  out += `\n**Estimated Total: <span data-grand-total>${fmtN(grand)}</span>**`;
+  const missing = mergedLines.filter(l => !(l.unitPrice > 0)).length;
+  if (missing > 0) out += `\n\n⚠️ **${missing} line(s)** have no unit price carried over from the PR — enter one in the table above.`;
   return out;
 }
 
@@ -223,8 +230,23 @@ export function createPRtoPOAgentRouter(deps) {
       let prList      = null;
       let vendorList  = null;
 
+      // ── JSON actions — silent line edits from the summary panel ─────────────
+      if (msg.startsWith('{')) {
+        let action = null;
+        try { action = JSON.parse(msg); } catch {}
+        if (action?.action === 'update_line') {
+          const { idx, field } = action;
+          if (Number.isInteger(idx) && session.mergedLines[idx] && ['unitPrice', 'warehouseCode', 'qty'].includes(field)) {
+            session.mergedLines[idx][field] = field === 'warehouseCode'
+              ? String(action.value ?? '')
+              : (Number(action.value) || 0);
+          }
+        }
+        reply = '';
+      }
+
       // ── INIT / fresh load ────────────────────────────────────────────────────
-      if (session.step === 'INIT' || (!msg && session.step === 'INIT')) {
+      else if (session.step === 'INIT' || (!msg && session.step === 'INIT')) {
         const headers = await fetchOpenPRHeaders(sap);
         session.openPRs = headers.map(p => ({
           docEntry: p.DocEntry,
@@ -315,6 +337,11 @@ export function createPRtoPOAgentRouter(deps) {
                     unitPrice:     Number(line.UnitPrice || line.Price || 0),
                     warehouseCode: line.WarehouseCode || '',
                     sourcePR:      full.DocNum,
+                    // Needed to "Copy From" link the PO line back to its PR line — without this,
+                    // SAP never marks the PR line as drawn, so the PR stays open and reappears
+                    // in the list, letting the same PR be converted again and again.
+                    baseEntry:     full.DocEntry,
+                    baseLine:      line.LineNum,
                   });
                 }
               }
@@ -447,6 +474,11 @@ export function createPRtoPOAgentRouter(deps) {
                 ...(l.unitPrice > 0 ? { UnitPrice:     l.unitPrice     } : {}),
                 ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
                 ...(uomCodes[i]     ? { UoMCode:        uomCodes[i]     } : {}),
+                // "Copy From" link back to the source PR line — this is what makes SAP mark
+                // the PR line as drawn/closed once the PO posts, instead of leaving the PR open.
+                ...(l.baseEntry != null && l.baseLine != null
+                  ? { BaseType: 1470000113, BaseEntry: Number(l.baseEntry), BaseLine: Number(l.baseLine) }
+                  : {}),
               })),
             };
 
@@ -662,7 +694,7 @@ function renderPOPrint(doc) {
 <body>
 <div class="watermark">PURCHASE ORDER</div>
 <div class="print-btn">
-  <button class="btn-close" onclick="window.close()">✕ Close</button>
+  <button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'poa-print-close'},'*') : window.close()">✕ Close</button>
   <button class="btn-print" onclick="window.print()">🖨️ Print</button>
 </div>
 <div class="header">

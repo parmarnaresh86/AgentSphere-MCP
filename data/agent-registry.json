@@ -291,11 +291,11 @@
         },
         {
           "id": "inventory-transfer-agent",
-          "label": "Inventory Transfer Agent",
-          "description": "Warehouse-to-warehouse stock transfer.",
-          "kind": "tool",
-          "existingTools": ["call_service_layer"],
-          "status": "coming_soon"
+          "label": "Inventory Workflow Agent",
+          "description": "Stock transfer request, stock transfer (from request or direct), goods issue and goods receipt.",
+          "kind": "controller",
+          "existingController": { "mount": "/api/inventory-agent", "chatEndpoint": "/chat" },
+          "status": "available"
         }
       ]
     },

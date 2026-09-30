@@ -23,11 +23,11 @@
   --teal:#0B7D8A;--gold:#B07800;--navy:#1E40AF;
   --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
 }
-html,body{height:100%;overflow:hidden;background:var(--bg)}
+html,body{height:100%;min-height:100%;overflow-x:hidden;overflow-y:auto;background:var(--bg)}
 body{font-family:var(--font);color:var(--text);display:flex;flex-direction:column}
 
 /* Shell */
-.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30}
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;position:sticky;top:0}
 .shell-back{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);transition:background .15s;border:1px solid rgba(255,255,255,.2)}
 .shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
 .shell-divider{width:1px;height:20px;background:rgba(255,255,255,.2)}
@@ -44,7 +44,7 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .shell-btn.active{background:rgba(0,112,242,.4)}
 
 /* Filter bar */
-.filter-bar{background:var(--white);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0;z-index:20}
+.filter-bar{background:var(--white);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0;z-index:20;position:sticky;top:44px}
 .fg{display:flex;flex-direction:column;gap:3px}
 .fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .fg input,.fg select{height:29px;padding:0 7px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);font-family:var(--font);outline:none;transition:border-color .15s}
@@ -60,15 +60,24 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .clear-btn:hover{border-color:var(--red);color:var(--red)}
 
 /* Main layout */
-.main-area{display:flex;flex:1;min-height:0;overflow:hidden}
+.main-area{display:flex;flex:1;min-height:0;overflow:visible}
 
-/* Chat panel */
-.chat-panel{width:360px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--white)}
+/* Chat FAB (floating action button) */
+.chat-fab{position:fixed;right:20px;bottom:20px;width:52px;height:52px;border-radius:50%;background:var(--blue);color:#fff;border:none;box-shadow:0 4px 16px rgba(0,112,242,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;z-index:41;transition:transform .15s,background .15s}
+.chat-fab:hover{background:var(--blue-mid);transform:scale(1.06)}
+.chat-fab .fab-badge{position:absolute;top:-2px;right:-2px;width:14px;height:14px;border-radius:50%;background:var(--red);border:2px solid var(--white);display:none}
+.chat-fab .fab-badge.show{display:block}
+
+/* Chat popup (floating overlay, closed by default) */
+.chat-popup{position:fixed;right:20px;bottom:84px;width:360px;height:min(560px,calc(100vh - 130px));flex-shrink:0;display:none;flex-direction:column;border:1px solid var(--border);border-radius:10px;background:var(--white);box-shadow:0 12px 36px rgba(0,0,0,.25);z-index:40;overflow:hidden;opacity:0;transform:translateY(12px) scale(.98);transition:opacity .15s,transform .15s}
+.chat-popup.open{display:flex;opacity:1;transform:translateY(0) scale(1)}
 .chat-topbar{border-bottom:1px solid var(--border);padding:8px 13px;display:flex;align-items:center;gap:9px;flex-shrink:0}
 .chat-avatar{width:29px;height:29px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0}
 .chat-name{font-size:12.5px;font-weight:600}
 .chat-status{font-size:11px;color:var(--green);display:flex;align-items:center;gap:4px}
 .status-dot{width:5px;height:5px;border-radius:50%;background:var(--green)}
+.chat-close-btn{margin-left:auto;width:22px;height:22px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;border-radius:4px;display:flex;align-items:center;justify-content:center}
+.chat-close-btn:hover{background:var(--bg);color:var(--text)}
 #messages{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:9px;background:var(--bg);scroll-behavior:smooth}
 #messages::-webkit-scrollbar{width:4px}
 #messages::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
@@ -106,7 +115,7 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .input-hint{font-size:10px;color:var(--muted);margin-top:3px;text-align:right}
 
 /* Analytics panel */
-.analytics-panel{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.analytics-panel{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:visible}
 
 /* View tabs */
 .view-tabs{background:var(--white);border-bottom:2px solid var(--border);padding:0 14px;display:flex;gap:0;flex-shrink:0;overflow-x:auto}
@@ -119,12 +128,12 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .vtab.active .badge{background:var(--blue-light);color:var(--blue)}
 
 /* Analytics scroll area */
-.ap-scroll{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.ap-scroll{flex:1;min-height:0;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
 .ap-scroll::-webkit-scrollbar{width:5px}
 .ap-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
 
 /* KPI row */
-.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex-shrink:0}
 .kpi-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:10px 12px;box-shadow:var(--shadow)}
 .kpi-card.c-blue{border-left:3px solid var(--blue)}.kpi-card.c-orange{border-left:3px solid var(--orange)}
 .kpi-card.c-green{border-left:3px solid var(--green)}.kpi-card.c-red{border-left:3px solid var(--red)}
@@ -136,7 +145,7 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .kpi-card.c-green .kpi-value{color:var(--green)}.kpi-card.c-red .kpi-value{color:var(--red)}
 
 /* Chart row */
-.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex-shrink:0}
 .chart-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:12px;box-shadow:var(--shadow)}
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .card-title{font-size:12px;font-weight:700;color:var(--text)}
@@ -146,11 +155,11 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .chart-wrap{position:relative;height:180px}
 
 /* AI insight */
-.insight-card{background:linear-gradient(135deg,#EBF4FF,#E8F4FF);border:1px solid #BFDBFE;border-left:3px solid var(--blue);border-radius:var(--r);padding:11px 13px;font-size:12.5px;line-height:1.65}
+.insight-card{background:linear-gradient(135deg,#EBF4FF,#E8F4FF);border:1px solid #BFDBFE;border-left:3px solid var(--blue);border-radius:var(--r);padding:11px 13px;font-size:12.5px;line-height:1.65;flex-shrink:0}
 .insight-card h3{font-size:11.5px;font-weight:700;color:var(--blue);margin-bottom:5px}
 
 /* Table card */
-.table-card{background:var(--white);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);overflow:hidden}
+.table-card{background:var(--white);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);overflow:hidden;flex-shrink:0}
 .table-header{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border)}
 .table-header span{font-size:12px;font-weight:700;color:var(--text)}
 .tbl-actions{display:flex;gap:6px;align-items:center}
@@ -185,8 +194,8 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 .dim-chip.active{background:var(--orange);color:#fff;border-color:var(--orange)}
 .dim-section-label{font-size:10px;color:var(--muted);font-weight:600;align-self:center;white-space:nowrap}
 
-@media(max-width:1100px){.chat-panel{display:none}}
 @media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.chart-row{grid-template-columns:1fr}}
+@media(max-width:480px){.chat-popup{right:8px;left:8px;bottom:76px;width:auto;height:min(70vh,560px)}.chat-fab{right:14px;bottom:14px}}
 </style>
 </head>
 <body>
@@ -202,7 +211,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
   <div><div class="shell-title">Purchase Analysis Dashboard</div></div>
   <span class="shell-subtitle">8 AP/Procurement HANA Views</span>
   <div class="shell-spacer"></div>
-  <button class="shell-btn" id="toggle-chat-btn" onclick="toggleChat()">⬡ Chat</button>
   <button class="shell-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
   <span class="shell-badge" id="status-badge">READY</span>
 </div>
@@ -213,18 +221,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
   <div class="fg wd"><label>To Date</label><input type="date" id="f-to"/></div>
   <div class="fg wv"><label>Vendor</label><input type="text" id="f-vendor" placeholder="Code or name…"/></div>
   <div class="fg wi"><label>Item</label><input type="text" id="f-item" placeholder="Item code or desc…"/></div>
-  <div class="fg ws"><label>Brand</label>
-    <select id="f-brand">
-      <option value="">All Brands</option>
-      <optgroup label="Predefined" id="brand-predefined">
-        <option value="BRAND">BRAND</option><option value="OWN">OWN</option><option value="THIRD">THIRD PARTY</option>
-      </optgroup>
-      <optgroup label="From Data" id="brand-data"></optgroup>
-    </select>
-  </div>
-  <div class="fg ws"><label>Sub-Brand</label><select id="f-subbrand"><option value="">All Sub-Brands</option><optgroup label="From Data" id="subbrand-data"></optgroup></select></div>
-  <div class="fg ws"><label>Universe</label><select id="f-universe"><option value="">All Universe</option><optgroup label="From Data" id="universe-data"></optgroup></select></div>
-  <div class="fg ws"><label>Branch</label><select id="f-branch"><option value="">All Branches</option></select></div>
   <div class="fg ws"><label>Item Group</label><select id="f-itemgroup"><option value="">All Groups</option></select></div>
   <button class="analyze-btn" id="analyze-btn" onclick="runAnalyze()">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -235,33 +231,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
 
 <!-- Main area -->
 <div class="main-area">
-
-  <!-- Chat panel -->
-  <div class="chat-panel">
-    <div class="chat-topbar">
-      <div class="chat-avatar">🛒</div>
-      <div style="flex:1">
-        <div class="chat-name">Procurement AI</div>
-        <div class="chat-status"><span class="status-dot"></span><span id="chat-status">Ready</span></div>
-      </div>
-    </div>
-    <div id="messages">
-      <div class="no-data">
-        <div class="no-data-icon">📊</div>
-        <div style="font-size:12.5px">Select a tab and click <strong>Analyze</strong></div>
-        <div style="font-size:11px;color:#aaa;margin-top:4px">I'll answer questions about your procurement data</div>
-      </div>
-    </div>
-    <div class="input-area">
-      <div class="input-row">
-        <textarea id="user-input" rows="1" placeholder="Ask about your purchase data…" autocomplete="off"></textarea>
-        <button class="send-btn" id="send-btn" onclick="sendFromInput()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        </button>
-      </div>
-      <div class="input-hint"><strong>Enter</strong> send · <strong>Shift+Enter</strong> new line</div>
-    </div>
-  </div>
 
   <!-- Analytics panel -->
   <div class="analytics-panel">
@@ -303,7 +272,6 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
             <div class="card-actions" id="chart1-actions">
               <div class="dim-tab active" onclick="switchGroupBy('vendor',this)">Vendor</div>
               <div class="dim-tab" onclick="switchGroupBy('item',this)">Item</div>
-              <div class="dim-tab" onclick="switchGroupBy('brand',this)">Brand</div>
               <div class="dim-tab" onclick="switchGroupBy('period',this)">Period</div>
             </div>
           </div>
@@ -311,13 +279,7 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
         </div>
         <div class="chart-card">
           <div class="card-header">
-            <div class="card-title" id="chart2-title">Dimension Breakdown</div>
-            <div class="card-actions" id="chart2-actions">
-              <div class="dim-tab active" onclick="switchDimChart('brand',this)">Brand</div>
-              <div class="dim-tab" onclick="switchDimChart('subbrand',this)">Sub-Brand</div>
-              <div class="dim-tab" onclick="switchDimChart('universe',this)">Universe</div>
-              <div class="dim-tab" onclick="switchDimChart('branch',this)">Branch</div>
-            </div>
+            <div class="card-title" id="chart2-title">Purchase Trend by Period</div>
           </div>
           <div class="chart-wrap"><canvas id="chart2"></canvas></div>
         </div>
@@ -352,11 +314,45 @@ body{font-family:var(--font);color:var(--text);display:flex;flex-direction:colum
   </div><!-- /analytics-panel -->
 </div><!-- /main-area -->
 
+<!-- Chat popup (floating) -->
+<div class="chat-popup" id="chat-popup">
+  <div class="chat-topbar">
+    <div class="chat-avatar">🛒</div>
+    <div style="flex:1">
+      <div class="chat-name">Procurement AI</div>
+      <div class="chat-status"><span class="status-dot"></span><span id="chat-status">Ready</span></div>
+    </div>
+    <button class="chat-close-btn" onclick="toggleChat()" title="Close">✕</button>
+  </div>
+  <div id="messages">
+    <div class="no-data">
+      <div class="no-data-icon">📊</div>
+      <div style="font-size:12.5px">Select a tab and click <strong>Analyze</strong></div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">I'll answer questions about your procurement data</div>
+    </div>
+  </div>
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="user-input" rows="1" placeholder="Ask about your purchase data…" autocomplete="off"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendFromInput()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+    <div class="input-hint"><strong>Enter</strong> send · <strong>Shift+Enter</strong> new line</div>
+  </div>
+</div>
+
+<!-- Chat FAB -->
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()" title="Chat with Procurement AI">
+  <span id="fab-icon">🛒</span>
+  <span class="fab-badge" id="fab-badge"></span>
+</button>
+
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
 const TOKEN = () => localStorage.getItem('hanny_token') || '';
 let sessionId = null, isBusy = false, currentData = null;
-let activeView = 'purchase', tableGroup = 'vendor', chartGroup = 'vendor', dimChartKey = 'brand';
+let activeView = 'purchase', tableGroup = 'vendor', chartGroup = 'vendor';
 let sortCol = null, sortDir = 'desc';
 let chart1 = null, chart2 = null;
 let dataCtxStr = '';
@@ -412,6 +408,7 @@ function switchView(view, el) {
   sortCol = null;
   if (currentData?.view === view) return; // already loaded
   resetCharts();
+  if (currentData) runAnalyze(); // a view was already loaded — reload for the newly selected tab
 }
 
 // ── Analyze ───────────────────────────────────────────────────────────────────
@@ -427,10 +424,6 @@ async function runAnalyze() {
     filters: {
       vendor:   document.getElementById('f-vendor').value.trim()   || undefined,
       item:     document.getElementById('f-item').value.trim()     || undefined,
-      brand:    document.getElementById('f-brand').value           || undefined,
-      subBrand: document.getElementById('f-subbrand').value        || undefined,
-      universe: document.getElementById('f-universe').value        || undefined,
-      branch:   document.getElementById('f-branch').value         || undefined,
       itemGroup:document.getElementById('f-itemgroup').value       || undefined,
     },
   };
@@ -493,23 +486,13 @@ function updateKPIs(data) {
 // ── Filter options ────────────────────────────────────────────────────────────
 function updateFilterOptions(opts) {
   if(!opts) return;
-  populateSel('f-branch', opts.branches||[], 'All Branches');
   populateSel('f-itemgroup', opts.itemGroups||[], 'All Groups');
-  populateDynamic('brand-data', opts.brands||[]);
-  populateDynamic('subbrand-data', opts.subBrands||[]);
-  populateDynamic('universe-data', opts.universes||[]);
 }
 function populateSel(id, items, placeholder) {
   const sel = document.getElementById(id);
   const cur = sel.value;
   sel.innerHTML = `<option value="">${placeholder}</option>`;
   items.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; if(v===cur)o.selected=true; sel.appendChild(o); });
-}
-function populateDynamic(groupId, items) {
-  const g = document.getElementById(groupId);
-  if(!g) return; g.innerHTML='';
-  const predefined = new Set(['BRAND','OWN','THIRD PARTY','THIRD']);
-  items.filter(v=>!predefined.has(v)).forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; g.appendChild(o); });
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
@@ -526,7 +509,7 @@ function renderCharts(data) {
 function getChartData(data) {
   const measures = data.measures || [];
   const m0 = measures[0] || 'NetPurchaseAmountLC';
-  const maps = { vendor: data.byVendor, item: data.byItem, brand: data.byBrand, period: data.byPeriod };
+  const maps = { vendor: data.byVendor, item: data.byItem, period: data.byPeriod };
   const src = maps[chartGroup] || data.byVendor || [];
   const labels = src.slice(0,15).map(r => r.vendorName || r.itemName || r._label || r._key || '?');
   const vals   = src.slice(0,15).map(r => r[m0]||0);
@@ -571,22 +554,26 @@ function renderChart1(data) {
 function renderChart2(data) {
   const ctx = document.getElementById('chart2').getContext('2d');
   if(chart2) chart2.destroy();
-  const dimMaps = { brand: data.byBrand, subbrand: data.bySubBrand, universe: data.byUniverse, branch: data.byBranch };
-  const src = (dimMaps[dimChartKey]||[]).slice(0,10);
+  const src = (data.byPeriod||[]).slice(-12);
   if(!src.length) return;
   const m0 = (data.measures||[])[0]||'NetPurchaseAmountLC';
-  const labels = src.map(r=>r._label||r._key||'?');
+  const labels = src.map(r=>r._key||'?');
   const vals   = src.map(r=>r[m0]||0);
-  document.getElementById('chart2-title').textContent = `${dimChartKey[0].toUpperCase()+dimChartKey.slice(1)} Breakdown`;
+  document.getElementById('chart2-title').textContent = `Purchase Trend by Period — ${KPI_LABELS[m0]||m0}`;
 
   chart2 = new Chart(ctx, {
-    type: 'doughnut',
-    data:{ labels, datasets:[{ data:vals, backgroundColor:CHART_COLORS.map(c=>c+'CC'), borderColor:CHART_COLORS, borderWidth:1.5 }] },
+    type: 'line',
+    data:{ labels, datasets:[{
+      label: KPI_LABELS[m0]||m0, data: vals,
+      backgroundColor:'rgba(0,112,242,.15)', borderColor:'#0070F2', borderWidth:2,
+      fill:true, tension:0.35, pointRadius:3,
+    }] },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{position:'right',labels:{font:{size:9},boxWidth:10}},
-        tooltip:{callbacks:{label:c=>` ${c.label}: ${fmtN(c.raw)}`}}
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtN(c.raw)}} },
+      scales:{
+        x:{ grid:{display:false}, ticks:{font:{size:9}, maxRotation:30} },
+        y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:9},callback:v=>fmtN(v)} }
       }
     }
   });
@@ -597,13 +584,6 @@ function switchGroupBy(grp, el) {
   document.querySelectorAll('#chart1-actions .dim-tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   if(currentData) renderChart1(currentData);
-}
-
-function switchDimChart(key, el) {
-  dimChartKey = key;
-  document.querySelectorAll('#chart2-actions .dim-tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
-  if(currentData) renderChart2(currentData);
 }
 
 // ── Table ─────────────────────────────────────────────────────────────────────
@@ -692,12 +672,10 @@ function buildContextStr(data) {
   const m0 = measures[0]||'';
   const topV = (data.byVendor||[]).slice(0,10).map((v,i)=>`  ${i+1}. ${v.vendorName||v._key}: ${measures.map(m=>KPI_LABELS[m]+' '+fmtN(v[m])).join(', ')}`).join('\n');
   const periods = (data.byPeriod||[]).slice(-6).map(p=>`  ${p._key}: ${fmtN(p[m0])}`).join('\n');
-  const brands = (data.byBrand||[]).slice(0,5).map(b=>`  ${b._label}: ${fmtN(b[m0])}`).join('\n');
   return `VIEW: ${VIEW_META[activeView]?.label||activeView} | Period: ${data.params?.fromDate} to ${data.params?.toDate}
 TOTALS: ${measures.map(m=>`${KPI_LABELS[m]}: ${fmtN(data.totals?.[m])}`).join(', ')}
 TOP VENDORS:\n${topV}
-RECENT MONTHLY TREND:\n${periods}
-BRAND BREAKDOWN:\n${brands}`;
+RECENT MONTHLY TREND:\n${periods}`;
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -739,6 +717,7 @@ function appendMessage(role, content, quickReplies) {
   const row=document.createElement('div'); row.className=`msg-row ${role}`;
   row.innerHTML=`<div class="av ${role==='bot'?'bot':'user'}">${role==='bot'?'🛒':'👤'}</div><div class="bubble ${role==='bot'?'bot':'user'}">${role==='bot'?renderMd(content):escHtml(content)}</div>`;
   msgs.appendChild(row);
+  if(role==='bot' && !_chatVisible) document.getElementById('fab-badge').classList.add('show');
   if(quickReplies?.length){
     const qrDiv=document.createElement('div'); qrDiv.className='qr-row';
     quickReplies.forEach(qr=>{ const c=document.createElement('button'); c.className='qr-chip'; c.textContent=qr; c.onclick=()=>{markQRUsed();sendMessage(qr);}; qrDiv.appendChild(c); });
@@ -751,7 +730,7 @@ function showTyping(){ const msgs=document.getElementById('messages'); const r=d
 function hideTyping(){ const t=document.getElementById('typing-indicator'); if(t) t.remove(); }
 function setChatBusy(b){ document.getElementById('send-btn').disabled=b; document.getElementById('user-input').disabled=b; document.getElementById('chat-status').textContent=b?'Thinking…':'Ready'; }
 function setStatus(s,l){ const b=document.getElementById('status-badge'); b.textContent=l||s; b.className=`shell-badge ${s}`; }
-function clearFilters(){ ['f-vendor','f-item'].forEach(id=>document.getElementById(id).value=''); ['f-brand','f-subbrand','f-universe','f-branch','f-itemgroup'].forEach(id=>document.getElementById(id).value=''); }
+function clearFilters(){ ['f-vendor','f-item','f-itemgroup'].forEach(id=>document.getElementById(id).value=''); }
 
 // ── Safe JSON fetch ────────────────────────────────────────────────────────
 async function safeJson(r) {
@@ -764,16 +743,19 @@ async function safeJson(r) {
   return r.json();
 }
 
-// ── Fullscreen & chat toggle ───────────────────────────────────────────────
-let _chatVisible = true;
+// ── Fullscreen & chat popup toggle ───────────────────────────────────────────
+let _chatVisible = false;
 function toggleChat() {
-  const panel = document.querySelector('.chat-panel');
-  const btn = document.getElementById('toggle-chat-btn');
-  if (!panel) return;
+  const popup = document.getElementById('chat-popup');
+  const fabIcon = document.getElementById('fab-icon');
+  if (!popup) return;
   _chatVisible = !_chatVisible;
-  panel.style.display = _chatVisible ? '' : 'none';
-  btn.textContent = _chatVisible ? '⬡ Chat' : '⬢ Chat';
-  btn.classList.toggle('active', !_chatVisible);
+  popup.classList.toggle('open', _chatVisible);
+  fabIcon.textContent = _chatVisible ? '✕' : '🛒';
+  if (_chatVisible) {
+    document.getElementById('fab-badge').classList.remove('show');
+    document.getElementById('user-input').focus();
+  }
 }
 function toggleFullscreen() {
   if (!document.fullscreenElement) {

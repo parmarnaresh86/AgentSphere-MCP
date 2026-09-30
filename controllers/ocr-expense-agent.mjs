@@ -7,7 +7,7 @@
  */
 import { Router } from 'express';
 import multer from 'multer';
-import { extractPdfText, runVisionExtraction, escHtml, fmtN, today, sapDate, datePlusDays } from '../lib/ocr-extract.mjs';
+import { extractPdfText, runVisionExtraction, similarity, vendorMatchScore, nameSimilarity, vendorSearchWords, containsAnyCase, escHtml, fmtN, today, sapDate, datePlusDays } from '../lib/ocr-extract.mjs';
 
 const _sessions = new Map();
 const _upload    = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -25,22 +25,30 @@ Return ONLY valid JSON (no markdown) with this structure:
   "vendorName": "string or null",
   "vendorCode": "string or null",
   "expenseCategory": "string or null — best-guess category e.g. Telephone, Courier, Rent, Professional Fees",
-  "currency": "INR",
+  "currency": "USD",
   "subtotal": 0,
   "taxTotal": 0,
   "grandTotal": 0,
-  "description": "string — short line description for the AP invoice"
+  "description": "string — short line description for the AP invoice",
+  "lines": [
+    { "description": "string — one charge on the invoice", "amount": 0, "taxAmount": 0 }
+  ]
 }
+"lines" lists each separate charge with its amount BEFORE tax; use [] if the invoice has a single charge.
 Use null for strings that cannot be determined, 0 for numeric fields that cannot be determined.`;
 
-async function fetchExpenseAccounts(sap) {
+// Postable (non-title) expense G/L accounts, optionally filtered by code/name text.
+async function fetchExpenseAccounts(sap, query = '', top = 200) {
+  const esc = String(query || '').replace(/'/g, "''").slice(0, 40);
+  const text = esc ? ` and ${containsAnyCase(['FormatCode', 'Name'], esc)}` : '';
   try {
     const r = await sap.get('/ChartOfAccounts', {
-      $filter: `AccountType eq 'at_Expenditure' and Postable eq 'tYES'`,
+      $select: 'Code,Name,FormatCode',
+      $filter: `AccountType eq 'at_Expenses' and ActiveAccount eq 'tYES'${text}`,
       $orderby: 'Code',
-      $top: 200,
+      $top: top,
     });
-    return Array.isArray(r.value) ? r.value.map(a => ({ code: a.Code, name: a.Name })) : [];
+    return Array.isArray(r.value) ? r.value.map(a => ({ code: a.Code, name: a.Name, format: a.FormatCode || '' })) : [];
   } catch (e) {
     console.error('[OCR-EXPENSE] fetchExpenseAccounts error:', e.message);
     return [];
@@ -50,7 +58,7 @@ async function fetchExpenseAccounts(sap) {
 async function searchVendors(sap, query) {
   const esc = (query || '').replace(/'/g, "''");
   const base = `CardType eq 'cSupplier' and Frozen eq 'tNO'`;
-  const filter = esc ? `(CardCode eq '${esc}' or contains(CardName,'${esc}')) and ${base}` : base;
+  const filter = esc ? `(CardCode eq '${esc}' or ${containsAnyCase(['CardName', 'CardCode'], esc)}) and ${base}` : base;
   try {
     const r = await sap.get('/BusinessPartners', { $select: 'CardCode,CardName,Currency', $filter: filter, $top: 20, $orderby: 'CardName asc' });
     return Array.isArray(r.value) ? r.value : [];
@@ -69,8 +77,30 @@ async function fetchExchangeRate(sap, currency, dateStr) {
     return Number.isFinite(rate) && rate > 0 ? { rate, error: null } : { rate: null, error: null };
   } catch (e) {
     console.error('[OCR-EXPENSE] fetchExchangeRate error:', e.message);
+    // SAP -4006 "Update the exchange rate" just means no rate is on file for that
+    // date — a data gap the user must fix in SAP, not a technical failure.
+    if (/-4006|update the exchange rate/i.test(e.message || '')) return { rate: null, error: null };
     return { rate: null, error: e.message };
   }
+}
+
+// Company local currency (e.g. USD) — a BP in the local currency needs no DocRate.
+// Cached per SAP client; null if it can't be determined (treat currency as foreign).
+const _localCurrency = new WeakMap();
+async function getLocalCurrency(sap) {
+  if (_localCurrency.has(sap)) return _localCurrency.get(sap);
+  let cur = null;
+  try {
+    const r = await sap.post('/SBOBobService_GetLocalCurrency', {});
+    cur = (typeof r === 'string' ? r : r?.value) || null;
+  } catch {
+    try {
+      const r = await sap.post('/CompanyService_GetAdminInfo', {});
+      cur = r?.LocalCurrency || null;
+    } catch (e) { console.error('getLocalCurrency error:', e.message); }
+  }
+  if (cur) _localCurrency.set(sap, cur);
+  return cur;
 }
 
 function buildReviewHTML(session) {
@@ -138,6 +168,139 @@ export function createOcrExpenseAgentRouter(deps) {
     }
   });
 
+  // ── Form-mode endpoints (split view: document preview + editable SAP A/P service invoice) ──
+
+  router.get('/vendors', requireAuth, async (req, res) => {
+    const list = await searchVendors(getActiveSap(), String(req.query.q || '').trim());
+    res.json({ ok: true, vendors: list.map(v => ({ code: v.CardCode, name: v.CardName, currency: v.Currency || null })) });
+  });
+
+  router.get('/gl-accounts', requireAuth, async (req, res) => {
+    const list = await fetchExpenseAccounts(getActiveSap(), String(req.query.q || '').trim(), 50);
+    res.json({ ok: true, accounts: list });
+  });
+
+  router.get('/lookups', requireAuth, async (req, res) => {
+    const companyId = getActiveCompanyId ? getActiveCompanyId() : '';
+    const taxCodes = cacheRepo?.getTaxCodes ? cacheRepo.getTaxCodes(companyId) : [];
+    let localCurrency = null;
+    try { localCurrency = await getLocalCurrency(getActiveSap()); } catch {}
+    res.json({ ok: true, localCurrency, taxCodes: taxCodes.map(t => ({ code: t.Code, name: t.Name || '', rate: Number(t.Rate) || 0 })) });
+  });
+
+  // Auto-match OCR output: vendor + a suggested expense account per line.
+  router.post('/prepare', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const od = req.body?.ocrData || {};
+      let candidates = await searchVendors(sap, od.vendorCode || od.vendorName || '');
+      if (!candidates.length && od.vendorCode && od.vendorName) candidates = await searchVendors(sap, od.vendorName);
+      // OCR names often differ slightly from SAP ("HTC Asia Ltd" vs "HTC (ASIA) Limited") — retry by key words.
+      if (!candidates.length && od.vendorName) {
+        const seen = new Map();
+        for (const w of vendorSearchWords(od.vendorName)) (await searchVendors(sap, w)).forEach(c => seen.set(c.CardCode, c));
+        candidates = [...seen.values()];
+      }
+      let vendor = null;
+      if (candidates.length === 1) vendor = candidates[0];
+      else if (candidates.length > 1 && od.vendorName) {
+        let best = null, bestScore = 0;
+        candidates.forEach(c => { const s = nameSimilarity(c.CardName, od.vendorName); if (s > bestScore) { bestScore = s; best = c; } });
+        if (bestScore >= 0.5) vendor = best;   // pre-fill; the % signal tells the user how sure we are
+      }
+
+      let lines = Array.isArray(od.lines) ? od.lines.filter(l => Number(l?.amount) > 0) : [];
+      if (!lines.length) {
+        const net = Number(od.subtotal) > 0 ? Number(od.subtotal) : Math.max(0, Number(od.grandTotal || 0) - Number(od.taxTotal || 0));
+        lines = [{ description: od.description || od.expenseCategory || 'Expense', amount: net, taxAmount: Number(od.taxTotal || 0) }];
+      }
+
+      const accounts = await fetchExpenseAccounts(sap, '', 500);
+      const suggest = text => {
+        if (!text || !accounts.length) return null;
+        let best = null, bestScore = 0;
+        accounts.forEach(a => { const s = similarity(a.name, text); if (s > bestScore) { bestScore = s; best = a; } });
+        return best && bestScore >= 0.35 ? { ...best, score: bestScore } : null;
+      };
+      const out = lines.map(l => ({ ocrLine: l, account: suggest(od.expenseCategory) || suggest(l.description) }));
+
+      res.json({
+        ok: true,
+        vendor: vendor ? { code: vendor.CardCode, name: vendor.CardName, currency: vendor.Currency || null, score: vendorMatchScore(vendor, od, candidates.length === 1) } : null,
+        lines: out,
+      });
+    } catch (e) {
+      console.error('[OCR-EXPENSE] prepare error:', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Post the user-reviewed form as a service-type A/P Invoice.
+  router.post('/post', requireAuth, async (req, res) => {
+    try {
+      const sap = getActiveSap();
+      const { header = {}, lines = [], ocrData = null, fileName = '' } = req.body || {};
+      if (!header.cardCode) return res.status(400).json({ ok: false, error: 'Please select a vendor.' });
+      const good = lines.filter(l => l.accountCode && Number(l.amount) > 0);
+      if (!good.length) return res.status(400).json({ ok: false, error: 'Add at least one line with a G/L account and an amount.' });
+
+      const docDate = header.docDate || today();
+      let currency = header.currency || null;
+      if (!currency) {
+        try {
+          const bp = await sap.get(`/BusinessPartners('${String(header.cardCode).replace(/'/g, "''")}')`, { $select: 'Currency' });
+          currency = bp?.Currency || null;
+        } catch {}
+      }
+      const localCurrency = await getLocalCurrency(sap);
+      const isForeign = !!currency && currency !== '##' && currency !== localCurrency;
+      let docRate = null;
+      if (isForeign) {
+        const rateResult = await fetchExchangeRate(sap, currency, docDate);
+        docRate = rateResult.rate;
+        if (!docRate) {
+          return res.status(400).json({ ok: false, error: rateResult.error
+            ? `Could not look up the ${currency} exchange rate: ${rateResult.error}`
+            : `SAP has no ${currency} exchange rate for ${docDate}. Add it in SAP B1 (Administration → Exchange Rates and Indexes), then post again.` });
+        }
+      }
+
+      const payload = {
+        DocType:    'dDocument_Service',
+        DocDate:    sapDate(docDate),
+        TaxDate:    sapDate(header.taxDate || docDate),
+        DocDueDate: sapDate(header.dueDate || datePlusDays(30)),
+        CardCode:   header.cardCode,
+        NumAtCard:  header.numAtCard || undefined,
+        Comments:   header.comments || undefined,
+        ...(isForeign ? { DocCurrency: currency, DocRate: docRate } : {}),
+        DocumentLines: good.map(l => ({
+          ItemDescription: String(l.description || 'Expense').slice(0, 100),
+          AccountCode:     l.accountCode,
+          LineTotal:       Number(l.amount),
+          ...(l.taxCode ? { TaxCode: l.taxCode } : {}),
+        })),
+      };
+      const result = await sap.post('/PurchaseInvoices', payload);
+
+      let recId = null;
+      try {
+        recId = ocrDocumentsRepo.insert({
+          company_id: getActiveCompanyId ? getActiveCompanyId() : '', doc_type: 'expense', session_id: `expform_${Date.now()}`,
+          file_name: fileName, uploaded_by: req.user?.username || req.user?.email || '',
+          extracted_json: ocrData, match_json: { header, lines: good }, status: 'posted',
+          sap_doc_type: 'PurchaseInvoices', sap_doc_entry: result.DocEntry, sap_doc_num: result.DocNum,
+          notes: `Vendor ${header.cardCode}, Accounts ${[...new Set(good.map(l => l.accountCode))].join(',')}`,
+        });
+      } catch (e) { console.error('[OCR-EXPENSE] ocr log insert failed:', e.message); }
+
+      res.json({ ok: true, docEntry: result.DocEntry, docNum: result.DocNum, docTotal: result.DocTotal, lines: good.length, id: recId });
+    } catch (e) {
+      console.error('[OCR-EXPENSE] post error:', e.message);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   router.post('/chat', requireAuth, async (req, res) => {
     try {
       const { message = '', sessionId } = req.body;
@@ -156,14 +319,16 @@ export function createOcrExpenseAgentRouter(deps) {
           const grandTotal = Number(od.grandTotal || 0);
           const docDate = od.invoiceDate || today();
           const currency = session.vendor.Currency;
+          const localCurrency = await getLocalCurrency(sap);
+          const isForeign = !!currency && currency !== '##' && currency !== localCurrency;
           let docRate = null;
-          if (currency && currency !== '##') {
+          if (isForeign) {
             const rateResult = await fetchExchangeRate(sap, currency, docDate);
             docRate = rateResult.rate;
             if (!docRate) {
               reply = rateResult.error
                 ? `⚠️ Could not look up the ${currency} exchange rate (technical error: _${rateResult.error}_). ` +
-                  `Please retry — if this keeps happening, try posting without the exchange rate check.`
+                  `Please click **Retry** — if this keeps happening, check the SAP Service Layer connection.`
                 : `⚠️ Vendor **${session.vendor.CardName}** is set up in **${currency}**, but SAP has no exchange rate for ${docDate}. ` +
                   `Please add an exchange rate for ${currency} on that date in SAP B1 (Administration → Exchange Rates), then retry.`;
               quickReplies = ['Retry', 'Cancel'];
@@ -171,17 +336,18 @@ export function createOcrExpenseAgentRouter(deps) {
             }
           }
           const payload = {
+            DocType:    'dDocument_Service',
             DocDate:    sapDate(docDate),
             DocDueDate: sapDate(od.dueDate || datePlusDays(30)),
             CardCode:   session.vendor.CardCode,
             NumAtCard:  od.invoiceNumber || undefined,
             Comments:   od.description || od.expenseCategory || undefined,
-            ...(currency && currency !== '##' ? { DocCurrency: currency, DocRate: docRate } : {}),
+            ...(isForeign ? { DocCurrency: currency, DocRate: docRate } : {}),
             DocumentLines: [{
               AccountCode: session.accountCode,
-              LineTotal:   grandTotal > 0 ? grandTotal : Number(od.subtotal || 0),
+              LineTotal:   Number(od.subtotal) > 0 ? Number(od.subtotal) : Math.max(0, grandTotal - Number(od.taxTotal || 0)),
               TaxCode:     session.taxCode,
-              Description: od.description || od.expenseCategory || 'Expense',
+              ItemDescription: String(od.description || od.expenseCategory || 'Expense').slice(0, 100),
             }],
           };
           const result = await sap.post('/PurchaseInvoices', payload);
@@ -282,7 +448,12 @@ export function createOcrExpenseAgentRouter(deps) {
         reply = 'Please select the Expense Account and Tax Code from the dropdowns above.';
         accountsData = await loadAccountsData(sap);
       } else if (session.step === 'REVIEW') {
-        if (/^post/i.test(msgL)) {
+        if (/^cancel/i.test(msgL)) {
+          Object.assign(session, initSession());
+          session.step = 'UPLOAD';
+          reply = 'Cancelled — nothing was posted. Upload a document to start again:';
+          uploadReady = true;
+        } else if (/^(post|retry)/i.test(msgL)) {
           await doPost();
         } else if (/re-?upload|new invoice/i.test(msgL)) {
           Object.assign(session, initSession());
