@@ -13,7 +13,7 @@ function escHtml(s) {
 const FLOW = {
   tag: 'ARCM', prefix: 'arinv2arcm', apiBase: '/api/arinv-arcm',
   welcome: '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🔴 Welcome to the <strong>A/R Invoice → Credit Memo Agent</strong>!</div>',
-  theme:  { color: '#9f1239', bg: '#fff1f2', light: '#ffe4e6' },
+  theme:  { color: '#0a6ed1', bg: '#f5f9fd', light: '#eef6fc' },   // SAP S/4HANA Fiori blue (was per-agent accent)
   source: { entity: '/Invoices', baseType: 13, label: 'A/R Invoice', short: 'INV', plural: 'A/R invoices', dueLabel: 'Due Date' },
   target: { entity: '/CreditNotes', label: 'A/R Credit Memo', dueLabel: 'Due Date (blank = payment terms)', dueRequired: false, refLabel: 'Customer Ref', qtyLabel: 'Credit Qty' },
   editable: { price: true, disc: true, tax: true, wh: false }, payTerms: false,
@@ -52,22 +52,22 @@ function renderARCMPrint(doc) {
   body{font-family:Arial,sans-serif;font-size:11px;color:#222;padding:28px 36px;max-width:1020px;margin:auto}
   .print-btn{margin-bottom:16px;display:flex;gap:8px;justify-content:flex-end}
   .print-btn button{padding:8px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
-  .btn-print{background:#9f1239;color:#fff}.btn-close{background:#eee;color:#333}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #9f1239}
+  .btn-print{background:#0a6ed1;color:#fff}.btn-close{background:#eee;color:#333}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0a6ed1}
   .co-name{font-size:20px;font-weight:700;color:#1a1d27}
-  .doc-title{font-size:18px;font-weight:700;color:#9f1239;text-align:right}
+  .doc-title{font-size:18px;font-weight:700;color:#0a6ed1;text-align:right}
   .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
   .info-box{border:1px solid #ddd;border-radius:6px;padding:12px}
   .info-label{font-size:9px;font-weight:700;text-transform:uppercase;color:#888;letter-spacing:.06em;margin-bottom:6px}
   .info-val{font-size:12px;color:#222;margin-bottom:2px}
   table{width:100%;border-collapse:collapse;margin-bottom:16px}
-  thead tr{background:#9f1239}
+  thead tr{background:#0a6ed1}
   th{padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#fff}
   td{padding:7px 10px;border-bottom:1px solid #eee;font-size:11px}
-  tr:nth-child(even) td{background:#fff1f2}
+  tr:nth-child(even) td{background:#f5f9fd}
   .totals{text-align:right;padding:8px 0 20px}
   .total-row{font-size:12px;color:#374151;margin-bottom:4px}
-  .total-grand{font-size:15px;font-weight:700;color:#9f1239;margin-top:6px}
+  .total-grand{font-size:15px;font-weight:700;color:#0a6ed1;margin-top:6px}
   .sig-section{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:40px;border-top:1px solid #e5e7eb;padding-top:24px}
   .sig-box{text-align:center}
   .sig-line{border-top:1px solid #374151;margin-top:36px;padding-top:6px;font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
@@ -107,7 +107,7 @@ function renderARCMPrint(doc) {
     <div class="info-val" style="color:#666">CM # ${escHtml(String(doc.DocNum))}</div>
   </div>
 </div>
-${doc.Comments ? `<div style="border:1px solid #fecdd3;border-radius:6px;padding:12px;margin-bottom:20px;background:#fff1f2;font-size:11px;line-height:1.6"><strong>&#x1F4DD; Remarks:</strong><br><br>${escHtml(doc.Comments)}</div>` : ''}
+${doc.Comments ? `<div style="border:1px solid #b0d5f5;border-radius:6px;padding:12px;margin-bottom:20px;background:#f5f9fd;font-size:11px;line-height:1.6"><strong>&#x1F4DD; Remarks:</strong><br><br>${escHtml(doc.Comments)}</div>` : ''}
 <table>
   <thead><tr>
     <th>#</th><th>Item Code</th><th>Description</th>

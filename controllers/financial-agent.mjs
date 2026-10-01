@@ -380,45 +380,112 @@ WHERE T0."DocDate" >= ${fromExpr} AND T0."DocStatus" <> 'W'`;
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ── Receivables & Payables Aging Agent — bucketed open-balance snapshot ──────
+  // ── Receivables & Payables Aging Agent — bucketed open-item snapshot ────────
+  //    Open items = JDT1 business-partner lines (BalDueDeb − BalDueCred), SAP's
+  //    own open-item source: invoices net of open credit memos, payments on
+  //    account and manual JEs, so totals tie to OCRD.Balance. The old query read
+  //    open OINV/OPCH only and ignored all credits (STTL_SD 2026-10-01: AR shown
+  //    46.14M vs 44.19M real, AP 21.75M vs 21.18M). Bucketed by due date vs today.
+  const AGING_BUCKETS = ['Current', '1-30', '31-60', '61-90', '90+'];
+  const agingBucket = days => (days <= 0 ? 'Current' : days <= 30 ? '1-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+');
+  const AGING_TT = { '13': 'A/R Invoice', '14': 'A/R Credit Memo', '203': 'A/R Down Payment', '24': 'Incoming Payment',
+    '18': 'A/P Invoice', '19': 'A/P Credit Memo', '204': 'A/P Down Payment', '46': 'Outgoing Payment',
+    '30': 'Journal Entry', '-2': 'Opening Balance', '321': 'Internal Reconciliation' };
+  const isoDay = v => (v instanceof Date ? v.toISOString() : String(v ?? '')).slice(0, 10);
+  const r2 = v => Math.round(v * 100) / 100;
+  const pctOf = (x, y) => (y ? r2((x / y) * 100) : null);
+
   router.get('/finance/aging', requireAuth, async (req, res) => {
     if (!requireDb(res)) return;
     try {
       const dbType = getActiveType(), cfg = getActiveConfig();
-      const oinv = tableRef('OINV', cfg), opch = tableRef('OPCH', cfg);
+      const T = t => tableRef(t, cfg);
       const todayExpr = today(dbType);
-      const bucketCase = (alias) => `CASE WHEN ${alias}."DocDueDate" >= ${todayExpr} THEN 'Current'
-        WHEN ${daysBetween(dbType, `${alias}."DocDueDate"`, todayExpr)} <= 30 THEN '1-30'
-        WHEN ${daysBetween(dbType, `${alias}."DocDueDate"`, todayExpr)} <= 60 THEN '31-60'
-        WHEN ${daysBetween(dbType, `${alias}."DocDueDate"`, todayExpr)} <= 90 THEN '61-90'
-        ELSE '90+' END`;
+      const dueExpr = `${nf(dbType)}(J."DueDate", J."RefDate")`;
+      const openCond = `(J."BalDueDeb" <> 0 OR J."BalDueCred" <> 0)`;
 
-      const arSql = `SELECT ${bucketCase('T0')} AS "Bucket", ${nf(dbType)}(SUM(T0."DocTotal"-T0."PaidToDate"),0) AS "Amount", COUNT(*) AS "Cnt"
-FROM ${oinv} T0 WHERE T0."DocStatus"='O' AND (T0."DocTotal"-T0."PaidToDate")>0
-GROUP BY ${bucketCase('T0')}`;
+      // One row per BP × document type × due date; bucketing/rollups happen below.
+      const itemsSql = `SELECT J."ShortName" AS "Card", C."CardType" AS "CardType", J."TransType" AS "TransType", ${dueExpr} AS "Due",
+  ${daysBetween(dbType, dueExpr, todayExpr)} AS "Days", SUM(J."BalDueDeb" - J."BalDueCred") AS "Bal", COUNT(*) AS "Cnt"
+FROM ${T('JDT1')} J INNER JOIN ${T('OCRD')} C ON C."CardCode" = J."ShortName"
+WHERE C."CardType" IN ('C','S') AND ${openCond}
+GROUP BY J."ShortName", C."CardType", J."TransType", ${dueExpr}`;
+      const bpSql = `SELECT C."CardCode" AS "CardCode", C."CardName" AS "CardName", C."CreditLine" AS "CreditLine",
+  G."GroupName" AS "GroupName", S."SlpName" AS "SlpName", R."descript" AS "Territory"
+FROM ${T('OCRD')} C LEFT JOIN ${T('OCRG')} G ON G."GroupCode" = C."GroupCode"
+LEFT JOIN ${T('OSLP')} S ON S."SlpCode" = C."SlpCode" LEFT JOIN ${T('OTER')} R ON R."territryID" = C."Territory"
+WHERE C."CardType" IN ('C','S') AND C."CardCode" IN (SELECT J."ShortName" FROM ${T('JDT1')} J WHERE ${openCond})`;
+      const ledgerSql = `SELECT C."CardType" AS "CardType", ${nf(dbType)}(SUM(C."Balance"),0) AS "Bal" FROM ${T('OCRD')} C WHERE C."CardType" IN ('C','S') GROUP BY C."CardType"`;
+      const asOfSql = dbType === 'hana' ? `SELECT CURRENT_DATE AS "D" FROM DUMMY` : `SELECT CAST(GETDATE() AS DATE) AS "D"`;
 
-      const apSql = `SELECT ${bucketCase('T0')} AS "Bucket", ${nf(dbType)}(SUM(T0."DocTotal"-T0."PaidToDate"),0) AS "Amount", COUNT(*) AS "Cnt"
-FROM ${opch} T0 WHERE T0."DocStatus"='O' AND (T0."DocTotal"-T0."PaidToDate")>0
-GROUP BY ${bucketCase('T0')}`;
+      const [itemRows, bpRows, ledgerRows, asOfRows] = await Promise.all([executeSQL(itemsSql), executeSQL(bpSql), executeSQL(ledgerSql), executeSQL(asOfSql)]);
+      const bp = new Map(bpRows.map(r => [r.CardCode, r]));
+      const ledger = Object.fromEntries(ledgerRows.map(r => [r.CardType, Number(r.Bal || 0)]));
 
-      const [arRows, apRows] = await Promise.all([executeSQL(arSql), executeSQL(apSql)]);
-      const BUCKETS = ['Current', '1-30', '31-60', '61-90', '90+'];
-      const toMap = (rows) => {
-        const m = {}; BUCKETS.forEach(b => m[b] = { amount: 0, count: 0 });
-        rows.forEach(r => { if (m[r.Bucket]) m[r.Bucket] = { amount: Number(r.Amount || 0), count: Number(r.Cnt || 0) }; });
-        return m;
+      const emptyBuckets = () => Object.fromEntries(AGING_BUCKETS.map(b => [b, { amount: 0, count: 0 }]));
+      const side = (type, sign) => {
+        const buckets = emptyBuckets(), parties = new Map(), months = new Map(), comp = new Map();
+        for (const r of itemRows) {
+          if (r.CardType !== type) continue;
+          const amt = sign * Number(r.Bal || 0), cnt = Number(r.Cnt || 0), days = Number(r.Days || 0), b = agingBucket(days);
+          buckets[b].amount += amt; buckets[b].count += cnt;
+          let p = parties.get(r.Card);
+          if (!p) parties.set(r.Card, p = { cardCode: r.Card, buckets: Object.fromEntries(AGING_BUCKETS.map(k => [k, 0])), total: 0, count: 0, oldestDueDate: null, maxDaysOverdue: 0 });
+          p.buckets[b] += amt; p.total += amt; p.count += cnt;
+          // oldest/max-overdue track debit (receivable/payable) items, not credits
+          if (amt > 0) { const d = isoDay(r.Due); if (!p.oldestDueDate || d < p.oldestDueDate) p.oldestDueDate = d; p.maxDaysOverdue = Math.max(p.maxDaysOverdue, days); }
+          const m = isoDay(r.Due).slice(0, 7), mo = months.get(m) || { month: m, amount: 0, count: 0 };
+          mo.amount += amt; mo.count += cnt; months.set(m, mo);
+          const tt = String(r.TransType), c = comp.get(tt) || { transType: tt, label: AGING_TT[tt] || `TransType ${tt}`, amount: 0, count: 0 };
+          c.amount += amt; c.count += cnt; comp.set(tt, c);
+        }
+        const total = AGING_BUCKETS.reduce((s, b) => s + buckets[b].amount, 0);
+        for (const b of AGING_BUCKETS) { buckets[b].amount = r2(buckets[b].amount); buckets[b].pct = pctOf(buckets[b].amount, total); }
+        const list = [...parties.values()].map(p => {
+          const m = bp.get(p.cardCode) || {};
+          const overdue = p.total - p.buckets.Current, creditLimit = Number(m.CreditLine || 0);
+          const out = { cardCode: p.cardCode, cardName: m.CardName || p.cardCode, group: m.GroupName || null, salesPerson: m.SlpName || null, territory: m.Territory || null,
+            total: r2(p.total), current: r2(p.buckets.Current), overdue: r2(overdue), overduePct: pctOf(overdue, p.total),
+            buckets: Object.fromEntries(AGING_BUCKETS.map(k => [k, r2(p.buckets[k])])), count: p.count, oldestDueDate: p.oldestDueDate, maxDaysOverdue: p.maxDaysOverdue };
+          if (type === 'C') Object.assign(out, { creditLimit, creditUsedPct: creditLimit > 0 ? pctOf(p.total, creditLimit) : null, overCreditLimit: creditLimit > 0 && p.total > creditLimit });
+          return out;
+        }).sort((a, b) => b.total - a.total);
+        const rollup = key => {
+          const g = new Map();
+          for (const p of list) {
+            const k = p[key] || '(none)', e = g.get(k) || { name: k, total: 0, overdue: 0, parties: 0, buckets: Object.fromEntries(AGING_BUCKETS.map(x => [x, 0])) };
+            e.total += p.total; e.overdue += p.overdue; e.parties++; for (const x of AGING_BUCKETS) e.buckets[x] += p.buckets[x]; g.set(k, e);
+          }
+          return [...g.values()].map(e => ({ ...e, total: r2(e.total), overdue: r2(e.overdue), overduePct: pctOf(e.overdue, e.total),
+            buckets: Object.fromEntries(AGING_BUCKETS.map(x => [x, r2(e.buckets[x])])) })).sort((a, b) => b.total - a.total);
+        };
+        return {
+          buckets, total: r2(total), overdue: r2(total - buckets.Current.amount), list, rollup,
+          byDueMonth: [...months.values()].map(m => ({ ...m, amount: r2(m.amount) })).sort((a, b) => a.month.localeCompare(b.month)),
+          composition: [...comp.values()].map(c => ({ ...c, amount: r2(c.amount) })).sort((a, b) => b.amount - a.amount),
+        };
       };
-      const ar = toMap(arRows), ap = toMap(apRows);
-      const arTotal = Object.values(ar).reduce((s, b) => s + b.amount, 0);
-      const apTotal = Object.values(ap).reduce((s, b) => s + b.amount, 0);
-      const arOverdue = arTotal - ar.Current.amount;
-      const apOverdue = apTotal - ap.Current.amount;
+      const A = side('C', 1), P = side('S', -1);
+      const PARTY_CAP = 1000;
+      const arLedger = r2(ledger.C || 0), apLedger = r2(-(ledger.S || 0));
 
       res.json({
         agent: 'Receivables & Payables Aging Agent', dbType, generatedAt: new Date().toISOString(),
-        buckets: BUCKETS, ar, ap, arTotal, apTotal, arOverdue, apOverdue,
-        note: 'Buckets computed from open AR/AP invoice balances vs today\'s date. "Current" = not yet due.',
-        sql: { ar: arSql, ap: apSql },
+        asOf: isoDay(asOfRows[0]?.D), dateBasis: 'due',
+        buckets: AGING_BUCKETS, ar: A.buckets, ap: P.buckets,
+        arTotal: A.total, apTotal: P.total, arOverdue: A.overdue, apOverdue: P.overdue,
+        arOverduePct: pctOf(A.overdue, A.total), apOverduePct: pctOf(P.overdue, P.total),
+        arCustomerCount: A.list.length, apVendorCount: P.list.length,
+        arCreditBalanceCustomers: A.list.filter(c => c.total < 0).length,
+        arOverCreditLimitCount: A.list.filter(c => c.overCreditLimit).length,
+        arByCustomer: A.list.slice(0, PARTY_CAP), apByVendor: P.list.slice(0, PARTY_CAP),
+        arByCustomerTruncated: A.list.length > PARTY_CAP, apByVendorTruncated: P.list.length > PARTY_CAP,
+        arByGroup: A.rollup('group'), arBySalesPerson: A.rollup('salesPerson'), arByTerritory: A.rollup('territory'), apByGroup: P.rollup('group'),
+        arByDueMonth: A.byDueMonth, apByDueMonth: P.byDueMonth,
+        arComposition: A.composition, apComposition: P.composition,
+        reconciliation: { arLedgerBalance: arLedger, apLedgerBalance: apLedger, arDifference: r2(A.total - arLedger), apDifference: r2(P.total - apLedger) },
+        note: 'Open items from the journal (JDT1 BP lines): invoices net of open credit memos, payments on account and manual JEs, in local currency — ties to the BP balances. Bucketed by due date vs today; "Current" = not yet due. Credit used % = open AR ÷ credit limit.',
+        sql: { items: itemsSql, partners: bpSql, ledger: ledgerSql },
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -453,34 +520,36 @@ GROUP BY ${bucketCase('T0')}`;
     }
     return out;
   }
-  function bucketCondition(daysExpr, b) {
-    if (b.minDays === null && b.maxDays !== null) return `${daysExpr} <= ${b.maxDays}`;
-    if (b.minDays !== null && b.maxDays === null) return `${daysExpr} >= ${b.minDays}`;
-    if (b.minDays !== null && b.maxDays !== null) return `${daysExpr} BETWEEN ${b.minDays} AND ${b.maxDays}`;
-    return '1=1';
-  }
   // Standard SQL single-quote escaping — values are always wrapped in '...' below.
   const sqlEscape = (s) => String(s).replace(/'/g, "''");
 
+  // daysOverdue in bucket b (null = open-ended); first matching bucket wins, like a SQL CASE.
+  const inBucket = (days, b) => (b.minDays === null || days >= b.minDays) && (b.maxDays === null || days <= b.maxDays);
+  // Detail "Invoice" column prefix for non-invoice open items (credits show as negative lines).
+  const CA_DOC_PREFIX = { '14': 'CM', '203': 'DP', '24': 'PMT', '30': 'JE', '-2': 'OB', '321': 'IR' };
+
+  // Open items = JDT1 customer lines (BalDueDeb − BalDueCred): invoices net of open
+  // credit memos, payments on account and manual JEs, so totals tie to OCRD.Balance.
+  // The old OINV-only query ignored every credit (STTL_SD 2026-10-01: 46.14M shown
+  // vs 44.19M real). Date basis: due = JDT1 DueDate, doc = posting date (RefDate).
   router.get('/finance/customer-aging', requireAuth, async (req, res) => {
     if (!requireDb(res)) return;
     try {
       const dbType = getActiveType(), cfg = getActiveConfig();
-      const oinv = tableRef('OINV', cfg);
+      const T = t => tableRef(t, cfg);
       const dateBasis = req.query.dateBasis === 'doc' ? 'doc' : 'due';
-      const dateCol = dateBasis === 'doc' ? 'DocDate' : 'DocDueDate';
+      const dueExpr = `${nf(dbType)}(J."DueDate", J."RefDate")`;
+      const dateExpr = dateBasis === 'doc' ? 'J."RefDate"' : dueExpr;
       const buckets = sanitizeBuckets(req.query.buckets);
       const todayExpr = today(dbType);
-      const daysExpr = daysBetween(dbType, `T0."${dateCol}"`, todayExpr);
-      const balance = `(T0."DocTotal" - T0."PaidToDate")`;
-      const bucketCase = `CASE ${buckets.map(b => `WHEN ${bucketCondition(daysExpr, b)} THEN '${b.label}'`).join(' ')} ELSE 'Other' END`;
+      const openCond = `(J."BalDueDeb" <> 0 OR J."BalDueCred" <> 0)`;
 
       // Optional customer filter — exact CardCode match, or partial CardName match.
       const cardCode = (req.query.cardCode || '').toString().trim().slice(0, 60);
       const cardName = (req.query.cardName || '').toString().trim().slice(0, 100);
       let custFilter = '';
-      if (cardCode) custFilter = ` AND T0."CardCode"='${sqlEscape(cardCode)}'`;
-      else if (cardName) custFilter = ` AND UPPER(T0."CardName") LIKE UPPER('%${sqlEscape(cardName)}%')`;
+      if (cardCode) custFilter = ` AND C."CardCode"='${sqlEscape(cardCode)}'`;
+      else if (cardName) custFilter = ` AND UPPER(C."CardName") LIKE UPPER('%${sqlEscape(cardName)}%')`;
 
       // Detail-wise-only filters — customer (name/code contains), document number, doc-date range.
       // Validated to strict shapes so nothing free-form reaches the SQL except the escaped customer text.
@@ -491,59 +560,105 @@ GROUP BY ${bucketCase('T0')}`;
       let detailFilter = '';
       if (detailCustomer) {
         const like = `UPPER('%${sqlEscape(detailCustomer)}%')`;
-        detailFilter += ` AND (UPPER(T0."CardName") LIKE ${like} OR UPPER(T0."CardCode") LIKE ${like})`;
+        detailFilter += ` AND (UPPER(C."CardName") LIKE ${like} OR UPPER(C."CardCode") LIKE ${like})`;
       }
-      if (/^\d{1,10}$/.test(docNum)) detailFilter += ` AND T0."DocNum"=${parseInt(docNum, 10)}`;
-      if (fromDate) detailFilter += ` AND T0."DocDate" >= '${fromDate}'`;
-      if (toDate)   detailFilter += ` AND T0."DocDate" <= '${toDate}'`;
+      // BaseRef = document number (DocNum; TransId for manual JEs)
+      if (/^\d{1,10}$/.test(docNum)) detailFilter += ` AND J."BaseRef"='${parseInt(docNum, 10)}'`;
+      if (fromDate) detailFilter += ` AND J."RefDate" >= ${sqlDate(dbType, fromDate)}`;
+      if (toDate)   detailFilter += ` AND J."RefDate" <= ${sqlDate(dbType, toDate)}`;
+
+      // One row per open customer journal line; summary + detail + rollups are built from it.
+      const itemsSql = extra => `SELECT J."ShortName" AS "CardCode", C."CardName" AS "CardName", J."TransId" AS "TransId", J."Line_ID" AS "LineId",
+  J."TransType" AS "TransType", J."BaseRef" AS "BaseRef", J."RefDate" AS "DocDate", ${dueExpr} AS "DueDate",
+  (J."BalDueDeb" - J."BalDueCred") AS "Balance", ${daysBetween(dbType, dateExpr, todayExpr)} AS "Days"
+FROM ${T('JDT1')} J INNER JOIN ${T('OCRD')} C ON C."CardCode" = J."ShortName"
+WHERE C."CardType" = 'C' AND ${openCond}${custFilter}${extra}
+ORDER BY ${dateExpr} ASC, J."TransId" ASC`;
+      const summarySql = itemsSql('');
+      const detailSql = itemsSql(detailFilter);
+      const bpSql = `SELECT C."CardCode" AS "CardCode", C."CreditLine" AS "CreditLine", G."GroupName" AS "GroupName", S."SlpName" AS "SlpName", R."descript" AS "Territory"
+FROM ${T('OCRD')} C LEFT JOIN ${T('OCRG')} G ON G."GroupCode" = C."GroupCode"
+LEFT JOIN ${T('OSLP')} S ON S."SlpCode" = C."SlpCode" LEFT JOIN ${T('OTER')} R ON R."territryID" = C."Territory"
+WHERE C."CardType" = 'C'${custFilter} AND C."CardCode" IN (SELECT J."ShortName" FROM ${T('JDT1')} J WHERE ${openCond})`;
+      const ledgerSql = `SELECT ${nf(dbType)}(SUM(C."Balance"),0) AS "Bal" FROM ${T('OCRD')} C WHERE C."CardType" = 'C'${custFilter}`;
+      const asOfSql = dbType === 'hana' ? `SELECT CURRENT_DATE AS "D" FROM DUMMY` : `SELECT CAST(GETDATE() AS DATE) AS "D"`;
+
+      const [itemRows, detailRowsRaw0, bpRows, ledgerRows, asOfRows] = await Promise.all([
+        executeSQL(summarySql), detailFilter ? executeSQL(detailSql) : null, executeSQL(bpSql), executeSQL(ledgerSql), executeSQL(asOfSql)]);
+      const bp = new Map(bpRows.map(r => [r.CardCode, r]));
+      const bucketOf = days => { const i = buckets.findIndex(b => inBucket(days, b)); return i; };
+      const zeros = () => buckets.map(() => 0);
+      const isOverdueBucket = i => buckets[i].minDays !== null && buckets[i].minDays > 0;
 
       // Tab 1 — aging-wise, one row per customer, one column per configured bucket
-      const bucketCols = buckets.map((b, i) =>
-        `${nf(dbType)}(SUM(CASE WHEN ${bucketCondition(daysExpr, b)} THEN ${balance} ELSE 0 END),0) AS "Bucket_${i}"`
-      ).join(',\n  ');
-      const summarySql = `SELECT T0."CardCode" AS "CardCode", T0."CardName" AS "CardName",
-  ${bucketCols},
-  ${nf(dbType)}(SUM(${balance}),0) AS "Total"
-FROM ${oinv} T0
-WHERE T0."DocStatus"='O' AND ${balance} > 0${custFilter}
-GROUP BY T0."CardCode", T0."CardName"
-ORDER BY SUM(${balance}) DESC`;
+      const cust = new Map(), months = new Map(), comp = new Map();
+      const bucketTotals = buckets.map(b => ({ label: b.label, amount: 0, count: 0 }));
+      for (const r of itemRows) {
+        const amt = Number(r.Balance || 0), days = Number(r.Days || 0), i = bucketOf(days);
+        let c = cust.get(r.CardCode);
+        if (!c) cust.set(r.CardCode, c = { CardCode: r.CardCode, CardName: r.CardName, buckets: zeros(), total: 0, overdue: 0, count: 0, oldestDate: null, maxDaysOverdue: 0 });
+        c.total += amt; c.count++;
+        if (i >= 0) { c.buckets[i] += amt; bucketTotals[i].amount += amt; bucketTotals[i].count++; if (isOverdueBucket(i)) c.overdue += amt; }
+        // oldest/max-days track debit items only, not credits
+        if (amt > 0) { const d = isoDay(dateBasis === 'doc' ? r.DocDate : r.DueDate); if (!c.oldestDate || d < c.oldestDate) c.oldestDate = d; c.maxDaysOverdue = Math.max(c.maxDaysOverdue, days); }
+        const m = isoDay(r.DueDate).slice(0, 7), mo = months.get(m) || { month: m, amount: 0, count: 0 };
+        mo.amount += amt; mo.count++; months.set(m, mo);
+        const tt = String(r.TransType), co = comp.get(tt) || { transType: tt, label: AGING_TT[tt] || `TransType ${tt}`, amount: 0, count: 0 };
+        co.amount += amt; co.count++; comp.set(tt, co);
+      }
+      const summary = [...cust.values()].map(c => {
+        const m = bp.get(c.CardCode) || {}, creditLimit = Number(m.CreditLine || 0);
+        return { CardCode: c.CardCode, CardName: c.CardName, buckets: c.buckets.map(r2), total: r2(c.total),
+          overdue: r2(c.overdue), overduePct: pctOf(c.overdue, c.total), count: c.count, oldestDate: c.oldestDate, maxDaysOverdue: c.maxDaysOverdue,
+          group: m.GroupName || null, salesPerson: m.SlpName || null, territory: m.Territory || null,
+          creditLimit, creditUsedPct: creditLimit > 0 ? pctOf(c.total, creditLimit) : null, overCreditLimit: creditLimit > 0 && c.total > creditLimit };
+      }).sort((a, b) => b.total - a.total);
 
-      // Tab 2 — detail-wise, one row per open invoice
-      const detailSql = `SELECT T0."CardCode" AS "CardCode", T0."CardName" AS "CardName", T0."DocNum" AS "InvoiceNo",
-  T0."DocDate" AS "InvoiceDate", T0."DocDueDate" AS "DueDate", ${balance} AS "Balance",
-  ${daysExpr} AS "DaysOverdue", ${bucketCase} AS "Bucket"
-FROM ${oinv} T0
-WHERE T0."DocStatus"='O' AND ${balance} > 0${custFilter}${detailFilter}
-ORDER BY T0."${dateCol}" ASC`;
-
-      const [summaryRowsRaw, detailRowsRaw] = await Promise.all([executeSQL(summarySql), executeSQL(detailSql)]);
-      const summary = summaryRowsRaw.map(r => ({
-        CardCode: r.CardCode, CardName: r.CardName,
-        buckets: buckets.map((b, i) => Number(r[`Bucket_${i}`] || 0)),
-        total: Number(r.Total || 0),
-      }));
-      const DETAIL_CAP = 5000; // UI paginates (30 customers/page), so the cap only bounds payload size
+      // Tab 2 — detail-wise, one row per open item (invoice, or credit memo / payment / JE as a negative line)
+      const detailRowsRaw = (detailRowsRaw0 || itemRows).map(r => {
+        const tt = String(r.TransType), days = Number(r.Days || 0), i = bucketOf(days);
+        return { CardCode: r.CardCode, CardName: r.CardName,
+          InvoiceNo: CA_DOC_PREFIX[tt] ? `${CA_DOC_PREFIX[tt]} ${r.BaseRef}` : (/^\d+$/.test(String(r.BaseRef)) ? Number(r.BaseRef) : r.BaseRef),
+          InvoiceDate: r.DocDate, DueDate: r.DueDate, Balance: Number(r.Balance || 0), DaysOverdue: days, Bucket: i >= 0 ? buckets[i].label : 'Other',
+          DocType: tt, DocTypeLabel: AGING_TT[tt] || `TransType ${tt}`, DocNum: r.BaseRef, TransId: r.TransId, LineId: r.LineId };
+      });
+      const DETAIL_CAP = 20000; // UI paginates (30 customers/page), so the cap only bounds payload size
       const detailRows = detailRowsRaw.slice(0, DETAIL_CAP);
 
-      // Grand totals — the overall AR balance across all customers/buckets, so
-      // it's visible at a glance instead of only per-row (fixes it not showing).
-      const grandTotal = summary.reduce((s, r) => s + r.total, 0);
-      const overdueTotal = buckets.reduce((s, b, i) =>
-        s + (b.minDays !== null && b.minDays > 0 ? summary.reduce((s2, r) => s2 + r.buckets[i], 0) : 0), 0);
+      // Grand totals — the overall AR balance across all customers/buckets
+      const grandTotal = r2(summary.reduce((s, r) => s + r.total, 0));
+      const overdueTotal = r2(bucketTotals.reduce((s, b, i) => s + (isOverdueBucket(i) ? b.amount : 0), 0));
+      const ledgerBalance = r2(Number(ledgerRows[0]?.Bal || 0));
+      const rollup = key => {
+        const g = new Map();
+        for (const c of summary) {
+          const k = c[key] || '(none)', e = g.get(k) || { name: k, total: 0, overdue: 0, customers: 0, buckets: zeros() };
+          e.total += c.total; e.overdue += c.overdue; e.customers++; c.buckets.forEach((v, i) => { e.buckets[i] += v; }); g.set(k, e);
+        }
+        return [...g.values()].map(e => ({ ...e, total: r2(e.total), overdue: r2(e.overdue), overduePct: pctOf(e.overdue, e.total), buckets: e.buckets.map(r2) }))
+          .sort((a, b) => b.total - a.total);
+      };
 
       res.json({
-        agent: 'Customer Aging Detail Agent', dbType, dateBasis, generatedAt: new Date().toISOString(),
+        agent: 'Customer Aging Detail Agent', dbType, dateBasis, generatedAt: new Date().toISOString(), asOf: isoDay(asOfRows[0]?.D),
         bucketLabels: buckets.map(b => b.label),
         buckets, // echoed back so the UI can reload the same config after a refresh
         customerFilter: { cardCode: cardCode || null, cardName: cardName || null },
         detailFilters: { customer: detailCustomer || null, docNum: docNum || null, fromDate: fromDate || null, toDate: toDate || null },
-        summary, totals: { grandTotal, overdueTotal, customerCount: summary.length },
+        summary,
+        totals: { grandTotal, overdueTotal, customerCount: summary.length, overduePct: pctOf(overdueTotal, grandTotal),
+          openItemCount: itemRows.length, creditBalanceCustomers: summary.filter(c => c.total < 0).length,
+          overCreditLimitCount: summary.filter(c => c.overCreditLimit).length,
+          ledgerBalance, ledgerDifference: r2(grandTotal - ledgerBalance) },
+        bucketTotals: bucketTotals.map(b => ({ ...b, amount: r2(b.amount), pct: pctOf(b.amount, grandTotal) })),
+        byGroup: rollup('group'), bySalesPerson: rollup('salesPerson'), byTerritory: rollup('territory'),
+        byDueMonth: [...months.values()].map(m => ({ ...m, amount: r2(m.amount) })).sort((a, b) => a.month.localeCompare(b.month)),
+        composition: [...comp.values()].map(c => ({ ...c, amount: r2(c.amount) })).sort((a, b) => b.amount - a.amount),
         detail: detailRows,
         detailTotalCount: detailRowsRaw.length,
         detailTruncated: detailRowsRaw.length > DETAIL_CAP,
-        note: `Aging-wise: one row per customer with open AR balance split by bucket (based on ${dateBasis === 'doc' ? 'document date' : 'due date'}). Detail-wise: every open AR invoice, oldest first` + (detailRowsRaw.length > DETAIL_CAP ? ` (showing first ${DETAIL_CAP} of ${detailRowsRaw.length}).` : '.'),
-        sql: { summary: summarySql, detail: detailSql },
+        note: `Open items from the journal (JDT1 customer lines): invoices net of open credit memos (CM), payments on account (PMT) and journal entries (JE), which show as negative lines — totals tie to the customer balances. Aging-wise: one row per customer split by bucket (based on ${dateBasis === 'doc' ? 'posting date' : 'due date'}). Detail-wise: every open item, oldest first` + (detailRowsRaw.length > DETAIL_CAP ? ` (showing first ${DETAIL_CAP} of ${detailRowsRaw.length}).` : '.'),
+        sql: { summary: summarySql, detail: detailFilter ? detailSql : summarySql, partners: bpSql, ledger: ledgerSql },
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

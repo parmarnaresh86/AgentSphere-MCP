@@ -63,69 +63,74 @@ function itemSteps(step) {
   </div>`;
 }
 
+// Item Master replies use the imf-* classes (SAP Fiori theme) defined in public/index.html
 function seriesChips(list) {
-  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No series available</em>';
-  return list.map(s =>
-    `<button onclick="masterSend('select_series:${s.Series}:${esc(s.Name)}')" style="margin:3px;padding:6px 14px;background:#f0fdf4;border:1.5px solid #10b981;border-radius:20px;cursor:pointer;font-size:12.5px;color:#065f46;font-weight:600">${esc(s.Name)}</button>`
-  ).join('');
+  if (!list.length) return '<em class="imf-empty">No series available</em>';
+  return `<div class="imf-chips">${list.map(s =>
+    `<button class="imf-chip" onclick="masterSend('select_series:${s.Series}:${esc(s.Name)}')">${esc(s.Name)}</button>`
+  ).join('')}</div>`;
 }
 function groupChips(list) {
-  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No groups available</em>';
-  return list.map(g =>
-    `<button onclick="masterSend('select_group:${g.Number}:${esc(g.GroupName)}')" style="margin:3px;padding:6px 14px;background:#eff6ff;border:1.5px solid #3b82f6;border-radius:20px;cursor:pointer;font-size:12.5px;color:#1e40af;font-weight:600">${esc(g.GroupName)}</button>`
-  ).join('');
+  if (!list.length) return '<em class="imf-empty">No groups available</em>';
+  return `<div class="imf-chips">${list.map(g =>
+    `<button class="imf-chip" onclick="masterSend('select_group:${g.Number}:${esc(g.GroupName)}')">${esc(g.GroupName)}</button>`
+  ).join('')}</div>`;
 }
 function uomChips(list, step) {
-  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No UOMs available</em>';
-  return list.map(u =>
-    `<button onclick="masterSend('select_uom:${step}:${u.AbsEntry}:${esc(u.Code||u.Name)}:${esc(u.Name)}')" style="margin:3px;padding:5px 12px;background:#faf5ff;border:1.5px solid #8b5cf6;border-radius:20px;cursor:pointer;font-size:12.5px;color:#5b21b6"><strong>${esc(u.Code||u.Name)}</strong>${u.Code&&u.Name&&u.Code!==u.Name?' — '+esc(u.Name):''}</button>`
-  ).join('');
+  if (!list.length) return '<em class="imf-empty">No UOMs available</em>';
+  return `<div class="imf-chips">${list.map(u =>
+    `<button class="imf-chip" onclick="masterSend('select_uom:${step}:${u.AbsEntry}:${esc(u.Code||u.Name)}:${esc(u.Name)}')"><strong>${esc(u.Code||u.Name)}</strong>${u.Code&&u.Name&&u.Code!==u.Name?' — '+esc(u.Name):''}</button>`
+  ).join('')}</div>`;
 }
 function warehouseChips(list) {
-  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No warehouses available</em>';
-  return list.map(w =>
-    `<button onclick="masterSend('select_wh:${esc(w.WarehouseCode)}:${esc(w.WarehouseName)}')" style="margin:3px;padding:5px 12px;background:#fff7ed;border:1.5px solid #f97316;border-radius:20px;cursor:pointer;font-size:12.5px;color:#9a3412">${esc(w.WarehouseCode)} — ${esc(w.WarehouseName)}</button>`
-  ).join('');
+  if (!list.length) return '<em class="imf-empty">No warehouses available</em>';
+  return `<div class="imf-chips">${list.map(w =>
+    `<button class="imf-chip" onclick="masterSend('select_wh:${esc(w.WarehouseCode)}:${esc(w.WarehouseName)}')">${esc(w.WarehouseCode)} — ${esc(w.WarehouseName)}</button>`
+  ).join('')}</div>`;
 }
 function itemTypeForm() {
-  return `<div style="background:var(--card-bg,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:14px;margin:6px 0;max-width:340px">
-    <div style="font-size:13px;font-weight:600;margin-bottom:10px">Select item types (check all that apply):</div>
-    <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="im-inv" checked style="accent-color:#0f766e;width:15px;height:15px"> Inventory Item</label>
-    <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="im-sales" checked style="accent-color:#0f766e;width:15px;height:15px"> Sales Item</label>
-    <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;font-size:13px"><input type="checkbox" id="im-purch" checked style="accent-color:#0f766e;width:15px;height:15px"> Purchase Item</label>
-    <button onclick="masterSubmitItemType()" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer">Continue →</button>
-  </div>`;
+  return `<div class="imf-type-box">
+    <label><input type="checkbox" id="im-inv" checked> Inventory Item</label>
+    <label><input type="checkbox" id="im-sales" checked> Sales Item</label>
+    <label><input type="checkbox" id="im-purch" checked> Purchase Item</label>
+  </div>
+  <button class="imf-primary" style="margin-top:10px" onclick="masterSubmitItemType()">Continue →</button>`;
 }
 function manageChips() {
-  return [
-    {v:'none',  l:'No Tracking',   c:'#6b7280', bg:'#f9fafb', b:'#d1d5db'},
-    {v:'batch', l:'Batch Numbers',  c:'#1d4ed8', bg:'#eff6ff', b:'#3b82f6'},
-    {v:'serial',l:'Serial Numbers', c:'#7c3aed', bg:'#f5f3ff', b:'#7c3aed'},
-  ].map(o => `<button onclick="masterSend('select_manage:${o.v}')" style="margin:4px;padding:8px 16px;background:${o.bg};border:1.5px solid ${o.b};border-radius:20px;cursor:pointer;font-size:12.5px;color:${o.c};font-weight:600">${o.l}</button>`).join('');
+  return `<div class="imf-chips">${[
+    {v:'none',  l:'No Tracking'},
+    {v:'batch', l:'Batch Numbers'},
+    {v:'serial',l:'Serial Numbers'},
+  ].map(o => `<button class="imf-chip" onclick="masterSend('select_manage:${o.v}')">${o.l}</button>`).join('')}</div>`;
 }
 function itemSummaryHtml(sess) {
-  const rows = [
-    ['Item Name', esc(sess.itemName)],
-    ['Item Code', sess.itemCode ? esc(sess.itemCode) : '<em>Auto-generate</em>'],
-    ['Series', sess.seriesList.find(s=>s.Series===sess.series)?.Name ?? sess.series],
-    ['Item Group', esc(sess.groupName)],
-    ['Inventory Item', sess.invItem?'✅ Yes':'❌ No'],
-    ['Sales Item', sess.salesItem?'✅ Yes':'❌ No'],
-    ['Purchase Item', sess.purchItem?'✅ Yes':'❌ No'],
-    ...(sess.invItem?[['Inventory UOM', esc(sess.invUomCode||(sess.invUomName||'—'))]]: []),
-    ...(sess.salesItem?[['Sales UOM', esc(sess.salesUomCode||(sess.salesUomName||'—'))]]: []),
-    ...(sess.purchItem?[['Purchase UOM', esc(sess.purchUomCode||(sess.purchUomName||'—'))]]: []),
-    ['Tracking', sess.manage==='serial'?'🔢 Serial Numbers':sess.manage==='batch'?'⊞ Batch Numbers':'— None'],
-    ['Default Warehouse', `${esc(sess.warehouse)} — ${esc(sess.warehouseName)}`],
+  const field = (k, v, wide) => `<div class="imf-sum-field${wide?' imf-span2':''}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const flags = [
+    sess.invItem && 'Inventory Item',
+    sess.salesItem && 'Sales Item',
+    sess.purchItem && 'Purchase Item',
+  ].filter(Boolean);
+  const fields = [
+    field('Item Name', esc(sess.itemName)),
+    field('Item Code', sess.itemCode ? esc(sess.itemCode) : '<em>Auto-generate</em>'),
+    field('Series', esc(sess.seriesList.find(s=>s.Series===sess.series)?.Name ?? sess.series)),
+    field('Item Group', esc(sess.groupName)),
+    `<div class="imf-sum-field imf-span2"><span class="k">Item Flags</span><div class="imf-flags">${flags.map(f=>`<span class="imf-flag">✓ ${f}</span>`).join('')}</div></div>`,
+    ...(sess.invItem   ? [field('Inventory UOM', esc(sess.invUomCode||(sess.invUomName||'—')))] : []),
+    ...(sess.salesItem ? [field('Sales UOM',     esc(sess.salesUomCode||(sess.salesUomName||'—')))] : []),
+    ...(sess.purchItem ? [field('Purchase UOM',  esc(sess.purchUomCode||(sess.purchUomName||'—')))] : []),
+    field('Tracking Method', sess.manage==='serial'?'Serial Numbers':sess.manage==='batch'?'Batch Numbers':'No Tracking'),
+    field('Default Warehouse', `${esc(sess.warehouse)} — ${esc(sess.warehouseName)}`, true),
   ];
-  return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
-    <div style="font-size:13.5px;font-weight:700;color:#065f46;margin-bottom:10px">📋 Item Master Summary</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      ${rows.map(([k,v])=>`<tr><td style="padding:4px 8px;color:#6b7280;width:42%;border-bottom:1px solid #f3f4f6">${k}</td><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('')}
-    </table>
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <button onclick="masterSend('confirm_create')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer">✅ Create Item</button>
-      <button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">↺ Start Over</button>
+  return `<div class="imf-summary">
+    <div class="imf-sum-hdr">
+      <span class="imf-sum-title">📄 Item Master Summary</span>
+      <span class="imf-badge">Ready for Creation</span>
+    </div>
+    <div class="imf-sum-grid">${fields.join('')}</div>
+    <div class="imf-sum-actions">
+      <button class="imf-link-btn" onclick="masterSend('restart')">Edit Details</button>
+      <button class="imf-primary" onclick="masterSend('confirm_create')">✓ Create Master Record</button>
     </div>
   </div>`;
 }
@@ -222,7 +227,7 @@ async function handleItemChat(sess, msg, sap, res, user) {
       const result = await sap.post('/Items', payload);
       sess.step = 'DONE';
       logEntry('item', result.ItemCode||sess.itemCode||sess.itemName, sess.itemName, payload, result, 'success', user);
-      return res.json({ ok:true, reply:`<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:8px;padding:14px;margin:4px 0"><div style="font-size:14px;font-weight:700;color:#065f46;margin-bottom:6px">✅ Item Created Successfully!</div><div style="font-size:12.5px;color:#065f46">Code: <strong>${esc(result.ItemCode||'Auto-assigned')}</strong> &nbsp;|&nbsp; Name: <strong>${esc(sess.itemName)}</strong></div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another Item'] });
+      return res.json({ ok:true, reply:`<div class="imf-success"><div class="imf-success-title">✓ Item Master Record Created Successfully!</div><div class="imf-success-text">Item <strong>${esc(result.ItemCode||'Auto-assigned')}</strong> (${esc(sess.itemName)}) has been created in SAP.</div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another Item'] });
     } catch(e) {
       logEntry('item', sess.itemCode||'', sess.itemName, payload, {error:e.message}, 'error', user);
       return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
@@ -354,88 +359,79 @@ function bpSteps(step, bpType) {
   </div>`;
 }
 
+// Customer / Supplier replies use the imf-* classes (SAP Fiori theme) defined in public/index.html
 function bpGroupChips(list) {
-  return list.map(g => `<button onclick="masterSend('select_bp_group:${g.Code}:${esc(g.Name)}')" style="margin:3px;padding:6px 14px;background:#eff6ff;border:1.5px solid #3b82f6;border-radius:20px;cursor:pointer;font-size:12.5px;color:#1e40af;font-weight:600">${esc(g.Name)}</button>`).join('') || '<em>No groups</em>';
+  if (!list.length) return '<em class="imf-empty">No groups</em>';
+  return `<div class="imf-chips">${list.map(g => `<button class="imf-chip" onclick="masterSend('select_bp_group:${g.Code}:${esc(g.Name)}')">${esc(g.Name)}</button>`).join('')}</div>`;
 }
 function addressFormHtml(bpType, count) {
   const heading = count === 0 ? 'Add Bill To / Ship To Address' : 'Add Another Address';
-  const S = 'width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12.5px;box-sizing:border-box';
-  return `<div style="background:var(--card-bg,#f9fafb);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:14px;margin:6px 0;max-width:440px">
-    <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:10px">${heading}</div>
-    <table style="width:100%;border-collapse:collapse">
-      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280;width:36%;white-space:nowrap">Address Name</td>
-          <td style="padding:3px 0"><input id="addr-name-${bpType}" type="text" placeholder="e.g. Main Office, Warehouse" style="${S}"></td></tr>
-      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">Type</td>
-          <td style="padding:3px 0"><select id="addr-type-${bpType}" style="${S}"><option value="bo_BillTo">Bill To</option><option value="bo_ShipTo">Ship To</option></select></td></tr>
-      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">Street</td>
-          <td style="padding:3px 0"><input id="addr-street-${bpType}" type="text" placeholder="Street / Road" style="${S}"></td></tr>
-      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">City</td>
-          <td style="padding:3px 0"><input id="addr-city-${bpType}" type="text" placeholder="City" style="${S}"></td></tr>
-      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">State / Province</td>
-          <td style="padding:3px 0"><input id="addr-state-${bpType}" type="text" placeholder="Optional" style="${S}"></td></tr>
-      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">ZIP / Postal</td>
-          <td style="padding:3px 0"><input id="addr-zip-${bpType}" type="text" placeholder="Postal code" style="${S}"></td></tr>
-      <tr><td style="padding:4px 8px 4px 0;font-size:12px;color:#6b7280">Country Code</td>
-          <td style="padding:3px 0"><input id="addr-country-${bpType}" type="text" placeholder="e.g. GB, US, IN" maxlength="3" style="${S};text-transform:uppercase"></td></tr>
-    </table>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button onclick="masterSubmitAddress('${bpType}')" style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer">Save Address</button>
-      <button onclick="masterSend('done_addresses','${bpType}')" style="background:#f0fdf4;color:#065f46;border:1.5px solid #10b981;border-radius:6px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer">Done →</button>
-      <button onclick="masterSend('done_addresses','${bpType}')" style="background:transparent;color:#9ca3af;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer">Skip</button>
+  return `<div class="imf-form">
+    <div class="imf-form-title">${heading}</div>
+    <div class="imf-form-grid">
+      <label>Address Name<input class="imf-field" id="addr-name-${bpType}" type="text" placeholder="e.g. Main Office, Warehouse"></label>
+      <label>Type<select class="imf-select" id="addr-type-${bpType}"><option value="bo_BillTo">Bill To</option><option value="bo_ShipTo">Ship To</option></select></label>
+      <label class="imf-span2">Street<input class="imf-field" id="addr-street-${bpType}" type="text" placeholder="Street / Road"></label>
+      <label>City<input class="imf-field" id="addr-city-${bpType}" type="text" placeholder="City"></label>
+      <label>State / Province<input class="imf-field" id="addr-state-${bpType}" type="text" placeholder="Optional"></label>
+      <label>ZIP / Postal<input class="imf-field" id="addr-zip-${bpType}" type="text" placeholder="Postal code"></label>
+      <label>Country Code<input class="imf-field" id="addr-country-${bpType}" type="text" placeholder="e.g. GB, US, IN" maxlength="3" style="text-transform:uppercase"></label>
+    </div>
+    <div class="imf-actions">
+      <button class="imf-primary" onclick="masterSubmitAddress('${bpType}')">Save Address</button>
+      <button class="imf-secondary" onclick="masterSend('done_addresses','${bpType}')">Done →</button>
+      <button class="imf-link-btn" onclick="masterSend('done_addresses','${bpType}')">Skip</button>
     </div>
   </div>`;
 }
 function addressesTableHtml(addresses) {
-  if (!addresses.length) return '<em style="font-size:12px;color:#6b7280">No addresses added yet</em>';
-  return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0">
-    <tr style="background:#f3f4f6">
-      <th style="padding:5px 8px;text-align:left;font-weight:600">#</th>
-      <th style="padding:5px 8px;text-align:left;font-weight:600">Name</th>
-      <th style="padding:5px 8px;text-align:left;font-weight:600">Type</th>
-      <th style="padding:5px 8px;text-align:left;font-weight:600">Street</th>
-      <th style="padding:5px 8px;text-align:left;font-weight:600">City</th>
-      <th style="padding:5px 8px;text-align:left;font-weight:600">Country</th>
-      <th style="padding:5px 8px"></th>
-    </tr>
-    ${addresses.map((a,i)=>`<tr style="border-bottom:1px solid #f3f4f6">
-      <td style="padding:4px 8px;color:#6b7280">${i+1}</td>
-      <td style="padding:4px 8px;font-weight:600">${esc(a.AddressName)}</td>
-      <td style="padding:4px 8px"><span style="padding:2px 8px;border-radius:12px;font-size:11px;background:${a.AddressType==='bo_BillTo'?'#eff6ff':'#f0fdf4'};color:${a.AddressType==='bo_BillTo'?'#1d4ed8':'#065f46'}">${a.AddressType==='bo_BillTo'?'Bill To':'Ship To'}</span></td>
-      <td style="padding:4px 8px">${esc(a.Street)}</td>
-      <td style="padding:4px 8px">${esc(a.City)}</td>
-      <td style="padding:4px 8px">${esc(a.Country)}</td>
-      <td style="padding:4px 8px"><button onclick="masterSend('remove_address:${i}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px;padding:0">✕</button></td>
+  if (!addresses.length) return '<em class="imf-empty">No addresses added yet</em>';
+  return `<div class="imf-table-wrap"><table class="imf-table">
+    <tr><th>#</th><th>Name</th><th>Type</th><th>Street</th><th>City</th><th>Country</th><th></th></tr>
+    ${addresses.map((a,i)=>`<tr>
+      <td>${i+1}</td>
+      <td><strong>${esc(a.AddressName)}</strong></td>
+      <td><span class="imf-tag${a.AddressType==='bo_BillTo'?'':' ship'}">${a.AddressType==='bo_BillTo'?'Bill To':'Ship To'}</span></td>
+      <td>${esc(a.Street)}</td>
+      <td>${esc(a.City)}</td>
+      <td>${esc(a.Country)}</td>
+      <td><button class="imf-remove" title="Remove" onclick="masterSend('remove_address:${i}')">✕</button></td>
     </tr>`).join('')}
-  </table>`;
+  </table></div>`;
 }
 function currencyChips(list) {
-  return list.map(c => `<button onclick="masterSend('select_currency:${esc(c.Code)}')" style="margin:3px;padding:5px 12px;background:#f0fdf4;border:1.5px solid #10b981;border-radius:20px;cursor:pointer;font-size:12.5px;color:#065f46;font-weight:600">${esc(c.Code)} — ${esc(c.Name)}</button>`).join('') || '<em>No currencies</em>';
+  if (!list.length) return '<em class="imf-empty">No currencies</em>';
+  return `<div class="imf-chips">${list.map(c => `<button class="imf-chip" onclick="masterSend('select_currency:${esc(c.Code)}')"><strong>${esc(c.Code)}</strong> — ${esc(c.Name)}</button>`).join('')}</div>`;
 }
 function termsChips(list) {
-  return list.map(t => `<button onclick="masterSend('select_terms:${t.GroupNumber}:${esc(t.PaymentTermsGroupName)}')" style="margin:3px;padding:5px 12px;background:#fff7ed;border:1.5px solid #f97316;border-radius:20px;cursor:pointer;font-size:12.5px;color:#9a3412">${esc(t.PaymentTermsGroupName)}</button>`).join('') || '<em>No payment terms</em>';
+  if (!list.length) return '<em class="imf-empty">No payment terms</em>';
+  return `<div class="imf-chips">${list.map(t => `<button class="imf-chip" onclick="masterSend('select_terms:${t.GroupNumber}:${esc(t.PaymentTermsGroupName)}')">${esc(t.PaymentTermsGroupName)}</button>`).join('')}</div>`;
 }
 function bpSummaryHtml(sess) {
-  const rows = [
-    ['Name', esc(sess.cardName)],
-    ['Code', sess.cardCode ? esc(sess.cardCode) : '<em>Auto-generate</em>'],
-    ['Type', sess.bpType==='customer'?'👤 Customer':'🏭 Supplier'],
-    ['Series', sess.series != null ? (sess.seriesList.find(s=>s.Series===sess.series)?.Name ?? String(sess.series)) : '<em>Default</em>'],
-    ['Group', esc(sess.groupName)],
-    ['Currency', esc(sess.currency||'—')],
-    ['Payment Terms', esc(sess.payTermsName||'—')],
-    ['Phone', esc(sess.phone||'—')],
-    ['Email', esc(sess.email||'—')],
-    ...(sess.gstin ? [['GSTIN', esc(sess.gstin)]] : []),
+  const label = sess.bpType==='customer' ? 'Customer' : 'Supplier';
+  const field = (k, v, wide) => `<div class="imf-sum-field${wide?' imf-span2':''}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const fields = [
+    field(`${label} Name`, esc(sess.cardName)),
+    field('BP Code', sess.cardCode ? esc(sess.cardCode) : '<em>Auto-generate</em>'),
+    field('Series', sess.series != null ? esc(sess.seriesList.find(s=>s.Series===sess.series)?.Name ?? String(sess.series)) : '<em>Default</em>'),
+    field('BP Group', esc(sess.groupName)),
+    field('Currency', esc(sess.currency||'—')),
+    field('Payment Terms', esc(sess.payTermsName||'—')),
+    field('Phone', esc(sess.phone||'—')),
+    field('Email', esc(sess.email||'—')),
+    ...(sess.gstin ? [field('GSTIN', esc(sess.gstin), true)] : []),
   ];
-  return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
-    <div style="font-size:13.5px;font-weight:700;color:#065f46;margin-bottom:10px">📋 ${sess.bpType==='customer'?'Customer':'Supplier'} Master Summary</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      ${rows.map(([k,v])=>`<tr><td style="padding:4px 8px;color:#6b7280;width:42%;border-bottom:1px solid #f3f4f6">${k}</td><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('')}
-    </table>
-    ${sess.addresses.length ? `<div style="margin-top:10px;font-size:12.5px;font-weight:600;color:#374151">Addresses (${sess.addresses.length}):</div><div style="margin-top:4px">${addressesTableHtml(sess.addresses)}</div>` : '<div style="margin-top:8px;font-size:12px;color:#9ca3af">No addresses added.</div>'}
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <button onclick="masterSend('confirm_bp')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer">✅ Create ${sess.bpType==='customer'?'Customer':'Supplier'}</button>
-      <button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">↺ Start Over</button>
+  return `<div class="imf-summary">
+    <div class="imf-sum-hdr">
+      <span class="imf-sum-title">📄 ${label} Master Summary</span>
+      <span class="imf-badge">Ready for Creation</span>
+    </div>
+    <div class="imf-sum-grid">${fields.join('')}</div>
+    <div class="imf-sum-sub">Addresses (${sess.addresses.length})</div>
+    ${sess.addresses.length ? addressesTableHtml(sess.addresses) : '<div class="imf-hint">No addresses added.</div>'}
+    <div class="imf-sum-actions">
+      <button class="imf-link-btn" onclick="masterSend('restart')">Edit Details</button>
+      <button class="imf-primary" onclick="masterSend('confirm_bp')">✓ Create ${label}</button>
     </div>
   </div>`;
 }
@@ -488,7 +484,7 @@ async function handleBPChat(sess, msg, sap, res, user) {
       AddressType: addrType || 'bo_BillTo',
       Street: street||'', City: city||'', State: state||'', ZipCode: zip||'', Country: country||'',
     });
-    return res.json({ ok:true, reply:`<div>Address saved ✓</div><div style="margin-top:8px">${addressesTableHtml(sess.addresses)}</div><div style="margin-top:12px;font-size:13px">Do you want to add another address?</div>`, step:sess.step, sessionId:sid, quickReplies:['Add Address','Continue →'] });
+    return res.json({ ok:true, reply:`<div>Address saved ✓</div><div style="margin-top:8px">${addressesTableHtml(sess.addresses)}</div><div style="margin-top:12px">Do you want to add another address?</div>`, step:sess.step, sessionId:sid, quickReplies:['Add Address','Continue →'] });
   }
   if (msg==='Add Address'||msg==='add_more_address') {
     return res.json({ ok:true, reply:`<div style="margin-bottom:8px">${addressesTableHtml(sess.addresses)}</div>${addressFormHtml(bpType, sess.addresses.length)}`, step:sess.step, sessionId:sid });
@@ -500,7 +496,7 @@ async function handleBPChat(sess, msg, sap, res, user) {
   if (msg.startsWith('remove_address:')) {
     const idx = Number(msg.split(':')[1]);
     if (idx>=0 && idx<sess.addresses.length) sess.addresses.splice(idx,1);
-    return res.json({ ok:true, reply:`<div>Address removed.</div><div style="margin-top:8px">${addressesTableHtml(sess.addresses)}</div><div style="margin-top:12px;font-size:13px">Add another address?</div>`, step:sess.step, sessionId:sid, quickReplies:['Add Address','Continue →'] });
+    return res.json({ ok:true, reply:`<div>Address removed.</div><div style="margin-top:8px">${addressesTableHtml(sess.addresses)}</div><div style="margin-top:12px">Add another address?</div>`, step:sess.step, sessionId:sid, quickReplies:['Add Address','Continue →'] });
   }
   if (msg==='confirm_bp') {
     const cardType = bpType==='customer' ? 'cCustomer' : 'cSupplier';
@@ -524,7 +520,7 @@ async function handleBPChat(sess, msg, sap, res, user) {
       const result = await sap.post('/BusinessPartners', payload);
       sess.step = 'DONE';
       logEntry(bpType, result.CardCode||sess.cardCode||sess.cardName, sess.cardName, payload, result, 'success', user);
-      return res.json({ ok:true, reply:`<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#065f46;margin-bottom:6px">✅ ${bpType==='customer'?'Customer':'Supplier'} Created!</div><div style="font-size:12.5px;color:#065f46">Code: <strong>${esc(result.CardCode||'Auto-assigned')}</strong> &nbsp;|&nbsp; Name: <strong>${esc(sess.cardName)}</strong></div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another'] });
+      return res.json({ ok:true, reply:`<div class="imf-success"><div class="imf-success-title">✓ ${bpType==='customer'?'Customer':'Supplier'} Master Record Created Successfully!</div><div class="imf-success-text"><strong>${esc(result.CardCode||'Auto-assigned')}</strong> (${esc(sess.cardName)}) has been created in SAP.</div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another'] });
     } catch(e) {
       logEntry(bpType, sess.cardCode||'', sess.cardName, payload, {error:e.message}, 'error', user);
       return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
@@ -550,13 +546,13 @@ async function handleBPChat(sess, msg, sap, res, user) {
     if (sess.seriesList.length) {
       seriesContent = seriesChips(sess.seriesList).replace(/select_series:/g,'select_bp_series:');
     } else if (sess.seriesError) {
-      seriesContent = `<div style="font-size:12.5px;color:#b91c1c;margin-bottom:8px">⚠️ Could not load series from SAP: ${esc(sess.seriesError)}</div>
-        <button onclick="masterSend('select_bp_series:skip:Default')" style="margin:3px;padding:6px 16px;background:#f0f9ff;border:1.5px solid #0ea5e9;border-radius:20px;cursor:pointer;font-size:12.5px;color:#0369a1;font-weight:600">Skip (use SAP default)</button>
-        <div style="margin-top:10px;font-size:12.5px;color:#6b7280">If SAP requires a series for this card type, enter a specific <strong>BP Code</strong> above instead of "auto" next time, or type a series number and press Enter.</div>`;
+      seriesContent = `<div class="imf-error" style="margin-bottom:8px">⚠️ Could not load series from SAP: ${esc(sess.seriesError)}</div>
+        <div class="imf-chips"><button class="imf-chip" onclick="masterSend('select_bp_series:skip:Default')">Skip (use SAP default)</button></div>
+        <div class="imf-hint" style="margin-top:10px">If SAP requires a series for this card type, enter a specific <strong>BP Code</strong> above instead of "auto" next time, or type a series number and press Enter.</div>`;
     } else {
-      seriesContent = `<div style="font-size:12.5px;color:#6b7280;margin-bottom:8px">No series configured in SAP.</div>
-        <button onclick="masterSend('select_bp_series:skip:Default')" style="margin:3px;padding:6px 16px;background:#f0f9ff;border:1.5px solid #0ea5e9;border-radius:20px;cursor:pointer;font-size:12.5px;color:#0369a1;font-weight:600">Skip (use SAP default)</button>
-        <div style="margin-top:10px;font-size:12.5px;color:#6b7280">Or type a series number and press Enter.</div>`;
+      seriesContent = `<div class="imf-hint" style="margin:0 0 8px">No series configured in SAP.</div>
+        <div class="imf-chips"><button class="imf-chip" onclick="masterSend('select_bp_series:skip:Default')">Skip (use SAP default)</button></div>
+        <div class="imf-hint" style="margin-top:10px">Or type a series number and press Enter.</div>`;
     }
     return res.json({ ok:true, reply:`<div>Code: <strong>${sess.cardCode||'Auto-generate'}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Number Series</strong>:</div><div style="margin-top:8px">${seriesContent}</div>`, step:sess.step, sessionId:sid });
   }
@@ -615,39 +611,41 @@ function bomStepBar(step) {
     }).join('')}
   </div>`;
 }
+// BOM replies use the imf-* classes (SAP Fiori theme) defined in public/index.html
+const TREE_TYPE_LABELS = {iProductionTree:'Production (Assembly)', iSalesTree:'Sales Bundle', iTemplateTree:'Template', iDisassemblyTree:'Disassembly'};
 function bomItemChips(list, prefix) {
-  if (!list.length) return '<em style="font-size:12px;color:#6b7280">No items found</em>';
-  return list.map(i => `<button onclick="masterSend('${prefix}:${esc(i.ItemCode)}:${esc(i.ItemName)}')" style="margin:3px;padding:6px 14px;background:#f9fafb;border:1.5px solid #6b7280;border-radius:6px;cursor:pointer;font-size:12.5px;text-align:left"><strong>${esc(i.ItemCode)}</strong> — ${esc(i.ItemName)}</button>`).join('');
+  if (!list.length) return '<em class="imf-empty">No items found</em>';
+  return `<div class="imf-chips">${list.map(i => `<button class="imf-chip" onclick="masterSend('${prefix}:${esc(i.ItemCode)}:${esc(i.ItemName)}')"><strong>${esc(i.ItemCode)}</strong> — ${esc(i.ItemName)}</button>`).join('')}</div>`;
 }
 function treeTypeChips() {
-  return [
-    {v:'iProductionTree', l:'🏭 Production (Assembly)'},
-    {v:'iSalesTree',      l:'🛒 Sales Bundle'},
-    {v:'iTemplateTree',   l:'📋 Template'},
-    {v:'iDisassemblyTree',l:'🔧 Disassembly'},
-  ].map(o => `<button onclick="masterSend('select_tree_type:${o.v}')" style="margin:4px;padding:8px 16px;background:#f0fdf4;border:1.5px solid #10b981;border-radius:20px;cursor:pointer;font-size:12.5px;color:#065f46;font-weight:600">${o.l}</button>`).join('');
+  return `<div class="imf-chips">${Object.entries(TREE_TYPE_LABELS)
+    .map(([v,l]) => `<button class="imf-chip" onclick="masterSend('select_tree_type:${v}')">${l}</button>`).join('')}</div>`;
 }
 function bomComponentsTable(comps) {
-  if (!comps.length) return '<em style="font-size:12px;color:#6b7280">No components added yet</em>';
-  return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0">
-    <tr style="background:#f3f4f6"><th style="padding:5px 8px;text-align:left">#</th><th style="padding:5px 8px;text-align:left">Item Code</th><th style="padding:5px 8px;text-align:left">Item Name</th><th style="padding:5px 8px;text-align:right">Qty</th><th style="padding:5px 8px;text-align:left">Warehouse</th><th style="padding:5px 8px"></th></tr>
-    ${comps.map((c,i) => `<tr style="border-bottom:1px solid #f3f4f6"><td style="padding:4px 8px">${i+1}</td><td style="padding:4px 8px;font-weight:600">${esc(c.itemCode)}</td><td style="padding:4px 8px">${esc(c.itemName)}</td><td style="padding:4px 8px;text-align:right">${c.quantity}</td><td style="padding:4px 8px">${esc(c.warehouse)}</td><td style="padding:4px 8px"><button onclick="masterSend('remove_comp:${i}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px">✕</button></td></tr>`).join('')}
-  </table>`;
+  if (!comps.length) return '<em class="imf-empty">No components added yet</em>';
+  return `<div class="imf-table-wrap"><table class="imf-table">
+    <tr><th>#</th><th>Item Code</th><th>Item Name</th><th class="num">Qty</th><th>Warehouse</th><th></th></tr>
+    ${comps.map((c,i) => `<tr><td>${i+1}</td><td><strong>${esc(c.itemCode)}</strong></td><td>${esc(c.itemName)}</td><td class="num">${c.quantity}</td><td>${esc(c.warehouse)}</td><td><button class="imf-remove" title="Remove" onclick="masterSend('remove_comp:${i}')">✕</button></td></tr>`).join('')}
+  </table></div>`;
 }
 function bomSummaryHtml(sess) {
-  return `<div style="background:var(--card-bg,#f9fafb);border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
-    <div style="font-size:13.5px;font-weight:700;color:#065f46;margin-bottom:10px">📋 Bill of Material Summary</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px">
-      <tr><td style="padding:4px 8px;color:#6b7280;width:42%">Parent Item</td><td style="padding:4px 8px;font-weight:600">${esc(sess.parentCode)} — ${esc(sess.parentName)}</td></tr>
-      <tr><td style="padding:4px 8px;color:#6b7280">Tree Type</td><td style="padding:4px 8px;font-weight:600">${esc(sess.treeType)}</td></tr>
-      <tr><td style="padding:4px 8px;color:#6b7280">Base Quantity</td><td style="padding:4px 8px;font-weight:600">${sess.baseQty}</td></tr>
-    </table>
-    <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Components (${sess.components.length}):</div>
+  const field = (k, v, wide) => `<div class="imf-sum-field${wide?' imf-span2':''}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  return `<div class="imf-summary">
+    <div class="imf-sum-hdr">
+      <span class="imf-sum-title">📄 Bill of Material Summary</span>
+      <span class="imf-badge">Ready for Creation</span>
+    </div>
+    <div class="imf-sum-grid">
+      ${field('Parent Item', `${esc(sess.parentCode)} — ${esc(sess.parentName)}`, true)}
+      ${field('Tree Type', esc(TREE_TYPE_LABELS[sess.treeType] || sess.treeType))}
+      ${field('Base Quantity', sess.baseQty)}
+    </div>
+    <div class="imf-sum-sub">Components (${sess.components.length})</div>
     ${bomComponentsTable(sess.components)}
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <button onclick="masterSend('confirm_bom')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer">✅ Create BOM</button>
-      <button onclick="masterSend('add_more_comp')" style="background:#eff6ff;color:#1d4ed8;border:1px solid #3b82f6;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">+ Add More</button>
-      <button onclick="masterSend('restart')" style="background:transparent;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:12.5px;cursor:pointer">↺ Start Over</button>
+    <div class="imf-sum-actions">
+      <button class="imf-link-btn" onclick="masterSend('restart')">Start Over</button>
+      <button class="imf-secondary" onclick="masterSend('add_more_comp')">+ Add More</button>
+      <button class="imf-primary" onclick="masterSend('confirm_bom')">✓ Create BOM</button>
     </div>
   </div>`;
 }
@@ -675,22 +673,21 @@ async function itemPickerHtml(sap, prefix, excludeExistingBom = false) {
       } catch(_) { /* if BOM fetch fails, show all items */ }
     }
 
-    if (!items.length) return '<em style="font-size:12px;color:#6b7280">All items already have a BOM, or none found. Type code below to search.</em>';
+    if (!items.length) return '<em class="imf-empty">All items already have a BOM, or none found. Type code below to search.</em>';
     const uid = `bom_${prefix}_${Math.random().toString(36).slice(2,7)}`;
-    const btnColor = prefix === 'select_parent' ? '#0f766e' : '#1d4ed8';
     const opts = items.map(i =>
       `<option value="${esc(i.ItemCode)}" data-name="${esc(i.ItemName)}">${esc(i.ItemCode)} — ${esc(i.ItemName)}</option>`
     ).join('');
-    return `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;max-width:520px">
-      <select id="${uid}" style="flex:1;padding:7px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12.5px;background:var(--bg,#fff);color:var(--text,#111);cursor:pointer;min-width:0">
+    return `<div class="imf-picker">
+      <select id="${uid}" class="imf-select">
         <option value="">— Select an item —</option>
         ${opts}
       </select>
-      <button onclick="masterSelectBomItem('${uid}','${prefix}')" style="padding:7px 16px;background:${btnColor};color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">Select →</button>
+      <button class="imf-primary" style="white-space:nowrap;flex-shrink:0" onclick="masterSelectBomItem('${uid}','${prefix}')">Select →</button>
     </div>
-    <div style="font-size:11px;color:#9ca3af;margin-top:4px">Or type a name / code in the box below to search</div>`;
+    <div class="imf-hint">Or type a name / code in the box below to search</div>`;
   } catch(_) {
-    return '<em style="font-size:12px;color:#6b7280">Type item name or code below to search.</em>';
+    return '<em class="imf-empty">Type item name or code below to search.</em>';
   }
 }
 
@@ -734,7 +731,7 @@ async function handleBOMChat(sess, msg, sap, res, user) {
     sess.pendingComp = null;
     sess.step = 'ADDING_COMPONENTS';
     const picker = await itemPickerHtml(sap, 'select_comp');
-    const finishBtn = `<button onclick="masterSend('done_adding')" style="background:#0f766e;color:#fff;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:12.5px;font-weight:600;margin-top:8px">✓ Finish Adding</button>`;
+    const finishBtn = `<button class="imf-primary" onclick="masterSend('done_adding')">✓ Finish Adding</button>`;
     return res.json({ ok:true, reply:`<div>Component added ✓</div><div style="margin-top:8px">${bomComponentsTable(sess.components)}</div><div style="margin-top:10px">Add another component or ${finishBtn}</div>${picker}`, step:sess.step, sessionId:sid });
   }
   if (msg==='done_adding') {
@@ -753,7 +750,7 @@ async function handleBOMChat(sess, msg, sap, res, user) {
       const result = await sap.post('/ProductTrees', payload);
       sess.step = 'DONE';
       logEntry('bom', sess.parentCode, sess.parentName, payload, result, 'success', user);
-      return res.json({ ok:true, reply:`<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#065f46;margin-bottom:6px">✅ BOM Created!</div><div style="font-size:12.5px;color:#065f46">Parent: <strong>${esc(sess.parentCode)}</strong> &nbsp;|&nbsp; Components: <strong>${sess.components.length}</strong></div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another BOM'] });
+      return res.json({ ok:true, reply:`<div class="imf-success"><div class="imf-success-title">✓ Bill of Material Created Successfully!</div><div class="imf-success-text">BOM for <strong>${esc(sess.parentCode)}</strong> (${esc(sess.parentName)}) with <strong>${sess.components.length}</strong> component${sess.components.length===1?'':'s'} has been created in SAP.</div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another BOM'] });
     } catch(e) {
       logEntry('bom', sess.parentCode, sess.parentName, payload, {error:e.message}, 'error', user);
       return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
@@ -1264,7 +1261,7 @@ export function createMenuMasterRouter({ requireAuth, getActiveSap }) {
       let sess = sessionId && _itemSess.get(sessionId);
       if (!sess) { sess = itemInit(); _itemSess.set(sess.sid, sess); }
       if (!sessionId || !_itemSess.has(sessionId)) {
-        const welcome = `<div style="font-size:13.5px">👋 Welcome to <strong>Item Master Wizard</strong>! I'll guide you step by step.</div><div style="margin-top:8px">What is the <strong>Item Name</strong>?</div>`;
+        const welcome = `<div>What is the <strong>Item Name</strong>?</div>`;
         return res.json({ ok:true, reply:welcome, step:sess.step, sessionId:sess.sid, stepBar:itemSteps(sess.step) });
       }
       const result = await handleItemChat(sess, message, sap, res, user);
@@ -1288,7 +1285,7 @@ export function createMenuMasterRouter({ requireAuth, getActiveSap }) {
       let sess = sessionId && _bpSess.customer.get(sessionId);
       if (!sess) {
         sess = bpInit('customer'); _bpSess.customer.set(sess.sid, sess);
-        return res.json({ ok:true, reply:'<div>👋 Welcome to <strong>Customer Master Wizard</strong>!</div><div style="margin-top:8px">What is the <strong>Customer Name</strong>?</div>', step:sess.step, sessionId:sess.sid });
+        return res.json({ ok:true, reply:'<div>What is the <strong>Customer Name</strong>?</div>', step:sess.step, sessionId:sess.sid });
       }
       await handleBPChat(sess, message, sap, res, user);
     } catch(e) { res.json({ ok:false, error:e.message }); }
@@ -1308,7 +1305,7 @@ export function createMenuMasterRouter({ requireAuth, getActiveSap }) {
       let sess = sessionId && _bpSess.supplier.get(sessionId);
       if (!sess) {
         sess = bpInit('supplier'); _bpSess.supplier.set(sess.sid, sess);
-        return res.json({ ok:true, reply:'<div>👋 Welcome to <strong>Supplier Master Wizard</strong>!</div><div style="margin-top:8px">What is the <strong>Supplier Name</strong>?</div>', step:sess.step, sessionId:sess.sid });
+        return res.json({ ok:true, reply:'<div>What is the <strong>Supplier Name</strong>?</div>', step:sess.step, sessionId:sess.sid });
       }
       await handleBPChat(sess, message, sap, res, user);
     } catch(e) { res.json({ ok:false, error:e.message }); }
@@ -1329,7 +1326,7 @@ export function createMenuMasterRouter({ requireAuth, getActiveSap }) {
       if (!sess) {
         sess = bomInit(); _bomSess.set(sess.sid, sess);
         const picker = await itemPickerHtml(sap, 'select_parent', true);
-        return res.json({ ok:true, reply:`<div>👋 Welcome to <strong>Bill of Material Wizard</strong>!</div><div style="margin-top:8px">Select the <strong>Parent (Finished) Item</strong>:</div>${picker}`, step:sess.step, sessionId:sess.sid });
+        return res.json({ ok:true, reply:`<div>Select the <strong>Parent (Finished) Item</strong>:</div>${picker}`, step:sess.step, sessionId:sess.sid });
       }
       await handleBOMChat(sess, message, sap, res, user);
     } catch(e) { res.json({ ok:false, error:e.message }); }

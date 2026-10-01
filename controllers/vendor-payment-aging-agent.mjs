@@ -151,6 +151,55 @@ async function callAgingView(sap, getNamespace, agingDate, bucketSize) {
   }
 }
 
+// ── Row normalisation ─────────────────────────────────────────────────────────
+// The view's own AgingBucket is unreliable: docs due up to ~4 days AFTER the
+// aging date land in the first overdue bucket ("0-30" carried 247k of Future
+// Remit on 2026-10-01). Re-bucket from NumberOfDaysOutstanding (aging date −
+// due date), using the same split as the view's OverdueLC/FutureRemitLC:
+// days < 0 → Future Remit, 0..size → first bucket, ... 4 buckets, then "N+".
+// Amounts/balances are fine as-is (verified = vendor GL balance in JDT1, incl.
+// historical aging dates; cancelled and future-posted docs are excluded).
+const BUCKETS_N = 4;
+const NULLS = new Set(['-NULL-', '']);
+const clean = v => (v == null || NULLS.has(String(v)) ? '' : v);
+
+function bucketDefs(size) {
+  const defs = [{ bucket: 'Future Remit', order: 0, minDays: null, maxDays: -1 }];
+  for (let i = 0; i < BUCKETS_N; i++) {
+    const lo = i === 0 ? 0 : i * size + 1, hi = (i + 1) * size;
+    defs.push({ bucket: `${lo}-${hi}`, order: i + 1, minDays: lo, maxDays: hi });
+  }
+  defs.push({ bucket: `${BUCKETS_N * size}+`, order: BUCKETS_N + 1, minDays: BUCKETS_N * size + 1, maxDays: null });
+  return defs;
+}
+
+function bucketFor(days, size) {
+  if (days < 0) return 'Future Remit';
+  if (days <= size) return `0-${size}`;
+  const i = Math.ceil(days / size) - 1;
+  return i >= BUCKETS_N ? `${BUCKETS_N * size}+` : `${i * size + 1}-${(i + 1) * size}`;
+}
+
+function daysBetween(due, asOf) {
+  const d = Date.parse(String(due).slice(0, 10)), a = Date.parse(String(asOf).slice(0, 10));
+  return isNaN(d) || isNaN(a) ? 0 : Math.round((a - d) / 86400000);
+}
+
+function normalizeRows(rows, agingDate, size) {
+  return rows.map(r => {
+    const days = r.NumberOfDaysOutstanding != null ? Number(r.NumberOfDaysOutstanding) : daysBetween(r.DueDate, agingDate);
+    return {
+      ...r,
+      BranchName:               clean(r.BranchName),
+      BusinessPartnerGroupName: clean(r.BusinessPartnerGroupName),
+      SalesEmployeeOrBuyerName: clean(r.SalesEmployeeOrBuyerName),
+      NumberOfDaysOutstanding:  days,
+      ViewAgingBucket:          r.AgingBucket,
+      AgingBucket:              bucketFor(days, size),
+    };
+  });
+}
+
 // ── Client-side filtering ─────────────────────────────────────────────────────
 function applyFilters(rows, filters = {}) {
   let r = rows;
@@ -161,11 +210,14 @@ function applyFilters(rows, filters = {}) {
       (x.BusinessPartnerName || '').toLowerCase().includes(q)
     );
   }
-  if (filters.docType)     r = r.filter(x => x.DocumentTypeCode         === filters.docType);
+  // docType: code ('18') or display name ('A/P Invoice')
+  if (filters.docType)     r = r.filter(x => x.DocumentTypeCode === filters.docType || x.DocumentTypeDisplayName === filters.docType);
   if (filters.branch)      r = r.filter(x => x.BranchName               === filters.branch);
   if (filters.dimension)   r = r.filter(x => x.BusinessPartnerGroupName === filters.dimension);
   if (filters.agingBucket) r = r.filter(x => x.AgingBucket              === filters.agingBucket);
-  if (filters.onlyOverdue) r = r.filter(x => Number(x.OverdueLC || 0)   > 0);
+  // Overdue = due on/before the aging date. Keeps overdue credit memos and
+  // payments on account (negative) so the net overdue isn't overstated.
+  if (filters.onlyOverdue) r = r.filter(x => x.NumberOfDaysOutstanding >= 0);
   return r;
 }
 
@@ -203,34 +255,51 @@ function aggregateByVendor(rows) {
     v.buckets[bucket] = (v.buckets[bucket] || 0) + Number(row.AgingBalanceDueLC || 0);
     v.docCount++;
   }
+  // Ratios from totals, never summed per row
+  for (const v of map.values()) v.overduePct = pct(v.overdue, v.balanceDue);
   return Array.from(map.values()).sort((a, b) => b.overdue - a.overdue);
 }
 
-function aggregateByBucket(rows) {
-  const map = new Map();
+const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 10000) / 100 : 0);
+
+// Chronological (Future Remit → oldest) so charts/columns read left to right;
+// empty buckets are skipped, as before.
+function aggregateByBucket(rows, size) {
+  const map = new Map(bucketDefs(size).map(d => [d.bucket, {
+    ...d, balanceDue: 0, overdue: 0, futureRemit: 0, vendorSet: new Set(), docCount: 0,
+  }]));
   for (const row of rows) {
-    const bucket = row.AgingBucket || 'Unknown';
-    if (!map.has(bucket)) {
-      map.set(bucket, {
-        bucket,
-        balanceDue:  0,
-        overdue:     0,
-        futureRemit: 0,
-        vendorSet:   new Set(),
-        docCount:    0,
-      });
-    }
-    const b = map.get(bucket);
+    const b = map.get(row.AgingBucket);
+    if (!b) continue;
     b.balanceDue  += Number(row.AgingBalanceDueLC || 0);
     b.overdue     += Number(row.OverdueLC         || 0);
     b.futureRemit += Number(row.FutureRemitLC     || 0);
     b.vendorSet.add(row.BusinessPartnerCode);
     b.docCount++;
   }
+  const total = rows.reduce((s, r) => s + Number(r.AgingBalanceDueLC || 0), 0);
   return Array.from(map.values())
-    .map(b => ({ ...b, vendorCount: b.vendorSet.size, vendorSet: undefined }))
-    .sort((a, b) => b.balanceDue - a.balanceDue);
+    .filter(b => b.docCount > 0)
+    .map(b => ({ ...b, vendorCount: b.vendorSet.size, vendorSet: undefined, pct: pct(b.balanceDue, total) }));
 }
+
+// Generic group-by for the extra chart breakdowns
+function aggregateBy(rows, keyFn, labelKey) {
+  const map = new Map();
+  for (const row of rows) {
+    const k = keyFn(row) || 'Unassigned';
+    if (!map.has(k)) map.set(k, { [labelKey]: k, balanceDue: 0, overdue: 0, futureRemit: 0, vendorSet: new Set(), docCount: 0 });
+    const g = map.get(k);
+    g.balanceDue  += Number(row.AgingBalanceDueLC || 0);
+    g.overdue     += Number(row.OverdueLC         || 0);
+    g.futureRemit += Number(row.FutureRemitLC     || 0);
+    g.vendorSet.add(row.BusinessPartnerCode);
+    g.docCount++;
+  }
+  return Array.from(map.values()).map(g => ({ ...g, vendorCount: g.vendorSet.size, vendorSet: undefined }));
+}
+
+const dueMonth = r => String(r.DueDateSQL || r.DueDate || '').slice(0, 7);
 
 function aggregateByDimension(rows) {
   const map = new Map();
@@ -261,6 +330,16 @@ function calcTotals(rows) {
 
   t.vendorCount = new Set(rows.map(r => r.BusinessPartnerCode).filter(Boolean)).size;
   t.docCount    = rows.length;
+  // Added: ratios from totals + invoice vs credit split
+  t.overduePct      = pct(t.overdue, t.balanceDue);
+  t.futureRemitPct  = pct(t.futureRemit, t.balanceDue);
+  t.invoiceBalance  = rows.filter(r => Number(r.AgingBalanceDueLC || 0) > 0).reduce((s, r) => s + Number(r.AgingBalanceDueLC), 0);
+  t.creditBalance   = t.balanceDue - t.invoiceBalance;   // open credit memos / payments on account (≤ 0)
+  t.overdueVendorCount = new Set(rows.filter(r => Number(r.OverdueLC || 0) > 0).map(r => r.BusinessPartnerCode)).size;
+  // Overdue-weighted average days past due (overdue invoices only)
+  const od = rows.filter(r => Number(r.OverdueLC || 0) > 0);
+  const odAmt = od.reduce((s, r) => s + Number(r.OverdueLC), 0);
+  t.avgDaysOverdue = odAmt > 0 ? Math.round(od.reduce((s, r) => s + Number(r.OverdueLC) * r.NumberOfDaysOutstanding, 0) / odAmt) : 0;
   return t;
 }
 
@@ -282,12 +361,13 @@ function toDocumentRows(rows) {
   }));
 }
 
-function getFilterOptions(rows) {
+function getFilterOptions(rows, size = 30) {
   return {
-    docTypes:   [...new Set(rows.map(r => r.DocumentTypeCode        ).filter(Boolean))].sort(),
+    // Display names ('A/P Invoice') instead of object codes; the filter accepts both
+    docTypes:   [...new Set(rows.map(r => r.DocumentTypeDisplayName || r.DocumentTypeCode).filter(Boolean))].sort(),
     branches:   [...new Set(rows.map(r => r.BranchName              ).filter(Boolean))].sort(),
     dimensions: [...new Set(rows.map(r => r.BusinessPartnerGroupName).filter(Boolean))].sort(),
-    buckets:    [...new Set(rows.map(r => r.AgingBucket             ).filter(Boolean))].sort(),
+    buckets:    bucketDefs(size).map(d => d.bucket).filter(b => rows.some(r => r.AgingBucket === b)),
     employees:  [...new Set(rows.map(r => r.SalesEmployeeOrBuyerName).filter(Boolean))].sort(),
   };
 }
@@ -339,18 +419,24 @@ export function createVendorPaymentAgingRouter(deps) {
   router.post('/analyze', requireAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
-      const { agingDate = today(), bucketSize = 30, filters = {} } = req.body;
+      // skipInsight: background pre-load (no AI call)
+      const { agingDate = today(), bucketSize = 30, filters = {}, skipInsight = false } = req.body;
+      const size = Math.max(1, parseInt(bucketSize) || 30);
 
-      const allRows  = await callAgingView(sap, getNamespace, agingDate, Number(bucketSize));
+      const allRows  = normalizeRows(await callAgingView(sap, getNamespace, agingDate, size), agingDate, size);
       const filtered = applyFilters(allRows, filters);
       const vendors  = aggregateByVendor(filtered);
-      const buckets  = aggregateByBucket(filtered);
+      const buckets  = aggregateByBucket(filtered, size);
       const dimBreak = aggregateByDimension(filtered);
       const totals   = calcTotals(filtered);
-      const options  = getFilterOptions(allRows);
+      const options  = getFilterOptions(allRows, size);
+      // Extra breakdowns for charts
+      const byDocType  = aggregateBy(filtered, r => r.DocumentTypeDisplayName || r.DocumentTypeCode, 'docType').sort((a, b) => b.balanceDue - a.balanceDue);
+      const byDueMonth = aggregateBy(filtered, dueMonth, 'month').sort((a, b) => a.month.localeCompare(b.month));
+      const byCurrency = aggregateBy(filtered, r => r.BusinessPartnerCurrency, 'currency').sort((a, b) => b.balanceDue - a.balanceDue);
 
       let aiInsight = '';
-      if (USE_AI && vendors.length > 0) {
+      if (USE_AI && !skipInsight && vendors.length > 0) {
         const ctx = buildAiContext(vendors, totals, buckets, dimBreak, { agingDate, bucketSize });
         aiInsight = await callAI(
           _aiDeps(),
@@ -364,8 +450,9 @@ export function createVendorPaymentAgingRouter(deps) {
         ok: true,
         vendors, buckets, dimBreakdown: dimBreak,
         totals, options, aiInsight,
+        byDocType, byDueMonth, byCurrency,
         documents: toDocumentRows(filtered),
-        params: { agingDate, bucketSize },
+        params: { agingDate, bucketSize: size },
       });
     } catch (e) {
       console.error('[VPAging] /analyze error:', e.message);
@@ -427,10 +514,10 @@ ${sess.agingContext}`;
     try {
       const sap = getActiveSap();
       const agingDate = req.query.date || today();
-      const bucketSize = parseInt(req.query.bucketSize || '30');
+      const bucketSize = Math.max(1, parseInt(req.query.bucketSize || '30') || 30);
 
-      const rows    = await callAgingView(sap, getNamespace, agingDate, bucketSize);
-      const options = getFilterOptions(rows);
+      const rows    = normalizeRows(await callAgingView(sap, getNamespace, agingDate, bucketSize), agingDate, bucketSize);
+      const options = getFilterOptions(rows, bucketSize);
       res.json({ ok: true, options });
     } catch (e) {
       res.json({ ok: false, error: e.message });

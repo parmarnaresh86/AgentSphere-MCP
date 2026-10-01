@@ -61,6 +61,7 @@ import { createOutgoingPaymentRouter }      from './controllers/outgoing-payment
 import db, { userRepo, sessionRepo, connRepo, verifyPassword, queryCacheRepo, dbConnRepo, mailConfigRepo, roleRepo, userPermRepo, cacheRepo, ALL_PERMISSIONS, schemaRepo, sqlCacheRepo, brandingRepo, ocrDocumentsRepo, chatSessionRepo, customAgentsRepo, localTablesRepo, workflowInstancesRepo, promptRepo, isReusablePrompt } from "./db.mjs";
 import { createDataSyncRouter } from './controllers/data-sync.mjs';
 import { createFinancialAgentRouter } from './controllers/financial-agent.mjs';
+import { createHomeInsightsRouter } from './controllers/home-insights.mjs';
 import { createFinancialReportsRouter } from './controllers/financial-reports-agent.mjs';
 import { createActivityAgentRouter } from './controllers/activity-agent.mjs';
 import { createVendorPaymentAgingRouter } from './controllers/vendor-payment-aging-agent.mjs';
@@ -80,6 +81,7 @@ import { createMonthEndClosingAgentRouter }     from './controllers/month-end-cl
 import { createDemandForecastAgentRouter }      from './controllers/demand-forecast-agent.mjs';
 import { createPurchaseAnalysisRouter } from './controllers/purchase-analysis-agent.mjs';
 import { createSalesAnalysisRouter } from './controllers/sales-analysis-agent.mjs';
+import { createInventoryDashboardRouter } from './controllers/inventory-dashboard-agent.mjs';
 import { connectDB, disconnectDB, executeSQL, testConnection as testDBConn, isConnected, getActiveType, getActiveConfig, SAP_B1_SCHEMA, tableRef, fetchLiveUDFs, fetchRawUDFs, invalidateUDFCache, getTableColumns, resolveFieldMap, scanTablesSchema, getCompanyCurrency } from "./db-connector.mjs";
 import { SAP_TABLE_CATALOG } from "./lib/sap-table-catalog.mjs";
 import { runSqlAnalystAgent, mightBeMultiQuestion, splitQuestions, runMultiQuestionAnalysis } from "./lib/sql-analyst-agent.mjs";
@@ -303,6 +305,21 @@ async function getNamespace() {
 
 // Call SMLSVC via POST+ParamList (Section 4 protocol)
 // Falls back to GET OData if namespace unavailable or POST fails
+// SalesAnalysisQuery holds EVERY sales document — the same sale appears as Sales
+// Order, Delivery AND A/R Invoice — so summing all rows overstates net sales ~3×
+// (verified on STTL_SD 2026: 569.3M summed vs 180.6M = invoices − credit memos).
+// Keep A/R invoices (13) + credit memos (14, already negative) and drop cancelled
+// documents with their cancellation counterparts. Rows without these fields
+// (other view variants) pass through unchanged.
+function netSalesRows(rows) {
+  return (rows || []).filter(r => {
+    const t = String(r.DocumentTypeCode ?? r.ObjType ?? '');
+    if (t && t !== '13' && t !== '14') return false;
+    const c = r.CancellationStatus;
+    return !c || c === 'Not Cancelled';
+  });
+}
+
 async function callSMLSVCPost(queryType = "sales", paramList = []) {
   const ns = await getNamespace();
   // sales uses bare SalesAnalysisQuery — no namespace required
@@ -816,6 +833,7 @@ async function queryCostCentreAnalysis(dimField, fromDate, toDate, topN = 500, d
 
   // Helper — aggregate SMLSVC rows by dimField
   function aggregateSml(rows) {
+    if (docType !== "purchase") rows = netSalesRows(rows);
     const map = new Map();
     for (const r of rows) {
       const k = r[dimField] || "(none)";
@@ -897,13 +915,31 @@ async function queryCostCentreAnalysis(dimField, fromDate, toDate, topN = 500, d
       const QTY2 = isHana ? `T1."Quantity"` : `T1.Quantity`;
       const JOIN2= isHana ? `T0."DocEntry"=T1."DocEntry"` : `T0.DocEntry=T1.DocEntry`;
       const dimCol2 = isHana ? col : sqlCol;
-      const sqlFirst = `SELECT ${nullFn} AS DIM, SUM(${LT}) AS TOTAL, SUM(${GP2}) AS GP, SUM(${QTY2}) AS QTY FROM ${hdr} T0 INNER JOIN ${lin} T1 ON ${JOIN2} WHERE ${dateFlt} AND T1.${dimCol2} IS NOT NULL AND T1.${dimCol2}!='' GROUP BY T1.${dimCol2} ORDER BY TOTAL DESC`;
+      const CANC = isHana ? `T0."CANCELED"` : `T0.CANCELED`;
+      const legSql = (h, l) => `SELECT ${nullFn} AS DIM, SUM(${LT}) AS TOTAL, SUM(${GP2}) AS GP, SUM(${QTY2}) AS QTY FROM ${h} T0 INNER JOIN ${l} T1 ON ${JOIN2} WHERE ${dateFlt} AND ${CANC}='N' AND T1.${dimCol2} IS NOT NULL AND T1.${dimCol2}!='' GROUP BY T1.${dimCol2}`;
+      const sqlFirst = legSql(hdr, lin) + ' ORDER BY TOTAL DESC';
       console.log(`[CC-SQL] ${sqlFirst.slice(0,120)}...`);
-      const sqlRows = await executeSQL(sqlFirst);
+      let sqlRows = await executeSQL(sqlFirst);
+      // Net sales = A/R invoices − A/R credit memos (same rule as formatSalesAnalysis)
+      if (!isPurch && sqlRows.length) {
+        try {
+          const cm = await executeSQL(legSql(tableRef('ORIN', cfg), tableRef('RIN1', cfg)));
+          const byDim = new Map(sqlRows.map(r => [r.DIM ?? r.dim, { ...r }]));
+          for (const c of cm) {
+            const k = c.DIM ?? c.dim;
+            const e = byDim.get(k) ?? { DIM: k, TOTAL: 0, GP: 0, QTY: 0 };
+            e.TOTAL = Number(e.TOTAL || e.total || 0) - Number(c.TOTAL || c.total || 0);
+            e.GP    = Number(e.GP || e.gp || 0)       - Number(c.GP || c.gp || 0);
+            e.QTY   = Number(e.QTY || e.qty || 0)     - Number(c.QTY || c.qty || 0);
+            byDim.set(k, e);
+          }
+          sqlRows = [...byDim.values()].sort((a, b) => Number(b.TOTAL || b.total || 0) - Number(a.TOTAL || a.total || 0));
+        } catch (eCm) { console.log(`[CC-SQL] credit-memo leg failed: ${eCm.message}`); }
+      }
       console.log(`[CC-SQL] rows=${sqlRows.length}, sample:`, JSON.stringify(sqlRows[0]));
       if (sqlRows.length) {
         const agg = sqlRows.slice(0, topN).map(r => ({ dim: r.DIM || r.dim || '(none)', total: Number(r.TOTAL||r.total||0), gp: Number(r.GP||r.gp||0), qty: Number(r.QTY||r.qty||0) }));
-        const out = formatAgg(agg, `SQL (${isPurch ? 'OPCH+PCH1' : 'OINV+INV1'})`);
+        const out = formatAgg(agg, `SQL (${isPurch ? 'OPCH+PCH1' : 'OINV+INV1 − ORIN+RIN1'})`);
         if (out) return out;
       }
     } catch(eSql) { console.log(`[CC-SQL] failed: ${eSql.message} — falling through to SMLSVC`); }
@@ -927,7 +963,7 @@ async function queryCostCentreAnalysis(dimField, fromDate, toDate, topN = 500, d
     const ccT2Filter = `PostingDate ge '${fromDate}' and PostingDate le '${toDate}'`;
     // Try with $select (includes dimField); if that fails retry without $select (field may not exist in this view)
     for (const qp of [
-      { $select: `${dimField},NetSalesAmountLC,GrossProfitLC,QuantityInInventoryUoM`, $filter: ccT2Filter },
+      { $select: `${dimField},NetSalesAmountLC,GrossProfitLC,QuantityInInventoryUoM,DocumentTypeCode,CancellationStatus`, $filter: ccT2Filter },
       { $filter: ccT2Filter },
     ]) {
       try {
@@ -1282,7 +1318,7 @@ async function queryKPIs() {
   // Try SMLSVC POST first, fall back to GET OData
   const salesPromise = callSMLSVCPost("sales", buildParamList({ fromDate: from, toDate: to }))
     .catch(() => sap.get("/sml.svc/SalesAnalysisQuery", {
-      $select: "NetSalesAmountLC,GrossProfitLC",
+      $select: "NetSalesAmountLC,GrossProfitLC,DocumentTypeCode,CancellationStatus",
       $filter: `PostingDate ge '${from}' and PostingDate le '${to}'`,
       $top: 1000,
     }).then(d => d.value || []));
@@ -1306,7 +1342,7 @@ async function queryKPIs() {
     }),
   ]);
 
-  const salesRows  = salesData.status==="fulfilled" ? (Array.isArray(salesData.value) ? salesData.value : (salesData.value?.value||[])) : [];
+  const salesRows  = netSalesRows(salesData.status==="fulfilled" ? (Array.isArray(salesData.value) ? salesData.value : (salesData.value?.value||[])) : []);
   const arRows     = arData.status==="fulfilled"    ? (arData.value?.value||[])    : [];
   const apRows     = apData.status==="fulfilled"    ? (apData.value?.value||[])    : [];
   const stockRows  = stockData.status==="fulfilled" ? (stockData.value?.value||[]) : [];
@@ -2001,8 +2037,11 @@ async function demoReply(message) {
       let rows = await callSMLSVCPost("sales", buildParamList({ fromDate: slFromDate, toDate: slToDate }));
       console.log(`[SA-T1] got ${rows.length} rows, sample ObjType=${rows[0]?.ObjType}, CogsOcrCod=${rows[0]?.CogsOcrCod}`);
       if (params.objTypeFilter) {
-        rows = rows.filter(r => String(r.ObjType) === params.objTypeFilter);
+        rows = rows.filter(r => String(r.ObjType ?? r.DocumentTypeCode) === params.objTypeFilter);
         console.log(`[SA-T1] after ObjType filter: ${rows.length} rows`);
+      } else {
+        rows = netSalesRows(rows);
+        console.log(`[SA-T1] net-sales rows (invoices − credit memos): ${rows.length}`);
       }
       if (rows.length) data = { value: rows };
       else throw new Error("no rows after filter");
@@ -2031,7 +2070,8 @@ async function demoReply(message) {
           const r2 = await getActiveSap().get("/sml.svc/SalesAnalysisQuery", qp);
           let rows = Array.isArray(r2.value) ? r2.value : [];
           console.log(`[SA-T2] got ${rows.length} rows`);
-          if (params.objTypeFilter) rows = rows.filter(r => String(r.ObjType) === params.objTypeFilter);
+          if (params.objTypeFilter) rows = rows.filter(r => String(r.ObjType ?? r.DocumentTypeCode) === params.objTypeFilter);
+          else rows = netSalesRows(rows);
           _reqQueryLog[_reqQueryLog.length - 1].rows = rows.length;
           if (rows.length) { data = { value: rows }; break; }
         } catch(e2) {
@@ -4054,6 +4094,9 @@ function extractSuggestions(text) {
 // ── Chat ──
 app.post("/api/chat", async (req, res) => {
   let { message, sessionId, engine, stream } = req.body;
+  // DB SQL answer style picked in the chat panel: "table" (default, fixed
+  // layout) or "insight" (AI Insight — free-form ChatGPT-style analysis).
+  const answerStyle = req.body.answerMode === "insight" ? "insight" : "table";
   if (!message) return res.status(400).json({ error: "message required" });
   const sid = sessionId || crypto.randomUUID();
   // Best-effort caller identity — this route doesn't require auth (the
@@ -4360,6 +4403,7 @@ app.post("/api/chat", async (req, res) => {
             executeSQL, scanTablesSchema, dbType: getActiveType(),
             database: cfg?.database || cfg?.schema_name || "DB",
             companyContext, currency, onStep: sendStep, ...analystAI,
+            ...(answerStyle === "insight" ? { style: "insight" } : {}),
           };
           // Reply to our "here are the questions I understood" list?
           let questions = null, histUser = message;
@@ -4391,7 +4435,7 @@ app.post("/api/chat", async (req, res) => {
           if (questions.length === 1) {
             const r = await runSqlAnalystAgent({ ...baseOpts, message, onDelta: chunk => sendLive("delta", { text: chunk }) });
             reply = renderAnalystAnswer(r, message);
-            followupList = mergeFollowups([r.followups], 6);
+            followupList = mergeFollowups([r.followups], answerStyle === "insight" ? 8 : 6);
             allQueries = r.queries; histText = r.text; cachedAt = r.cachedAt || null;
           } else {
             const t0 = Date.now();
@@ -4412,7 +4456,7 @@ app.post("/api/chat", async (req, res) => {
           _analystHistory.set(sid, hist.slice(-6));
           const allSql = allQueries.filter(q => !q.error).map(q => q.sql).join(";\n\n");
           const cacheSource = cachedAt ? `Same question answered ${Math.max(1, Math.round((Date.now() - cachedAt) / 60000))} min ago — reused (answers refresh after 10 min)` : null;
-          return sendReply({ reply, sessionId: sid, mode: "db", sql: allSql, rowCount: allQueries.reduce((n, q) => n + q.rows, 0), cacheHit: !!cachedAt, cacheSource, queryLog: _reqQueryLog });
+          return sendReply({ reply, sessionId: sid, mode: "db", answerMode: answerStyle, sql: allSql, rowCount: allQueries.reduce((n, q) => n + q.rows, 0), cacheHit: !!cachedAt, cacheSource, queryLog: _reqQueryLog });
         } catch (err) {
           console.warn(`[SQL-ANALYST] failed, falling back to one-shot SQL: ${err.message}`);
         }
@@ -6212,6 +6256,7 @@ app.use('/api', createDataSyncRouter({ requireAuth, getActiveSap }));
 
 // ── Financial Agent routes — real-time P&L / Cash Flow, direct HANA/MSSQL ────
 app.use('/api', createFinancialAgentRouter({ requireAuth }));
+app.use('/api', createHomeInsightsRouter({ requireAuth }));
 
 // ── Financial Reports agents — Balance Sheet / P&L / Trial Balance on SAP's
 //    standard HANA calculation views (JDT1 fallback on MSSQL) ─────────────────
@@ -6283,6 +6328,18 @@ app.use('/api/purchase-analysis', createPurchaseAnalysisRouter({
   AI_PROVIDER,
   USE_AI,
   isConnected, getActiveType, getActiveConfig, executeSQL, tableRef,
+}));
+
+// ── Inventory Dashboard & Reports (stock, ledger, posting, valuation, aging, dead stock, profit) ──
+app.use('/api/inventory-dashboard', createInventoryDashboardRouter({
+  requireAuth,
+  isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns,
+  // reconnect the saved DB Direct connection if it dropped, like the other DB-backed agents
+  ensureConnected: async () => {
+    if (isConnected()) return;
+    const savedDb = dbConnRepo.getActive();
+    if (savedDb) { try { await connectDB(savedDb); } catch {} }
+  },
 }));
 
 // ── Vendor Payment Aging Agent routes ─────────────────────────────────────

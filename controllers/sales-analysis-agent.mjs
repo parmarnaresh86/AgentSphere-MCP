@@ -18,22 +18,70 @@ const _sessions = new Map();
 
 // ── View registry ─────────────────────────────────────────────────────────────
 const VIEWS = {
-  sales:       { path: 'SalesAnalysisQuery',                    area: 'ar', dateField: 'PostingDate', hasDims: true  },
-  avgprice:    { path: 'AverageSellingPriceQuery',              area: 'ar', dateField: 'PostingDate', hasDims: true  },
+  sales:       { path: 'SalesAnalysisQuery',                    area: 'ar', dateField: 'PostingDate', hasDims: true,  hasDocType: true, hasCancel: true  },
+  avgprice:    { path: 'AverageSellingPriceQuery',              area: 'ar', dateField: 'PostingDate', hasDims: true,  hasDocType: true  },
   backorder:   { path: 'BackOrderStatusQuery',                  area: 'ar', dateField: 'PostingDate', hasDims: true  },
   custbalance: { path: 'CustomerOpenBalanceVSCreditLimitQuery', area: 'ar', dateField: null,          hasDims: false },
   ontime:      { path: 'OnTimeDeliveryStatisticsQuery',         area: 'ar', dateField: 'PostingDate', hasDims: true  },
-  bydoc:       { path: 'SalesAnalysisByDocumentQuery',          area: 'ar', dateField: 'PostingDate', hasDims: false },
+  bydoc:       { path: 'SalesAnalysisByDocumentQuery',          area: 'ar', dateField: 'PostingDate', hasDims: false, hasDocType: true, hasCancel: true  },
 };
 
 const VIEW_MEASURES = {
-  sales:       ['NetSalesAmountLC','GrossProfitLC','QuantityInInventoryUoM','GrossProfitMarginBySalesAmount','GrossProfitMarginByBaseAmount'],
-  avgprice:    ['NetSalesAmountLC','SalesQuantityInInventoryUoM','AverageNetUnitPriceLC','AverageItemCostLC','GrossProfitPercentage'],
+  sales:       ['NetSalesAmountLC','GrossProfitLC','QuantityInInventoryUoM','GrossProfitMarginBySalesAmount','GrossProfitMarginByBaseAmount','GrossProfitBaseAmountLC'],
+  avgprice:    ['NetSalesAmountLC','SalesQuantityInInventoryUoM','AverageNetUnitPriceLC','AverageItemCostLC','GrossProfitPercentage','ItemCostLC'],
   backorder:   ['OrderedQuantityInInventoryUoM','DeliveredQuantityInInvUoM','OpenQuantityInInventoryUoM','BackOrderPercentage'],
   custbalance: ['OpenSalesOrderBalance','OpenDeliveryBalance','AccountReceivableBalance','CustomerBalanceTotal','CustomerCreditLimit'],
   ontime:      ['NumberOfSalesOrder','DelayedDays','AdvanceDays','AverageDeliveryVarianceDays'],
   bydoc:       ['NetSalesAmountLC','AppliedNetSalesAmountLC','OpenAmountLC','NetSalesAmountSC'],
 };
+
+// ── Document selection ─────────────────────────────────────────────────────────
+// SalesAnalysisQuery / SalesAnalysisByDocumentQuery hold EVERY sales document:
+// the same sale appears as Sales Order, Delivery AND A/R Invoice. Summing all of
+// them overstated Net Sales ~3× (verified on STTL_SD 2026: 569.3M summed vs
+// 180.6M real = invoices 197.4M − credit memos 16.8M, matching OINV/INV1 − ORIN/RIN1).
+// So each view now reports ONE document set; Net Sales (invoices − credit memos)
+// is the default. Credit memo / return amounts are already negative in the views.
+const DOC_SETS = {
+  net:  { codes:['13','14'], label:'Net Sales (A/R Invoices − Credit Memos)' },
+  inv:  { codes:['13'],      label:'A/R Invoices' },
+  cm:   { codes:['14'],      label:'A/R Credit Memos' },
+  dlv:  { codes:['15','16'], label:'Deliveries − Returns' },
+  so:   { codes:['17'],      label:'Sales Orders (booked)' },
+};
+const VIEW_DOC_SETS = {
+  sales:    { def:'net', allowed:['net','inv','cm','dlv','so'] },
+  bydoc:    { def:'net', allowed:['net','inv','cm','dlv','so'] },
+  avgprice: { def:'inv', allowed:['inv','so'] },
+};
+function resolveDocSet(view, requested) {
+  const v = VIEW_DOC_SETS[view];
+  if (!v) return null;
+  const key = v.allowed.includes(requested) ? requested : v.def;
+  return { key, ...DOC_SETS[key] };
+}
+
+// ── Ratio / average measures ───────────────────────────────────────────────────
+// Percentages and averages must be derived from the summed base amounts, never
+// summed themselves (summing 1,000 rows at 30% margin showed 30,000%).
+function finalizeMeasures(view, o, count) {
+  const div = (a, b) => (b ? a / b : 0);
+  if (view === 'sales') {
+    o.GrossProfitMarginBySalesAmount = div(o.GrossProfitLC, o.NetSalesAmountLC) * 100;
+    o.GrossProfitMarginByBaseAmount  = div(o.GrossProfitLC, o.GrossProfitBaseAmountLC) * 100;
+  } else if (view === 'avgprice') {
+    o.AverageNetUnitPriceLC = div(o.NetSalesAmountLC, o.SalesQuantityInInventoryUoM);
+    o.AverageItemCostLC     = div(o.ItemCostLC, o.SalesQuantityInInventoryUoM);
+    o.GrossProfitPercentage = div(o.NetSalesAmountLC - o.ItemCostLC, o.NetSalesAmountLC) * 100;
+  } else if (view === 'backorder') {
+    o.BackOrderPercentage = div(o.OpenQuantityInInventoryUoM, o.OrderedQuantityInInventoryUoM) * 100;
+  } else if (view === 'ontime') {
+    if (o._varianceSum == null) Object.defineProperty(o, '_varianceSum', { value: o.AverageDeliveryVarianceDays, enumerable: false });
+    o.AverageDeliveryVarianceDays = div(o._varianceSum, count);   // mean across rows (safe to call twice)
+  }
+  return o;
+}
+const finalizeGroups = (view, groups) => groups.map(g => finalizeMeasures(view, g, g._count));
 
 function today()       { return new Date().toISOString().slice(0, 10); }
 function firstOfYear() { return `${new Date().getFullYear()}-01-01`; }
@@ -81,12 +129,15 @@ async function callAI(aiDeps, messages, systemPrompt, maxTokens=2048) {
 // entirely. VW_AI_FINANCE_REPORT (`plainView`) is a genuine custom plain-schema
 // view, not a semantic-layer object, so it still goes through tableRef().
 // Falls back to Service Layer on any failure so it degrades gracefully.
-async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate) {
+async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate, docSet) {
   const { getActiveConfig, tableRef, executeSQL } = dbDeps;
   const cfg = VIEWS[viewKey];
   const filters = [];
   if (cfg.dateField && fromDate) filters.push(`"${cfg.dateField}" >= '${fromDate}'`);
   if (cfg.dateField && toDate)   filters.push(`"${cfg.dateField}" <= '${toDate}'`);
+  if (cfg.hasDocType && docSet)  filters.push(`"DocumentTypeCode" IN (${docSet.codes.map(c => `'${c}'`).join(',')})`);
+  // cancelled documents and their cancellation counter-documents net to zero — drop both
+  if (cfg.hasCancel)             filters.push(`"CancellationStatus" = 'Not Cancelled'`);
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
   if (cfg.plainView) {
@@ -105,10 +156,10 @@ async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate) {
 // ── Paginated HANA view fetch (Service Layer) ─────────────────────────────────
 // SAP B1 SML views are accessed directly at /sml.svc/{ViewName} — no namespace prefix needed.
 // (Confirmed working in chat-server.mjs line 624 for SalesAnalysisQuery)
-async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate) {
+async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, docSet) {
   if (dbDeps?.isConnected?.()) {
     try {
-      const rows = await fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate);
+      const rows = await fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate, docSet);
       return rows;
     } catch (e) {
       console.warn(`[SalesAnalysis] HANA direct view "${viewKey}" failed, falling back to Service Layer:`, e.message);
@@ -148,7 +199,16 @@ async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate) {
     skip += PAGE;
   }
 
-  return all;
+  return applyDocSet(viewKey, all, docSet);
+}
+
+// Same document-set / cancellation filter as the HANA SQL, for the Service Layer path.
+function applyDocSet(viewKey, rows, docSet) {
+  const cfg = VIEWS[viewKey];
+  let r = rows;
+  if (cfg?.hasDocType && docSet) r = r.filter(x => docSet.codes.includes(String(x.DocumentTypeCode)));
+  if (cfg?.hasCancel) r = r.filter(x => !x.CancellationStatus || x.CancellationStatus === 'Not Cancelled');
+  return r;
 }
 
 // ── Get brand/dim value (handles both raw CogsOcrCod and aliased Brand) ───────
@@ -241,7 +301,7 @@ function calcTotals(rows, measures) {
   const t = { rowCount:rows.length };
   measures.forEach(m => { t[m]=rows.reduce((s,r)=>s+Number(r[m]||0),0); });
   t.customers = new Set(rows.map(r=>r.BusinessPartnerCode||r.BPCode).filter(Boolean)).size;
-  return t;
+  return t;   // ratios are finalised by the caller (finalizeMeasures)
 }
 
 // ── AI context ────────────────────────────────────────────────────────────────
@@ -287,14 +347,15 @@ export function createSalesAnalysisRouter(deps) {
   router.post('/analyze', requireAuth, async (req, res) => {
     try {
       const sap = getActiveSap();
-      const { view='sales', fromDate=firstOfYear(), toDate=today(), filters={} } = req.body;
+      const { view='sales', fromDate=firstOfYear(), toDate=today(), filters={}, skipInsight=false, docSet:docSetKey } = req.body;   // skipInsight: background tab pre-load (no AI call)
 
       if (!VIEWS[view]) return res.json({ ok:false, error:`Unknown view: ${view}` });
 
-      const allRows  = await fetchView(sap, _dbDeps, getNamespace, view, fromDate, toDate);
+      const docSet   = resolveDocSet(view, docSetKey);
+      const allRows  = await fetchView(sap, _dbDeps, getNamespace, view, fromDate, toDate, docSet);
       const filtered = applyFilters(allRows, filters);
       const measures = VIEW_MEASURES[view]||[];
-      const totals   = calcTotals(filtered, measures);
+      const totals   = finalizeMeasures(view, calcTotals(filtered, measures), filtered.length);
       const options  = getFilterOptions(allRows, view);
 
       // Customer/BP aggregation
@@ -322,8 +383,9 @@ export function createSalesAnalysisRouter(deps) {
       const byPeriod = aggregateBy(filtered,'PostingYearAndMonth',measures)
         .sort((a,b)=>String(a._key).localeCompare(String(b._key)));
 
+      finalizeGroups(view, byCustomer); finalizeGroups(view, byPeriod); finalizeGroups(view, byBrand);
       let aiInsight = '';
-      if (USE_AI && filtered.length > 0) {
+      if (USE_AI && !skipInsight && filtered.length > 0) {
         const ctx = buildDataContext(view, filtered, totals, byCustomer, byPeriod, byBrand, { fromDate, toDate });
         aiInsight = await callAI(
           _aiDeps(),
@@ -336,12 +398,15 @@ export function createSalesAnalysisRouter(deps) {
       res.json({
         ok:true, view, measures,
         totals, options, aiInsight,
-        byCustomer: byCustomer.slice(0,50),
-        byItem:     byItem.slice(0,50),
-        byBrand, bySubBrand, byUniverse, byBudget,
-        byTerritory, byBranch, bySalesPerson,
-        byPeriod,
+        byCustomer: finalizeGroups(view, byCustomer.slice(0,50)),
+        byItem:     finalizeGroups(view, byItem.slice(0,50)),
+        byBrand: finalizeGroups(view, byBrand), bySubBrand: finalizeGroups(view, bySubBrand),
+        byUniverse: finalizeGroups(view, byUniverse), byBudget: finalizeGroups(view, byBudget),
+        byTerritory: finalizeGroups(view, byTerritory), byBranch: finalizeGroups(view, byBranch),
+        bySalesPerson: finalizeGroups(view, bySalesPerson),
+        byPeriod: finalizeGroups(view, byPeriod),
         rowCount: filtered.length,
+        docSet: docSet ? { key: docSet.key, label: docSet.label, allowed: VIEW_DOC_SETS[view].allowed.map(k => ({ key:k, label:DOC_SETS[k].label })) } : null,
         params: { fromDate, toDate, view },
       });
     } catch (e) {

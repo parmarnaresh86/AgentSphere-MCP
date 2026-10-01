@@ -249,6 +249,89 @@ main{max-width:100rem;margin:0 auto;padding:1.5rem 3rem 4rem}
 .bar-row .trk{height:.5rem;background:var(--surface-alt);border-radius:.25rem;overflow:hidden}
 .bar-row .fil{height:100%;border-radius:.25rem}
 .bar-row .v{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
+.ins{display:flex;flex-direction:column}
+.ins-foot{margin-top:auto;padding-top:.875rem;text-align:right}
+.ins-axis{display:flex;justify-content:space-between;font-size:.6875rem;color:var(--text-3);margin-top:.25rem}
+.ins-legend{display:flex;gap:.875rem;font-size:.75rem;color:var(--text-2);margin-top:.5rem}
+.ins-legend i{display:inline-block;width:.5rem;height:.5rem;border-radius:.125rem;margin-right:.375rem}
+.ins-split{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.75rem}
+.ins-split>div{background:var(--surface-alt);border-radius:var(--r-md);padding:.625rem .75rem}
+.ins-split .k{font-size:.75rem;color:var(--text-2)}
+.ins-split .n{font-size:1.25rem;margin-top:.25rem;font-variant-numeric:tabular-nums}
+.ins-split .x{font-size:.75rem;color:var(--text-3);margin-top:.125rem}
+.ins-split .x.bad{color:var(--neg);font-weight:600}
+.bars.names .bar-row{grid-template-columns:minmax(0,7.5rem) 1fr 3.5rem}
+.bars.names .bar-row>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alerts{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem}
+.alert{display:flex;align-items:center;gap:.5rem;height:2.25rem;padding:0 .875rem;border-radius:1.125rem;font-size:.8125rem;background:var(--surface);box-shadow:var(--tile-shadow)}
+.alert:hover{box-shadow:var(--tile-shadow-hover)}
+.alert b{font-variant-numeric:tabular-nums}
+.alert .fi{width:.875rem;height:.875rem}
+.alert.neg{color:var(--neg)} .alert.crit{color:var(--crit)}
+.alert span{color:var(--text-2)}
+/* clickable insight cards + drill targets */
+.ins.clickable{cursor:pointer;transition:box-shadow .2s}
+.ins.clickable:hover{box-shadow:var(--tile-shadow-hover)}
+.ins.clickable:focus-visible,.sub:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ins-foot{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.ins-more{font-size:.75rem;color:var(--text-3)}
+.ins.clickable:hover .ins-more{color:var(--brand)}
+.sub{font:inherit;color:inherit;text-align:left;border-radius:var(--r-sm);cursor:pointer}
+.sub:hover{background:var(--hover)}
+.ins-legend .sub{display:inline-flex;align-items:center;padding:.125rem .25rem;margin:-.125rem -.25rem}
+.ins-split .cell{display:flex;flex-direction:column;align-items:stretch}
+.ins-split .cell .sub{display:block;width:100%;padding:0;margin:0}
+.ins-split .cell .sub.x{margin-top:.125rem;padding:.0625rem .25rem;margin-left:-.25rem;width:auto}
+.ins-split>button.cell{padding:.625rem .75rem;background:var(--surface-alt);border-radius:var(--r-md)}
+.ins-split button.cell:hover{background:var(--hover)}
+/* insight module groups + KPI tiles */
+.ins-tabs{margin-bottom:.25rem;flex-wrap:wrap}
+.ins-tabs .count{margin-left:.375rem;font-size:.6875rem;color:var(--text-3);font-weight:600}
+.ins-group{margin-top:1.5rem}
+.ins-group-head{display:flex;align-items:center;gap:.625rem;flex-wrap:wrap;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.ins-group-head h3{font-size:1rem;font-weight:700}
+.ins-group-head .gi{width:1.75rem;height:1.75rem;border-radius:.5rem;display:grid;place-items:center;color:#fff;flex:none}
+.ins-group-head .gi .fi{width:.875rem;height:.875rem}
+.ins-group-head .gs{margin-left:auto;font-size:.75rem;color:var(--text-3)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(11.5rem,1fr));gap:.5rem;margin-bottom:.75rem}
+.kpi{background:var(--surface);border-radius:var(--r-md);box-shadow:var(--tile-shadow);padding:.75rem .875rem;cursor:pointer;transition:box-shadow .2s;min-width:0}
+.kpi:hover{box-shadow:var(--tile-shadow-hover)}
+.kpi:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.kpi-l{font-size:.75rem;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-v{font-size:1.375rem;margin-top:.25rem;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-s{display:flex;align-items:baseline;gap:.375rem;margin-top:.25rem;font-size:.6875rem;color:var(--text-3);white-space:nowrap;overflow:hidden}
+.kpi-s .ins-d{margin-left:0;font-size:.6875rem}
+.kpi-s span:not(.ins-d){overflow:hidden;text-overflow:ellipsis}
+@media (max-width:640px){ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .ins-group-head .gs{margin-left:0;width:100%} }
+/* detail pop-up */
+.dt-modal{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:1rem}
+.dt-modal[hidden]{display:none}
+.dt-back{position:absolute;inset:0;background:rgba(0,0,0,.4)}
+.dt-panel{position:relative;background:var(--surface);border-radius:var(--r-md);box-shadow:var(--pop-shadow);width:min(76rem,100%);min-width:0;max-height:calc(100vh - 2rem);display:flex;flex-direction:column;animation:pop .15s ease-out}
+.dt-head{display:flex;align-items:flex-start;gap:1rem;padding:1rem 1.25rem .75rem;border-bottom:1px solid var(--surface-alt)}
+.dt-head h2{font-size:1.125rem;font-weight:700}
+.dt-head p{font-size:.8125rem;color:var(--text-2);margin-top:.125rem}
+.dt-x{margin-left:auto;width:2rem;height:2rem;border-radius:var(--r-sm);font-size:1.25rem;line-height:1;color:var(--text-2);flex:none}
+.dt-x:hover{background:var(--hover)}
+.dt-tools{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;padding:.625rem 1.25rem;border-bottom:1px solid var(--surface-alt)}
+.dt-tools input{height:2rem;border:1px solid var(--border);border-radius:var(--r-sm);padding:0 .625rem;font:inherit;font-size:.8125rem;background:var(--surface);color:var(--text);width:min(16rem,100%)}
+.dt-tools .meta{font-size:.75rem;color:var(--text-3);margin-right:auto}
+.dt-btn{height:2rem;padding:0 .875rem;border-radius:var(--r-sm);font-size:.8125rem;font-weight:600;border:1px solid var(--border);color:var(--brand);background:var(--surface)}
+.dt-btn:hover{background:var(--hover)}
+.dt-btn:disabled{opacity:.5;cursor:default}
+.dt-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+:root[data-theme="dark"] .dt-btn.primary{color:#0b1520}
+.dt-body{overflow:auto;flex:1;min-height:8rem;min-width:0}
+.dt-loading{padding:2rem;text-align:center;color:var(--text-2);font-size:.875rem}
+table.dt{width:100%;border-collapse:collapse;font-size:.8125rem}
+table.dt th{position:sticky;top:0;background:var(--surface-alt);text-align:left;font-weight:600;white-space:nowrap;z-index:1}
+table.dt th button{font:inherit;color:var(--text-2);padding:.5rem .75rem;width:100%;text-align:inherit}
+table.dt th button:hover{color:var(--brand)}
+table.dt td{padding:.4375rem .75rem;border-bottom:1px solid var(--surface-alt);white-space:nowrap;max-width:15rem;overflow:hidden;text-overflow:ellipsis}
+table.dt tbody tr:hover td{background:var(--hover)}
+table.dt .num{text-align:right;font-variant-numeric:tabular-nums}
+table.dt tfoot td{position:sticky;bottom:0;background:var(--surface);font-weight:700;border-top:2px solid var(--border)}
+@media (max-width:640px){ .dt-modal{padding:0} .dt-panel{max-height:100vh;height:100%;border-radius:0} .dt-head,.dt-tools{padding-left:1rem;padding-right:1rem} .dt-tools input{width:100%} table.dt td{max-width:11rem} }
 
 .note{margin-top:3rem;font-size:.75rem;color:var(--text-3);text-align:center}
 
@@ -345,6 +428,22 @@ main{max-width:100rem;margin:0 auto;padding:1.5rem 3rem 4rem}
     <button class="menu-item" data-go="chat=1"><svg class="fi" data-i="discussion-2"></svg>AI Chat</button>
     <button class="menu-item" id="meCompanySetup" data-go="open=nav-company-setup" hidden><svg class="fi" data-i="building"></svg>Company setup &amp; theme</button>
     <button class="menu-item" id="signOut"><svg class="fi" data-i="forward"></svg>Sign out</button>
+  </div>
+</div>
+
+<!-- Insight detail pop-up -->
+<div class="dt-modal" id="dtModal" hidden>
+  <div class="dt-back" data-dtclose="1"></div>
+  <div class="dt-panel" role="dialog" aria-modal="true" aria-labelledby="dtTitle">
+    <div class="dt-head"><div><h2 id="dtTitle">Details</h2><p id="dtSub"></p></div>
+      <button class="dt-x" id="dtClose" data-dtclose="1" aria-label="Close">×</button></div>
+    <div class="dt-tools">
+      <input id="dtFilter" type="search" placeholder="Filter rows" aria-label="Filter rows" autocomplete="off">
+      <span class="meta" id="dtCount"></span>
+      <button class="dt-btn" id="dtCsv">Download CSV</button>
+      <button class="dt-btn primary" id="dtApp" hidden></button>
+    </div>
+    <div class="dt-body" id="dtBody"></div>
   </div>
 </div>
 
@@ -451,6 +550,7 @@ const SPACES = [
    {o:'nav-inv-gr',t:'Goods Receipt',s:'Receive stock in',i:'inbox',perm:'inventory.workflow.goods_receipt'},
   ]},
   {title:'Stock & Warehouse',tiles:[
+   {o:'nav-inv-dashboard',t:'Inventory Dashboard',s:'Stock, ledger, aging, valuation, profit',i:'bar-chart',perm:'inventory.dashboard'},
    {p:'show stock levels',t:'Stock Levels',s:'On hand, committed, available',i:'inventory',perm:'inventory.stock_levels'},
    {p:'show in stock only items',t:'In-Stock Items',s:'Items with stock',i:'sap-box',perm:'inventory.in_stock_items'},
    {p:'pick list for order',t:'Pick List',s:'Pick lines for an order',i:'checklist-item',perm:'inventory.pick_list'},
@@ -573,6 +673,8 @@ let SUPER = !!USER.isSuperAdmin;
 const userKey = () => 'u' + (USER.id || USER.user_id || USER.username || '');
 const can = t => SUPER || ((!t.perm || PERMS.has(t.perm)) && (!t.anyPerm || t.anyPerm.some(p => PERMS.has(p))));
 const visibleTiles = tiles => tiles.filter(can);
+// Home Insights permissions (section "Home Insights" in Roles & Permissions).
+const canIns = key => SUPER || PERMS.has('insights.' + key);
 const visibleSpaces = () => SPACES.filter(sp => can(sp) && sp.sections.some(sec => visibleTiles(sec.tiles).length));
 
 let favs = new Set(), recent = [];
@@ -580,7 +682,7 @@ function loadPrefs(){ favs = new Set(store.get(userKey()+'.favs', DEFAULT_APPS))
 loadPrefs();
 
 let BRAND = {productName:'AgentSphere', companyName:''};
-let CUR = {code:'USD', symbol:'$'}, LOCALE = 'en-US', AGING = null;
+let CUR = {code:'USD', symbol:'$'}, LOCALE = 'en-US', AGING = null, HOME = null;
 
 async function api(url){
   const r = await fetch(url, { headers: { 'x-auth-token': TOKEN || '' } });
@@ -593,7 +695,7 @@ function signOutLocal(){
   location.replace('/login.html');
 }
 
-let state = {space: location.hash.slice(1) || 'home', view: store.get('view','tiles'), appsTab:'fav'};
+let state = {space: location.hash.slice(1) || 'home', view: store.get('view','tiles'), appsTab:'fav', insGroup: store.get('insGroup','all')};
 
 /* ---------------- money (company currency) ---------------- */
 function money(n){
@@ -655,28 +757,360 @@ function renderSpace(sp){
 function greeting(){ const h = new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening'; }
 const firstName = () => (USER.fullName || USER.full_name || USER.username || '').trim().split(/\s+/)[0] || '';
 
-function agingCard(title, total, overdue, buckets, openKey){
+/* Every insight card is clickable: it opens a pop-up with the rows behind the
+   figure (/api/home/insights/detail?key=…). Parts of a card can drill into a
+   narrower list via their own data-detail. The footer link still opens the
+   matching transaction screen when the user has one. */
+const insCard = (key, label, inner) =>
+  `<div class="ins clickable" data-detail="${esc(key)}" role="button" tabindex="0" aria-label="${esc(label)} — show details">${inner}</div>`;
+function agingCard(title, total, overdue, buckets, openKey, detailKey){
   const rows = ['1-30','31-60','61-90','90+'].map(b => [b, buckets?.[b]?.amount || 0]);
   const max = Math.max(1, ...rows.map(r => r[1]));
   const colors = {'1-30':'--a1','31-60':'--a4','61-90':'--a6','90+':'--a6'};
-  const t = TILE_BY_KEY[openKey];
-  return `<div class="ins">
+  return insCard(detailKey, title, `
     <div class="ins-h"><span class="ins-t">${title}</span><span class="ins-s">Open balance</span></div>
     <div class="ins-v">${money(total)}</div>
     <div class="ins-s" style="margin-top:.25rem">${money(overdue)} overdue</div>
     <div class="bars">${rows.map(([b,v]) => `
       <div class="bar-row"><span>${b} days</span><span class="trk"><span class="fil" style="display:block;width:${(v/max*100).toFixed(1)}%;background:var(${colors[b]})"></span></span><span class="v">${money(v)}</span></div>`).join('')}</div>
-    ${t && can(t) ? `<div style="margin-top:.875rem;text-align:right"><button class="link" data-open="${esc(openKey)}">${esc(t.t)}</button></div>` : ''}
+    ${openLink(openKey)}`);
+}
+const openLink = key => { const t = TILE_BY_KEY[key]; return `<div class="ins-foot"><span class="ins-more">View details</span>${t && can(t) ? `<button class="link" data-open="${esc(key)}">${esc(t.t)}</button>` : ''}</div>`; };
+const count = n => new Intl.NumberFormat(LOCALE).format(n);
+function delta(pct, goodWhenUp = true){
+  if (pct == null || !isFinite(pct)) return '';
+  const up = pct >= 0, good = up === goodWhenUp;
+  return `<span class="ins-d ${good?'up':'down'}">${up?'▲':'▼'} ${Math.abs(pct).toFixed(Math.abs(pct)<10?1:0)}%</span>`;
+}
+// 12-month area sparkline; the current (partial) month is drawn as a dot.
+function sparkline(months, color){
+  const vals = months.map(m => m.amount), max = Math.max(1, ...vals), n = vals.length;
+  const pts = vals.map((v,i) => [(i/(n-1))*100, 38 - (v/max)*34]);
+  const line = pts.map(p => p[0].toFixed(2)+','+p[1].toFixed(2)).join(' ');
+  const last = pts[n-1];
+  const title = months.map(m => `${m.label} ${m.y}: ${money(m.amount)}`).join('\n');
+  return `<svg class="chart" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="12-month trend"><title>${esc(title)}</title>
+    <polygon points="0,40 ${line} 100,40" fill="var(${color})" opacity=".12"/>
+    <polyline points="${line}" fill="none" stroke="var(${color})" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="2.2" fill="var(${color})" vector-effect="non-scaling-stroke"/></svg>
+    <div class="ins-axis"><span>${esc(months[0].label)} ${months[0].y}</span><span>${esc(months[n-1].label)}</span></div>`;
+}
+function trendCard(title, d, color, openKey, goodWhenUp, detailKey){
+  return insCard(detailKey, title, `
+    <div class="ins-h"><span class="ins-t">${title}</span><span class="ins-s">This month · excl. tax</span></div>
+    <div class="ins-v">${money(d.mtd)}${delta(d.changePct, goodWhenUp)}</div>
+    <div class="ins-s" style="margin-top:.25rem">${count(d.mtdCount)} invoice${d.mtdCount===1?'':'s'} · ${money(d.prevMtd)} same days last month</div>
+    ${sparkline(d.months, color)}
+    ${openLink(openKey)}`);
+}
+function cashCard(c){
+  const max = Math.max(1, ...c.months.flatMap(m => [m.in, m.out])), n = c.months.length, w = 100/n, bw = w*.32;
+  const bars = c.months.map((m,i) => {
+    const x = i*w + w*.16, hi = m.in/max*36, ho = m.out/max*36;
+    return `<rect x="${x}" y="${38-hi}" width="${bw}" height="${hi}" rx=".6" fill="var(--a3)"><title>${esc(m.label)} in: ${money(m.in)}</title></rect>
+      <rect x="${x+bw+w*.04}" y="${38-ho}" width="${bw}" height="${ho}" rx=".6" fill="var(--a4)"><title>${esc(m.label)} out: ${money(m.out)}</title></rect>`;
+  }).join('');
+  const net = c.mtdIn - c.mtdOut;
+  return insCard('cash-in', 'Cash flow', `
+    <div class="ins-h"><span class="ins-t">Cash flow</span><span class="ins-s">Net this month</span></div>
+    <div class="ins-v" style="color:var(${net<0?'--neg':'--pos'})">${net<0?'−':''}${money(Math.abs(net))}</div>
+    <div class="ins-legend"><button class="sub" data-detail="cash-in"><i style="background:var(--a3)"></i>In ${money(c.mtdIn)}</button><button class="sub" data-detail="cash-out"><i style="background:var(--a4)"></i>Out ${money(c.mtdOut)}</button></div>
+    <svg class="chart" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Cash in vs out, last 6 months">${bars}</svg>
+    <div class="ins-axis">${c.months.map(m=>`<span>${esc(m.label)}</span>`).join('')}</div>
+    ${openLink('nav-ia-cashflow')}`);
+}
+function quotesCard(q){
+  return insCard('open-quotes', 'Open quotations', `
+    <div class="ins-h"><span class="ins-t">Open quotations</span><span class="ins-s">Awaiting order</span></div>
+    <div class="ins-v">${count(q.count)}</div>
+    <div class="ins-s" style="margin-top:.25rem">${money(q.amount)} pipeline value</div>
+    <div class="ins-split">
+      <div class="cell"><div class="k">Still valid</div><div class="n">${count(q.count - q.late)}</div><div class="x">${money(q.amount - q.lateAmount)}</div></div>
+      <button class="sub cell" data-detail="expired-quotes"><div class="k">Expired, still open</div><div class="n" style="color:var(${q.late?'--crit':'--text'})">${count(q.late)}</div><div class="x">${money(q.lateAmount)}</div></button>
+    </div>
+    ${openLink('nav-q2o')}`);
+}
+function topListCard(title, sub, list, color, detailKey, openKey){
+  const max = Math.max(1, ...list.map(c => c.amount)), total = list.reduce((a,c)=>a+c.amount,0);
+  return insCard(detailKey, title, `
+    <div class="ins-h"><span class="ins-t">${title}</span><span class="ins-s">${sub}</span></div>
+    <div class="ins-s" style="margin-top:.25rem">Top ${list.length} = ${money(total)}</div>
+    <div class="bars names">${list.map(c => `
+      <div class="bar-row" title="${esc(c.name)} (${esc(c.code)})"><span>${esc(c.name)}</span><span class="trk"><span class="fil" style="display:block;width:${(c.amount/max*100).toFixed(1)}%;background:var(${color})"></span></span><span class="v">${money(c.amount)}</span></div>`).join('')}</div>
+    ${openLink(openKey)}`);
+}
+function inventoryCard(d){
+  return insCard('stock-value', 'Inventory', `
+    <div class="ins-h"><span class="ins-t">Inventory</span><span class="ins-s">Book value</span></div>
+    <div class="ins-v">${money(d.value)}</div>
+    <div class="ins-s" style="margin-top:.25rem">${count(d.itemsInStock)} items in stock</div>
+    <div class="ins-split">
+      <button class="sub cell" data-detail="below-min"><div class="k">Below minimum</div><div class="n" style="color:var(${d.belowMin?'--crit':'--text'})">${count(d.belowMin)}</div></button>
+      <button class="sub cell" data-detail="out-of-stock"><div class="k">Out of stock</div><div class="n" style="color:var(${d.outOfStock?'--neg':'--text'})">${count(d.outOfStock)}</div><div class="x">with a min. level</div></button>
+    </div>
+    ${openLink('nav-procurement-agent')}`);
+}
+// Things that need someone's attention today, as pills that open the list.
+function alertsHTML(){
+  const I = HOME || {}, a = [];
+  const push = (cls, icon, n, text, key) => { if (n > 0) a.push({cls, icon, n, text, key}); };
+  if (AGING && canIns('finance.receivables')) push('neg', 'warning', AGING.ar?.['90+']?.count || 0, `open items 90+ days overdue · net ${money(AGING.ar['90+'].amount)}`, 'ar-90');
+  if (I.finance?.creditLimit) push('neg', 'warning', I.finance.creditLimit.count, `customers over credit limit · ${money(I.finance.creditLimit.over)} over`, 'fin-credit-limit');
+  if (I.openSalesOrders) push('crit', 'lateness', I.openSalesOrders.late, 'sales orders past due date', 'late-so');
+  if (I.openPurchaseOrders) push('crit', 'lateness', I.openPurchaseOrders.late, 'purchase orders past due date', 'late-po');
+  if (I.openQuotes) push('crit', 'sales-quote', I.openQuotes.late, 'quotations expired but still open', 'expired-quotes');
+  if (I.inventory) push('crit', 'inventory', I.inventory.belowMin, 'items below minimum stock', 'below-min');
+  if (!a.length) return '';
+  return `<div class="alerts">${a.map(x => `<button data-detail="${esc(x.key)}" class="alert ${x.cls}">${svg(x.icon)}<b>${count(x.n)}</b><span>${esc(x.text)}</span></button>`).join('')}</div>`;
+}
+
+/* ---------------- finance (general ledger, fiscal YTD vs same period last year) ---------------- */
+const fin = v => v != null && isFinite(v);
+const pctTxt = v => fin(v) ? `${v.toFixed(1)}%` : '—';
+const ratioTxt = v => fin(v) ? `${v.toFixed(2)}×` : '—';
+const daysTxt = v => fin(v) ? `${count(Math.round(v))} days` : '—';
+const chg = (cur, ly) => fin(cur) && fin(ly) && ly ? (cur - ly) / Math.abs(ly) * 100 : null;
+// Change in percentage points, for metrics that are already percentages.
+function ppDelta(cur, ly, goodWhenUp = true){
+  if (!fin(cur) || !fin(ly)) return '';
+  const d = cur - ly, up = d >= 0;
+  return `<span class="ins-d ${up === goodWhenUp ? 'up' : 'down'}">${up?'▲':'▼'} ${Math.abs(d).toFixed(1)} pp</span>`;
+}
+function kpiTile(k){
+  return `<div class="kpi clickable" data-detail="${esc(k.key)}" role="button" tabindex="0" aria-label="${esc(k.label)} — show details">
+    <div class="kpi-l">${esc(k.label)}</div>
+    <div class="kpi-v"${k.tone ? ` style="color:var(${k.tone})"` : ''}>${k.value}</div>
+    <div class="kpi-s">${k.delta || ''}${k.sub ? `<span>${k.sub}</span>` : ''}</div>
   </div>`;
 }
+function financeKpis(F){
+  const p = F.pnl || {}, pl = F.pnlLy || {}, b = F.balance || {}, bl = F.balanceLy || {}, r = F.ratios || {}, cf = F.cashFlow || {}, cl = F.cashFlowLy || {};
+  const cr = F.creditLimit || {count: 0, over: 0};
+  const vsLy = 'vs last year', signed = v => fin(v) ? (v < 0 ? '−' : '') + money(Math.abs(v)) : '—';
+  const k = [
+    {need:'pnl', label:'Revenue', value:money(p.revenue), delta:delta(chg(p.revenue, pl.revenue)), sub:vsLy, key:'fin-revenue'},
+    {need:'pnl', label:'Cost of sales', value:money(p.cogs), delta:delta(chg(p.cogs, pl.cogs), false), sub:vsLy, key:'fin-cogs'},
+    {need:'pnl', label:'Gross profit', value:money(p.grossProfit), delta:delta(chg(p.grossProfit, pl.grossProfit)), sub:vsLy, key:'fin-pl'},
+    {need:'pnl', label:'Gross margin', value:pctTxt(p.grossMarginPct), delta:ppDelta(p.grossMarginPct, pl.grossMarginPct), sub:vsLy, key:'fin-pl'},
+    {need:'pnl', label:'Operating expenses', value:money(p.opex), delta:delta(chg(p.opex, pl.opex), false), sub:vsLy, key:'fin-opex'},
+    {need:'pnl', label:'Opex to revenue', value:pctTxt(p.opexPct), delta:ppDelta(p.opexPct, pl.opexPct, false), sub:vsLy, key:'fin-expense-groups'},
+    {need:'pnl', label:'EBITDA', value:signed(p.ebitda), delta:delta(chg(p.ebitda, pl.ebitda)), sub:vsLy, key:'fin-pl'},
+    {need:'pnl', label:'EBITDA margin', value:pctTxt(p.ebitdaMarginPct), delta:ppDelta(p.ebitdaMarginPct, pl.ebitdaMarginPct), sub:vsLy, key:'fin-pl'},
+    {need:'pnl', label:'Net profit', value:signed(p.netProfit), tone:p.netProfit < 0 ? '--neg' : null, delta:delta(chg(p.netProfit, pl.netProfit)), sub:vsLy, key:'fin-pl'},
+    {need:'pnl', label:'Net margin', value:pctTxt(p.netMarginPct), delta:ppDelta(p.netMarginPct, pl.netMarginPct), sub:vsLy, key:'fin-pl'},
+    {need:'pnl', label:'Tax expense', value:money(p.tax || 0), delta:delta(chg(p.tax, pl.tax), false), sub:vsLy, key:'fin-tax'},
+    {need:'cash', label:'Cash & bank', value:money(b.cash), delta:delta(chg(b.cash, bl.cash)), sub:'vs a year ago', key:'fin-cash-accounts'},
+    {need:'cash', label:'Net cash flow', value:signed(cf.net), tone:cf.net < 0 ? '--neg' : '--pos', delta:delta(chg(cf.net, cl.net)), sub:vsLy, key:'fin-cash-accounts'},
+    {need:'cash', label:'Cash received', value:money(cf.inflow), delta:delta(chg(cf.inflow, cl.inflow)), sub:vsLy, key:'cash-in'},
+    {need:'cash', label:'Cash paid out', value:money(cf.outflow), delta:delta(chg(cf.outflow, cl.outflow), false), sub:vsLy, key:'cash-out'},
+    {need:'balance', label:'Working capital', value:signed(b.workingCapital), delta:delta(chg(b.workingCapital, bl.workingCapital)), sub:'vs a year ago', key:'fin-wc'},
+    {need:'ratios', label:'Current ratio', value:ratioTxt(b.currentRatio), sub:`${ratioTxt(bl.currentRatio)} a year ago`, key:'fin-ratios'},
+    {need:'ratios', label:'Quick ratio', value:ratioTxt(b.quickRatio), sub:`${ratioTxt(bl.quickRatio)} a year ago`, key:'fin-ratios'},
+    {need:'ratios', label:'Cash ratio', value:ratioTxt(b.cashRatio), sub:`${ratioTxt(bl.cashRatio)} a year ago`, key:'fin-ratios'},
+    {need:'ratios', label:'Liabilities to equity', value:ratioTxt(b.liabilitiesToEquity), sub:`${ratioTxt(bl.liabilitiesToEquity)} a year ago`, key:'fin-ratios'},
+    {need:'balance', label:'Total assets', value:money(b.totalAssets), delta:delta(chg(b.totalAssets, bl.totalAssets)), sub:'vs a year ago', key:'fin-bs'},
+    {need:'balance', label:'Total liabilities', value:money(b.totalLiabilities), delta:delta(chg(b.totalLiabilities, bl.totalLiabilities), false), sub:'vs a year ago', key:'fin-bs'},
+    {need:'balance', label:'Equity', value:signed(b.equity), delta:delta(chg(b.equity, bl.equity)), sub:'vs a year ago', key:'fin-bs'},
+    {need:'receivables', label:'Receivables (GL)', value:money(b.ar), delta:delta(chg(b.ar, bl.ar), false), sub:'vs a year ago', key:'ar-overdue'},
+    {need:'payables', label:'Payables (GL)', value:money(b.ap), delta:delta(chg(b.ap, bl.ap), false), sub:'vs a year ago', key:'ap-overdue'},
+    {need:'ratios', label:'Days sales outstanding', value:daysTxt(r.dso), sub:'Trailing 12 months', key:'fin-ratios'},
+    {need:'ratios', label:'Days payables outstanding', value:daysTxt(r.dpo), sub:'Trailing 12 months', key:'fin-ratios'},
+    {need:'ratios', label:'Days inventory outstanding', value:daysTxt(r.dio), sub:'Trailing 12 months', key:'fin-ratios'},
+    {need:'ratios', label:'Cash conversion cycle', value:daysTxt(r.ccc), sub:'DSO + DIO − DPO', key:'fin-ratios'},
+    {need:'ratios', label:'Return on equity', value:pctTxt(r.roe), sub:'Trailing 12 months', key:'fin-ratios'},
+    {need:'ratios', label:'Return on assets', value:pctTxt(r.roa), sub:'Trailing 12 months', key:'fin-ratios'},
+    {need:'ratios', label:'Asset turnover', value:ratioTxt(r.assetTurnover), sub:'Revenue ÷ assets, TTM', key:'fin-ratios'},
+    {need:'receivables', label:'Over credit limit', value:count(cr.count), tone:cr.count ? '--neg' : null, sub:cr.count ? `${money(cr.over)} over limit` : 'No customers', key:'fin-credit-limit'},
+  ];
+  if (AGING && canIns('finance.receivables') && fin(AGING.arOverduePct)) k.push({need:'receivables', label:'Receivables overdue', value:pctTxt(AGING.arOverduePct), tone:AGING.arOverduePct > 50 ? '--neg' : null, sub:`${money(AGING.arOverdue)} past due`, key:'ar-overdue'});
+  if (AGING && canIns('finance.payables') && fin(AGING.apOverduePct)) k.push({need:'payables', label:'Payables overdue', value:pctTxt(AGING.apOverduePct), sub:`${money(AGING.apOverdue)} past due`, key:'ap-overdue'});
+  return k.filter(t => F.allow?.[t.need]);
+}
+// 13-month revenue bars with the net profit line; the partial current month is faded.
+function plTrendCard(F){
+  const t = F.trend, n = t.length, w = 100 / n;
+  const vals = t.flatMap(m => [m.revenue, m.netProfit]), max = Math.max(1, ...vals), min = Math.min(0, ...vals), span = max - min || 1;
+  const y = v => 38 - ((v - min) / span) * 36, zero = y(0);
+  const bars = t.map((m, i) => `<rect x="${(i*w + w*.18).toFixed(2)}" y="${Math.min(y(m.revenue), zero).toFixed(2)}" width="${(w*.64).toFixed(2)}" height="${Math.abs(zero - y(m.revenue)).toFixed(2)}" rx=".6" fill="var(--a1)" opacity="${m.partial ? .35 : .8}"><title>${esc(m.month)} revenue: ${money(m.revenue)}</title></rect>`).join('');
+  const line = t.map((m, i) => `${(i*w + w/2).toFixed(2)},${y(m.netProfit).toFixed(2)}`).join(' ');
+  const full = t.filter(m => !m.partial), last = full.at(-1);
+  return insCard('fin-trend', 'Profit & loss trend', `
+    <div class="ins-h"><span class="ins-t">Profit &amp; loss trend</span><span class="ins-s">Last 13 months</span></div>
+    <div class="ins-v">${last ? money(last.netProfit) : '—'}</div>
+    <div class="ins-s" style="margin-top:.25rem">Net profit ${last ? esc(last.month) : ''} · revenue ${last ? money(last.revenue) : '—'}</div>
+    <div class="ins-legend"><span><i style="background:var(--a1)"></i>Revenue</span><span><i style="background:var(--a3)"></i>Net profit</span></div>
+    <svg class="chart" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Revenue and net profit, last 13 months">${bars}
+      <line x1="0" x2="100" y1="${zero.toFixed(2)}" y2="${zero.toFixed(2)}" stroke="var(--border)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+      <polyline points="${line}" fill="none" stroke="var(--a3)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>
+    <div class="ins-axis"><span>${esc(t[0].month)}</span><span>${esc(t[n-1].month)}</span></div>
+    ${openLink('nav-financial-dashboard')}`);
+}
+function cashPositionCard(F){
+  const months = F.cashTrend.map(m => ({label: m.month.slice(0, 3), y: m.month.slice(4), amount: m.cash}));
+  return insCard('fin-cash-accounts', 'Cash position', `
+    <div class="ins-h"><span class="ins-t">Cash position</span><span class="ins-s">GL cash &amp; bank</span></div>
+    <div class="ins-v">${money(F.balance.cash)}${delta(chg(F.balance.cash, F.balanceLy?.cash))}</div>
+    <div class="ins-s" style="margin-top:.25rem">Opening ${money(F.cashFlow.opening)} · net ${F.cashFlow.net < 0 ? '−' : '+'}${money(Math.abs(F.cashFlow.net))} this fiscal year</div>
+    ${sparkline(months, '--a3')}
+    ${openLink('nav-ia-cashflow')}`);
+}
+function expenseCard(F){
+  const list = F.expenseGroups.map(g => ({code: g.group, name: g.group, amount: g.cur}));
+  return topListCard('Expense breakdown', 'Fiscal YTD', list, '--a4', 'fin-expense-groups', 'nav-financial-dashboard');
+}
+// One-sided open documents card (sales orders or purchase orders).
+function openDocsCard(title, d, openKey, lateKey, appKey){
+  return insCard(openKey, title, `
+    <div class="ins-h"><span class="ins-t">${title}</span><span class="ins-s">Not yet closed</span></div>
+    <div class="ins-v">${count(d.count)}</div>
+    <div class="ins-s" style="margin-top:.25rem">${money(d.amount)} open value</div>
+    <div class="ins-split">
+      <div class="cell"><div class="k">On time</div><div class="n">${count(d.count - d.late)}</div><div class="x">${money(d.amount - d.lateAmount)}</div></div>
+      <button class="sub cell" data-detail="${lateKey}"><div class="k">Past due</div><div class="n" style="color:var(${d.late?'--neg':'--text'})">${count(d.late)}</div><div class="x">${money(d.lateAmount)}</div></button>
+    </div>
+    ${openLink(appKey)}`);
+}
+
+/* ---------------- insights, grouped by module ---------------- */
+const INS_GROUPS = [
+  {id:'finance', label:'Finance', icon:'money-bills'},
+  {id:'sales', label:'Sales', icon:'crm-sales'},
+  {id:'purchase', label:'Purchase', icon:'cart'},
+  {id:'inventory', label:'Inventory', icon:'inventory'},
+];
+function insightGroups(){
+  const I = HOME || {}, F = I.finance;
+  const g = {
+    finance: {
+      sub: F ? `${esc(F.curLabel || F.period || '')} vs ${esc(F.lyLabel || 'last year')} · general ledger` : '',
+      kpis: F ? financeKpis(F) : [],
+      cards: [F?.trend && plTrendCard(F), F?.cashTrend && cashPositionCard(F), F?.expenseGroups?.length && expenseCard(F), I.cash && cashCard(I.cash),
+        AGING && canIns('finance.receivables') && agingCard('Receivables', AGING.arTotal, AGING.arOverdue, AGING.ar, 'nav-customer-aging', 'ar-overdue'),
+        AGING && canIns('finance.payables') && agingCard('Payables', AGING.apTotal, AGING.apOverdue, AGING.ap, 'nav-vp-aging', 'ap-overdue')],
+    },
+    sales: { sub: 'Documents this month and this year', kpis: [], cards: [
+      I.sales && trendCard('Sales', I.sales, '--a1', 'nav-sales-analysis', true, 'sales-mtd'),
+      I.openSalesOrders && openDocsCard('Open sales orders', I.openSalesOrders, 'open-so', 'late-so', 'nav-o2d'),
+      I.openQuotes && quotesCard(I.openQuotes),
+      I.topCustomers?.length && topListCard('Top customers', 'This year', I.topCustomers, '--a1', 'top-customers', 'nav-sales-analysis'),
+      I.topItems?.length && topListCard('Top selling items', 'This year', I.topItems, '--a5', 'top-items', 'nav-sales-analysis')] },
+    purchase: { sub: 'Documents this month and this year', kpis: [], cards: [
+      I.purchases && trendCard('Purchases', I.purchases, '--a2', 'nav-purchase-analysis', false, 'purchases-mtd'),
+      I.openPurchaseOrders && openDocsCard('Open purchase orders', I.openPurchaseOrders, 'open-po', 'late-po', 'nav-po-agent'),
+      I.topVendors?.length && topListCard('Top vendors', 'Spend this year', I.topVendors, '--a2', 'top-vendors', 'nav-purchase-analysis')] },
+    inventory: { sub: 'Stock on hand now', kpis: [], cards: [I.inventory && inventoryCard(I.inventory)] },
+  };
+  return INS_GROUPS.map(x => ({...x, ...g[x.id], cards: g[x.id].cards.filter(Boolean)}))
+    .map(x => ({...x, n: x.kpis.length + x.cards.length})).filter(x => x.n);
+}
 function renderInsights(){
-  if (!AGING) return '';
+  const I = HOME || {}, groups = insightGroups();
+  if (!groups.length) return '';
+  const sel = groups.some(x => x.id === state.insGroup) ? state.insGroup : 'all';
+  const total = groups.reduce((a, x) => a + x.n, 0);
+  const at = I.generatedAt ? new Date(I.generatedAt).toLocaleTimeString(LOCALE,{hour:'2-digit',minute:'2-digit'}) : '';
+  const tabs = [{id:'all', label:'All', n: total}, ...groups];
   return `<section class="section">
-    <div class="section-head"><h2 class="section-title">Insights</h2><span class="section-meta">Live · ${esc(CUR.code || '')}</span></div>
-    <div class="insights">
-      ${agingCard('Receivables', AGING.arTotal, AGING.arOverdue, AGING.ar, 'nav-customer-aging')}
-      ${agingCard('Payables', AGING.apTotal, AGING.apOverdue, AGING.ap, 'nav-vp-aging')}
-    </div></section>`;
+    <div class="section-head"><h2 class="section-title">Insights</h2><span class="section-meta">Live · ${esc(CUR.code || '')}${at?' · as of '+esc(at):''}</span>
+      <button class="link" data-refresh="1">Refresh</button></div>
+    ${alertsHTML()}
+    <div class="seg ins-tabs" role="group" aria-label="Insight module">${tabs.map(t => `<button data-insgroup="${t.id}" aria-pressed="${sel===t.id}">${esc(t.label)}<span class="count">${t.n}</span></button>`).join('')}</div>
+    ${groups.filter(x => sel === 'all' || sel === x.id).map(x => `
+      <div class="ins-group">
+        <div class="ins-group-head"><span class="gi" style="background:var(${ACCENT[x.id]})">${svg(x.icon)}</span><h3>${esc(x.label)}</h3>
+          <span class="section-meta">${x.n} insight${x.n===1?'':'s'}</span>${x.sub ? `<span class="gs">${x.sub}</span>` : ''}</div>
+        ${x.kpis.length ? `<div class="kpis">${x.kpis.map(kpiTile).join('')}</div>` : ''}
+        ${x.cards.length ? `<div class="insights">${x.cards.join('')}</div>` : ''}
+      </div>`).join('')}
+  </section>`;
+}
+
+/* ---------------- insight detail pop-up ---------------- */
+// Transaction screen offered from the pop-up for each list, when one exists.
+const DETAIL_APP = {
+  'sales-mtd':'nav-sales-analysis','purchases-mtd':'nav-purchase-analysis','top-customers':'nav-sales-analysis',
+  'top-items':'nav-sales-analysis','top-vendors':'nav-purchase-analysis','open-quotes':'nav-q2o','expired-quotes':'nav-q2o',
+  'open-so':'nav-o2d','late-so':'nav-o2d','open-po':'nav-po-agent','late-po':'nav-po-agent',
+  'cash-in':'nav-ia-cashflow','cash-out':'nav-ia-cashflow','ar-overdue':'nav-customer-aging','ar-90':'nav-customer-aging',
+  'ap-overdue':'nav-vp-aging','below-min':'nav-procurement-agent','out-of-stock':'nav-procurement-agent','stock-value':'nav-ia-invopt',
+  'fin-pl':'nav-financial-dashboard','fin-revenue':'nav-financial-dashboard','fin-cogs':'nav-financial-dashboard','fin-opex':'nav-financial-dashboard',
+  'fin-tax':'nav-financial-dashboard','fin-expense-groups':'nav-financial-dashboard','fin-bs':'nav-financial-dashboard','fin-wc':'nav-financial-dashboard',
+  'fin-trend':'nav-financial-dashboard','fin-ratios':'nav-financial-dashboard','fin-cash-accounts':'nav-ia-cashflow','fin-credit-limit':'nav-customer-aging',
+};
+const DT = {key:null, data:null, sort:null, dir:1, q:''};
+let dtReturnFocus = null;
+function moneyFull(n){
+  try { if (/^[A-Z]{3}$/.test(CUR.code||'')) return new Intl.NumberFormat(LOCALE,{style:'currency',currency:CUR.code}).format(n); } catch {}
+  return (CUR.symbol||'') + new Intl.NumberFormat(LOCALE,{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+}
+function fmtCell(v, type){
+  if (v == null || v === '') return '';
+  if (type === 'money') return moneyFull(Number(v));
+  if (type === 'qty') return new Intl.NumberFormat(LOCALE,{maximumFractionDigits:3}).format(Number(v));
+  if (type === 'int') return count(Number(v));
+  if (type === 'pct') return isFinite(Number(v)) ? Number(v).toFixed(1) + '%' : '';
+  if (type === 'date') { const d = new Date(String(v).slice(0,10)+'T00:00:00'); return isNaN(d) ? String(v) : d.toLocaleDateString(LOCALE,{day:'2-digit',month:'short',year:'numeric'}); }
+  return String(v);
+}
+const isNum = t => t === 'money' || t === 'qty' || t === 'int' || t === 'pct';
+function dtRows(){
+  const {data, sort, dir, q} = DT; if (!data) return [];
+  let rows = data.rows;
+  if (q) { const ql = q.toLowerCase(); rows = rows.filter(r => data.cols.some(c => fmtCell(r[c.k], c.type).toLowerCase().includes(ql))); }
+  if (sort) {
+    const col = data.cols.find(c => c.k === sort);
+    rows = [...rows].sort((a,b) => (isNum(col.type) ? Number(a[sort]||0) - Number(b[sort]||0)
+      : String(a[sort]??'').localeCompare(String(b[sort]??''), LOCALE, {numeric:true})) * dir);
+  }
+  return rows;
+}
+function renderDetail(){
+  const box = $('#dtBody'), {data} = DT;
+  if (!data) return;
+  const rows = dtRows();
+  const totals = data.cols.map(c => c.type === 'money' ? rows.reduce((a,r)=>a+Number(r[c.k]||0),0) : null);
+  $('#dtCount').textContent = `${count(rows.length)} row${rows.length===1?'':'s'}${DT.q?` of ${count(data.rows.length)}`:''}${data.limit?` · first ${count(data.limit)} shown`:''}`;
+  $('#dtCsv').disabled = !rows.length;
+  if (!rows.length) { box.innerHTML = `<div class="empty" style="margin:1rem">${DT.q ? 'No rows match your filter.' : 'Nothing to show — no records match this insight right now.'}</div>`; return; }
+  box.innerHTML = `<table class="dt"><thead><tr>${data.cols.map(c => `<th class="${isNum(c.type)?'num':''}" aria-sort="${DT.sort===c.k?(DT.dir>0?'ascending':'descending'):'none'}"><button data-sort="${esc(c.k)}">${esc(c.label)}${DT.sort===c.k?(DT.dir>0?' ▲':' ▼'):''}</button></th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${data.cols.map(c => `<td class="${isNum(c.type)?'num':''}"${c.type==='text'?` title="${esc(fmtCell(r[c.k], c.type))}"`:''}>${esc(fmtCell(r[c.k], c.type))}</td>`).join('')}</tr>`).join('')}</tbody>
+    ${totals.some(t => t != null) ? `<tfoot><tr>${data.cols.map((c,i) => `<td class="${isNum(c.type)?'num':''}">${i===0?(data.limit||DT.q?'Total (shown)':'Total'):totals[i]!=null?esc(moneyFull(totals[i])):''}</td>`).join('')}</tr></tfoot>` : ''}</table>`;
+}
+async function openDetail(key){
+  dtReturnFocus = document.activeElement;
+  Object.assign(DT, {key, data:null, sort:null, dir:1, q:''});
+  $('#dtFilter').value = '';
+  $('#dtTitle').textContent = 'Loading…'; $('#dtSub').textContent = ''; $('#dtCount').textContent = ''; $('#dtCsv').disabled = true;
+  $('#dtBody').innerHTML = '<div class="dt-loading">Loading live data…</div>';
+  const app = TILE_BY_KEY[DETAIL_APP[key]];
+  $('#dtApp').hidden = !(app && can(app));
+  if (app) { $('#dtApp').textContent = 'Open ' + app.t; $('#dtApp').dataset.open = app.key; }
+  $('#dtModal').hidden = false; document.body.style.overflow = 'hidden';
+  $('#dtClose').focus();
+  try {
+    const d = await api('/api/home/insights/detail?key=' + encodeURIComponent(key));
+    if (DT.key !== key) return;
+    DT.data = d;
+    $('#dtTitle').textContent = d.title; $('#dtSub').textContent = d.sub || '';
+    renderDetail();
+  } catch (e) {
+    if (DT.key !== key) return;
+    $('#dtTitle').textContent = 'Could not load details';
+    $('#dtBody').innerHTML = `<div class="empty" style="margin:1rem">${e.message === '403' ? 'You do not have access to this insight.' : 'The data could not be loaded. Check the database connection and try again.'}</div>`;
+  }
+}
+function closeDetail(){
+  if ($('#dtModal').hidden) return;
+  $('#dtModal').hidden = true; document.body.style.overflow = ''; DT.key = null;
+  try { dtReturnFocus?.focus(); } catch {}
+}
+function downloadDetail(){
+  const {data} = DT; if (!data) return;
+  const q = v => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  const csv = [data.cols.map(c => q(c.label)).join(','),
+    ...dtRows().map(r => data.cols.map(c => q(c.type==='date' && r[c.k] ? String(r[c.k]).slice(0,10) : r[c.k])).join(','))].join('\r\n');
+  const a = Object.assign(document.createElement('a'), {href: URL.createObjectURL(new Blob(['﻿'+csv], {type:'text/csv'})), download: `${DT.key}-${new Date().toISOString().slice(0,10)}.csv`});
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 function renderHome(){
   const date = new Date().toLocaleDateString(LOCALE,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
@@ -743,20 +1177,32 @@ let toastTimer;
 function toast(msg){ const el=$('#toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2200); }
 
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-open],[data-fav],[data-space],[data-view],[data-apps],[data-ask],[data-go],[data-t]');
+  const dt = e.target.closest('[data-detail],[data-sort],[data-dtclose]');
+  // data-open inside a card (its app link) wins over the card's own data-detail.
+  if (dt && !(dt.dataset.detail && e.target.closest('[data-open]') && dt.contains(e.target.closest('[data-open]')))) {
+    if (dt.dataset.dtclose) closeDetail();
+    else if (dt.dataset.sort) { const k = dt.dataset.sort; DT.dir = DT.sort === k ? -DT.dir : 1; DT.sort = k; renderDetail(); }
+    else openDetail(dt.dataset.detail);
+    return;
+  }
+  const el = e.target.closest('[data-open],[data-fav],[data-space],[data-view],[data-apps],[data-ask],[data-go],[data-t],[data-refresh],[data-insgroup]');
   if (!el) return;
   const d = el.dataset;
   if (d.fav){ favs.has(d.fav) ? favs.delete(d.fav) : favs.add(d.fav); store.set(userKey()+'.favs',[...favs]); render(); toast(favs.has(d.fav)?'Added to favorites':'Removed from favorites'); }
-  else if (d.open) openApp(d.open);
+  else if (d.open){ closeDetail(); openApp(d.open); }
   else if (d.space) goSpace(d.space);
   else if (d.view){ state.view=d.view; store.set('view',d.view); render(); }
   else if (d.apps){ state.appsTab=d.apps; render(); }
   else if (d.ask) go('ask=' + encodeURIComponent(d.ask));
   else if (d.go) go(d.go);
   else if (d.t) setTheme(d.t);
+  else if (d.insgroup){ state.insGroup = d.insgroup; store.set('insGroup', d.insgroup); render(); }
+  else if (d.refresh){ toast('Refreshing insights…'); loadInsights(); }
 });
 document.addEventListener('submit', e => { if (e.target.id==='askForm'){ e.preventDefault(); const v=$('#askInput').value.trim(); if(v) go('ask=' + encodeURIComponent(v)); } });
 $('#q').addEventListener('input', render);
+$('#dtFilter').addEventListener('input', e => { DT.q = e.target.value.trim(); renderDetail(); });
+$('#dtCsv').addEventListener('click', downloadDetail);
 $('#homeLogo').addEventListener('click', ()=>goSpace('home'));
 $('#copilotBtn').addEventListener('click', ()=>go('chat=1'));
 $('#signOut').addEventListener('click', async () => {
@@ -765,6 +1211,17 @@ $('#signOut').addEventListener('click', async () => {
 });
 document.addEventListener('keydown', e => {
   if (e.key==='/' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){ e.preventDefault(); $('#q').focus(); }
+  if (!$('#dtModal').hidden){
+    if (e.key==='Escape'){ e.preventDefault(); closeDetail(); return; }
+    if (e.key==='Tab'){ // keep focus inside the pop-up
+      const f = [...$('#dtModal').querySelectorAll('button:not([hidden]):not(:disabled),input')].filter(x => x.offsetParent);
+      const i = f.indexOf(document.activeElement);
+      if (e.shiftKey && i <= 0){ e.preventDefault(); f.at(-1).focus(); }
+      else if (!e.shiftKey && i === f.length-1){ e.preventDefault(); f[0].focus(); }
+    }
+    return;
+  }
+  if ((e.key==='Enter' || e.key===' ') && document.activeElement?.matches('.clickable')){ e.preventDefault(); openDetail(document.activeElement.dataset.detail); return; }
   if (e.key==='Escape'){ closePops(); if(document.activeElement===$('#q') && $('#q').value){ $('#q').value=''; render(); } }
 });
 $('#spacebar').addEventListener('keydown', e => {
@@ -804,14 +1261,22 @@ api('/auth/me').then(u => {
   USER = {...USER, ...u, id: u.user_id ?? USER.id, fullName: u.full_name ?? USER.fullName};
   PERMS = new Set(u.permissions || []); SUPER = !!u.isSuperAdmin;
   loadPrefs(); renderUser(); render();
-  const finance = SUPER || [...PERMS].some(p => p.startsWith('finance.'));
-  if (!finance) return;
+  return loadInsights();
+}).catch(() => {});
+
+// Live KPIs for My Home. Each source fails on its own so one bad query
+// never hides the rest; the server filters /api/home/insights by permission.
+function loadInsights(){
+  const finance = canIns('finance.receivables') || canIns('finance.payables');
   return api('/api/db-connections/status').then(s => {
     if (s.currency) { CUR = s.currency; LOCALE = CUR.code === 'INR' ? 'en-IN' : 'en-US'; }
     if (!s.connected) return;
-    return api('/api/finance/aging').then(a => { AGING = a; render(); });
-  });
-}).catch(() => {});
+    return Promise.all([
+      api('/api/home/insights').then(h => { HOME = h; }).catch(() => {}),
+      finance ? api('/api/finance/aging').then(a => { AGING = a; }).catch(() => {}) : null,
+    ]).then(() => { if (state.space === 'home') render(); });
+  }).catch(() => {});
+}
 
 // Branding + theme: this page is the Fiori theme's home; HANA theme goes back to the chat UI
 fetch('/api/branding').then(r => r.json()).then(b => {

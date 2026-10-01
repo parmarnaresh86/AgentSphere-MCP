@@ -14,11 +14,11 @@ const _sessions = new Map();
 
 // ── View registry ─────────────────────────────────────────────────────────────
 const VIEWS = {
-  purchase:     { path: 'PurchaseAnalysisQuery',                 dateField: 'PostingDate', hasDims: true  },
+  purchase:     { path: 'PurchaseAnalysisQuery',                 dateField: 'PostingDate', hasDims: true,  hasDocType: true, hasCancel: true },
   returns:      { path: 'PurchaseReturnStatisticsQuery',         dateField: 'PostingDate', hasDims: true  },
-  avgprice:     { path: 'AveragePurchasingPriceQuery',           dateField: 'PostingDate', hasDims: true  },
+  avgprice:     { path: 'AveragePurchasingPriceQuery',           dateField: 'PostingDate', hasDims: true,  hasDocType: true },
   ontime:       { path: 'OnTimeReceiptStatisticsQuery',          dateField: 'PostingDate', hasDims: false },
-  bydoc:        { path: 'PurchaseAnalysisByDocumentQuery',       dateField: 'PostingDate', hasDims: false },
+  bydoc:        { path: 'PurchaseAnalysisByDocumentQuery',       dateField: 'PostingDate', hasDims: false, hasDocType: true, hasCancel: true },
   cycletime:    { path: 'PurchaseOrderFulfillmentCycleTimeQuery',dateField: 'PostingDate', hasDims: false },
   receivedontime:{ path: 'PurchaseOrderReceivedOnTimeQuery',     dateField: 'PostingDate', hasDims: false },
   vendorbalance: { path: 'VendorBalanceAnalysisQuery',           dateField: null,          hasDims: false },
@@ -35,6 +35,52 @@ const VIEW_MEASURES = {
   receivedontime:['AmountOfPOReceivedOnTimeLC','TotalPurchaseOrderAmountLC','OnTimeReceiptRateByAmount','NumberOfPOReceivedOnTime','OnTimeReceiptRateByNumber','NumberOfPurchaseOrder'],
   vendorbalance: ['OpenPurchaseOrderBalanceLC','OpenGRPOBalanceLC','AccountPayableBalanceLC'],
 };
+
+// ── Document selection ─────────────────────────────────────────────────────────
+// PurchaseAnalysisQuery / PurchaseAnalysisByDocumentQuery hold EVERY purchasing
+// document: the same purchase appears as Purchase Order, GRPO AND A/P Invoice.
+// Summing all of them overstated spend ~2.2× (verified on STTL_SD 2026: 236.3M
+// summed vs 104.5M real = invoices 106.2M − credit memos 1.7M, matching
+// OPCH − ORPC header net). Each view now reports ONE document set; Net Purchases
+// is the default. Credit memo / return amounts are already negative in the views.
+const DOC_SETS = {
+  net:  { codes:['18','19'], label:'Net Purchases (A/P Invoices − Credit Memos)' },
+  inv:  { codes:['18'],      label:'A/P Invoices' },
+  cm:   { codes:['19'],      label:'A/P Credit Memos' },
+  grpo: { codes:['20','21'], label:'Goods Receipts − Goods Returns' },
+  po:   { codes:['22'],      label:'Purchase Orders (booked)' },
+};
+const VIEW_DOC_SETS = {
+  purchase: { def:'net', allowed:['net','inv','cm','grpo','po'] },
+  bydoc:    { def:'net', allowed:['net','inv','cm','grpo','po'] },
+  avgprice: { def:'inv', allowed:['inv','po'] },   // view only holds A/P invoices + POs
+};
+function resolveDocSet(view, requested) {
+  const v = VIEW_DOC_SETS[view];
+  if (!v) return null;
+  const key = v.allowed.includes(requested) ? requested : v.def;
+  return { key, ...DOC_SETS[key] };
+}
+
+// ── Ratio / average measures ───────────────────────────────────────────────────
+// Percentages and averages must be derived from the summed base measures, never
+// summed themselves. Formulas match the views' own aggregated values (verified
+// with SUM() over the HANA views). Pure functions of base measures → idempotent.
+function finalizeMeasures(view, o) {
+  const div = (a, b) => (b ? a / b : 0);
+  if (view === 'avgprice') {
+    o.AverageUnitPriceLC = div(o.PurchaseAmountLC, o.PurchaseQuantityInInventoryUoM);
+  } else if (view === 'ontime') {
+    o.AverageReceiptVarianceDays = div(o.DelayedDays + o.AdvanceDays, o.NumberOfPurchaseOrder);   // absolute variance
+  } else if (view === 'cycletime') {
+    o.AveragePOFulfillmentDays = div(o.PurchaseOrderFulfillmentDays, o.NumberOfPurchaseOrder);
+  } else if (view === 'receivedontime') {
+    o.OnTimeReceiptRateByAmount = div(o.AmountOfPOReceivedOnTimeLC, o.TotalPurchaseOrderAmountLC) * 100;
+    o.OnTimeReceiptRateByNumber = div(o.NumberOfPOReceivedOnTime, o.NumberOfPurchaseOrder) * 100;
+  }
+  return o;
+}
+const finalizeGroups = (view, groups) => groups.map(g => finalizeMeasures(view, g));
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function firstOfYear() { return `${new Date().getFullYear()}-01-01`; }
@@ -86,7 +132,7 @@ async function callAI(aiDeps, messages, systemPrompt, maxTokens = 2048) {
 // actual cause of "only 10 or 20 rows" — querying the view directly sidesteps
 // that entirely. Falls back to Service Layer on any failure (e.g. namespace
 // resolution fails, HANA connection down) so it degrades gracefully.
-async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate) {
+async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate, docSet) {
   const { executeSQL } = dbDeps;
   const cfg = VIEWS[viewKey];
   const ns  = await getNamespace();
@@ -94,6 +140,9 @@ async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate) {
   const filters = [];
   if (cfg.dateField && fromDate) filters.push(`"${cfg.dateField}" >= '${fromDate}'`);
   if (cfg.dateField && toDate)   filters.push(`"${cfg.dateField}" <= '${toDate}'`);
+  if (cfg.hasDocType && docSet)  filters.push(`"DocumentTypeCode" IN (${docSet.codes.map(c => `'${c}'`).join(',')})`);
+  // cancelled documents and their cancellation counter-documents net to zero — drop both
+  if (cfg.hasCancel)             filters.push(`"CancellationStatus" = 'Not Cancelled'`);
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   const viewRef = `"_SYS_BIC"."${ns}.ap.case/${cfg.path}"`;
   // No row cap other than a generous safety ceiling — this is the whole point
@@ -103,10 +152,10 @@ async function fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate) {
 }
 
 // ── Paginated HANA view fetch (Service Layer) ─────────────────────────────────
-async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, extraFilter) {
+async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, docSet, extraFilter) {
   if (dbDeps?.isConnected?.()) {
     try {
-      return await fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate);
+      return await fetchViewHana(dbDeps, getNamespace, viewKey, fromDate, toDate, docSet);
     } catch (e) {
       console.warn(`[PurchaseAnalysis] HANA direct view "${viewKey}" failed, falling back to Service Layer:`, e.message);
     }
@@ -163,7 +212,16 @@ async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, e
     skip += PAGE;
   }
 
-  return all;
+  return applyDocSet(viewKey, all, docSet);
+}
+
+// Same document-set / cancellation filter as the HANA SQL, for the Service Layer path.
+function applyDocSet(viewKey, rows, docSet) {
+  const cfg = VIEWS[viewKey];
+  let r = rows;
+  if (cfg?.hasDocType && docSet) r = r.filter(x => docSet.codes.includes(String(x.DocumentTypeCode)));
+  if (cfg?.hasCancel) r = r.filter(x => !x.CancellationStatus || x.CancellationStatus === 'Not Cancelled');
+  return r;
 }
 
 // ── Client-side filters ───────────────────────────────────────────────────────
@@ -223,7 +281,7 @@ function getFilterOptions(rows, viewKey) {
 function calcTotals(rows, measures) {
   const t = { rowCount: rows.length };
   measures.forEach(m => { t[m] = rows.reduce((s, r) => s + Number(r[m] || 0), 0); });
-  return t;
+  return t;   // ratios are finalised by the caller (finalizeMeasures)
 }
 
 // ── AI data context builder ───────────────────────────────────────────────────
@@ -278,25 +336,29 @@ export function createPurchaseAnalysisRouter(deps) {
         toDate    = today(),
         filters   = {},
         groupBy   = 'vendor',
+        skipInsight = false,          // background tab pre-load (no AI call)
+        docSet: docSetKey,
       } = req.body;
 
       if (!VIEWS[view]) return res.json({ ok: false, error: `Unknown view: ${view}` });
 
-      const allRows  = await fetchView(sap, _dbDeps, getNamespace, view, fromDate, toDate);
+      const docSet   = resolveDocSet(view, docSetKey);
+      const allRows  = await fetchView(sap, _dbDeps, getNamespace, view, fromDate, toDate, docSet);
       const filtered = applyFilters(allRows, filters);
       const measures = VIEW_MEASURES[view] || [];
-      const totals   = calcTotals(filtered, measures);
+      const totals   = finalizeMeasures(view, calcTotals(filtered, measures));
       const options  = getFilterOptions(allRows, view);
 
-      // Aggregations
+      // Aggregations — rank by magnitude: vendor balances / credit memos are negative in SAP
+      const byMagnitude = (a, b) => Math.abs(b[measures[0]] || 0) - Math.abs(a[measures[0]] || 0);
       const byVendor = aggregateBy(filtered, 'BusinessPartnerCode', measures)
         .map(v => ({ ...v, vendorName: filtered.find(r => r.BusinessPartnerCode === v._key)?.BusinessPartnerName || v._key }))
-        .sort((a, b) => (b[measures[0]] || 0) - (a[measures[0]] || 0));
+        .sort(byMagnitude);
 
       const byItem = filtered[0]?.ItemCode !== undefined
         ? aggregateBy(filtered, 'ItemCode', measures)
             .map(v => ({ ...v, itemName: filtered.find(r => r.ItemCode === v._key)?.ItemDescription || v._key }))
-            .sort((a, b) => (b[measures[0]] || 0) - (a[measures[0]] || 0))
+            .sort(byMagnitude)
         : [];
 
       const byBrand   = VIEWS[view].hasDims ? aggregateBy(filtered, 'CogsOcrCod', measures) : [];
@@ -305,9 +367,10 @@ export function createPurchaseAnalysisRouter(deps) {
       const byBranch   = aggregateBy(filtered, 'BranchName', measures);
       const byPeriod   = aggregateByPeriod(filtered, 'PostingYearAndMonth', measures);
       const byDocType  = aggregateBy(filtered, 'DocumentTypeCode', measures);
+      [byVendor, byItem, byBrand, bySubBrand, byUniverse, byBranch, byPeriod, byDocType].forEach(g => finalizeGroups(view, g));
 
       let aiInsight = '';
-      if (USE_AI && filtered.length > 0) {
+      if (USE_AI && !skipInsight && filtered.length > 0) {
         const ctx = buildDataContext(view, filtered, totals, byVendor, byPeriod, { fromDate, toDate });
         aiInsight = await callAI(
           _aiDeps(),
@@ -325,6 +388,7 @@ export function createPurchaseAnalysisRouter(deps) {
         byBrand, bySubBrand, byUniverse, byBranch,
         byPeriod, byDocType,
         rowCount: filtered.length,
+        docSet: docSet ? { key: docSet.key, label: docSet.label, allowed: VIEW_DOC_SETS[view].allowed.map(k => ({ key:k, label:DOC_SETS[k].label })) } : null,
         params: { fromDate, toDate, view },
       });
     } catch (e) {

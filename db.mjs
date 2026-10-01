@@ -530,6 +530,25 @@ export const ALL_PERMISSIONS = [
   { key: 'home',              label: 'Home (Chat & Dashboard)',      section: 'Home' },
   { key: 'ui.form_mode',      label: 'Form Mode Toggle (Chat/Form switch)', section: 'Home' },
 
+  // Home Insights — the live KPI cards on the launchpad's My Home page. Each
+  // key gates its cards, alerts and drill-down lists, in the page and in
+  // /api/home/insights (controllers/home-insights.mjs).
+  { key: 'insights.finance.pnl',         label: 'Profit & Loss (revenue, margins, expenses, trend)', section: 'Home Insights', group: 'Finance' },
+  { key: 'insights.finance.cash',        label: 'Cash & Bank, Cash Flow',          section: 'Home Insights', group: 'Finance' },
+  { key: 'insights.finance.balance',     label: 'Balance Sheet & Working Capital', section: 'Home Insights', group: 'Finance' },
+  { key: 'insights.finance.ratios',      label: 'Financial Ratios (liquidity, DSO/DPO/DIO, ROE/ROA)', section: 'Home Insights', group: 'Finance' },
+  { key: 'insights.finance.receivables', label: 'Receivables Aging & Credit Limits', section: 'Home Insights', group: 'Finance' },
+  { key: 'insights.finance.payables',    label: 'Payables Aging',                  section: 'Home Insights', group: 'Finance' },
+  { key: 'insights.sales.trend',         label: 'Sales This Month & Trend',        section: 'Home Insights', group: 'Sales' },
+  { key: 'insights.sales.orders',        label: 'Open Sales Orders',               section: 'Home Insights', group: 'Sales' },
+  { key: 'insights.sales.quotations',    label: 'Open Quotations',                 section: 'Home Insights', group: 'Sales' },
+  { key: 'insights.sales.top_customers', label: 'Top Customers',                   section: 'Home Insights', group: 'Sales' },
+  { key: 'insights.sales.top_items',     label: 'Top Selling Items',               section: 'Home Insights', group: 'Sales' },
+  { key: 'insights.purchase.trend',      label: 'Purchases This Month & Trend',    section: 'Home Insights', group: 'Purchase' },
+  { key: 'insights.purchase.orders',     label: 'Open Purchase Orders',            section: 'Home Insights', group: 'Purchase' },
+  { key: 'insights.purchase.top_vendors',label: 'Top Vendors',                     section: 'Home Insights', group: 'Purchase' },
+  { key: 'insights.inventory.stock',     label: 'Stock Value & Shortages',         section: 'Home Insights', group: 'Inventory' },
+
   // Master Data
   { key: 'master.item',          label: 'Item Master',          section: 'Master Data' },
   { key: 'master.customer',      label: 'Customer Master',      section: 'Master Data' },
@@ -617,6 +636,7 @@ export const ALL_PERMISSIONS = [
   { key: 'inventory.in_stock_items', label: 'In-Stock Items',   section: 'Inventory', group: 'Stock & Warehouse' },
   { key: 'inventory.pick_list',      label: 'Pick List',        section: 'Inventory', group: 'Stock & Warehouse' },
   { key: 'inventory.atp_check',      label: 'ATP Check',        section: 'Inventory', group: 'Stock & Warehouse' },
+  { key: 'inventory.dashboard',      label: 'Inventory Dashboard & Reports', section: 'Inventory', group: 'Stock & Warehouse' },
 
   // Inventory : AI Workflow — these post stock-moving documents, so the
   // inventory-agent controller also enforces them server-side per request.
@@ -736,7 +756,7 @@ export const LEGACY_PERMISSION_CHILDREN = {
   'purchase.workflow': ['purchase.workflow.pr_agent','purchase.workflow.po_agent','purchase.workflow.pr_to_po','purchase.workflow.po_to_grpo','purchase.workflow.grpo_to_apinv','purchase.workflow.three_way_match','purchase.workflow.apinv_to_apcm','purchase.workflow.outgoing_payment','purchase.workflow.vp_aging','purchase.workflow.purchase_analysis_link'],
   'purchase.analysis': ['purchase.analysis.purchase_analysis','purchase.analysis.top_vendors','purchase.analysis.vendor_list','purchase.analysis.customer_list'],
   'finance':    ['finance.ar_aging','finance.overdue_30','finance.overdue_60','finance.ap_aging','finance.financial_dashboard','finance.customer_aging','finance.reports.balance_sheet','finance.reports.profit_loss','finance.reports.trial_balance'],
-  'inventory':  ['inventory.stock_levels','inventory.in_stock_items','inventory.pick_list','inventory.atp_check'],
+  'inventory':  ['inventory.stock_levels','inventory.in_stock_items','inventory.pick_list','inventory.atp_check','inventory.dashboard'],
   'ai.supply':  ['ai.supply.mrp_auto_po','ai.supply.procurement_agent','ai.supply.three_way_match','ai.supply.production_agent','ai.supply.purchasing_agent','ai.supply.rush_orders','ai.supply.shipment_delay','ai.supply.inv_opt','ai.supply.dead_stock','ai.supply.vendor_perf'],
   'ai.ocr':     ['ai.ocr.po_scan','ai.ocr.expense','ai.ocr.apinv','ai.ocr.inward','ai.ocr.gatepass','ai.ocr.document'],
   'ai.sales':   ['ai.sales.dynamic_pricing','ai.sales.order_intelligence','ai.sales.product_forecast','ai.sales.followup','ai.sales.quote_intel','ai.sales.mail_po','ai.sales.po_workflow'],
@@ -946,6 +966,16 @@ const ONE_TIME_GRANTS = [
   // vanish for existing admins/users.
   { name: 'ai.supply.sc_forecast.v1', trigger: ['ai.supply.inv_opt'],
     keys: ['ai.supply.sc_forecast'] },
+  // Inventory Dashboard & Reports (read-only) → whoever can already see Stock Levels.
+  { name: 'inventory.dashboard.v1', trigger: ['inventory.stock_levels'],
+    keys: ['inventory.dashboard'] },
+  // Home Insights → whoever held any permission in that module, which is
+  // exactly who saw those insight cards before they had keys of their own.
+  ...['finance', 'sales', 'purchase', 'inventory'].map(area => ({
+    name: `insights.${area}.v1`,
+    trigger: ALL_PERMISSIONS.map(x => x.key).filter(k => k.startsWith(area + '.')),
+    keys: ALL_PERMISSIONS.map(x => x.key).filter(k => k.startsWith(`insights.${area}.`)),
+  })),
 ];
 for (const g of ONE_TIME_GRANTS) {
   if (db.prepare(`SELECT 1 FROM permission_grants_applied WHERE name=?`).get(g.name)) continue;

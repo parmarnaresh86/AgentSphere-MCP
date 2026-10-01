@@ -13,7 +13,7 @@ function escHtml(s) {
 const FLOW = {
   tag: 'OTD', prefix: 'o2d', apiBase: '/api/order-delivery',
   welcome: '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🚛 Welcome to the <strong>Sales Order → Delivery Agent</strong>!</div>',
-  theme:  { color: '#b45309', bg: '#fffbeb', light: '#fef3c7' },
+  theme:  { color: '#0a6ed1', bg: '#f5f9fd', light: '#eef6fc' },   // SAP S/4HANA Fiori blue (was per-agent accent)
   source: { entity: '/Orders', baseType: 17, label: 'Sales Order', short: 'SO', plural: 'sales orders', dueLabel: 'Delivery Date' },
   target: { entity: '/DeliveryNotes', label: 'Delivery Note', dueLabel: 'Delivery Date', dueRequired: false, refLabel: 'Customer Ref', qtyLabel: 'Deliver Qty' },
   editable: { price: false, disc: false, tax: false, wh: true }, payTerms: false,

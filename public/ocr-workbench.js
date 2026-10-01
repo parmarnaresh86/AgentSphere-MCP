@@ -130,6 +130,67 @@
 .owb-crit .pc{text-align:right;font-weight:700}.owb-crit .pc.ok{color:var(--owb-ok)}.owb-crit .pc.warn{color:var(--owb-warn)}.owb-crit .pc.bad{color:var(--owb-bad)}.owb-crit .pc.na{color:#9ca3af}
 .owb-legend{font-size:10.5px;color:var(--muted,#6A6D70);margin-top:10px;display:flex;gap:12px;flex-wrap:wrap}
 @media (max-width:900px){.owb-body.has-doc{flex-direction:column;overflow:auto}.owb-left{width:100%!important;height:55vh;flex-shrink:0}.owb-split{display:none}.owb-right{overflow:visible}}
+/* ── Fiori theme (S/4HANA Horizon controls) — html[data-ui="fiori"] only ── */
+html[data-ui="fiori"] .owb{background:#f5f6f7;color:#1d2d3e}
+/* Object Page title; scanner colour kept on the icon tile */
+html[data-ui="fiori"] .owb .owb-top{background:#fff;color:#1d2d3e;padding:12px 24px;min-height:64px;border-bottom:1px solid #e5e5e5;box-shadow:0 2px 4px rgba(34,53,72,.06)}
+html[data-ui="fiori"] .owb .owb-top .ic{width:36px;height:36px;border-radius:10px;background:var(--owb-c);color:#fff}
+html[data-ui="fiori"] .owb .owb-top .t1{font-size:20px;font-weight:700;letter-spacing:-.01em}
+html[data-ui="fiori"] .owb .owb-top .t2{font-size:13px;color:#556b82;opacity:1;margin-top:2px}
+html[data-ui="fiori"] .owb .owb-top .badge{background:#e5f0fa;color:#0064d9;border-radius:6px;font-size:11px;padding:2px 8px}
+html[data-ui="fiori"] .owb .owb-top button{height:36px;padding:0 14px;border-radius:8px;border:1px solid #bcc3ca;background:#fff;color:#0064d9;font-size:14px;font-weight:600}
+html[data-ui="fiori"] .owb .owb-top button:hover{background:#eaecee}
+html[data-ui="fiori"] .owb .owb-top button[data-r="back"]{border-color:transparent;background:transparent}
+html[data-ui="fiori"] .owb .owb-top button[data-r="back"]:hover{background:#eaecee}
+/* Upload area (sap.m.UploadSet drop zone) */
+html[data-ui="fiori"] .owb .owb-drop{border:1px dashed #758ca4;border-radius:16px;box-shadow:none}
+html[data-ui="fiori"] .owb .owb-drop:hover,html[data-ui="fiori"] .owb .owb-drop.drag{border-color:#0070f2;background:#ebf8ff}
+html[data-ui="fiori"] .owb .owb-drop .h{font-size:16px;color:#1d2d3e}
+html[data-ui="fiori"] .owb .owb-drop .s{font-size:13px;color:#556b82}
+/* sap.f.Card + sap.ui.layout.form */
+html[data-ui="fiori"] .owb .owb-card{border:none;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 0 2px rgba(34,53,72,.15),0 2px 4px rgba(34,53,72,.15)}
+html[data-ui="fiori"] .owb .owb-card h4{font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:#1d2d3e;margin-bottom:12px}
+html[data-ui="fiori"] .owb .owb-grid{gap:12px 16px}
+html[data-ui="fiori"] .owb .owb-f label{font-size:12px;font-weight:400;color:#556b82;margin-bottom:4px}
+html[data-ui="fiori"] .owb .owb-in{min-height:36px;padding:0 10px;font-size:14px;border:1px solid #bcc3ca;border-bottom-color:#556b82;border-radius:8px;color:#1d2d3e}
+html[data-ui="fiori"] .owb .owb-in:hover{background:#f5f6f7}
+html[data-ui="fiori"] .owb .owb-in:focus{outline:2px solid #0032a5;outline-offset:-1px;box-shadow:none;border-color:#bcc3ca}
+html[data-ui="fiori"] .owb .owb-in[readonly]{background:#f5f6f7;border-color:transparent}
+html[data-ui="fiori"] .owb .owb-in.ok{border-bottom:2px solid #256f3a}
+html[data-ui="fiori"] .owb .owb-in.warn{background:#fff8d6;border-bottom:2px solid #e76500}
+html[data-ui="fiori"] .owb .owb-in.bad{background:#ffeaf4;border-bottom:2px solid #aa0808}
+html[data-ui="fiori"] .owb .owb-hint{font-size:12px;color:#556b82}
+html[data-ui="fiori"] .owb .owb-scroll{padding:16px 20px 24px}
+/* sap.m.Table */
+html[data-ui="fiori"] .owb .owb-tbl{font-size:14px}
+html[data-ui="fiori"] .owb .owb-tbl th{background:#fff;color:#556b82;font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;padding:10px 8px;border-bottom:1px solid #e5e5e5}
+html[data-ui="fiori"] .owb .owb-tbl td{padding:8px;border-bottom:1px solid #e5e5e5}
+html[data-ui="fiori"] .owb .owb-tbl tr.rowbad td{background:#ffeaf4}
+html[data-ui="fiori"] .owb .owb-tbl .owb-in{min-height:32px}
+/* sap.m.ObjectStatus */
+html[data-ui="fiori"] .owb .owb-pill,html[data-ui="fiori"] .owb .owb-sig{border-radius:6px;font-size:12px;padding:2px 8px}
+html[data-ui="fiori"] .owb .owb-pill.ok,html[data-ui="fiori"] .owb .owb-sig.ok{background:#f5fae5;color:#256f3a}
+html[data-ui="fiori"] .owb .owb-pill.warn,html[data-ui="fiori"] .owb .owb-sig.warn{background:#fff8d6;color:#e76500}
+html[data-ui="fiori"] .owb .owb-pill.bad,html[data-ui="fiori"] .owb .owb-sig.bad{background:#ffeaf4;color:#aa0808}
+html[data-ui="fiori"] .owb .owb-pill.chg{background:#e5f0fa;color:#0064d9}
+/* sap.m.Button: Default / Emphasized; footer = sap.m.Bar */
+html[data-ui="fiori"] .owb .owb-btn{height:36px;padding:0 16px;border-radius:8px;font-size:14px;border:1px solid #bcc3ca;background:#fff;color:#0064d9}
+html[data-ui="fiori"] .owb .owb-btn:hover{background:#eaecee}
+html[data-ui="fiori"] .owb .owb-btn.pri{background:#0070f2;border-color:#0070f2;color:#fff}
+html[data-ui="fiori"] .owb .owb-btn.pri:hover{background:#0064d9;filter:none}
+html[data-ui="fiori"] .owb .owb-foot{padding:10px 20px;border-top:1px solid #e5e5e5;box-shadow:0 -2px 4px rgba(34,53,72,.06)}
+/* sap.m.MessageStrip */
+html[data-ui="fiori"] .owb .owb-msg{border-radius:8px;font-size:14px;border-width:1px}
+html[data-ui="fiori"] .owb .owb-msg.err{background:#ffeaf4;color:#aa0808;border-color:#ff8888}
+html[data-ui="fiori"] .owb .owb-msg.warn{background:#fff8d6;color:#e76500;border-color:#ffcf5c}
+html[data-ui="fiori"] .owb .owb-msg.info{background:#e5f0fa;color:#0064d9;border-color:#89bfff}
+html[data-ui="fiori"] .owb .owb-done{border:none;border-radius:16px;box-shadow:0 0 2px rgba(34,53,72,.15),0 2px 4px rgba(34,53,72,.15)}
+html[data-ui="fiori"] .owb .owb-left .bar{font-size:13px;padding:10px 14px}
+html[data-ui="fiori"] .owb .owb-split{background:#e5e5e5}
+html[data-ui="fiori"] .owb-dd{border-radius:8px;border-color:#d9d9d9;box-shadow:0 0 2px rgba(34,53,72,.2),0 8px 24px rgba(34,53,72,.2);font-size:14px}
+html[data-ui="fiori"] .owb-dd div{padding:8px 12px;border-bottom-color:#eef0f2}
+html[data-ui="fiori"] .owb-dd div:hover,html[data-ui="fiori"] .owb-dd div.hl{background:#ebf8ff}
+@media (max-width:640px){html[data-ui="fiori"] .owb .owb-top{padding:10px 12px;flex-wrap:wrap}html[data-ui="fiori"] .owb .owb-top .t1{font-size:16px}}
 `;
     document.head.appendChild(st);
   }

@@ -204,8 +204,11 @@ export async function getCompanyCurrency() {
     } catch { /* keep USD default — e.g. module not licensed, permissions */ }
   }
   const isIsoCode = /^[A-Za-z]{3}$/.test(raw);
-  const code = isIsoCode ? raw.toUpperCase() : raw;
-  const symbol = isIsoCode ? (CURRENCY_SYMBOLS[code] || `${code} `) : code;
+  // A bare symbol still gets its ISO code ("$" → USD) so prompts read
+  // "USD ($)" instead of "$ ($)"; the symbol itself is kept as defined.
+  const SYMBOL_CODES = { "$": "USD", "US$": "USD", "₹": "INR", "Rs": "INR", "Rs.": "INR", "€": "EUR", "£": "GBP" };
+  const code = isIsoCode ? raw.toUpperCase() : (SYMBOL_CODES[raw] || raw);
+  const symbol = isIsoCode ? (CURRENCY_SYMBOLS[code] || `${code} `) : raw;
   const result = { key, code, symbol };
   _currencyCache = result;
   return result;
@@ -232,8 +235,13 @@ export async function getTableColumns(tableName) {
   const cached = _columnCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) return cached.cols;
 
+  // HANA: some SAP B1 objects are views, not tables (OINM is a view on B1 10.0
+  // HANA), and SYS.TABLE_COLUMNS omits views — so read SYS.VIEW_COLUMNS too.
+  // MSSQL's INFORMATION_SCHEMA.COLUMNS already covers both.
+  const hanaSchema = (cfg.database || cfg.schema_name || '').replace(/'/g, "''");
   const sql = isHana
-    ? `SELECT COLUMN_NAME FROM SYS.TABLE_COLUMNS WHERE SCHEMA_NAME = '${(cfg.database || cfg.schema_name || '').replace(/'/g, "''")}' AND TABLE_NAME = '${tableName}'`
+    ? `SELECT COLUMN_NAME FROM SYS.TABLE_COLUMNS WHERE SCHEMA_NAME = '${hanaSchema}' AND TABLE_NAME = '${tableName}'
+       UNION SELECT COLUMN_NAME FROM SYS.VIEW_COLUMNS WHERE SCHEMA_NAME = '${hanaSchema}' AND VIEW_NAME = '${tableName}'`
     : `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${tableName}'`;
 
   const rows = await executeSQL(sql);

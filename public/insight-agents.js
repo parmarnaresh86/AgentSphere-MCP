@@ -319,6 +319,90 @@
 .ia-toast.bad{background:#991B1B}
 @keyframes ia-spin{to{transform:rotate(360deg)}}
 @media (max-width:640px){#${PANEL_ID} .ia-body{padding:10px 12px 40px}#${PANEL_ID} .ia-params input,#${PANEL_ID} .ia-params select{width:130px}#${PANEL_ID} .ia-hdr{padding:10px 12px}}
+
+/* ── Fiori theme (S/4HANA Horizon controls) — html[data-ui="fiori"] only ── */
+html[data-ui="fiori"] #${PANEL_ID}{background:#f5f6f7}
+/* Object Page title: white header, agent colour kept as the icon tile */
+html[data-ui="fiori"] #${PANEL_ID} .ia-hdr{background:#fff !important;color:#1d2d3e;padding:12px 24px;min-height:64px;border-bottom:1px solid #e5e5e5;box-shadow:0 2px 4px rgba(34,53,72,.06);gap:12px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-ico{width:36px;height:36px;border-radius:10px;background:var(--ia-c,#0070f2);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+html[data-ui="fiori"] #${PANEL_ID} .ia-ico svg{width:18px;height:18px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-hdr .ia-title{font-size:20px !important;font-weight:700 !important;letter-spacing:-.01em;color:#1d2d3e}
+/* sap.m.ObjectStatus (Information) */
+html[data-ui="fiori"] #${PANEL_ID} .ia-tagb{background:#e5f0fa !important;color:#0064d9 !important;border-radius:6px !important;padding:2px 8px !important;font-size:11px !important;letter-spacing:.02em}
+html[data-ui="fiori"] #${PANEL_ID} .ia-status{color:#556b82 !important;font-size:12px !important}
+/* sap.m.Button: Default / Transparent / Emphasized */
+html[data-ui="fiori"] #${PANEL_ID} .ia-hbtn{background:#fff;border:1px solid #bcc3ca;color:#0064d9;border-radius:8px;height:36px;padding:0 14px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-hbtn:hover{background:#eaecee;border-color:#bcc3ca}
+html[data-ui="fiori"] #${PANEL_ID} .ia-hbtn[data-a="back"]{border-color:transparent;background:transparent}
+html[data-ui="fiori"] #${PANEL_ID} .ia-hbtn[data-a="back"]:hover{background:#eaecee}
+html[data-ui="fiori"] #${PANEL_ID} .ia-hbtn.primary{background:#0070f2;border-color:#0070f2;color:#fff}
+html[data-ui="fiori"] #${PANEL_ID} .ia-hbtn.primary:hover{background:#0064d9;border-color:#0064d9}
+html[data-ui="fiori"] #${PANEL_ID} .ia-body{padding:16px 24px 48px;gap:16px}
+/* sap.f.Card */
+html[data-ui="fiori"] #${PANEL_ID} .ia-params,html[data-ui="fiori"] #${PANEL_ID} .ia-kpi,html[data-ui="fiori"] #${PANEL_ID} .ia-card{background:#fff;border:none;border-radius:12px;box-shadow:0 0 2px rgba(34,53,72,.15),0 2px 4px rgba(34,53,72,.15)}
+html[data-ui="fiori"] #${PANEL_ID} .ia-params{padding:14px 16px;gap:16px}
+/* sap.m.Label + sap.m.Input */
+html[data-ui="fiori"] #${PANEL_ID} .ia-params label{font-size:12px;font-weight:400;color:#556b82;text-transform:none;letter-spacing:0;gap:4px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-params input,html[data-ui="fiori"] #${PANEL_ID} .ia-params select,html[data-ui="fiori"] #${PANEL_ID} .ia-tools input{height:36px;font-size:14px;padding:0 10px;border:1px solid #bcc3ca;border-bottom-color:#556b82;border-radius:8px;color:#1d2d3e;background:#fff}
+html[data-ui="fiori"] #${PANEL_ID} .ia-params input:hover,html[data-ui="fiori"] #${PANEL_ID} .ia-params select:hover,html[data-ui="fiori"] #${PANEL_ID} .ia-tools input:hover{background:#f5f6f7}
+html[data-ui="fiori"] #${PANEL_ID} .ia-params input:focus,html[data-ui="fiori"] #${PANEL_ID} .ia-params select:focus,html[data-ui="fiori"] #${PANEL_ID} .ia-tools input:focus{outline:2px solid #0032a5;outline-offset:-1px}
+/* sap.m.NumericContent tiles: semantic value colour instead of a stripe */
+html[data-ui="fiori"] #${PANEL_ID} .ia-kpis{gap:12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+html[data-ui="fiori"] #${PANEL_ID} .ia-kpi{border-left:none;padding:14px 16px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-kpi-l{font-size:12px;font-weight:400;color:#556b82;text-transform:none;letter-spacing:0}
+html[data-ui="fiori"] #${PANEL_ID} .ia-kpi-v{font-size:24px;font-weight:400;color:#1d2d3e;margin-top:6px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-kpi.good .ia-kpi-v{color:#256f3a}
+html[data-ui="fiori"] #${PANEL_ID} .ia-kpi.bad .ia-kpi-v{color:#aa0808}
+html[data-ui="fiori"] #${PANEL_ID} .ia-kpi.warn .ia-kpi-v{color:#e76500}
+html[data-ui="fiori"] #${PANEL_ID} .ia-card-t{font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:#1d2d3e;padding:14px 16px 4px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-insight{padding:8px 16px 14px;font-size:14px;color:#1d2d3e}
+html[data-ui="fiori"] #${PANEL_ID} .ia-notes{color:#556b82;font-size:12px}
+/* sap.m.IconTabBar */
+html[data-ui="fiori"] #${PANEL_ID} .ia-tabs{border-bottom:1px solid #e5e5e5;padding:0 12px;gap:4px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-tab{font-size:14px;font-weight:400;color:#1d2d3e;padding:12px 12px;border-bottom:3px solid transparent;border-radius:0}
+html[data-ui="fiori"] #${PANEL_ID} .ia-tab:hover{color:#0064d9}
+html[data-ui="fiori"] #${PANEL_ID} .ia-tab.on{color:#0064d9;font-weight:700;border-bottom-color:#0070f2}
+/* sap.ui.table / sap.m.Table */
+html[data-ui="fiori"] #${PANEL_ID} table.ia-tbl{font-size:14px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-tbl th{background:#fff;color:#556b82;font-weight:600;font-size:13px;padding:10px 12px;border-bottom:1px solid #e5e5e5}
+html[data-ui="fiori"] #${PANEL_ID} .ia-tbl th:hover{background:#f5f6f7}
+html[data-ui="fiori"] #${PANEL_ID} .ia-tbl td{padding:10px 12px;border-bottom:1px solid #e5e5e5;color:#1d2d3e}
+html[data-ui="fiori"] #${PANEL_ID} .ia-tbl tr:hover td{background:#f5f6f7}
+html[data-ui="fiori"] #${PANEL_ID} .ia-sub{color:#556b82;font-size:12px}
+/* sap.m.ObjectStatus inside tables */
+html[data-ui="fiori"] #${PANEL_ID} .ia-badge{border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}
+html[data-ui="fiori"] #${PANEL_ID} .ia-score-track{height:6px;border-radius:3px;background:#e5e5e5}
+html[data-ui="fiori"] #${PANEL_ID} .ia-act{height:28px;padding:0 10px;font-size:12px;font-weight:600;border:1px solid #bcc3ca;border-radius:8px;color:#0064d9;background:#fff}
+html[data-ui="fiori"] #${PANEL_ID} .ia-act:hover{background:#eaecee;border-color:#bcc3ca;color:#0064d9}
+html[data-ui="fiori"] #${PANEL_ID} .ia-empty{color:#556b82;font-size:14px}
+/* Side panel (AI chat) */
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat{width:400px;box-shadow:0 0 2px rgba(34,53,72,.2),-12px 0 32px rgba(34,53,72,.18)}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-hdr{background:#fff !important;color:#1d2d3e;border-bottom:1px solid #e5e5e5;min-height:56px;box-shadow:none}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-hdr .ia-title{font-size:16px !important}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-hdr{flex-wrap:nowrap}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-hdr .ia-title{white-space:nowrap}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-hdr .ia-title + span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#556b82;opacity:1 !important}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-hdr .ia-hbtn{height:32px;padding:0 10px;border-color:transparent;background:transparent;flex-shrink:0}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-hdr .ia-hbtn:hover{background:#eaecee}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-msgs{background:#f5f6f7;padding:16px;gap:10px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-msg{border-radius:12px;font-size:14px;padding:10px 14px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-msg.u{background:#0070f2 !important;border-bottom-right-radius:4px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-msg.a{border:none;box-shadow:0 0 2px rgba(34,53,72,.15),0 1px 2px rgba(34,53,72,.1);border-bottom-left-radius:4px;color:#1d2d3e}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chips{border-top:1px solid #e5e5e5;padding:10px 12px;gap:6px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chip{height:28px;padding:0 12px;border:1px solid #bcc3ca;border-radius:14px;font-size:12px;color:#1d2d3e}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chip:hover{border-color:#0070f2;color:#0064d9}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-in{border-top:1px solid #e5e5e5;padding:12px}
+html[data-ui="fiori"] #${PANEL_ID} .ia-chat-in input{height:36px;font-size:14px;border:1px solid #bcc3ca;border-radius:18px}
+/* sap.m.Dialog + sap.m.MessageToast */
+html[data-ui="fiori"] .ia-modal{border-radius:16px;box-shadow:0 0 2px rgba(34,53,72,.2),0 12px 40px rgba(34,53,72,.3)}
+html[data-ui="fiori"] .ia-modal h3{font-size:16px;padding:16px 20px;border-bottom:1px solid #e5e5e5;color:#1d2d3e}
+html[data-ui="fiori"] .ia-modal .ia-m-foot{padding:12px 20px;border-top:1px solid #e5e5e5}
+html[data-ui="fiori"] .ia-modal button{height:36px;padding:0 16px;font-size:14px;font-weight:600;border:1px solid #bcc3ca;border-radius:8px;color:#0064d9}
+html[data-ui="fiori"] .ia-modal button.primary{background:#0070f2;border-color:#0070f2;color:#fff}
+html[data-ui="fiori"] .ia-modal input,html[data-ui="fiori"] .ia-modal textarea{border:1px solid #bcc3ca;border-radius:8px}
+html[data-ui="fiori"] .ia-toast{background:#1d2d3e;border-radius:8px;font-size:14px}
+html[data-ui="fiori"] .ia-toast.bad{background:#aa0808}
+@media (max-width:640px){html[data-ui="fiori"] #${PANEL_ID} .ia-hdr{padding:10px 12px}html[data-ui="fiori"] #${PANEL_ID} .ia-body{padding:12px 12px 40px}html[data-ui="fiori"] #${PANEL_ID} .ia-hdr .ia-title{font-size:16px !important}}
 `;
     document.head.appendChild(s);
   }
@@ -373,9 +457,9 @@
     hdr.style.background = `linear-gradient(135deg,${a.c1} 0%,${a.c2} 100%)`;
     hdr.innerHTML = `
       <button class="ia-hbtn" data-a="back">&larr; Back</button>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">${a.icon}</svg>
-      <span style="font-size:14px;font-weight:700">${esc(a.title)} Agent</span>
-      <span style="font-size:10px;background:rgba(0,0,0,.25);padding:2px 7px;border-radius:8px;font-weight:700">${esc(a.badge)}</span>
+      <span class="ia-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">${a.icon}</svg></span>
+      <span class="ia-title" style="font-size:14px;font-weight:700">${esc(a.title)} Agent</span>
+      <span class="ia-tagb" style="font-size:10px;background:rgba(0,0,0,.25);padding:2px 7px;border-radius:8px;font-weight:700">${esc(a.badge)}</span>
       <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap">
         <span class="ia-status" style="font-size:10.5px;color:rgba(255,255,255,.8)"></span>
         <button class="ia-hbtn" data-a="chat">💬 Ask AI</button>
@@ -406,7 +490,7 @@
     ch.classList.toggle('open', !!st.chatOpen);
     const chHdr = p.querySelector('.ia-chat-hdr');
     chHdr.style.background = `linear-gradient(135deg,${a.c1},${a.c2})`;
-    chHdr.innerHTML = `<span style="font-weight:700;font-size:13px">${esc(a.title)} AI</span><span style="font-size:10px;opacity:.75">grounded in your last analysis</span>
+    chHdr.innerHTML = `<span class="ia-title" style="font-weight:700;font-size:13px">${esc(a.title)} AI</span><span style="font-size:10px;opacity:.75">grounded in your last analysis</span>
       <button class="ia-hbtn" style="margin-left:auto" data-a="clear">Clear</button><button class="ia-hbtn" data-a="close">&times;</button>`;
     chHdr.querySelector('[data-a=clear]').onclick = () => { st.chat = []; st.sessionId = null; renderChat(); };
     chHdr.querySelector('[data-a=close]').onclick = () => toggleChat(false);

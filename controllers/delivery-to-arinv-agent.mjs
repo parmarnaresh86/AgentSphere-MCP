@@ -13,7 +13,7 @@ function escHtml(s) {
 const FLOW = {
   tag: 'ARINV', prefix: 'd2arinv', apiBase: '/api/delivery-arinv',
   welcome: '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🧾 Welcome to the <strong>Delivery → A/R Invoice Agent</strong>!</div>',
-  theme:  { color: '#0369a1', bg: '#f0f9ff', light: '#e0f2fe' },
+  theme:  { color: '#0a6ed1', bg: '#f5f9fd', light: '#eef6fc' },   // SAP S/4HANA Fiori blue (was per-agent accent)
   source: { entity: '/DeliveryNotes', baseType: 15, label: 'Delivery Note', short: 'DN', plural: 'delivery notes', dueLabel: 'Delivery Date' },
   target: { entity: '/Invoices', label: 'A/R Invoice', dueLabel: 'Due Date (blank = payment terms)', dueRequired: false, refLabel: 'Customer Ref', qtyLabel: 'Invoice Qty' },
   editable: { price: true, disc: true, tax: true, wh: false }, payTerms: false,

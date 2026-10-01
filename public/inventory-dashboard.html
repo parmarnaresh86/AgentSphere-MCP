@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Inventory Dashboard — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  if(!t){window.location.replace('/login.html');return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace('/login.html');}}).catch(()=>{});
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--red:#BB0000;--orange:#E9730C;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+  /* chart roles (validated reference palette, light mode) */
+  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--grid:#e1e0d9;--axis:#898781;
+  --good:#0ca30c;--serious:#ec835a;--critical:#d03b3b;
+}
+html,body{min-height:100%;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);font-size:13px}
+button{font-family:inherit}
+
+/* Shell */
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;position:sticky;top:0}
+.shell-back{color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.2)}
+.shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
+.embedded .shell-back{display:none}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:#0f766e;display:flex;align-items:center;justify-content:center;color:#fff}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
+.shell-spacer{flex:1}
+.shell-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.shell-badge.loading{background:rgba(233,115,12,.6)}
+.shell-badge.ready{background:rgba(16,126,62,.6)}
+.shell-badge.error{background:rgba(187,0,0,.6)}
+.shell-btn{height:28px;padding:0 10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:var(--r);color:rgba(255,255,255,.9);font-size:11.5px;cursor:pointer}
+.shell-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+
+/* Filter bar */
+.filter-bar{background:var(--white);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;position:sticky;top:44px;z-index:25}
+.fg{display:flex;flex-direction:column;gap:3px;position:relative}
+.fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fg input,.fg select,.ms-btn{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);font-family:var(--font);outline:none}
+.fg input:focus,.fg select:focus,.ms-btn:focus{border-color:var(--blue);background:var(--white)}
+.fg input[type=date]{width:132px}
+.fg.w-code input{width:170px}
+.fg.w-name input{width:170px}
+.ms-btn{min-width:150px;max-width:210px;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;overflow:hidden}
+.ms-btn span{overflow:hidden;text-overflow:ellipsis}
+.ms-btn::after{content:'▾';color:var(--muted);font-size:10px}
+.ms-panel{position:absolute;top:100%;left:0;margin-top:3px;width:290px;max-height:340px;background:var(--white);border:1px solid var(--border);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);display:none;flex-direction:column;z-index:60}
+.ms-panel.open{display:flex}
+.ms-panel input{margin:8px;height:28px;border:1px solid var(--border);border-radius:var(--r);padding:0 8px;font-size:12px}
+.ms-list{overflow:auto;flex:1;padding:0 4px 4px}
+.ms-list label{display:flex;gap:7px;align-items:center;padding:5px 6px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text);cursor:pointer;border-radius:4px}
+.ms-list label:hover{background:var(--blue-light)}
+.ms-list small{color:var(--muted)}
+.ms-foot{display:flex;justify-content:space-between;border-top:1px solid var(--border);padding:6px 8px}
+.ms-foot button{border:none;background:none;color:var(--blue);cursor:pointer;font-size:12px}
+.run-btn{height:30px;padding:0 16px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-size:12.5px;font-weight:600;cursor:pointer}
+.run-btn:hover{background:var(--blue-mid)}
+.run-btn:disabled{background:#94a3b8;cursor:wait}
+.clear-btn{height:30px;padding:0 10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--r);font-size:12px;cursor:pointer}
+.clear-btn:hover{border-color:var(--red);color:var(--red)}
+.presets{display:flex;gap:4px;align-self:flex-end}
+.presets button{height:30px;padding:0 8px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:11px;cursor:pointer;color:var(--muted)}
+.presets button:hover{border-color:var(--blue);color:var(--blue)}
+
+/* Tabs */
+.tabs{display:flex;gap:2px;padding:0 14px;background:var(--white);border-bottom:1px solid var(--border);overflow-x:auto;position:sticky;top:91px;z-index:20}
+.tab{padding:10px 14px;border:none;background:none;font-size:12.5px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;font-weight:600}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+.content{padding:14px;max-width:100%}
+.pane{display:none}
+.pane.active{display:block}
+.empty{padding:60px 20px;text-align:center;color:var(--muted)}
+.empty b{display:block;font-size:15px;color:var(--text);margin-bottom:6px}
+.err{background:#FFF0F0;border:1px solid #F5C2C2;color:var(--red);padding:10px 14px;border-radius:6px;margin-bottom:12px}
+.note{font-size:11.5px;color:var(--muted);margin:8px 2px}
+.warn-note{background:#FFF8E6;border:1px solid #F5D990;color:#7A5500;padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:12px}
+
+/* KPI tiles */
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:11px 13px;border-left:4px solid var(--s1)}
+.kpi.good{border-left-color:var(--good)}.kpi.warn{border-left-color:var(--serious)}.kpi.bad{border-left-color:var(--critical)}
+.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+.kpi .v{font-size:19px;font-weight:700;margin-top:4px;color:#0b0b0b}
+.kpi .h{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* Charts */
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:12px}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.card h3{font-size:13px;font-weight:600;margin-bottom:2px}
+.card .sub{font-size:11px;color:var(--muted);margin-bottom:8px}
+.card .cv{position:relative;height:260px}
+.card.wide{grid-column:1/-1}
+.legend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-bottom:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+/* Toolbar per report */
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.toolbar .grp{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.toolbar select,.toolbar input[type=search],.toolbar input[type=number]{height:28px;border:1px solid var(--border);border-radius:var(--r);padding:0 7px;font-size:12px;background:var(--white);font-family:var(--font)}
+.toolbar input[type=search]{width:220px}
+.toolbar input[type=number]{width:70px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.seg button{border:none;background:var(--white);padding:0 10px;height:26px;font-size:11.5px;cursor:pointer;color:var(--muted);border-right:1px solid var(--border)}
+.seg button:last-child{border-right:none}
+.seg button.on{background:var(--blue-light);color:var(--blue);font-weight:600}
+.tb-btn{height:28px;padding:0 10px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:11.5px;cursor:pointer;color:var(--text)}
+.tb-btn:hover{border-color:var(--blue);color:var(--blue)}
+.tb-sp{flex:1}
+.meta{font-size:11px;color:var(--muted)}
+
+/* Tree table */
+.tbl-wrap{background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:auto;max-height:calc(100vh - 250px)}
+table.tt{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
+table.tt th{position:sticky;top:0;background:#F2F4F6;color:var(--muted);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;z-index:2}
+table.tt th.l{text-align:left}
+table.tt th.grp-h{text-align:center;background:#E9EDF1;cursor:default}
+table.tt th .ar{color:var(--blue)}
+table.tt td{padding:6px 10px;border-bottom:1px solid #F0F0F0;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+table.tt td.l{text-align:left;white-space:normal;min-width:330px}
+table.tt tr.d0 td{background:#F7F9FB;font-weight:600}
+table.tt tr.d1 td{background:#FCFCFD}
+table.tt tr:hover td{background:var(--blue-light)}
+table.tt tfoot td{position:sticky;bottom:0;background:#EEF2F6;font-weight:700;border-top:2px solid #D5DCE3}
+.neg{color:var(--red)}
+.car{display:inline-block;width:16px;color:var(--muted);cursor:pointer;font-size:10px;text-align:center}
+.car.x{transform:rotate(90deg)}
+.lbl{cursor:default}
+.lbl small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+.pill{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;margin-left:6px;vertical-align:1px}
+.pill.DEAD{background:#FDE8E8;color:#a32020}.pill.SLOW{background:#FDF0E8;color:#9a4a12}
+.pill.cnt{background:#EEF1F4;color:var(--muted);font-weight:600}
+.ledger-link{font-size:11px;color:var(--blue);cursor:pointer;margin-left:8px;font-weight:400}
+.ledger-link:hover{text-decoration:underline}
+tr.det>td{background:#FAFBFC!important;padding:6px 10px 10px 40px;text-align:left}
+table.sub{border-collapse:collapse;width:100%;font-size:11.5px;background:var(--white);border:1px solid var(--border)}
+table.sub th{background:#F4F6F8;font-size:10px;text-transform:uppercase;color:var(--muted);padding:5px 8px;text-align:right;white-space:nowrap}
+table.sub th.l,table.sub td.l{text-align:left}
+table.sub td{padding:4px 8px;border-top:1px solid #F0F0F0;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+table.sub tr.op td{background:#F7F9FB;font-style:italic}
+.in{color:var(--green)}.out{color:#a34a0d}
+.more{padding:8px;text-align:center}
+.more button{border:1px solid var(--border);background:var(--white);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:11.5px}
+
+/* Overlay */
+.overlay{position:fixed;inset:0;background:rgba(245,246,247,.6);display:none;align-items:center;justify-content:center;z-index:80}
+.overlay.on{display:flex}
+.spin{background:var(--white);padding:16px 22px;border-radius:8px;box-shadow:var(--shadow);display:flex;gap:10px;align-items:center;font-size:13px}
+.spin i{width:18px;height:18px;border:3px solid #cfe0f7;border-top-color:var(--blue);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+@media (max-width:700px){
+  .filter-bar,.tabs{position:static}
+  .charts{grid-template-columns:1fr}
+  .content{padding:10px 16px}
+  .fg.w-code input,.fg.w-name input{width:140px}
+}
+</style>
+</head>
+<body>
+<div class="shell-bar">
+  <a class="shell-back" href="/">← Back</a>
+  <div class="shell-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+  <div><div class="shell-title">Inventory Dashboard &amp; Reports</div><div class="shell-subtitle">SAP B1 inventory journal (OINM) · live</div></div>
+  <div class="shell-spacer"></div>
+  <span class="shell-badge" id="badge">Ready</span>
+  <button class="shell-btn" onclick="exportCsv()" title="Export the current report to CSV / Excel">⬇ Export</button>
+  <button class="shell-btn" onclick="window.print()">🖨 Print</button>
+</div>
+
+<div class="filter-bar">
+  <div class="fg"><label>From date</label><input type="date" id="fFrom"/></div>
+  <div class="fg"><label>To date</label><input type="date" id="fTo"/></div>
+  <div class="presets">
+    <button onclick="preset('mtd')">MTD</button><button onclick="preset('qtd')">QTD</button>
+    <button onclick="preset('ytd')">YTD</button><button onclick="preset('ly')">Last yr</button>
+  </div>
+  <div class="fg w-code"><label>Item code</label><input id="fCode" list="itemList" placeholder="Code, or A001,A002…" autocomplete="off"/><datalist id="itemList"></datalist></div>
+  <div class="fg w-name"><label>Item name</label><input id="fName" placeholder="contains…"/></div>
+  <div class="fg" id="msWhs"></div>
+  <div class="fg" id="msGrp"></div>
+  <div class="fg" id="msBranch" style="display:none"></div>
+  <button class="run-btn" id="runBtn" onclick="run(true)">▶ Run report</button>
+  <button class="clear-btn" onclick="clearFilters()">Clear</button>
+</div>
+
+<div class="tabs" id="tabs"></div>
+<div class="content" id="content"></div>
+
+<div class="overlay" id="overlay"><div class="spin"><i></i><span id="spinTxt">Loading from SAP…</span></div></div>
+
+<script>
+const TOKEN = () => localStorage.getItem('hanny_token') || '';
+if (window.top !== window.self) document.body.classList.add('embedded');
+
+const TABS = [
+  { key:'dashboard',    label:'Dashboard' },
+  { key:'stock',        label:'Stock Report' },
+  { key:'transactions', label:'Transaction Ledger' },
+  { key:'posting',      label:'Posting List' },
+  { key:'valuation',    label:'Valuation' },
+  { key:'aging',        label:'Inventory Aging' },
+  { key:'deadstock',    label:'Dead Stock' },
+  { key:'profit',       label:'Item Profit' },
+];
+
+// ── Formatting ───────────────────────────────────────────────────────────────
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtAmt = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+const fmtQty = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits:3 });
+const fmtInt = n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('en-US');
+const fmtPct = n => n == null || isNaN(n) ? '—' : `${Number(n).toFixed(1)}%`;
+const fmtShort = n => { const a = Math.abs(n); return a >= 1e9 ? (n/1e9).toFixed(2)+'B' : a >= 1e6 ? (n/1e6).toFixed(2)+'M' : a >= 1e3 ? (n/1e3).toFixed(1)+'K' : Number(n).toFixed(0); };
+function fmtVal(v, f) {
+  if (v === '' || v == null) return '';
+  switch (f) {
+    case 'amt': return fmtAmt(v); case 'qty': return fmtQty(v); case 'int': return fmtInt(v);
+    case 'pct': return fmtPct(v); case 'cost': return v ? Number(v).toLocaleString('en-US',{maximumFractionDigits:4}) : '—';
+    case 'x': return v == null ? '—' : `${v}×`; default: return esc(v);
+  }
+}
+const numCell = (v, f) => `<td class="${typeof v === 'number' && v < 0 ? 'neg' : ''}">${fmtVal(v, f)}</td>`;
+
+// ── State ────────────────────────────────────────────────────────────────────
+const S = {
+  tab: 'dashboard', master: null,
+  data: {}, sig: {},                       // per report: last payload + filter signature it was run with
+  view: {
+    stock:        { group:'grp-item-whs', mode:'summary', show:'both', q:'', exp:new Set(), sort:null },
+    transactions: { group:'item-whs', q:'', exp:new Set(), sort:null },
+    posting:      { group:'type', q:'', exp:new Set(), sort:null },
+    valuation:    { group:'grp-item-whs', q:'', exp:new Set(), sort:null },
+    aging:        { group:'grp-item-whs', show:'value', q:'', exp:new Set(), sort:null },
+    deadstock:    { group:'grp-item-whs', status:'all', q:'', exp:new Set(), sort:null },
+    profit:       { group:'grp-item', sub:'items', q:'', exp:new Set(), sort:null },
+  },
+  drill: {},                                // profit doc drill cache
+  charts: [],
+  deadDays: 180, slowDays: 90,
+};
+
+// ── Multi-select dropdown ────────────────────────────────────────────────────
+function multiSelect(hostId, label, options) {
+  const host = document.getElementById(hostId);
+  const sel = new Set();
+  host.innerHTML = `<label>${label}</label><button class="ms-btn" type="button"><span>All</span></button>
+    <div class="ms-panel"><input placeholder="Search…"/><div class="ms-list"></div>
+    <div class="ms-foot"><button type="button" data-a="none">Clear</button><button type="button" data-a="close">Done</button></div></div>`;
+  const btn = host.querySelector('.ms-btn'), panel = host.querySelector('.ms-panel'), list = host.querySelector('.ms-list'), search = panel.querySelector('input');
+  const paint = () => {
+    const q = search.value.toLowerCase();
+    list.innerHTML = options.filter(o => !q || `${o.value} ${o.text}`.toLowerCase().includes(q)).map(o =>
+      `<label><input type="checkbox" value="${esc(o.value)}" ${sel.has(String(o.value)) ? 'checked' : ''}/> <span>${esc(o.text)}${o.sub ? ` <small>${esc(o.sub)}</small>` : ''}</span></label>`).join('') || '<div class="note">No matches</div>';
+  };
+  const caption = () => {
+    btn.querySelector('span').textContent = !sel.size ? 'All' : sel.size === 1 ? (options.find(o => String(o.value) === [...sel][0])?.text || [...sel][0]) : `${sel.size} selected`;
+  };
+  btn.onclick = e => { e.stopPropagation(); document.querySelectorAll('.ms-panel.open').forEach(p => p !== panel && p.classList.remove('open')); panel.classList.toggle('open'); if (panel.classList.contains('open')) { paint(); search.focus(); } };
+  panel.onclick = e => e.stopPropagation();
+  search.oninput = paint;
+  list.onchange = e => { const v = e.target.value; e.target.checked ? sel.add(v) : sel.delete(v); caption(); };
+  panel.querySelector('[data-a=none]').onclick = () => { sel.clear(); paint(); caption(); };
+  panel.querySelector('[data-a=close]').onclick = () => panel.classList.remove('open');
+  return { values: () => [...sel], clear: () => { sel.clear(); caption(); } };
+}
+document.addEventListener('click', () => document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open')));
+let MS = { whs: null, grp: null, branch: null };
+
+// ── Dates ────────────────────────────────────────────────────────────────────
+const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+function preset(k) {
+  const t = new Date(), y = t.getFullYear(), m = t.getMonth();
+  const ranges = {
+    mtd: [new Date(y, m, 1), t], qtd: [new Date(y, Math.floor(m / 3) * 3, 1), t],
+    ytd: [new Date(y, 0, 1), t], ly: [new Date(y - 1, 0, 1), new Date(y - 1, 11, 31)],
+  };
+  const [a, b] = ranges[k];
+  fFrom.value = iso(a); fTo.value = iso(b);
+  run(true);
+}
+
+// ── API ──────────────────────────────────────────────────────────────────────
+async function api(path, body) {
+  const r = await fetch(`/api/inventory-dashboard${path}`, body
+    ? { method:'POST', headers:{ 'Content-Type':'application/json', 'x-auth-token':TOKEN() }, body:JSON.stringify(body) }
+    : { headers:{ 'x-auth-token':TOKEN() } });
+  if (r.status === 401) { localStorage.removeItem('hanny_token'); location.replace('/login.html'); throw new Error('Session expired'); }
+  const j = await r.json().catch(() => ({ ok:false, error:`HTTP ${r.status}` }));
+  if (!j.ok) throw new Error(j.error || 'Request failed');
+  return j;
+}
+function filters() {
+  return {
+    fromDate: fFrom.value, toDate: fTo.value, itemCode: fCode.value.trim(), itemName: fName.value.trim(),
+    warehouses: MS.whs?.values() || [], itemGroups: MS.grp?.values() || [], branches: S.master?.branchEnabled ? (MS.branch?.values() || []) : [],
+    deadDays: S.deadDays, slowDays: S.slowDays,
+  };
+}
+const badge = (txt, cls) => { const b = document.getElementById('badge'); b.textContent = txt; b.className = `shell-badge ${cls || ''}`; };
+const busy = (on, txt) => { overlay.classList.toggle('on', on); runBtn.disabled = on; if (txt) spinTxt.textContent = txt; };
+
+async function run(force) {
+  const f = filters();
+  const sig = JSON.stringify(f);
+  if (!force && S.sig[S.tab] === sig && S.data[S.tab]) return render();
+  if (force) { S.data = {}; S.sig = {}; S.drill = {}; }
+  busy(true, `Running ${TABS.find(t => t.key === S.tab).label}…`); badge('Loading…', 'loading');
+  try {
+    const d = await api('/report', { ...f, report: S.tab });
+    S.data[S.tab] = d; S.sig[S.tab] = sig;
+    badge(`Loaded in ${(d.elapsedMs / 1000).toFixed(1)}s`, 'ready');
+    render();
+  } catch (e) {
+    badge('Error', 'error');
+    content.innerHTML = `<div class="err">⚠️ ${esc(e.message)}</div>`;
+  } finally { busy(false); }
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function paintTabs() {
+  tabs.innerHTML = TABS.map(t => `<button class="tab ${t.key === S.tab ? 'active' : ''}" onclick="switchTab('${t.key}')">${t.label}</button>`).join('');
+}
+function switchTab(k) {
+  S.tab = k; paintTabs();
+  try { localStorage.setItem('invdash_tab', k); } catch {}
+  run(false);
+}
+
+// ── Tree engine ──────────────────────────────────────────────────────────────
+// levels: [{ id:r=>key, label:r=>text, sub?:r=>text }]
+// cols:   [{ key, label, fmt, get?:r=>number (summed), calc?:(sums,node)=>value, leaf?:r=>value }]
+function buildTree(rows, levels, cols, sort) {
+  const root = { children:new Map(), rows:[], depth:-1, path:'' };
+  for (const r of rows) {
+    root.rows.push(r);
+    let n = root;
+    levels.forEach((lv, i) => {
+      const k = String(lv.id(r));
+      let c = n.children.get(k);
+      if (!c) { c = { key:k, label:lv.label(r), sub:lv.sub ? lv.sub(r) : '', depth:i, children:new Map(), rows:[], path:`${n.path}${i ? '¦' : ''}${k}` }; n.children.set(k, c); }
+      c.rows.push(r); n = c;
+    });
+  }
+  const fin = n => {
+    n.kids = [...n.children.values()];
+    n.kids.forEach(fin);
+    n.vals = sumNode(n.rows, cols, n, n.depth === levels.length - 1);
+    if (sort) {
+      const dir = sort.dir;
+      n.kids.sort((a, b) => sort.key === '_label' ? dir * String(a.label).localeCompare(String(b.label)) : dir * ((a.vals[sort.key] ?? -Infinity) - (b.vals[sort.key] ?? -Infinity)));
+    }
+  };
+  fin(root);
+  return root;
+}
+function sumNode(rows, cols, node, isLeaf) {
+  const v = {};
+  for (const c of cols) if (c.get) v[c.key] = rows.reduce((s, r) => s + (Number(c.get(r)) || 0), 0);
+  for (const c of cols) {
+    if (c.calc) v[c.key] = c.calc(v, rows);
+    else if (c.leaf) v[c.key] = isLeaf && rows.length === 1 ? c.leaf(rows[0]) : '';
+  }
+  return v;
+}
+
+// Render a tree table into host. spec: { levels, cols, rows, view, detail?:(node)=>html|Promise, groupHeads?, extraLabel?:(node)=>html }
+function renderTree(host, spec) {
+  const { view } = spec;
+  const q = (view.q || '').toLowerCase();
+  const rows = q ? spec.rows.filter(r => spec.search(r).toLowerCase().includes(q)) : spec.rows;
+  const tree = buildTree(rows, spec.levels, spec.cols, view.sort);
+  const vcols = spec.cols.filter(c => !c.hidden);
+  const lastDepth = spec.levels.length - 1;
+  const hasDetail = !!spec.detail;
+  const out = [];
+  const walk = (n) => {
+    for (const c of n.kids) {
+      const expandable = c.kids.length > 0 || (hasDetail && c.depth === lastDepth);
+      const open = view.exp.has(c.path);
+      out.push(`<tr class="d${c.depth}" data-p="${esc(c.path)}">
+        <td class="l"><div style="padding-left:${c.depth * 18}px;display:flex;align-items:flex-start">
+          <span class="car ${open ? 'x' : ''}" data-t="${esc(c.path)}">${expandable ? '▶' : ''}</span>
+          <span class="lbl">${esc(c.label)}${c.kids.length ? `<span class="pill cnt">${c.kids.length}</span>` : ''}${spec.extraLabel ? spec.extraLabel(c) : ''}${c.sub ? `<small>${esc(c.sub)}</small>` : ''}</span>
+        </div></td>
+        ${vcols.map(col => numCell(c.vals[col.key], col.fmt)).join('')}</tr>`);
+      if (open) {
+        if (c.kids.length) walk(c);
+        else if (hasDetail) out.push(`<tr class="det"><td colspan="${vcols.length + 1}" data-det="${esc(c.path)}">${spec.detailCache?.(c) ?? '<span class="meta">Loading…</span>'}</td></tr>`);
+      }
+    }
+  };
+  walk(tree);
+  const sortMark = k => view.sort?.key === k ? `<span class="ar">${view.sort.dir > 0 ? ' ▲' : ' ▼'}</span>` : '';
+  const head = `${spec.groupHeads ? `<tr><th class="grp-h l"></th>${spec.groupHeads.map(g => `<th class="grp-h" colspan="${g.span}">${esc(g.label)}</th>`).join('')}</tr>` : ''}
+    <tr><th class="l" data-s="_label">${esc(spec.firstCol || 'Item')}${sortMark('_label')}</th>${vcols.map(c => `<th data-s="${c.key}">${esc(c.label)}${sortMark(c.key)}</th>`).join('')}</tr>`;
+  const foot = `<tr><td class="l">Grand total · ${fmtInt(rows.length)} lines</td>${vcols.map(c => numCell(tree.vals[c.key], c.fmt)).join('')}</tr>`;
+  host.innerHTML = rows.length
+    ? `<div class="tbl-wrap"><table class="tt"><thead>${head}</thead><tbody>${out.join('')}</tbody><tfoot>${foot}</tfoot></table></div>`
+    : `<div class="empty"><b>No data</b>Nothing matches these filters.</div>`;
+  host.querySelectorAll('[data-t]').forEach(el => el.onclick = () => {
+    const p = el.dataset.t;
+    view.exp.has(p) ? view.exp.delete(p) : view.exp.add(p);
+    renderTree(host, spec);
+  });
+  host.querySelectorAll('th[data-s]').forEach(el => el.onclick = () => {
+    const k = el.dataset.s;
+    view.sort = view.sort?.key === k ? (view.sort.dir < 0 ? { key:k, dir:1 } : null) : { key:k, dir: k === '_label' ? 1 : -1 };
+    renderTree(host, spec);
+  });
+  if (spec.detailAsync) host.querySelectorAll('td[data-det]').forEach(td => {
+    if (td.textContent.trim() !== 'Loading…') return;
+    const node = findNode(tree, td.dataset.det);
+    if (node) spec.detailAsync(node).then(html => { td.innerHTML = html; }).catch(e => { td.innerHTML = `<span class="neg">${esc(e.message)}</span>`; });
+  });
+  host.querySelectorAll('[data-ledger]').forEach(el => el.onclick = e => { e.stopPropagation(); openLedger(el.dataset.ledger, el.dataset.whs); });
+  spec._tree = tree;
+  S.lastSpec = spec;
+}
+function findNode(n, path) { for (const c of n.kids) { if (c.path === path) return c; if (path.startsWith(c.path + '¦')) return findNode(c, path); } return null; }
+function expandAll(view, on) {
+  if (!S.lastSpec) return;
+  view.exp.clear();
+  if (on) { const walk = n => n.kids.forEach(c => { if (c.kids.length) { view.exp.add(c.path); walk(c); } }); walk(S.lastSpec._tree); }
+  render();
+}
+
+// Common grouping hierarchies
+const LV = {
+  grp:  { id:r => r.group || '(no group)', label:r => r.group || '(no group)' },
+  item: { id:r => r.itemCode, label:r => r.itemCode, sub:r => [r.itemName, r.uom].filter(Boolean).join(' · ') },
+  whs:  { id:r => r.whsCode, label:r => r.whsCode, sub:r => r.whsName },
+  branch: { id:r => r.branch || '(no branch)', label:r => r.branch || '(no branch)' },
+};
+const GROUPINGS = {
+  'grp-item-whs': { label:'Item Group → Item → Warehouse', levels:[LV.grp, LV.item, LV.whs] },
+  'grp-item':     { label:'Item Group → Item',             levels:[LV.grp, LV.item] },
+  'item-whs':     { label:'Item → Warehouse',              levels:[LV.item, LV.whs] },
+  'item':         { label:'Item',                          levels:[LV.item] },
+  'whs-grp-item': { label:'Warehouse → Item Group → Item', levels:[LV.whs, LV.grp, LV.item] },
+  'whs-item':     { label:'Warehouse → Item',              levels:[LV.whs, LV.item] },
+  'grp':          { label:'Item Group',                    levels:[LV.grp] },
+  'branch-whs-item': { label:'Branch → Warehouse → Item',  levels:[LV.branch, LV.whs, LV.item], branchOnly:true },
+};
+const searchText = r => `${r.itemCode} ${r.itemName} ${r.whsCode} ${r.whsName} ${r.group}`;
+function groupSelect(view, allowed) {
+  const opts = allowed.filter(k => !GROUPINGS[k].branchOnly || S.master?.branchEnabled);
+  return `<div class="grp">Group by <select data-v="group">${opts.map(k => `<option value="${k}" ${view.group === k ? 'selected' : ''}>${GROUPINGS[k].label}</option>`).join('')}</select></div>`;
+}
+function seg(name, cur, items) {
+  return `<div class="seg" data-seg="${name}">${items.map(([v, t]) => `<button class="${cur === v ? 'on' : ''}" data-val="${v}">${t}</button>`).join('')}</div>`;
+}
+function toolbarHtml(view, inner) {
+  return `<div class="toolbar">${inner}
+    <input type="search" data-v="q" placeholder="Search item / warehouse / group…" value="${esc(view.q)}"/>
+    <button class="tb-btn" data-a="expand">⊞ Expand all</button><button class="tb-btn" data-a="collapse">⊟ Collapse all</button>
+    <div class="tb-sp"></div><span class="meta" id="meta"></span></div><div id="tbl"></div>`;
+}
+function wireToolbar(view, onChange) {
+  const pane = content;
+  pane.querySelectorAll('[data-v]').forEach(el => {
+    const ev = el.type === 'search' ? 'input' : 'change';
+    el.addEventListener(ev, () => {
+      const k = el.dataset.v;
+      view[k] = el.type === 'checkbox' ? el.checked : el.value;
+      if (k === 'group') view.exp.clear();
+      onChange(k);
+    });
+  });
+  pane.querySelectorAll('[data-seg]').forEach(s => s.querySelectorAll('button').forEach(b => b.onclick = () => { view[s.dataset.seg] = b.dataset.val; onChange(s.dataset.seg); }));
+  pane.querySelector('[data-a=expand]')?.addEventListener('click', () => expandAll(view, true));
+  pane.querySelector('[data-a=collapse]')?.addEventListener('click', () => expandAll(view, false));
+}
+function meta(d, extra = '') {
+  const el = document.getElementById('meta');
+  if (el) el.textContent = `${d.params.fromDate} → ${d.params.toDate} · ${fmtInt(d.rows?.length || 0)} rows${extra}`;
+}
+
+// ── Render dispatcher ────────────────────────────────────────────────────────
+function render() {
+  S.charts.forEach(c => c.destroy()); S.charts = [];
+  const d = S.data[S.tab];
+  if (!d) { content.innerHTML = `<div class="empty"><b>Choose filters and click Run report</b>All reports read live from SAP B1.</div>`; return; }
+  ({ dashboard:renderDashboard, stock:renderStock, transactions:renderTrans, posting:renderPosting, valuation:renderValuation,
+     aging:renderAging, deadstock:renderDead, profit:renderProfit })[S.tab](d);
+}
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#52514e';
+const GRID = { color:'#e1e0d9' }, TICK = { color:'#898781' };
+const AGE_RAMP = ['#86b6ef', '#5598e7', '#3987e5', '#256abf', '#184f95', '#0d366b'];
+const tipAmt = { callbacks:{ label: c => `${c.dataset.label ? c.dataset.label + ': ' : ''}${fmtAmt(c.parsed.x ?? c.parsed.y ?? c.parsed)}` } };
+
+function chart(id, cfg) {
+  const el = document.getElementById(id); if (!el) return;
+  cfg.options = Object.assign({ responsive:true, maintainAspectRatio:false, animation:false, interaction:{ mode:'nearest', intersect:false } }, cfg.options || {});
+  S.charts.push(new Chart(el, cfg));
+}
+const barDs = (label, data, color) => ({ label, data, backgroundColor:color, borderRadius:4, borderSkipped:'start', maxBarThickness:28, categoryPercentage:.7, barPercentage:.9 });
+const hBar = (labels, data, color, extra = {}) => ({
+  type:'bar', data:{ labels, datasets:[barDs('', data, color)] },
+  options:{ indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:{ ...tipAmt, ...(extra.tooltip || {}) } },
+    scales:{ x:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, y:{ grid:{ display:false }, ticks:{ color:'#52514e', autoSkip:false } } } },
+});
+
+function renderDashboard(d) {
+  const kp = d.kpis.map(k => `<div class="kpi ${k.tone || ''}"><div class="l">${esc(k.label)}</div>
+    <div class="v">${k.fmt === 'amt' ? fmtAmt(k.value) : k.fmt === 'num' ? fmtQty(k.value) : k.fmt === 'x' ? (k.value == null ? '—' : k.value + '×') : fmtInt(k.value)}</div>
+    ${k.hint ? `<div class="h">${esc(k.hint)}</div>` : ''}</div>`).join('');
+  const c = d.charts;
+  const lg = items => `<div class="legend">${items.map(([t, col]) => `<span><i style="background:${col}"></i>${t}</span>`).join('')}</div>`;
+  content.innerHTML = `
+    ${d.profitError ? `<div class="warn-note">Profit figures unavailable: ${esc(d.profitError)}</div>` : ''}
+    <div class="kpis">${kp}</div>
+    <div class="charts">
+      <div class="card wide"><h3>Inward vs outward value by month</h3><div class="sub">Stock value received and issued per month (transfers excluded — they net to zero)</div>
+        ${lg([['Inward', 'var(--s1)'], ['Outward', 'var(--s2)']])}<div class="cv"><canvas id="cTrend"></canvas></div></div>
+      <div class="card"><h3>Closing stock value by item group</h3><div class="sub">As of ${esc(d.params.toDate)}</div><div class="cv"><canvas id="cGroup"></canvas></div></div>
+      <div class="card"><h3>Closing stock value by warehouse</h3><div class="sub">As of ${esc(d.params.toDate)}</div><div class="cv"><canvas id="cWhs"></canvas></div></div>
+      ${c.byBranch?.length ? `<div class="card"><h3>Closing stock value by branch</h3><div class="sub">As of ${esc(d.params.toDate)}</div><div class="cv"><canvas id="cBranch"></canvas></div></div>` : ''}
+      <div class="card"><h3>Movement by transaction type</h3><div class="sub">Inward and outward value in the period</div>
+        ${lg([['Inward', 'var(--s1)'], ['Outward', 'var(--s2)']])}<div class="cv"><canvas id="cMix"></canvas></div></div>
+      <div class="card"><h3>Inventory aging</h3><div class="sub">Closing value by days since receipt (FIFO)</div><div class="cv"><canvas id="cAging"></canvas></div></div>
+      <div class="card"><h3>Stock health</h3><div class="sub">Dead ≥ ${S.deadDays} days, slow ≥ ${S.slowDays} days without consumption</div><div class="cv"><canvas id="cDead"></canvas></div></div>
+      <div class="card"><h3>Top 10 items by stock value</h3><div class="sub">Closing value</div><div class="cv"><canvas id="cTopItems"></canvas></div></div>
+      <div class="card"><h3>Top 10 items by gross profit</h3><div class="sub">A/R invoices − credit memos in the period</div><div class="cv"><canvas id="cTopProfit"></canvas></div></div>
+      <div class="card wide"><h3>Revenue, cost and gross profit by month</h3><div class="sub">Item lines on A/R invoices and credit memos</div>
+        ${lg([['Revenue', 'var(--s1)'], ['Cost', 'var(--s2)'], ['Gross profit', 'var(--s3)']])}<div class="cv"><canvas id="cProfit"></canvas></div></div>
+    </div>
+    <p class="note">Click a tab above for the detailed report behind each chart. Values are in company currency.</p>`;
+
+  chart('cTrend', { type:'bar', data:{ labels:c.trend.map(t => t.month), datasets:[barDs('Inward', c.trend.map(t => t.inVal), '#2a78d6'), barDs('Outward', c.trend.map(t => t.outVal), '#eb6834')] },
+    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
+  chart('cGroup', hBar(c.byGroup.map(x => x.label), c.byGroup.map(x => x.value), '#2a78d6'));
+  chart('cWhs', hBar(c.byWarehouse.map(x => x.label), c.byWarehouse.map(x => x.value), '#2a78d6'));
+  if (c.byBranch?.length) chart('cBranch', hBar(c.byBranch.map(x => x.label), c.byBranch.map(x => x.value), '#2a78d6'));
+  chart('cMix', { type:'bar', data:{ labels:c.transMix.map(x => x.label), datasets:[barDs('Inward', c.transMix.map(x => x.inVal), '#2a78d6'), barDs('Outward', c.transMix.map(x => x.outVal), '#eb6834')] },
+    options:{ indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ x:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, y:{ grid:{ display:false }, ticks:{ autoSkip:false } } } } });
+  chart('cAging', { type:'bar', data:{ labels:c.aging.map(b => `${b.bucket} d`), datasets:[{ ...barDs('Value', c.aging.map(b => b.value), AGE_RAMP), maxBarThickness:46 }] },
+    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
+  chart('cDead', hBar(c.deadSplit.map(x => x.label), c.deadSplit.map(x => x.value), ['#d03b3b', '#ec835a', '#0ca30c']));
+  chart('cTopItems', hBar(c.topItems.map(x => x.label), c.topItems.map(x => x.value), '#2a78d6',
+    { tooltip:{ callbacks:{ title: it => { const x = c.topItems[it[0].dataIndex]; return `${x.label} — ${x.name}`; }, label: t => fmtAmt(t.parsed.x) } } }));
+  chart('cTopProfit', hBar(c.topProfit.map(x => x.label), c.topProfit.map(x => x.gp), '#1baf7a',
+    { tooltip:{ callbacks:{ title: it => { const x = c.topProfit[it[0].dataIndex]; return `${x.label} — ${x.name}`; }, label: t => `GP ${fmtAmt(t.parsed.x)} · revenue ${fmtAmt(c.topProfit[t.dataIndex].revenue)}` } } }));
+  chart('cProfit', { type:'bar', data:{ labels:c.profitMonths.map(m => m.month), datasets:[
+      barDs('Revenue', c.profitMonths.map(m => m.revenue), '#2a78d6'), barDs('Cost', c.profitMonths.map(m => m.cost), '#eb6834'), barDs('Gross profit', c.profitMonths.map(m => m.gp), '#1baf7a')] },
+    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
+}
+
+// ── Stock report ─────────────────────────────────────────────────────────────
+function renderStock(d) {
+  const v = S.view.stock;
+  // per-row map of transaction type → movement, for the transaction-wise columns
+  d.rows.forEach(r => { if (!r._tm) r._tm = Object.fromEntries(r.trans.map(t => [t.type, t])); });
+  content.innerHTML = toolbarHtml(v, `${groupSelect(v, ['grp-item-whs', 'grp-item', 'item-whs', 'item', 'whs-grp-item', 'whs-item', 'grp', 'branch-whs-item'])}
+    <div class="grp">Report ${seg('mode', v.mode, [['summary', 'Opening / In / Out / Closing'], ['trans', 'Transaction-wise In / Out']])}</div>
+    <div class="grp">Show ${seg('show', v.show, [['both', 'Qty + Value'], ['qty', 'Qty'], ['value', 'Value']])}</div>`);
+  wireToolbar(v, k => k === 'q' ? draw() : renderStock(d));
+  const Q = v.show !== 'value', V = v.show !== 'qty';
+  let cols = [], heads = [];
+  const add = (label, list) => { const c = list.filter(Boolean); if (c.length) { heads.push({ label, span:c.length }); cols.push(...c); } };
+  const qc = (key, label, get) => Q && { key, label: V ? `${label} qty` : label, fmt:'qty', get };
+  const vc = (key, label, get) => V && { key, label: Q ? `${label} value` : label, fmt:'amt', get };
+  add('Opening', [qc('oq', 'Opening', r => r.openQty), vc('ov', 'Opening', r => r.openVal)]);
+  if (v.mode === 'summary') {
+    add('Inward', [qc('iq', 'In', r => r.inQty), vc('iv', 'In', r => r.inVal)]);
+    add('Outward', [qc('xq', 'Out', r => r.outQty), vc('xv', 'Out', r => r.outVal)]);
+  } else {
+    for (const t of d.transTypes) {
+      if (t.inQty || t.inVal) add(`${t.name} — In`, [qc(`i${t.type}q`, 'In', r => r._tm[t.type]?.inQty), vc(`i${t.type}v`, 'In', r => r._tm[t.type]?.inVal)]);
+      if (t.outQty || t.outVal) add(`${t.name} — Out`, [qc(`o${t.type}q`, 'Out', r => r._tm[t.type]?.outQty), vc(`o${t.type}v`, 'Out', r => r._tm[t.type]?.outVal)]);
+    }
+  }
+  add('Closing', [qc('cq', 'Closing', r => r.closeQty), vc('cv', 'Closing', r => r.closeVal)]);
+  const levels = GROUPINGS[v.group].levels;
+  const itemDepth = levels.indexOf(LV.item);
+  const spec = {
+    rows:d.rows, levels, cols, view:v, groupHeads:heads, search:searchText,
+    firstCol: levels.map(l => l === LV.grp ? 'Item group' : l === LV.item ? 'Item' : l === LV.whs ? 'Warehouse' : 'Branch').join(' / '),
+    extraLabel: n => n.depth === itemDepth || (n.depth === levels.length - 1 && n.rows.length === 1 && levels.includes(LV.item))
+      ? `<span class="ledger-link" data-ledger="${esc(n.rows[0].itemCode)}" data-whs="${n.rows.length === 1 || new Set(n.rows.map(r => r.whsCode)).size === 1 ? esc(n.rows[0].whsCode) : ''}">ledger →</span>` : '',
+    detail:true,
+    detailCache: n => transBreakdown(n.rows),
+  };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` · ${d.transTypes.length} transaction types`); };
+  draw();
+}
+function transBreakdown(rows) {
+  const m = new Map();
+  for (const r of rows) for (const t of r.trans) {
+    const e = m.get(t.type) || { name:t.name, inQty:0, outQty:0, inVal:0, outVal:0, count:0 };
+    e.inQty += t.inQty; e.outQty += t.outQty; e.inVal += t.inVal; e.outVal += t.outVal; e.count += t.count; m.set(t.type, e);
+  }
+  const list = [...m.values()].sort((a, b) => (b.inVal + b.outVal) - (a.inVal + a.outVal));
+  if (!list.length) return '<span class="meta">No movements in this period — opening balance carried forward.</span>';
+  return `<table class="sub"><thead><tr><th class="l">Transaction</th><th>Postings</th><th>In qty</th><th>In value</th><th>Out qty</th><th>Out value</th><th>Net qty</th><th>Net value</th></tr></thead><tbody>
+    ${list.map(t => `<tr><td class="l">${esc(t.name)}</td><td>${fmtInt(t.count)}</td><td class="in">${t.inQty ? fmtQty(t.inQty) : ''}</td><td class="in">${t.inVal ? fmtAmt(t.inVal) : ''}</td>
+      <td class="out">${t.outQty ? fmtQty(t.outQty) : ''}</td><td class="out">${t.outVal ? fmtAmt(t.outVal) : ''}</td>
+      <td>${fmtQty(t.inQty - t.outQty)}</td><td>${fmtAmt(t.inVal - t.outVal)}</td></tr>`).join('')}</tbody></table>`;
+}
+function openLedger(itemCode, whs) {
+  fCode.value = itemCode;
+  if (whs) S.ledgerWhs = whs;
+  S.view.transactions.exp = new Set();
+  switchTab('transactions');
+}
+
+// ── Transaction ledger ───────────────────────────────────────────────────────
+function renderTrans(d) {
+  const v = S.view.transactions;
+  content.innerHTML = (d.truncated ? `<div class="warn-note">Showing the first ${fmtInt(d.shownRows)} of ${fmtInt(d.totalRows)} journal lines — filter by item code, warehouse or a shorter date range to see everything.</div>` : '')
+    + toolbarHtml(v, groupSelect(v, ['item-whs', 'whs-item', 'grp-item-whs']));
+  wireToolbar(v, k => k === 'q' ? draw() : renderTrans(d));
+  // auto-open the group the user came from (ledger → link)
+  if (S.ledgerWhs && d.rows.length) {
+    const r = d.rows.find(x => x.whsCode === S.ledgerWhs) || d.rows[0];
+    const lv = GROUPINGS[v.group].levels;
+    let path = ''; lv.forEach((l, i) => { path += (i ? '¦' : '') + l.id(r); v.exp.add(path); });
+    S.ledgerWhs = null;
+  } else if (d.rows.length === 1 && !v.exp.size) {
+    const lv = GROUPINGS[v.group].levels; let path = ''; lv.forEach((l, i) => { path += (i ? '¦' : '') + l.id(d.rows[0]); v.exp.add(path); });
+  }
+  const cols = [
+    { key:'oq', label:'Opening qty', fmt:'qty', get:r => r.openQty }, { key:'iq', label:'In qty', fmt:'qty', get:r => r.inQty },
+    { key:'xq', label:'Out qty', fmt:'qty', get:r => r.outQty }, { key:'cq', label:'Closing qty', fmt:'qty', get:r => r.closeQty },
+    { key:'ov', label:'Opening value', fmt:'amt', get:r => r.openVal }, { key:'iv', label:'In value', fmt:'amt', get:r => r.inVal },
+    { key:'xv', label:'Out value', fmt:'amt', get:r => r.outVal }, { key:'cv', label:'Closing value', fmt:'amt', get:r => r.closeVal },
+  ];
+  const spec = { rows:d.rows, levels:GROUPINGS[v.group].levels, cols, view:v, search:r => `${searchText(r)} ${r.lines.map(l => `${l.docNum} ${l.cardName} ${l.transName}`).join(' ')}`,
+    firstCol:'Item / Warehouse', detail:true, detailCache: n => ledgerLines(n.rows) };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` item-warehouse groups · ${fmtInt(d.shownRows)} journal lines`); };
+  draw();
+}
+function ledgerLines(rows) {
+  return rows.map(g => {
+    const lines = g.lines;
+    const LIM = 400, shown = lines.slice(0, LIM);
+    return `${rows.length > 1 ? `<div class="meta" style="margin:4px 0">${esc(g.itemCode)} · ${esc(g.whsCode)}</div>` : ''}
+    <table class="sub"><thead><tr><th class="l">Date</th><th class="l">Transaction</th><th class="l">Doc no.</th><th class="l">Business partner / memo</th>
+      <th>In qty</th><th>Out qty</th><th>Balance qty</th><th>Cost</th><th>Trans. value</th><th>Balance value</th></tr></thead><tbody>
+      <tr class="op"><td class="l" colspan="6">Opening balance</td><td>${fmtQty(g.openQty)}</td><td></td><td></td><td>${fmtAmt(g.openVal)}</td></tr>
+      ${shown.map(l => `<tr><td class="l">${esc(l.date)}</td><td class="l">${esc(l.transName)}</td><td class="l">${esc(l.docNum)}</td>
+        <td class="l">${esc(l.cardName || l.memo)}${l.cardName && l.memo ? ` <span class="meta">· ${esc(l.memo)}</span>` : ''}</td>
+        <td class="in">${l.inQty ? fmtQty(l.inQty) : ''}</td><td class="out">${l.outQty ? fmtQty(l.outQty) : ''}</td><td>${fmtQty(l.balQty)}</td>
+        <td>${fmtVal(l.cost, 'cost')}</td><td class="${l.value < 0 ? 'neg' : ''}">${fmtAmt(l.value)}</td><td>${fmtAmt(l.balVal)}</td></tr>`).join('')}
+      ${lines.length > LIM ? `<tr><td class="l" colspan="10">… ${fmtInt(lines.length - LIM)} more lines — export to CSV for the full ledger</td></tr>` : ''}
+      <tr class="op"><td class="l" colspan="6">Closing balance</td><td>${fmtQty(g.closeQty)}</td><td></td><td></td><td>${fmtAmt(g.closeVal)}</td></tr>
+    </tbody></table>`;
+  }).join('');
+}
+
+// ── Posting list ─────────────────────────────────────────────────────────────
+function renderPosting(d) {
+  const v = S.view.posting;
+  const T = { id:r => r.transName, label:r => r.transName };
+  const M = { id:r => r.date.slice(0, 7), label:r => r.date.slice(0, 7) };
+  const D = { id:r => `${r.type}|${r.docNum}|${r.date}|${r.cardCode}`, label:r => `#${r.docNum}`, sub:r => [r.date, r.cardName].filter(Boolean).join(' · ') };
+  const G = { type:{ label:'Transaction → Document', levels:[T, D] }, 'month-type':{ label:'Month → Transaction → Document', levels:[M, T, D] }, 'type-month':{ label:'Transaction → Month → Document', levels:[T, M, D] } };
+  if (!G[v.group]) v.group = 'type';
+  content.innerHTML = (d.truncated ? `<div class="warn-note">Showing the latest ${fmtInt(d.limit)} documents — narrow the date range or filters for the full list.</div>` : '')
+    + toolbarHtml(v, `<div class="grp">Group by <select data-v="group">${Object.entries(G).map(([k, g]) => `<option value="${k}" ${v.group === k ? 'selected' : ''}>${g.label}</option>`).join('')}</select></div>`);
+  wireToolbar(v, k => k === 'q' ? draw() : renderPosting(d));
+  const cols = [
+    { key:'docs', label:'Documents', fmt:'int', get:() => 1 }, { key:'lines', label:'Lines', fmt:'int', get:r => r.lines },
+    { key:'iq', label:'In qty', fmt:'qty', get:r => r.inQty }, { key:'xq', label:'Out qty', fmt:'qty', get:r => r.outQty },
+    { key:'iv', label:'In value', fmt:'amt', get:r => r.inVal }, { key:'xv', label:'Out value', fmt:'amt', get:r => r.outVal },
+    { key:'nv', label:'Net value', fmt:'amt', get:r => r.net },
+  ];
+  const spec = { rows:d.rows, levels:G[v.group].levels, cols, view:v, search:r => `${r.transName} ${r.docNum} ${r.cardCode} ${r.cardName} ${r.date}`, firstCol:'Transaction / Document' };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ' documents'); };
+  draw();
+}
+
+// ── Valuation ────────────────────────────────────────────────────────────────
+function renderValuation(d) {
+  const v = S.view.valuation;
+  content.innerHTML = toolbarHtml(v, groupSelect(v, ['grp-item-whs', 'grp-item', 'item-whs', 'whs-grp-item', 'grp', 'branch-whs-item']));
+  wireToolbar(v, k => k === 'q' ? draw() : renderValuation(d));
+  const cols = [
+    { key:'q', label:'Qty', fmt:'qty', get:r => r.qty },
+    { key:'bv', label:'Book value', fmt:'amt', get:r => r.bookValue },
+    { key:'uc', label:'Unit cost', fmt:'cost', calc:s => s.q ? s.bv / s.q : 0 },
+    { key:'em', label:'Method', fmt:'', leaf:r => r.evalMethod },
+    { key:'ca', label:'Value @ current avg', fmt:'amt', get:r => r.valueAtCurrentAvg },
+    { key:'lp', label:'Last purchase price', fmt:'cost', calc:s => s.q ? s.lv / s.q : 0 },
+    { key:'lv', label:'Value @ last purchase', fmt:'amt', get:r => r.valueAtLastPur },
+    { key:'va', label:'Variance (LPP − book)', fmt:'amt', get:r => r.variance },
+    { key:'sh', label:'% of total', fmt:'pct', calc:s => d.totals.bookValue ? (s.bv / d.totals.bookValue) * 100 : null },
+  ];
+  const spec = { rows:d.rows, levels:GROUPINGS[v.group].levels, cols, view:v, search:searchText, firstCol:'Item group / Item / Warehouse' };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` · valued as of ${d.params.toDate}`); };
+  draw();
+}
+
+// ── Aging ────────────────────────────────────────────────────────────────────
+function renderAging(d) {
+  const v = S.view.aging;
+  content.innerHTML = toolbarHtml(v, `${groupSelect(v, ['grp-item-whs', 'grp-item', 'item-whs', 'whs-grp-item', 'grp'])}
+    <div class="grp">Buckets ${seg('show', v.show, [['value', 'Value'], ['qty', 'Qty']])}</div>`);
+  wireToolbar(v, k => k === 'q' ? draw() : renderAging(d));
+  const isV = v.show === 'value';
+  const cols = [
+    { key:'q', label:'Qty', fmt:'qty', get:r => r.qty }, { key:'v', label:'Value', fmt:'amt', get:r => r.value },
+    ...d.bucketKeys.map(b => ({ key:`b${b}`, label:`${b} days`, fmt:isV ? 'amt' : 'qty', get:r => r[`${isV ? 'v' : 'q'}_${b}`] })),
+    { key:'_w', label:'', fmt:'', get:r => r.avgAgeDays * r.qty, hidden:true },
+    { key:'age', label:'Avg age (days)', fmt:'int', calc:s => s.q ? s._w / s.q : null },
+    { key:'old', label:'Oldest receipt', fmt:'', leaf:r => r.oldestReceipt || '' },
+  ];
+  const spec = { rows:d.rows, levels:GROUPINGS[v.group].levels, cols, view:v, search:searchText, firstCol:'Item group / Item / Warehouse',
+    groupHeads:[{ label:'Closing stock', span:2 }, { label:`Age since receipt — ${isV ? 'value' : 'qty'}`, span:d.bucketKeys.length }, { label:'', span:2 }] };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` · aged as of ${d.params.toDate}`); };
+  draw();
+}
+
+// ── Dead stock ───────────────────────────────────────────────────────────────
+function renderDead(d) {
+  const v = S.view.deadstock;
+  content.innerHTML = `<div class="kpis">
+      <div class="kpi bad"><div class="l">Dead stock value</div><div class="v">${fmtAmt(d.totals.deadValue)}</div><div class="h">${fmtInt(d.totals.deadLines)} item-warehouse lines · no consumption ≥ ${S.deadDays} days</div></div>
+      <div class="kpi warn"><div class="l">Slow-moving value</div><div class="v">${fmtAmt(d.totals.slowValue)}</div><div class="h">${fmtInt(d.totals.slowLines)} lines · idle ${S.slowDays}–${S.deadDays} days</div></div>
+      <div class="kpi"><div class="l">Total stock value</div><div class="v">${fmtAmt(d.totals.totalValue)}</div><div class="h">as of ${esc(d.params.toDate)}</div></div>
+      <div class="kpi bad"><div class="l">Dead + slow share</div><div class="v">${d.totals.totalValue ? fmtPct(((d.totals.deadValue + d.totals.slowValue) / d.totals.totalValue) * 100) : '—'}</div></div>
+    </div>` + toolbarHtml(v, `${groupSelect(v, ['grp-item-whs', 'grp-item', 'item-whs', 'whs-grp-item', 'whs-item'])}
+    <div class="grp">Status ${seg('status', v.status, [['all', 'All'], ['DEAD', 'Dead'], ['SLOW', 'Slow']])}</div>
+    <div class="grp">Dead ≥ <input type="number" id="deadDays" value="${S.deadDays}" min="30"/> days, slow ≥ <input type="number" id="slowDays" value="${S.slowDays}" min="15"/> <button class="tb-btn" id="reDead">Apply</button></div>`);
+  wireToolbar(v, k => k === 'q' ? draw() : renderDead(d));
+  document.getElementById('reDead').onclick = () => { S.deadDays = +deadDays.value || 180; S.slowDays = +slowDays.value || 90; run(true); };
+  const rows = v.status === 'all' ? d.rows : d.rows.filter(r => r.status === v.status);
+  const cols = [
+    { key:'q', label:'Qty', fmt:'qty', get:r => r.qty }, { key:'v', label:'Value', fmt:'amt', get:r => r.value },
+    { key:'lu', label:'Last consumed', fmt:'', leaf:r => r.lastUsed || 'Never' }, { key:'lr', label:'Last receipt', fmt:'', leaf:r => r.lastReceipt || '—' },
+    { key:'id', label:'Idle days', fmt:'int', leaf:r => r.idleDays ?? '' }, { key:'u', label:'Consumed 12m', fmt:'qty', get:r => r.used12m },
+    { key:'cm', label:'Cover (months)', fmt:'', leaf:r => r.coverMonths == null ? '∞' : r.coverMonths },
+  ];
+  const spec = { rows, levels:GROUPINGS[v.group].levels, cols, view:v, search:searchText, firstCol:'Item group / Item / Warehouse',
+    extraLabel: n => n.depth === GROUPINGS[v.group].levels.length - 1 && n.rows.length === 1 ? `<span class="pill ${n.rows[0].status}">${n.rows[0].status}</span>` : '' };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta({ ...d, rows }, ` · as of ${d.params.toDate}`); };
+  draw();
+}
+
+// ── Item profit ──────────────────────────────────────────────────────────────
+function renderProfit(d) {
+  const v = S.view.profit;
+  content.innerHTML = `<div class="kpis">
+      <div class="kpi"><div class="l">Revenue</div><div class="v">${fmtAmt(d.totals.revenue)}</div></div>
+      <div class="kpi warn"><div class="l">Cost of sales</div><div class="v">${fmtAmt(d.totals.cost)}</div></div>
+      <div class="kpi ${d.totals.gp < 0 ? 'bad' : 'good'}"><div class="l">Gross profit</div><div class="v">${fmtAmt(d.totals.gp)}</div><div class="h">${fmtPct(d.totals.marginPct)} margin</div></div>
+      <div class="kpi"><div class="l">Items sold</div><div class="v">${fmtInt(d.totals.items)}</div><div class="h">${fmtQty(d.totals.qty)} units</div></div>
+      <div class="kpi ${d.totals.lossItems ? 'bad' : 'good'}"><div class="l">Loss-making lines</div><div class="v">${fmtInt(d.totals.lossItems)}</div><div class="h">item-warehouse with negative GP</div></div>
+    </div>` + toolbarHtml(v, `<div class="grp">View ${seg('sub', v.sub, [['items', 'By item'], ['customers', 'By customer'], ['months', 'By month']])}</div>
+    ${v.sub === 'items' ? groupSelect(v, ['grp-item', 'grp-item-whs', 'item-whs', 'item', 'whs-item', 'grp']) : ''}`);
+  wireToolbar(v, k => { if (k === 'sub') { v.exp.clear(); v.sort = null; } k === 'q' ? draw() : renderProfit(d); });
+  const cols = [
+    { key:'q', label:'Qty sold', fmt:'qty', get:r => r.qty }, { key:'r', label:'Revenue', fmt:'amt', get:r => r.revenue },
+    { key:'c', label:'Cost', fmt:'amt', get:r => r.cost }, { key:'g', label:'Gross profit', fmt:'amt', get:r => r.gp },
+    { key:'m', label:'Margin %', fmt:'pct', calc:s => s.r ? (s.g / s.r) * 100 : null },
+    { key:'ap', label:'Avg price', fmt:'cost', calc:s => s.q ? s.r / s.q : 0 }, { key:'ac', label:'Avg cost', fmt:'cost', calc:s => s.q ? s.c / s.q : 0 },
+    { key:'sh', label:'% of GP', fmt:'pct', calc:s => d.totals.gp ? (s.g / d.totals.gp) * 100 : null },
+  ];
+  let spec;
+  if (v.sub === 'customers') {
+    spec = { rows:d.customers, levels:[{ id:r => r.cardCode, label:r => r.cardCode, sub:r => r.cardName }], cols, view:v, search:r => `${r.cardCode} ${r.cardName}`, firstCol:'Customer' };
+  } else if (v.sub === 'months') {
+    spec = { rows:d.months, levels:[{ id:r => r.month, label:r => r.month }], cols, view:v, search:r => r.month, firstCol:'Month' };
+  } else {
+    const levels = GROUPINGS[v.group].levels;
+    const leafIsItemLevel = levels[levels.length - 1] === LV.item || levels[levels.length - 1] === LV.whs;
+    spec = { rows:d.rows, levels, cols, view:v, search:searchText, firstCol:'Item group / Item / Warehouse',
+      detail: leafIsItemLevel,
+      detailCache: n => { const k = drillKey(n); return S.drill[k] ? profitDocsHtml(S.drill[k]) : undefined; },
+      detailAsync: async n => { const k = drillKey(n); if (!S.drill[k]) S.drill[k] = (await api('/drill', { ...filters(), kind:'profitDocs', itemCode:n.rows[0].itemCode, whsCode:levels.includes(LV.whs) && new Set(n.rows.map(r => r.whsCode)).size === 1 ? n.rows[0].whsCode : '' })).lines; return profitDocsHtml(S.drill[k]); },
+    };
+    if (!leafIsItemLevel) delete spec.detail;
+  }
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta({ ...d, rows:spec.rows }, ' · A/R invoices − credit memos'); };
+  draw();
+}
+const drillKey = n => `${n.rows[0].itemCode}|${new Set(n.rows.map(r => r.whsCode)).size === 1 ? n.rows[0].whsCode : ''}`;
+function profitDocsHtml(lines) {
+  if (!lines.length) return '<span class="meta">No invoice lines.</span>';
+  return `<table class="sub"><thead><tr><th class="l">Date</th><th class="l">Document</th><th class="l">Customer</th><th class="l">Whs</th><th>Qty</th><th>Unit price</th><th>Revenue</th><th>Cost</th><th>Gross profit</th><th>Margin</th></tr></thead><tbody>
+    ${lines.slice(0, 300).map(l => `<tr><td class="l">${esc(l.date)}</td><td class="l">${esc(l.docType)} #${esc(l.docNum)}</td><td class="l">${esc(l.cardCode)} <span class="meta">${esc(l.cardName)}</span></td><td class="l">${esc(l.whsCode)}</td>
+      <td>${fmtQty(l.qty)}</td><td>${fmtVal(l.unitPrice, 'cost')}</td><td>${fmtAmt(l.revenue)}</td><td>${fmtAmt(l.cost)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtAmt(l.gp)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtPct(l.marginPct)}</td></tr>`).join('')}
+    ${lines.length > 300 ? `<tr><td class="l" colspan="10">… ${fmtInt(lines.length - 300)} more lines</td></tr>` : ''}</tbody></table>`;
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+function exportCsv() {
+  const d = S.data[S.tab];
+  if (!d) return alert('Run a report first.');
+  const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  let lines = [];
+  if (S.tab === 'dashboard') {
+    lines = [['KPI', 'Value'], ...d.kpis.map(k => [k.label, k.value])];
+  } else if (S.tab === 'transactions') {
+    lines.push(['Item', 'Item name', 'Warehouse', 'Date', 'Transaction', 'Doc no.', 'BP code', 'BP name', 'Memo', 'In qty', 'Out qty', 'Balance qty', 'Cost', 'Trans value', 'Balance value']);
+    for (const g of d.rows) {
+      lines.push([g.itemCode, g.itemName, g.whsCode, d.params.fromDate, 'Opening balance', '', '', '', '', '', '', g.openQty, '', '', g.openVal]);
+      for (const l of g.lines) lines.push([g.itemCode, g.itemName, g.whsCode, l.date, l.transName, l.docNum, l.cardCode, l.cardName, l.memo, l.inQty, l.outQty, l.balQty, l.cost, l.value, l.balVal]);
+    }
+  } else if (S.lastSpec?._tree) {
+    const spec = S.lastSpec, cols = spec.cols.filter(c => !c.hidden);
+    lines.push(['Level', 'Code', 'Description', ...cols.map(c => c.label)]);
+    const walk = n => n.kids.forEach(c => { lines.push([c.depth + 1, c.label, c.sub, ...cols.map(col => { const x = c.vals[col.key]; return typeof x === 'number' ? Math.round(x * 10000) / 10000 : x; })]); walk(c); });
+    walk(spec._tree);
+    lines.push(['', 'Grand total', '', ...cols.map(col => spec._tree.vals[col.key])]);
+  }
+  const csv = '﻿' + lines.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  a.download = `inventory-${S.tab}-${d.params.fromDate}_${d.params.toDate}.csv`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// ── Filters init ─────────────────────────────────────────────────────────────
+function clearFilters() {
+  fCode.value = ''; fName.value = '';
+  MS.whs?.clear(); MS.grp?.clear(); MS.branch?.clear();
+  preset('ytd');
+}
+let _itemT = null;
+fCode.addEventListener('input', () => {
+  clearTimeout(_itemT);
+  const q = fCode.value.trim();
+  if (q.length < 2 || q.includes(',')) return;
+  _itemT = setTimeout(async () => {
+    try { const r = await api(`/items?q=${encodeURIComponent(q)}`); itemList.innerHTML = r.items.map(i => `<option value="${esc(i.itemCode)}">${esc(i.itemName)} · ${esc(i.group)}</option>`).join(''); } catch {}
+  }, 250);
+});
+[fCode, fName].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') run(true); }));
+
+(async function init() {
+  const t = new Date();
+  fFrom.value = iso(new Date(t.getFullYear(), 0, 1)); fTo.value = iso(t);
+  try { const saved = localStorage.getItem('invdash_tab'); if (saved && TABS.some(x => x.key === saved)) S.tab = saved; } catch {}
+  paintTabs();
+  busy(true, 'Loading warehouses and item groups…');
+  try {
+    const m = await api('/filters');
+    S.master = m;
+    MS.whs = multiSelect('msWhs', 'Warehouse', m.warehouses.map(w => ({ value:w.whsCode, text:w.whsCode, sub:w.whsName + (w.branch ? ` · ${w.branch}` : '') })));
+    MS.grp = multiSelect('msGrp', 'Item group', m.itemGroups.map(g => ({ value:g.code, text:g.name })));
+    if (m.branchEnabled && m.branches.length) {
+      msBranch.style.display = '';
+      MS.branch = multiSelect('msBranch', 'Branch', m.branches.map(b => ({ value:b.id, text:b.name })));
+    }
+    busy(false);
+    run(true);
+  } catch (e) {
+    busy(false); badge('Error', 'error');
+    content.innerHTML = `<div class="err">⚠️ ${esc(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

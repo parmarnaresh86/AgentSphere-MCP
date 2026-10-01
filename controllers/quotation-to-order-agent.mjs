@@ -13,7 +13,7 @@ function escHtml(s) {
 const FLOW = {
   tag: 'QTO', prefix: 'q2o', apiBase: '/api/quotation-order',
   welcome: '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">📑 Welcome to the <strong>Quotation → Sales Order Agent</strong>!</div>',
-  theme:  { color: '#0e7490', bg: '#ecfeff', light: '#cffafe' },
+  theme:  { color: '#0a6ed1', bg: '#f5f9fd', light: '#eef6fc' },   // SAP S/4HANA Fiori blue (was per-agent accent)
   source: { entity: '/Quotations', baseType: 23, label: 'Sales Quotation', short: 'SQ', plural: 'quotations', dueLabel: 'Valid Until' },
   target: { entity: '/Orders', label: 'Sales Order', dueLabel: 'Delivery Date', dueRequired: true, refLabel: 'Customer PO Ref', qtyLabel: 'Order Qty' },
   editable: { price: true, disc: true, tax: true, wh: true }, payTerms: true,
