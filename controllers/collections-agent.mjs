@@ -41,15 +41,17 @@ function evaluatePromises(company, promises, payments, asOf) {
 }
 
 function recommend(c) {
-  if (c.overdue <= 0) return { priority: 'NONE', action: 'Not yet due — no action', channel: '—' };
-  if (c.brokenPromises > 0) return { priority: 'HIGH', action: 'Broken promise: escalate to manager and place account on credit hold', channel: 'Manager call' };
+  if (c.overdue <= 0) return { priority: 'NONE', action: 'Not yet due — no action', channel: '—', reason: 'Nothing is overdue' };
+  if (c.brokenPromises > 0) return { priority: 'HIGH', action: 'Broken promise: escalate to manager and place account on credit hold', channel: 'Manager call', reason: 'A promise-to-pay was broken in the last 90 days' };
   if (c.openPromise && c.openPromise.daysToPromise >= 0) {
-    return { priority: 'LOW', action: `Promise of ${fmtAmt(c.openPromise.amount)} due ${c.openPromise.promiseDate}: wait, then verify receipt`, channel: 'Monitor' };
+    return { priority: 'LOW', action: `Promise of ${fmtAmt(c.openPromise.amount)} due ${c.openPromise.promiseDate}: wait, then verify receipt`, channel: 'Monitor', reason: 'An open promise-to-pay has not reached its date yet' };
   }
-  if (c.maxDaysOverdue > 90) return { priority: 'HIGH', action: 'Final notice + credit hold; review for legal / collection agency', channel: 'Letter + call' };
-  if (c.maxDaysOverdue > 60) return { priority: 'HIGH', action: 'Manager call and formal reminder letter; stop new orders until paid', channel: 'Manager call' };
-  if (c.maxDaysOverdue > 30) return { priority: 'MEDIUM', action: 'Phone the customer and obtain a dated promise-to-pay', channel: 'Phone' };
-  return { priority: c.avgDaysLate > 15 ? 'MEDIUM' : 'LOW', action: 'Send a friendly reminder email with statement', channel: 'Email' };
+  if (c.maxDaysOverdue > 90) return { priority: 'HIGH', action: 'Final notice + credit hold; review for legal / collection agency', channel: 'Letter + call', reason: 'Oldest invoice is more than 90 days overdue' };
+  if (c.maxDaysOverdue > 60) return { priority: 'HIGH', action: 'Manager call and formal reminder letter; stop new orders until paid', channel: 'Manager call', reason: 'Oldest invoice is more than 60 days overdue' };
+  if (c.maxDaysOverdue > 30) return { priority: 'MEDIUM', action: 'Phone the customer and obtain a dated promise-to-pay', channel: 'Phone', reason: 'Oldest invoice is more than 30 days overdue' };
+  return c.avgDaysLate > 15
+    ? { priority: 'MEDIUM', action: 'Send a friendly reminder email with statement', channel: 'Email', reason: 'Overdue up to 30 days, and usually pays more than 15 days late' }
+    : { priority: 'LOW', action: 'Send a friendly reminder email with statement', channel: 'Email', reason: 'Overdue up to 30 days, and usually pays on time' };
 }
 
 async function run(k, p) {
@@ -105,14 +107,22 @@ async function run(k, p) {
     const exposure = c.outstanding + num(bp.ordersBal) + num(bp.dnotesBal);
     const overLimit = bp.creditLimit > 0 && exposure > bp.creditLimit;
 
-    let score = 0;
-    if (c.overdue > 0) {
-      score += 40 * Math.sqrt(c.overdue / maxOverdueAmt);
-      score += 25 * Math.min(1, c.maxDaysOverdue / 120);
-      score += b ? 15 * clamp(b.avgDaysLate / 60, 0, 1) : 7;
-      score += brokenPromises ? 10 : 0;
-      score += overLimit ? 10 : 0;
-    }
+    // Each part is kept so the UI can explain the score (click on the Score cell).
+    const parts = c.overdue > 0 ? [
+      { label: 'Overdue amount', max: 40, points: 40 * Math.sqrt(c.overdue / maxOverdueAmt),
+        formula: '40 × √(overdue ÷ largest overdue)', detail: `${fmtAmt(c.overdue)} vs largest ${fmtAmt(maxOverdueAmt)}` },
+      { label: 'Oldest overdue age', max: 25, points: 25 * Math.min(1, c.maxDaysOverdue / 120),
+        formula: '25 × min(1, days ÷ 120)', detail: `${c.maxDaysOverdue} days overdue` },
+      { label: 'Payment history', max: 15, points: b ? 15 * clamp(b.avgDaysLate / 60, 0, 1) : 7,
+        formula: b ? '15 × clamp(avg days late ÷ 60, 0, 1)' : 'No payment history: neutral 7',
+        detail: b ? `Pays ${b.avgDaysLate} days late on average (${b.paidInvoices} invoices)` : 'No paid invoices in the look-back period' },
+      { label: 'Broken promise', max: 10, points: brokenPromises ? 10 : 0,
+        formula: '+10 if a promise was broken in the last 90 days', detail: brokenPromises ? `${brokenPromises} broken` : 'None' },
+      { label: 'Over credit limit', max: 10, points: overLimit ? 10 : 0,
+        formula: '+10 if exposure > credit limit',
+        detail: bp.creditLimit > 0 ? `Exposure ${fmtAmt(exposure)} vs limit ${fmtAmt(bp.creditLimit)}` : 'No credit limit set' },
+    ] : [];
+    const score = parts.reduce((s, x) => s + x.points, 0);
     const row = {
       ...c, outstanding: round(c.outstanding), overdue: round(c.overdue),
       oldestBucket: agingBucket(c.maxDaysOverdue),
@@ -123,7 +133,13 @@ async function run(k, p) {
       ptp: openPromise ? `${fmtAmt(openPromise.amount)} by ${openPromise.promiseDate}` : (brokenPromises ? `${brokenPromises} broken` : ''),
       score: Math.round(score),
     };
-    return { ...row, ...recommend(row) };
+    const rec = recommend(row);
+    const scoreBreakdown = {
+      parts: parts.map(x => ({ ...x, points: round(x.points, 1) })),
+      note: c.overdue > 0 ? 'Higher score = chase first. The list is sorted by score.' : 'Nothing overdue, so the score is 0.',
+      priority: rec.priority, priorityReason: rec.reason,
+    };
+    return { ...row, ...rec, scoreBreakdown };
   })
     .filter(c => c.maxDaysOverdue >= minDays || (minDays <= 0))
     .sort((a, z) => z.score - a.score || z.overdue - a.overdue);

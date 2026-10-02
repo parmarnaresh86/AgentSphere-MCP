@@ -137,6 +137,25 @@ async function getItemInfo(sap, itemCode) {
   };
 }
 
+// Batch/serial flags of many items in a few Service Layer calls (20 codes per $filter,
+// in parallel) — getItemInfo would also pull every item's per-warehouse stock.
+// → Map itemCode → 'serial' | 'batch' | ''
+async function itemManageFlags(sap, codes) {
+  const chunks = [];
+  for (let i = 0; i < codes.length; i += 20) chunks.push(codes.slice(i, i + 20));
+  const out = new Map();
+  await Promise.all(chunks.map(async chunk => {
+    const r = await sap.get('/Items', {
+      $filter: chunk.map(c => `ItemCode eq '${escOData(c)}'`).join(' or '),
+      $select: 'ItemCode,ManageBatchNumbers,ManageSerialNumbers',
+    });
+    for (const it of r.value || []) {
+      out.set(it.ItemCode, it.ManageSerialNumbers === 'tYES' ? 'serial' : it.ManageBatchNumbers === 'tYES' ? 'batch' : '');
+    }
+  }));
+  return out;
+}
+
 async function listOpenTransferRequests(sap, docNum) {
   const byNum = docNum ? `DocNum eq ${Number(docNum)}` : '';
   const query = filter => sap.get('/InventoryTransferRequests', {
@@ -160,7 +179,19 @@ async function listOpenTransferRequests(sap, docNum) {
 // Codes of the warehouses with "Enable Bin Locations" ticked (OWHS.BinActivat) — lines
 // in them need bin allocations. Pages with $skip (the Service Layer caps page size).
 // null on failure, so the caller retries on the next request instead of caching "none".
+// Cached per company for a few minutes so each new session doesn't page through it again.
+const BIN_WHS_TTL_MS = 10 * 60 * 1000;
+const _binWhsCache = new Map();   // company → { at, codes }
 async function binWarehouses(sap) {
+  const company = getCompanyId();
+  const hit = _binWhsCache.get(company);
+  if (hit && Date.now() - hit.at < BIN_WHS_TTL_MS) return hit.codes;
+  const codes = await fetchBinWarehouses(sap);
+  if (codes) _binWhsCache.set(company, { at: Date.now(), codes });
+  return codes;
+}
+
+async function fetchBinWarehouses(sap) {
   try {
     const all = [];
     for (let skip = 0; all.length < 2000;) {
@@ -961,12 +992,11 @@ export function createInventoryAgentRouter(deps) {
             if (!lines.length) throw new Error(`Request #${r.DocNum} has no open quantity left`);
             // Batch/serial flags live from SAP — the cached item list is capped, so it can't be
             // relied on to know every request item (a missed flag would hide the picker)
-            const codes = [...new Set(lines.map(l => l.itemCode))];
-            const infos = new Map(await Promise.all(codes.map(async c => [c, await getItemInfo(sap, c).catch(() => null)])));
-            for (const l of lines) {
-              const info = infos.get(l.itemCode);
-              l.manage = info?.serial ? 'serial' : info?.batch ? 'batch' : '';
-            }
+            const flags = await itemManageFlags(sap, [...new Set(lines.map(l => l.itemCode))]).catch(e => {
+              console.error('[Inventory-Agent] item flags', sapErrorText(e));
+              return new Map();   // buildLine still enforces batch/serial on submit
+            });
+            for (const l of lines) l.manage = flags.get(l.itemCode) || '';
             session.request = { docEntry: r.DocEntry, docNum: r.DocNum, fromWh: r.FromWarehouse, toWh: r.ToWarehouse, comments: r.Comments || '', lines, binWhs: session.binWhs || [] };
             session.header  = { fromWh: r.FromWarehouse, toWh: r.ToWarehouse };
             session.lines   = [];

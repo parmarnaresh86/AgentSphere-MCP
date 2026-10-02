@@ -2394,6 +2394,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showPRtoPOPanel()" id="nav-pr-to-po" data-perm="purchase.workflow.pr_to_po" style="cursor:pointer"><span class="dot-icon" data-fi="cart-approval" style="background:#1a5c2e"></span>PR → PO</div>
         <div class="nav-subitem" onclick="showPOtoGRPOPanel()" id="nav-po-to-grpo" data-perm="purchase.workflow.po_to_grpo" style="cursor:pointer"><span class="dot-icon" data-fi="inbox" style="background:#0f766e"></span>PO → GRPO</div>
         <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-grpo-apinv" data-perm="purchase.workflow.grpo_to_apinv" style="cursor:pointer"><span class="dot-icon" data-fi="document-text" style="background:#1d4ed8"></span>GRPO → AP Inv</div>
+        <div class="nav-subitem" onclick="showAPServicePanel()" id="nav-apinv-service" data-perm="purchase.workflow.apinv_service" style="cursor:pointer"><span class="dot-icon" data-fi="expense-report" style="background:#1d4ed8"></span>AP Service Invoice</div>
         <div class="nav-subitem" onclick="showThreeWayMatchPanel()" id="nav-three-way-match" data-perm="purchase.workflow.three_way_match" style="cursor:pointer"><span class="dot-icon" data-fi="accounting-document-verification" style="background:#0f766e"></span>Three-Way AP Invoice</div>
         <div class="nav-subitem" onclick="showAPCMPanel()" id="nav-apinv-apcm" data-perm="purchase.workflow.apinv_to_apcm" style="cursor:pointer"><span class="dot-icon" data-fi="undo" style="background:#b91c1c"></span>AP Inv → Credit</div>
         <div class="nav-subitem" onclick="showOutPayPanel()" id="nav-outpmt" data-perm="purchase.workflow.outgoing_payment" style="cursor:pointer"><span class="dot-icon" data-fi="batch-payments" style="background:#1e40af"></span>Outgoing Payment</div>
@@ -9694,7 +9695,7 @@ function showChatPanel() {
   const ALL_PANELS = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -9723,7 +9724,7 @@ document.addEventListener('keydown', e => {
   const anyOpen = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -18645,7 +18646,7 @@ TOP VENDORS:\n${topStr}`;
 
   // ── Patch neighboring show functions so this panel always gets hidden ────
   ['showChatPanel','showPRAgentPanel','showPOAgentPanel','showPRtoPOPanel','showPOtoGRPOPanel',
-   'showGRPOtoAPInvPanel','showScanAPInvPanel','showThreeWayMatchPanel','showAPCMPanel','showOutPayPanel'].forEach(fnName => {
+   'showGRPOtoAPInvPanel','showScanAPInvPanel','showAPServicePanel','showThreeWayMatchPanel','showAPCMPanel','showOutPayPanel'].forEach(fnName => {
     const orig = window[fnName];
     if (typeof orig !== 'function') return;
     window[fnName] = function(...args) {
@@ -22796,6 +22797,39 @@ BRAND BREAKDOWN:\n${brands}`;
     </div>
   </div>
 </div><!-- /#po-to-grpo-panel -->
+
+<!-- ════════════════════════════════════════════════════════
+     A/P INVOICE (SERVICE) AGENT PANEL (shared cf* script + sv* form helpers)
+════════════════════════════════════════════════════════ -->
+<div id="apsv-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+  <div style="background:#1d4ed8;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid rgba(255,255,255,.12)">
+    <button onclick="showChatPanel()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;flex-shrink:0">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back
+    </button>
+    <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🧾</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.1px">A/P Service Invoice</div>
+      <div id="apsv-status-text" style="font-size:10px;opacity:.65">Vendor → G/L account lines (or copy from service PO) → post A/P invoice</div>
+    </div>
+    <span id="apsv-step-badge" style="background:rgba(255,255,255,.25);color:#fff;font-size:9.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.2px">READY</span>
+    <button onclick="apsvResetSession()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.75);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--font)">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Restart
+    </button>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden">
+    <div id="apsv-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;background:var(--bg);scroll-behavior:smooth"></div>
+    <div id="apsv-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);min-height:0;flex-shrink:0"></div>
+    <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
+      <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;transition:border-color .15s" id="apsv-input-row" onfocusin="this.style.borderColor='#1d4ed8';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+        <textarea id="apsv-input" rows="1" placeholder="Type vendor name/code or service PO number…" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
+        <button id="apsv-send-btn" onclick="apsvSendFromInput()" style="width:34px;height:34px;background:#1d4ed8;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div><!-- /#apsv-panel -->
 
 <!-- ════════════════════════════════════════════════════════
      GRPO → AP INVOICE AGENT PANEL (step-by-step — shared cf* script)
@@ -29039,7 +29073,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
     ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
      'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
      'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-     'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+     'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar'), ia = document.querySelector('.input-area');
@@ -29591,7 +29625,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -30002,7 +30036,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -30438,7 +30472,7 @@ window.roAskFollowUp = function() {
     if (d.reply) addMsg('agent', d.reply, mode);
     else if (d.error) addMsg('agent', '❌ ' + esc(d.error), mode);
     if (mode !== current) return;
-    if (mode === 'st_req') invaRlSyncAlloc();
+    if (mode === 'st_req') { invaRlSyncAlloc(); invaRlPrefetch(); }
     if (d.quickReplies) showQR(d.quickReplies);
     const badge = el('inva-step-badge'); if (badge) badge.textContent = STEP_LABEL[st.step] || 'READY';
     renderSummary();
@@ -30591,6 +30625,7 @@ window.roAskFollowUp = function() {
   // Live per-warehouse stock for the chosen item, highlighting the source warehouse
   window.invaShowAvail = function(idx) {
     invaClearAlloc(idx); // warehouse change invalidates any batch/serial picked for the old one
+    invaPrefetchLine(idx);
     const box = lastEl('inva-avail-' + idx); if (!box) return;
     const itemCode = lastEl('inva-item-' + idx)?.value;
     if (!itemCode) { box.innerHTML = ''; return; }
@@ -30663,10 +30698,48 @@ window.roAskFollowUp = function() {
     }
   };
 
-  // Bins of a warehouse that may receive stock (default first) — /batch-serials?kind=receivebins
-  function invaReceiveBins(whs) {
-    return fetch(API + '/batch-serials?' + new URLSearchParams({ kind: 'receivebins', whs }), { headers: { 'x-auth-token': tok() } })
+  // /batch-serials lookups, cached as promises so a picker opened right after a prefetch
+  // (or reopened) doesn't wait on the database again. Bins rarely change; stock is kept
+  // briefly and dropped on every post.
+  const INVA_STOCK_TTL = 45 * 1000, INVA_BINS_TTL = 5 * 60 * 1000;
+  const invaLookupCache = new Map();   // query string → { at, ttl, p }
+  function invaLookup(q, ttl) {
+    const key = new URLSearchParams(q).toString();
+    const hit = invaLookupCache.get(key);
+    if (hit && Date.now() - hit.at < hit.ttl) return hit.p;
+    const p = fetch(API + '/batch-serials?' + key, { headers: { 'x-auth-token': tok() } })
       .then(x => x.json()).then(r => { if (!r.ok) throw new Error(r.error || 'Lookup failed'); return r.rows || []; });
+    invaLookupCache.set(key, { at: Date.now(), ttl, p });
+    p.catch(() => invaLookupCache.delete(key));
+    return p;
+  }
+  // Stock rows a picker shows — always built in this key order so prefetch and picker share the entry
+  function invaStockRows(kind, itemCode, whs, perBin) {
+    return invaLookup({ kind, itemCode, whs, ...(perBin ? { bins: '1' } : {}) }, INVA_STOCK_TTL);
+  }
+  // Bins of a warehouse that may receive stock (default first)
+  function invaReceiveBins(whs) { return invaLookup({ kind: 'receivebins', whs }, INVA_BINS_TTL); }
+
+  // Warm the cache for one line so its picker opens instantly. Errors are left for the picker to show.
+  function invaPrefetch(kind, itemCode, fromWh, toWh, fromBins, toBins) {
+    const quiet = p => p.catch(() => {});
+    if (fromWh && (kind !== 'bin' || fromBins)) quiet(invaStockRows(kind, itemCode, fromWh, fromBins));
+    if (toBins && toWh) quiet(invaReceiveBins(toWh));
+  }
+  function invaPrefetchLine(idx) {
+    const kind = invaLineNeed(idx); if (!kind) return;
+    const b = invaLineBins(idx);
+    // a Goods Receipt has no From side (fromWh is '') — only its bins are read
+    invaPrefetch(kind, lastEl('inva-item-' + idx)?.value, b.fromWh, b.toWh, b.fromBins, b.toBins);
+  }
+  // REQ_LINES table: prefetch every line that needs a pick (once per rendered table)
+  function invaRlPrefetch() {
+    const table = lastEl('inva-rl-table'); if (!table || table.dataset.prefetched) return;
+    table.dataset.prefetched = '1';
+    table.querySelectorAll('tr[data-line]').forEach(tr => {
+      if (!tr.dataset.need) return;
+      invaPrefetch(tr.dataset.need, tr.dataset.item, tr.dataset.fromwh, tr.dataset.towh, tr.dataset.frombin === '1', tr.dataset.tobin === '1');
+    });
   }
 
   // ── Goods Receipt batch entry: the receipt creates new batches, so instead of
@@ -30869,12 +30942,10 @@ window.roAskFollowUp = function() {
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
     const fail = html => { $('[data-body]').innerHTML = '<div style="color:#b91c1c">' + html + '</div>'; };
 
-    const get = q => fetch(API + '/batch-serials?' + new URLSearchParams(q), { headers: { 'x-auth-token': tok() } })
-      .then(x => x.json()).then(r => { if (!r.ok) throw new Error(r.error || 'Lookup failed'); return r.rows || []; });
     let rows = [], toList = [];
     try {
       [rows, toList] = await Promise.all([
-        manual ? [] : get({ kind, itemCode, whs: fromWh, ...(fromBins ? { bins: '1' } : {}) }),
+        manual ? [] : invaStockRows(kind, itemCode, fromWh, fromBins),
         toBins ? invaReceiveBins(toWh) : [],
       ]);
     } catch (e) { fail('❌ ' + esc(e.message)); return; }
@@ -30885,8 +30956,10 @@ window.roAskFollowUp = function() {
     const th = 'padding:6px 8px;text-align:left;font-size:10.5px;text-transform:uppercase;color:' + COLOR + ';background:#f3f4f6;position:sticky;top:0';
     const td = 'padding:5px 8px;border-bottom:1px solid #f3f4f6';
     const numInp = 'width:90px;border:1.5px solid #d1d5db;border-radius:5px;padding:4px 6px;text-align:right';
+    // options built once — a large warehouse has thousands of bins and there is one select per row
+    const toOpts = toList.map(b => '<option value="' + b.binAbs + '">' + esc(b.binCode) + (b.isDefault ? ' (default)' : '') + '</option>').join('');
     const toSel = abs => '<select data-to style="border:1.5px solid #d1d5db;border-radius:5px;padding:4px 6px;font-size:12px;max-width:170px"><option value="">— To bin —</option>'
-      + toList.map(b => '<option value="' + b.binAbs + '"' + (b.binAbs === Number(abs) ? ' selected' : '') + '>' + esc(b.binCode) + (b.isDefault ? ' (default)' : '') + '</option>').join('') + '</select>';
+      + (Number(abs) > 0 ? toOpts.replace('<option value="' + Number(abs) + '">', '<option value="' + Number(abs) + '" selected>') : toOpts) + '</select>';
     // previous picks for this line, matched by batch/serial + From bin
     const keyOf = (id, fromAbs) => String(id ?? '') + '|' + (fromBins ? Number(fromAbs) || 0 : '');
     const prevBy = new Map((prev || []).map(p => [keyOf(p.batch ?? p.serial, p.fromBinAbs), p]));
@@ -31024,10 +31097,7 @@ window.roAskFollowUp = function() {
 
     let rows = [];
     try {
-      const q = new URLSearchParams({ kind, itemCode, whs });
-      const r = await fetch(API + '/batch-serials?' + q, { headers: { 'x-auth-token': tok() } }).then(x => x.json());
-      if (!r.ok) throw new Error(r.error || 'Lookup failed');
-      rows = r.rows || [];
+      rows = await invaStockRows(kind, itemCode, whs, false);
     } catch (e) { $('[data-body]').innerHTML = '<div style="color:#b91c1c">❌ ' + esc(e.message) + '</div>'; return; }
     if (!rows.length) { $('[data-body]').innerHTML = '<div style="color:#b91c1c">No ' + (kind === 'serial' ? 'serial numbers' : 'batches') + ' in stock for this item in warehouse ' + esc(whs) + '.</div>'; return; }
 
@@ -31100,6 +31170,8 @@ window.roAskFollowUp = function() {
   };
 
   window.invaPost = function() {
+    // posting moves stock — cached stock rows are stale from here on (bin lists stay)
+    for (const [k, v] of invaLookupCache) if (v.ttl === INVA_STOCK_TTL) invaLookupCache.delete(k);
     send(JSON.stringify({
       action:   'post',
       docDate:  lastEl('inva-rf-date')?.value || '',
@@ -31135,7 +31207,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
@@ -31375,7 +31447,7 @@ window.roAskFollowUp = function() {
     const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -32007,7 +32079,7 @@ window.roAskFollowUp = function() {
     const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -32937,7 +33009,7 @@ window.roAskFollowUp = function() {
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
       'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel',
-      'po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+      'po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
       'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
@@ -33368,7 +33440,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -33603,7 +33675,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
       'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -33765,7 +33837,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
       'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -33821,7 +33893,7 @@ window.roAskFollowUp = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
     'product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -34481,7 +34553,7 @@ window.roAskFollowUp = function() {
     'messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel',
@@ -34553,7 +34625,7 @@ window.roAskFollowUp = function() {
     'demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel',
     'dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -34830,7 +34902,7 @@ window.roAskFollowUp = function() {
 
   window.showSQPanel = function(){
     ['messages','product-forecast-panel','rush-orders-panel','soa-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel',
+     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
      'qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
     const bb=document.querySelector('.bottom-bar'); const ia=document.querySelector('.input-area');
@@ -35381,7 +35453,7 @@ window.roAskFollowUp = function() {
 
   window.showQCompPanel = function(){
     ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel',
+     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
      'soa-panel','sq-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
     const bb=document.querySelector('.bottom-bar'); const ia=document.querySelector('.input-area');
@@ -35676,13 +35748,14 @@ window.roAskFollowUp = function() {
     d2arinv:    { api:'/api/delivery-arinv',  color:'#0a6ed1', nav:'nav-d2arinv',    show:'showD2ARInvPanel',    printTitle:'A/R Invoice Preview' },
     arinv2arcm: { api:'/api/arinv-arcm',      color:'#0a6ed1', nav:'nav-arinv2arcm', show:'showARInv2ARCMPanel', printTitle:'A/R Credit Memo Preview' },
     'grpo-apinv': { api:'/api/grpo-apinv',    color:'#0a6ed1', nav:'nav-grpo-apinv', show:'showGRPOtoAPInvPanel', printTitle:'A/P Invoice Preview',     party:'VENDOR' },
+    apsv:       { api:'/api/apinv-service',   color:'#0a6ed1', nav:'nav-apinv-service', show:'showAPServicePanel', printTitle:'A/P Service Invoice Preview', party:'VENDOR' },
     apcm:       { api:'/api/apinv-apcm',      color:'#0a6ed1', nav:'nav-apinv-apcm', show:'showAPCMPanel',       printTitle:'A/P Credit Memo Preview', party:'VENDOR' },
     'po-to-grpo': { api:'/api/po-to-grpo',    color:'#0a6ed1', nav:'nav-po-to-grpo', show:'showPOtoGRPOPanel',   printTitle:'Goods Receipt PO Preview', party:'VENDOR' },
   };
   const STEP_LABEL = { INIT:'READY', SELECT_CUSTOMER:'CUSTOMER', SELECT_SOURCE:'DOCUMENT', REVIEW_LINES:'REVIEW', DONE:'DONE' };
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel',
@@ -35967,6 +36040,107 @@ window.roAskFollowUp = function() {
     const wh = field(row, 'wh');
     if (it.warehouse && [...wh.options].some(o => o.value === it.warehouse)) wh.value = it.warehouse;
     cfCalc(input);
+  };
+
+  // ── A/P Invoice (Service) form — apinv-service-agent.mjs ────────────────────
+  function svAccounts(form) {
+    if (!form._accts) {
+      form._accts = new Map();
+      let rows = [];
+      try { rows = JSON.parse(form.dataset.accts || '[]'); } catch {}
+      rows.forEach(([code, fmtCode, name]) => {
+        const a = { code, fmt: fmtCode, name };
+        form._accts.set(fmtCode + ' — ' + name, a);
+        form._accts.set(String(fmtCode).toLowerCase(), a);
+        form._accts.set(String(code).toLowerCase(), a);
+      });
+    }
+    return form._accts;
+  }
+  function svHeader(form) {
+    const h = {};
+    form.querySelectorAll('[data-h]').forEach(i => { h[i.dataset.h] = i.value.trim(); });
+    return h;
+  }
+  function svRetire(form) {
+    form.querySelectorAll('input,select,button,textarea').forEach(x => { x.disabled = true; });
+    form.style.opacity = '.55';
+  }
+  window.svCalc = function(ctrl) {
+    const form = ctrl.closest('[data-sv-form]'); if (!form) return;
+    let sub = 0, tax = 0;
+    form.querySelectorAll('tbody [data-sv-line]').forEach(row => {
+      const amtEl = field(row, 'amount'), amt = num(amtEl.value);
+      const t = field(row, 'tax'), rate = num(t.options[t.selectedIndex]?.dataset.rate);
+      const tx = amt * rate / 100;
+      field(row, 'taxamt').textContent = fmt(tx);
+      field(row, 'total').textContent = fmt(amt + tx);
+      amtEl.style.borderColor = row.dataset.open && amt > num(row.dataset.open) + 0.005 ? '#ef4444' : '#d1d5db';
+      sub += amt; tax += tx;
+    });
+    form.querySelector('[data-f="sub"]').textContent = fmt(sub);
+    form.querySelector('[data-f="taxsum"]').textContent = fmt(tax);
+    form.querySelector('[data-f="grand"]').textContent = fmt(sub + tax);
+  };
+  window.svAcct = function(input) {
+    const form = input.closest('[data-sv-form]'), row = input.closest('[data-sv-line]');
+    const v = input.value.trim(), map = svAccounts(form);
+    const a = map.get(v) || map.get(v.toLowerCase());
+    const nm = field(row, 'acctname');
+    if (a) {
+      row.dataset.acct = a.code;
+      if (input.value !== a.fmt + ' — ' + a.name) input.value = a.fmt + ' — ' + a.name;
+      nm.textContent = a.name; nm.style.color = '#374151';
+      const d = field(row, 'desc'); if (!d.value.trim()) d.value = a.name.slice(0, 100);
+      input.style.borderColor = '#d1d5db';
+    } else {
+      delete row.dataset.acct;
+      nm.textContent = v ? 'Pick an account from the list' : ''; nm.style.color = '#b91c1c';
+    }
+  };
+  window.svAddLine = function(btn) {
+    const form = btn.closest('[data-sv-form]'); if (!form) return;
+    const tpl = form.querySelector('template[data-sv-tpl]'), body = form.querySelector('tbody');
+    const row = tpl.content.firstElementChild.cloneNode(true);
+    body.appendChild(row);
+    field(row, 'acct')?.focus();
+    svCalc(btn);
+  };
+  window.svRemove = function(btn) {
+    const form = btn.closest('[data-sv-form]'), row = btn.closest('[data-sv-line]');
+    if (row) row.remove();
+    if (form) svCalc(form.querySelector('[data-sv-post]'));
+  };
+  window.svPickPO = function(sel) {
+    const form = sel.closest('[data-sv-form]'), p = form.dataset.prefix;
+    const hdr = svHeader(form); delete hdr.po;
+    send(p, JSON.stringify({ action:'select_po', docEntry: sel.value ? Number(sel.value) : null, hdr })).then(d => {
+      if (d && d.step === 'REVIEW_LINES' && /data-sv-form/.test(d.reply || '')) svRetire(form);
+      else sel.value = form.dataset.po || '';
+    });
+  };
+  window.svPost = function(btn) {
+    const form = btn.closest('[data-sv-form]'); if (!form) return;
+    const p = form.dataset.prefix, hdr = svHeader(form); delete hdr.po;
+    if (!hdr.docDate || !hdr.taxDate) { alert('Set the Posting Date and Document Date.'); return; }
+    const lines = [];
+    for (const row of form.querySelectorAll('tbody [data-sv-line]')) {
+      const amount = num(field(row, 'amount').value), based = row.dataset.base != null;
+      const accIn = field(row, 'acct'), desc = field(row, 'desc').value.trim();
+      if (!based && !row.dataset.acct && !amount && !(accIn && accIn.value.trim()) && !desc) continue;   // untouched empty row
+      if (!based && !row.dataset.acct) { alert('Pick a G/L account from the list on every line (or remove the empty line).'); accIn?.focus(); return; }
+      if (!(amount > 0)) { alert('Enter an amount above zero on every line, or remove the line.'); field(row, 'amount').focus(); return; }
+      if (based && amount > num(row.dataset.open) + 0.005) { alert('Amount ' + fmt(amount) + ' exceeds the open PO amount ' + fmt(num(row.dataset.open)) + '.'); return; }
+      lines.push({ base: based ? Number(row.dataset.base) : null, acct: row.dataset.acct || '', desc, amount,
+        tax: field(row, 'tax').value, free: field(row, 'free').value.trim() });
+    }
+    if (!lines.length) { alert('Add at least one line with a G/L account and an amount.'); return; }
+    const label = btn.textContent;
+    btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = '⏳ Posting…';
+    send(p, JSON.stringify({ action:'post_service', formId: Number(form.dataset.form), ...hdr, lines })).then(d => {
+      if (d && d.step === 'DONE') { btn.textContent = '✓ Posted'; svRetire(form); form.style.opacity = '1'; }
+      else { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = label; }
+    });
   };
 
   window.cfWhChange = function(sel) { cfCalc(sel); };
@@ -36487,7 +36661,7 @@ window.roAskFollowUp = function() {
   function el(id){ return document.getElementById(id); }
 
   const ALL_PANELS = ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
 
   window.showInPayPanel = function(){
@@ -36794,7 +36968,7 @@ window.roAskFollowUp = function() {
   function el(id){ return document.getElementById(id); }
 
   const ALL_PANELS = ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel'];
 
   window.showOutPayPanel=function(){
@@ -37428,7 +37602,7 @@ window.showUserRightsPanel = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -37687,7 +37861,7 @@ window.showDataSyncPanel = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','financial-dashboard-panel','customer-aging-panel'];
@@ -37715,7 +37889,7 @@ window.showFinancialDashboard = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel',
@@ -37739,7 +37913,7 @@ window.showCustomerAgingDashboard = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel',
@@ -38787,7 +38961,7 @@ window.showPromptActivity = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -38996,7 +39170,7 @@ window.showActivityAgent = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -40385,6 +40559,8 @@ window.almReset = almReset;
                           steps:[S('Vendor',['READY','VENDOR']),S('Purchase Order',['DOCUMENT']),S('Review Lines',['REVIEW']),S('Posted',['DONE'])] },
     'grpo-apinv-panel': { p:'grpo-apinv', icon:'🧾', title:'GRPO → A/P Invoice Agent', text:'I’ll copy an open Goods Receipt PO into an A/P Invoice. Select a vendor to begin.',
                           steps:[S('Vendor',['READY','VENDOR']),S('GRPO',['DOCUMENT']),S('Review Lines',['REVIEW']),S('Posted',['DONE'])] },
+    'apsv-panel':       { p:'apsv', icon:'🧾', title:'A/P Service Invoice Agent', text:'I’ll post a service-type A/P Invoice to G/L accounts — enter the lines or copy them from an open service PO. Select a vendor to begin.',
+                          steps:[S('Vendor',['READY','VENDOR']),S('Invoice Details',['REVIEW']),S('Posted',['DONE'])] },
     'scan-apinv-panel': { p:'apinv', icon:'🧾', title:'Scan A/P Invoice Agent', text:'I’ll match a Goods Receipt with the supplier invoice and post the A/P Invoice.',
                           steps:[S('Select GRPO',['READY','LOADING','SELECT GRPO']),S('Upload Invoice',['UPLOAD']),S('Review',['REVIEW']),S('Posted',['DONE'])] },
     'three-way-match-panel': { p:'twm', icon:'🔍', title:'Three-Way AP Invoice Agent', text:'I’ll validate the supplier invoice against GRPO quantities and PO prices.',

@@ -35,6 +35,8 @@ import { createSalesOrderAgentRouter } from './controllers/sales-order-agent.mjs
 import { createPRtoPOAgentRouter } from './controllers/pr-to-po-agent.mjs';
 import { createPOtoGRPOAgentRouter } from './controllers/po-to-grpo-agent.mjs';
 import { createGRPOtoAPInvAgentRouter } from './controllers/grpo-to-apinv-agent.mjs';
+import { createScanAPInvAgentRouter } from './controllers/scan-apinv-agent.mjs';
+import { createAPInvServiceAgentRouter } from './controllers/apinv-service-agent.mjs';
 import { createOcrPoScanAgentRouter }   from './controllers/ocr-po-scan-agent.mjs';
 import { createOcrExpenseAgentRouter }  from './controllers/ocr-expense-agent.mjs';
 import { createOcrInwardAgentRouter }   from './controllers/ocr-inward-agent.mjs';
@@ -6169,7 +6171,7 @@ app.use('/api/branding', createBrandingRouter({ requireAuth }));
 app.use('/api/ai-credits', createAiCreditsRouter({ requireAuth }));
 
 // ── Mail-PO→SO Agent routes — extracted to controllers/mail-po-agent.mjs ──
-app.use('/api/mail-po', createMailPoAgentRouter({ requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER }));
+app.use('/api/mail-po', createMailPoAgentRouter({ requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, cacheRepo, getActiveCompanyId: () => getActiveCompanyId() }));
 
 
 // ── Production Agent routes — extracted to controllers/production-agent.mjs ──
@@ -6207,8 +6209,18 @@ app.use('/api/po-to-grpo', createPOtoGRPOAgentRouter({
   requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 
-// ── GRPO to AP Invoice OCR Agent routes ────────────────────────────────────
+// ── GRPO to AP Invoice copy-flow Agent routes ──────────────────────────────
 app.use('/api/grpo-apinv', createGRPOtoAPInvAgentRouter({
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap,
+}));
+
+// ── A/P Invoice (Service) Agent routes — G/L account lines, optional service PO ──
+app.use('/api/apinv-service', createAPInvServiceAgentRouter({
+  requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap,
+}));
+
+// ── Scan A/P Invoice (OCR three-way match) Agent routes ────────────────────
+app.use('/api/scan-apinv', createScanAPInvAgentRouter({
   requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 

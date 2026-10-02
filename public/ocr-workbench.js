@@ -438,7 +438,7 @@ html[data-ui="fiori"] .owb-dd div:hover,html[data-ui="fiori"] .owb-dd div.hl{bac
     return { overall, html };
   }
 
-  window.OcrWorkbench = { create, ui: { esc, num, fmt, todayStr, plusDays, combo, closeDD, api, level, pctTxt, amtScore, avg, sig, lineSig, scorecard } };
+  window.OcrWorkbench = { create, ui: { esc, num, fmt, todayStr, plusDays, combo, closeDD, api, level, pctTxt, amtScore, avg, sig, lineSig, scorecard, injectStyles } };
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1506,4 +1506,434 @@ html[data-ui="fiori"] .owb-dd div:hover,html[data-ui="fiori"] .owb-dd div.hl{bac
     });
   }
   if (document.getElementById('ocr-gatepass-panel')) init(); else document.addEventListener('DOMContentLoaded', init);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Mail PO → SO: customer PO from an email → SAP Sales Order form
+//  Same split view as the scan agents, but the document comes from the mailbox
+//  instead of an upload, so it renders into the Mail PO panel's detail view.
+//  window.MailPoReview.open(container, { uid, from, subject, date }, { onBack })
+// ═══════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+  const { esc, num, fmt, todayStr, plusDays, combo, closeDD, api, amtScore, avg, sig, lineSig, scorecard, level, injectStyles } = window.OcrWorkbench.ui;
+  const API = '/api/mail-po';
+  const tok = () => localStorage.getItem('hanny_token') || '';
+
+  let ctx = null;   // { root, email, opts, pdfUrl, pdfName, pdfSize, po, ownCompany, form, seq }
+
+  function open(container, email, opts = {}) {
+    injectStyles();
+    closeDD();
+    if (ctx?.pdfUrl) URL.revokeObjectURL(ctx.pdfUrl);
+    const seq = (ctx?.seq || 0) + 1;
+    ctx = { container, email, opts, seq, pdfUrl: null, pdfName: '', pdfSize: 0, po: null, ownCompany: '', form: null };
+    const when = email.date ? new Date(email.date).toLocaleString() : '';
+    container.innerHTML = `
+      <div class="owb" style="--owb-c:#2563eb;display:flex">
+        <div class="owb-top">
+          <div class="ic">📧</div>
+          <div style="flex:1;min-width:0"><div class="t1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(email.subject || 'Purchase Order')}</div>
+            <div class="t2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(email.from || '')}${when ? ' · ' + esc(when) : ''}</div></div>
+          <span class="badge" data-r="badge">OPENING</span>
+          <button data-r="back" title="Back to Inbox">← Inbox</button>
+          <button data-r="rescan" title="Read the PDF again">⟳ Re-scan</button>
+        </div>
+        <div class="owb-body has-doc" data-r="body">
+          <div class="owb-left" data-r="left">
+            <div class="bar"><span>📄</span><span class="fn" data-r="fn">Downloading PDF…</span><span data-r="fsize" style="color:var(--muted)"></span><a data-r="openpdf" target="_blank" rel="noopener" style="font-size:11px;color:#2563eb;display:none">Open ↗</a></div>
+            <div data-r="pdfwrap" style="flex:1;display:flex;background:#fff"><div class="owb-load" style="margin:auto"><div class="owb-spin"></div>Loading PDF…</div></div>
+          </div>
+          <div class="owb-split" data-r="split" title="Drag to resize"></div>
+          <div class="owb-right" data-r="right"></div>
+        </div>
+      </div>`;
+    const root = container.firstElementChild;
+    ctx.root = root;
+    const $ = r => root.querySelector(`[data-r="${r}"]`);
+    $('back').addEventListener('click', () => back());
+    $('rescan').addEventListener('click', () => open(container, email, opts));
+
+    // Drag-to-resize divider (same behaviour as the scan workbench)
+    const split = $('split'), left = $('left'), body = $('body');
+    split.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const startX = e.clientX, startW = left.getBoundingClientRect().width, total = body.getBoundingClientRect().width;
+      const ifr = left.querySelector('iframe'); if (ifr) ifr.style.pointerEvents = 'none';
+      const mv = ev => { left.style.width = Math.min(total - 360, Math.max(260, startW + ev.clientX - startX)) + 'px'; };
+      const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); if (ifr) ifr.style.pointerEvents = ''; };
+      document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    });
+
+    run(seq);
+  }
+
+  const alive = seq => ctx && ctx.seq === seq;
+  const $r = r => ctx.root.querySelector(`[data-r="${r}"]`);
+  const setBadge = t => { const b = $r('badge'); if (b) b.textContent = t; };
+  const right = () => $r('right');
+  const loading = text => { right().innerHTML = `<div class="owb-scroll"><div class="owb-load"><div class="owb-spin"></div>${esc(text)}</div></div>`; };
+
+  function back() {
+    closeDD();
+    if (ctx?.pdfUrl) URL.revokeObjectURL(ctx.pdfUrl);
+    const onBack = ctx?.opts?.onBack;
+    ctx = { seq: (ctx?.seq || 0) + 1 };
+    onBack && onBack();
+  }
+
+  async function loadPdf(seq) {
+    const r = await fetch(`${API}/pdf?uid=${encodeURIComponent(ctx.email.uid)}`, { headers: { 'x-auth-token': tok() } });
+    if (!r.ok) throw new Error('Could not load the PDF attachment');
+    const blob = await r.blob();
+    if (!alive(seq)) return;
+    ctx.pdfUrl = URL.createObjectURL(blob);
+    $r('pdfwrap').innerHTML = `<iframe src="${ctx.pdfUrl}#view=FitH" title="PO preview" style="flex:1;border:0;width:100%;background:#fff"></iframe>`;
+    const a = $r('openpdf'); a.href = ctx.pdfUrl; a.style.display = '';
+  }
+
+  async function run(seq) {
+    try {
+      loading('Downloading the email from the mailbox…');
+      const o = await api('POST', `${API}/open`, { uid: ctx.email.uid });
+      if (!alive(seq)) return;
+      if (!o.hasPdf) throw new Error('This email has no PDF attachment.');
+      ctx.pdfName = o.pdfName; ctx.pdfSize = o.pdfSize;
+      $r('fn').textContent = o.pdfName; $r('fn').title = o.pdfName;
+      $r('fsize').textContent = o.pdfSize ? `${(o.pdfSize / 1024).toFixed(0)} KB` : '';
+      loadPdf(seq).catch(e => { if (alive(seq)) $r('pdfwrap').innerHTML = `<div class="owb-msg err" style="margin:12px">${esc(e.message)}</div>`; });
+
+      setBadge('READING');
+      loading('AI is reading the purchase order… this usually takes 10–30 seconds.');
+      const [x, look] = await Promise.all([
+        api('POST', `${API}/extract`, { uid: ctx.email.uid }),
+        api('GET', `${API}/lookups`).catch(() => ({ warehouses: [], ownCompany: '' })),
+      ]);
+      if (!alive(seq)) return;
+      setBadge('MATCHING');
+      loading('Matching against SAP customer and item master…');
+      ctx.po = x.po || {};
+      ctx.ownCompany = x.ownCompany || look.ownCompany || '';
+      const po = ctx.po;
+      const f = {
+        customer: x.customer || null, customerChanged: false,
+        numAtCard: po.poNumber || '',
+        docDate: po.poDate || todayStr(),
+        dueDate: po.deliveryDate || plusDays(7),
+        comments: `Based on customer PO ${po.poNumber || ''} received by email`.replace(/\s+/g, ' ').trim().slice(0, 250),
+        warehouses: look.warehouses || [],
+        scanned: !!x.scanned,
+        lines: (x.lines || []).map(l => ({
+          include: true, ocr: l.ocrLine || {},
+          itemCode: l.match?.code || '', itemName: l.match?.name || '', unit: l.match?.unit || l.ocrLine?.unit || '',
+          score: l.match ? l.match.score : 0, changed: false,
+          qty: num(l.ocrLine?.qty) || 1, unitPrice: num(l.ocrLine?.unitPrice),
+          uomCode: '', uoms: [], warehouse: '',
+        })),
+        msg: null, warnAck: false,
+      };
+      if (!f.lines.length) f.lines.push(blankLine());
+      ctx.form = f;
+      await Promise.all(f.lines.filter(l => l.itemCode).map(loadUoms));
+      if (!alive(seq)) return;
+      setBadge('REVIEW');
+      render();
+    } catch (e) {
+      if (!alive(seq)) return;
+      setBadge('ERROR');
+      right().innerHTML = `<div class="owb-scroll"><div class="owb-msg err">❌ ${esc(e.message)}</div>
+        <button class="owb-btn" data-r="retry">Try again</button></div>`;
+      $r('retry').addEventListener('click', () => open(ctx.container, ctx.email, ctx.opts));
+    }
+  }
+
+  function blankLine() {
+    return { include: true, ocr: {}, itemCode: '', itemName: '', unit: '', score: 0, changed: true, qty: 1, unitPrice: 0, uomCode: '', uoms: [], warehouse: '' };
+  }
+
+  // UoM list from the SAP item master; default = item's sales UoM, or the PO's unit if SAP has it
+  async function loadUoms(l) {
+    try {
+      const d = await api('GET', `${API}/item-uoms?itemCode=${encodeURIComponent(l.itemCode)}`);
+      l.uoms = (d.uoms || []).filter(u => u.code && u.code !== 'Manual');
+      const docUnit = String(l.ocr.unit || '').toLowerCase();
+      const hit = docUnit && l.uoms.find(u => u.code.toLowerCase() === docUnit || String(u.name).toLowerCase() === docUnit);
+      l.uomCode = hit ? hit.code : (d.defaultCode && d.defaultCode !== 'Manual' ? d.defaultCode : (l.uoms[0]?.code || ''));
+    } catch { l.uoms = []; l.uomCode = ''; }
+  }
+
+  function lineStatus(l) {
+    if (!l.itemCode) return ['bad', 'Not in SAP'];
+    if (l.changed) return ['chg', 'Selected'];
+    if (l.score >= 0.9) return ['ok', 'Matched'];
+    return ['warn', 'Check match'];
+  }
+
+  // ── Match scoring (same rules as the scan agents) ──
+  const itemScore  = l => (!l.itemCode ? 0 : l.changed ? 1 : num(l.score));
+  const qtyScore   = l => (num(l.ocr.qty) ? amtScore(l.qty, l.ocr.qty) : null);
+  const priceScore = l => (l.ocr.unitPrice != null && num(l.ocr.unitPrice) ? amtScore(l.unitPrice, l.ocr.unitPrice) : null);
+  function lineScore(l) {
+    if (!l.itemCode) return 0;
+    const parts = [[itemScore(l), 0.6], [qtyScore(l), 0.2], [priceScore(l), 0.2]].filter(([v]) => v != null);
+    const w = parts.reduce((s, [, x]) => s + x, 0);
+    return parts.reduce((s, [v, x]) => s + v * x, 0) / w;
+  }
+  const custScore = f => (!f.customer ? 0 : f.customerChanged ? 1 : (f.customer.score ?? 1));
+
+  function criteria(f, po) {
+    const inc = f.lines.filter(l => l.include);
+    const withQty = inc.filter(l => qtyScore(l) != null), withPrice = inc.filter(l => priceScore(l) != null);
+    const qtyDiff = withQty.filter(l => qtyScore(l) < 0.999).length, priceDiff = withPrice.filter(l => priceScore(l) < 0.999).length;
+    const good = inc.filter(l => itemScore(l) >= 0.9).length;
+    const docTotal = (po.lines || []).reduce((s, l) => s + (num(l.lineTotal) || num(l.qty) * num(l.unitPrice)), 0);
+    const formTotal = inc.reduce((s, l) => s + num(l.qty) * num(l.unitPrice), 0);
+    const hdr = [!!String(f.numAtCard || '').trim(), !!(po.poDate && f.docDate)];
+    return [
+      { label: 'Customer vs SAP customer master', weight: 25, score: custScore(f), blocking: !f.customer,
+        note: !f.customer ? `"${po.customerName || '—'}" not found in SAP` : f.customerChanged ? 'Selected by you' : `"${po.customerName || '—'}" → ${f.customer.code}` },
+      { label: 'Items vs SAP item master', weight: 30, score: inc.length ? avg(inc.map(itemScore)) : 0,
+        blocking: !inc.length || inc.some(l => !l.itemCode),
+        note: `${good} of ${inc.length} line(s) matched${inc.some(l => !l.itemCode) ? ' · missing items block posting' : ''}` },
+      { label: 'Quantities vs PO', weight: 10, score: avg(withQty.map(qtyScore)),
+        note: withQty.length ? (qtyDiff ? `${qtyDiff} line(s) differ from the PO` : 'All quantities as on PO') : 'No quantities on PO' },
+      { label: 'Unit prices vs PO', weight: 10, score: avg(withPrice.map(priceScore)),
+        note: withPrice.length ? (priceDiff ? `${priceDiff} line(s) differ from the PO` : 'All prices as on PO') : 'No prices on PO' },
+      { label: 'Total vs PO', weight: 15, score: amtScore(formTotal, docTotal),
+        note: docTotal ? `Form ${fmt(formTotal)} · PO ${fmt(docTotal)}` : 'No total on PO' },
+      { label: 'Header details', weight: 10, score: hdr.filter(Boolean).length / hdr.length,
+        note: `${hdr[0] ? 'PO no. ✓' : 'PO no. missing'} · ${hdr[1] ? 'Date ✓' : 'Date not read'}` },
+    ];
+  }
+
+  function render() {
+    const f = ctx.form, po = ctx.po || {};
+    const root = right();
+    const cState = !f.customer ? 'bad' : f.customerChanged ? '' : level(custScore(f));
+    const whOpts = ['<option value="">Item default</option>']
+      .concat(f.warehouses.map(w => `<option value="${esc(w.code)}">${esc(w.code)}${w.name ? ' — ' + esc(w.name) : ''}</option>`)).join('');
+    const unmatched = f.lines.filter(l => l.include && !l.itemCode).length;
+    const fuzzy = f.lines.filter(l => l.include && l.itemCode && !l.changed && l.score < 0.9).length;
+    const cur = po.currency || '';
+
+    root.innerHTML = `
+      <div class="owb-scroll" data-r="scroll">
+        ${f.msg ? `<div class="owb-msg ${f.msg.type}">${f.msg.html}</div>` : ''}
+        <div data-r="score"></div>
+        ${!f.customer || unmatched || fuzzy || f.scanned ? `<div class="owb-msg warn">
+            ${f.scanned ? '🖼️ This PDF is a scanned image — values were read by AI vision, please check them closely.<br>' : ''}
+            ${!f.customer ? '⚠️ The customer on the PO was not found in SAP — choose one below.<br>' : ''}
+            ${unmatched ? `⚠️ ${unmatched} line(s) have no SAP item — pick an item or untick the line.<br>` : ''}
+            ${fuzzy ? `🔎 ${fuzzy} line(s) matched approximately — please confirm the item.` : ''}</div>` : ''}
+
+        <div class="owb-card">
+          <h4>Sales Order — Header</h4>
+          <div class="owb-grid">
+            <div class="owb-f" style="grid-column:span 2">
+              <label>Customer <span class="req">*</span> ${sig(custScore(f))}</label>
+              <input class="owb-in ${cState}" data-r="customer" placeholder="Search SAP customer by name or code…"
+                value="${f.customer ? esc(`${f.customer.code} — ${f.customer.name}`) : ''}">
+              <div class="owb-hint">PO issued by (header): <b>${esc(po.customerName || '—')}</b>${po.customerCode ? ` (${esc(po.customerCode)})` : ''}
+                ${po.customerAddress ? `<br>${esc(po.customerAddress)}` : ''}
+                ${ctx.ownCompany ? `<br><span title="Our own company appears in the Vendor/Supplier block of the PO and is never used as the customer">Our company (vendor block, ignored): ${esc(ctx.ownCompany)}</span>` : ''}</div>
+            </div>
+            <div class="owb-f"><label>Currency</label><input class="owb-in" readonly value="${esc(cur || f.customer?.currency || 'Customer default')}"></div>
+            <div class="owb-f"><label>Customer Ref. No. (PO #)</label><input class="owb-in" data-h="numAtCard" maxlength="100" value="${esc(f.numAtCard)}">
+              <div class="owb-hint">On PO: <b>${esc(po.poNumber || '—')}</b></div></div>
+            <div class="owb-f"><label>Posting Date <span class="req">*</span></label><input type="date" class="owb-in" data-h="docDate" value="${esc(f.docDate)}">
+              <div class="owb-hint">PO date: <b>${esc(po.poDate || '—')}</b></div></div>
+            <div class="owb-f"><label>Delivery Date <span class="req">*</span></label><input type="date" class="owb-in" data-h="dueDate" value="${esc(f.dueDate)}">
+              <div class="owb-hint">On PO: <b>${esc(po.deliveryDate || '—')}</b></div></div>
+            <div class="owb-f" style="grid-column:1/-1"><label>Remarks</label><input class="owb-in" data-h="comments" maxlength="254" value="${esc(f.comments)}"></div>
+          </div>
+        </div>
+
+        <div class="owb-card" style="padding:14px 0 6px">
+          <h4 style="padding:0 14px">Items <span style="flex:1"></span>
+            <button class="owb-btn" data-r="addline" style="padding:4px 10px;font-size:11.5px;text-transform:none;letter-spacing:0">+ Add line</button></h4>
+          <div style="overflow-x:auto">
+          <table class="owb-tbl">
+            <thead><tr>
+              <th title="Include this line in the Sales Order"></th><th>On PO</th><th style="min-width:210px">SAP Item <span style="color:var(--owb-bad)">*</span></th>
+              <th class="r" style="width:80px">Qty</th><th style="min-width:90px">UoM</th><th class="r" style="width:100px">Unit Price</th>
+              <th style="min-width:120px">Warehouse</th><th class="r">Total</th><th>Match</th><th></th>
+            </tr></thead>
+            <tbody>
+            ${f.lines.map((l, i) => {
+              const [sc, st] = lineStatus(l);
+              const off = !l.include;
+              const uomCell = l.uoms.length
+                ? `<select class="owb-in" data-l="uom">${l.uoms.map(u => `<option value="${esc(u.code)}" ${u.code === l.uomCode ? 'selected' : ''}>${esc(u.code)}</option>`).join('')}</select>`
+                : `<span style="font-size:11px;display:inline-block;padding-top:6px">${esc(l.unit || '—')}</span>`;
+              return `<tr data-i="${i}" class="${off ? 'off' : ''} ${!off && !l.itemCode ? 'rowbad' : ''}">
+                <td><input type="checkbox" data-l="include" ${l.include ? 'checked' : ''}></td>
+                <td class="ocr">${l.ocr.description ? esc(l.ocr.description) : '<i>added manually</i>'}
+                  ${l.ocr.itemCode || l.ocr.qty ? `<div class="m">${l.ocr.itemCode ? esc(l.ocr.itemCode) + ' · ' : ''}${l.ocr.qty ? esc(l.ocr.qty) + (l.ocr.unit ? ' ' + esc(l.ocr.unit) : '') + ' × ' + esc(l.ocr.unitPrice ?? 0) : ''}</div>` : ''}</td>
+                <td><input class="owb-in ${sc === 'bad' ? 'bad' : sc === 'warn' ? 'warn' : ''}" data-l="item" placeholder="Search item…"
+                      value="${l.itemCode ? esc(`${l.itemCode} — ${l.itemName}`) : ''}" title="${esc(l.itemName)}"></td>
+                <td><input class="owb-in r" data-l="qty" inputmode="decimal" value="${esc(l.qty)}"></td>
+                <td>${uomCell}</td>
+                <td><input class="owb-in r" data-l="unitPrice" inputmode="decimal" value="${esc(l.unitPrice)}"></td>
+                <td><select class="owb-in" data-l="warehouse">${whOpts}</select></td>
+                <td class="r" data-l="total" style="padding-top:10px;white-space:nowrap">${fmt(num(l.qty) * num(l.unitPrice))}</td>
+                <td style="padding-top:9px" data-l="sig">${lineSig(lineScore(l), st)}</td>
+                <td><button class="owb-x" data-l="del" title="Remove line">✕</button></td>
+              </tr>`;
+            }).join('')}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+      <div class="owb-foot">
+        <div class="owb-sum" data-r="sum"></div>
+        <span class="sp"></span>
+        <button class="owb-btn" data-r="skip">Skip</button>
+        <button class="owb-btn" data-r="validate">Validate</button>
+        <button class="owb-btn pri" data-r="post">${f.warnAck ? 'Post anyway' : 'Post Sales Order to SAP'}</button>
+      </div>`;
+
+    const q = s => root.querySelector(s);
+    const rows = [...root.querySelectorAll('tbody tr')];
+    rows.forEach((tr, i) => { tr.querySelector('[data-l="warehouse"]').value = f.lines[i].warehouse; });
+
+    const updateSum = () => {
+      const inc = f.lines.filter(l => l.include);
+      const total = inc.reduce((s, l) => s + num(l.qty) * num(l.unitPrice), 0);
+      q('[data-r="sum"]').innerHTML = `<span>Lines: <b>${inc.length}</b></span><span>Total before tax: <b>${esc(cur)} ${fmt(total)}</b></span>`;
+    };
+    const updateScore = () => {
+      q('[data-r="score"]').innerHTML = scorecard(criteria(f, po)).html;
+      rows.forEach((tr, i) => { const l = f.lines[i]; tr.querySelector('[data-l="sig"]').innerHTML = lineSig(lineScore(l), lineStatus(l)[1]); });
+    };
+    updateSum(); updateScore();
+
+    const edited = () => { f.warnAck = false; const b = q('[data-r="post"]'); if (b) b.textContent = 'Post Sales Order to SAP'; };
+    root.querySelectorAll('[data-h]').forEach(el => el.addEventListener('input', () => { f[el.dataset.h] = el.value; edited(); updateScore(); }));
+
+    // Customer master combobox
+    const cIn = q('[data-r="customer"]');
+    cIn.dataset.q = f.customer ? '' : (po.customerName || '').slice(0, 30);
+    combo(cIn, {
+      search: async s => (await api('GET', `${API}/customers?q=${encodeURIComponent(s)}`)).customers,
+      label: c => `<span class="c">${esc(c.code)}</span>${esc(c.name)}${c.currency ? ` <span style="color:var(--muted)">· ${esc(c.currency)}</span>` : ''}`,
+      onPick: c => { f.customer = c; f.customerChanged = true; f.msg = null; f.warnAck = false; render(); },
+      onBlur: () => { cIn.value = f.customer ? `${f.customer.code} — ${f.customer.name}` : ''; },
+    });
+
+    rows.forEach((tr, i) => {
+      const l = f.lines[i];
+      tr.querySelector('[data-l="include"]').addEventListener('change', e => { l.include = e.target.checked; f.warnAck = false; render(); });
+      tr.querySelector('[data-l="del"]').addEventListener('click', () => { f.lines.splice(i, 1); if (!f.lines.length) f.lines.push(blankLine()); f.warnAck = false; render(); });
+      ['qty', 'unitPrice'].forEach(k => tr.querySelector(`[data-l="${k}"]`).addEventListener('input', e => {
+        l[k] = e.target.value; edited();
+        tr.querySelector('[data-l="total"]').textContent = fmt(num(l.qty) * num(l.unitPrice));
+        updateSum(); updateScore();
+      }));
+      tr.querySelector('[data-l="uom"]')?.addEventListener('change', e => { l.uomCode = e.target.value; edited(); });
+      tr.querySelector('[data-l="warehouse"]').addEventListener('change', e => { l.warehouse = e.target.value; });
+      // Item master combobox
+      const itIn = tr.querySelector('[data-l="item"]');
+      itIn.dataset.q = l.itemCode ? '' : (l.ocr.description || '').slice(0, 30);
+      combo(itIn, {
+        search: async s => (await api('GET', `${API}/items?q=${encodeURIComponent(s)}`)).items,
+        label: it => `<span class="c">${esc(it.code)}</span>${esc(it.name)}${it.unit ? ` <span style="color:var(--muted)">· ${esc(it.unit)}</span>` : ''}`,
+        onPick: async it => {
+          Object.assign(l, { itemCode: it.code, itemName: it.name, unit: it.unit || l.unit, changed: true, include: true, uoms: [], uomCode: '' });
+          f.warnAck = false;
+          render();
+          await loadUoms(l);
+          if (ctx.form === f) render();
+        },
+        onBlur: () => { itIn.value = l.itemCode ? `${l.itemCode} — ${l.itemName}` : ''; },
+      });
+    });
+
+    q('[data-r="addline"]').addEventListener('click', () => { f.lines.push(blankLine()); render(); });
+    q('[data-r="skip"]').addEventListener('click', () => back());
+    q('[data-r="validate"]').addEventListener('click', () => validate(false));
+    q('[data-r="post"]').addEventListener('click', () => validate(true));
+  }
+
+  function showMsg(type, html) {
+    ctx.form.msg = { type, html };
+    render();
+    const sc = right().querySelector('[data-r="scroll"]'); if (sc) sc.scrollTop = 0;
+  }
+
+  function formErrors(f) {
+    const inc = f.lines.filter(l => l.include);
+    const errs = [];
+    if (!f.customer) errs.push('Select a customer.');
+    if (!f.docDate) errs.push('Enter a posting date.');
+    if (!f.dueDate) errs.push('Enter a delivery date.');
+    if (!inc.length) errs.push('Tick at least one line.');
+    inc.forEach(l => {
+      const n = f.lines.indexOf(l) + 1;
+      if (!l.itemCode) errs.push(`Line ${n}: choose an SAP item (or untick the line).`);
+      if (!(num(l.qty) > 0)) errs.push(`Line ${n}: quantity must be greater than 0.`);
+    });
+    return errs;
+  }
+
+  const soLines = f => f.lines.filter(l => l.include).map(l => ({
+    itemCode: l.itemCode, qty: num(l.qty), unitPrice: num(l.unitPrice),
+    uomCode: l.uomCode || 'Manual', warehouse: l.warehouse, freeText: l.ocr.description || '',
+  }));
+
+  const checkIcon = s => ({ ok: '✅', warning: '⚠️', error: '❌' }[s] || '⏭️');
+  const checksHtml = checks => checks.map(c => `<div style="margin:4px 0">${checkIcon(c.status)} <b>${esc(c.label)}</b> — ${esc(c.detail)}
+    ${(c.lines || []).filter(l => l.status !== 'ok').map(l => `<div style="margin-left:22px;font-size:11.5px">${checkIcon(l.status)} ${esc(l.detail)}</div>`).join('')}</div>`).join('');
+
+  // SAP pre-check (customer, credit limit, items, stock, UoM); post=true continues to posting
+  async function validate(post) {
+    closeDD();
+    const f = ctx.form;
+    const errs = formErrors(f);
+    if (errs.length) return showMsg('err', '<b>Please fix before posting:</b><br>' + errs.map(esc).join('<br>'));
+    const btn = right().querySelector(post ? '[data-r="post"]' : '[data-r="validate"]');
+    btn.disabled = true; btn.textContent = 'Checking SAP…';
+    let d;
+    try {
+      d = await api('POST', `${API}/validate-so`, { cardCode: f.customer.code, lines: soLines(f) });
+    } catch (e) { return showMsg('err', `<b>Validation failed.</b><br>${esc(e.message)}`); }
+    if (d.hasErrors) return showMsg('err', '<b>SAP checks found problems — fix them before posting:</b>' + checksHtml(d.checks));
+    if (!post) return showMsg(d.hasWarnings ? 'warn' : 'info', (d.hasWarnings ? '<b>Warnings — review before posting:</b>' : '<b>All SAP checks passed — ready to post.</b>') + checksHtml(d.checks));
+    if (d.hasWarnings && !f.warnAck) {
+      f.warnAck = true;
+      return showMsg('warn', '<b>Warnings — click “Post anyway” to post regardless:</b>' + checksHtml(d.checks));
+    }
+    await createSo(false);
+  }
+
+  async function createSo(allowDuplicateRef) {
+    const f = ctx.form, email = ctx.email;
+    const btn = right().querySelector('[data-r="post"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Posting to SAP…'; }
+    try {
+      const r = await api('POST', `${API}/create-so-mail`, {
+        uid: email.uid, fromEmail: email.from || '', subject: email.subject || '',
+        cardCode: f.customer.code, poNumber: f.numAtCard, poDate: f.docDate, deliveryDate: f.dueDate,
+        currency: ctx.po?.currency || '', notes: f.comments, lines: soLines(f),
+        ...(allowDuplicateRef ? { allowDuplicateRef: true } : {}),
+      });
+      setBadge('POSTED');
+      right().innerHTML = `<div class="owb-scroll"><div class="owb-done">
+        <div class="big">✅</div><h3>Sales Order posted to SAP</h3>
+        <table>${[['SO Number', r.docNum], ['Customer', `${f.customer.name} (${f.customer.code})`], ['Customer PO', r.poNumber || '—'],
+          ['Lines', soLines(f).length], ['Acknowledgment', r.ackSent ? `Emailed to ${email.from}` : 'Not sent']]
+          .map(([k, v]) => `<tr><td style="color:var(--muted)">${esc(k)}</td><td><b>${esc(v)}</b></td></tr>`).join('')}</table>
+        <button class="owb-btn pri" data-r="again">Back to Inbox</button></div></div>`;
+      $r('again').addEventListener('click', () => back());
+    } catch (e) {
+      const d = e.data || {};
+      if (d.duplicateRef) {
+        if (confirm(`Customer PO "${d.numAtCard || f.numAtCard}" is already on a Sales Order for this customer.\n\nPost again with reference "${d.suggestedRef || ''}"?`)) return createSo(true);
+        return showMsg('warn', esc(d.error || 'Duplicate customer reference.'));
+      }
+      showMsg('err', `<b>SAP did not accept the Sales Order.</b><br>${esc(e.message)}<br><span style="font-size:11.5px">Fix the field mentioned above and post again — your entries are kept.</span>`);
+    }
+  }
+
+  window.MailPoReview = { open };
 })();

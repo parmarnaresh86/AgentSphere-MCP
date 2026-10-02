@@ -187,40 +187,53 @@ async function fetchAllPaginated(sap, endpoint, params, { pageSize = 50, maxItem
 
 // ── Scoring engine ────────────────────────────────────────────────────────────
 function scoreOrder(order, cfg, today = new Date()) {
-  let score = 0;
+  // Each factor records its raw value, the rule that matched and the points given,
+  // so the UI can show exactly how the score was built.
+  const breakdown = [];
 
   // Days until due date (40 pts)
   const due      = new Date(order.DocDueDate || order.DocDate || today);
   const daysLeft = Math.ceil((due - today) / 86_400_000);
-  if      (daysLeft <= 0)  score += 40;   // Overdue
-  else if (daysLeft <= 1)  score += 38;
-  else if (daysLeft <= 3)  score += 30;
-  else if (daysLeft <= 7)  score += 20;
-  else if (daysLeft <= 14) score += 10;
+  let dPts, dRule;
+  if      (daysLeft <= 0)  { dPts = 40; dRule = 'Overdue (≤ 0 days)'; }
+  else if (daysLeft <= 1)  { dPts = 38; dRule = 'Due within 1 day'; }
+  else if (daysLeft <= 3)  { dPts = 30; dRule = 'Due within 3 days'; }
+  else if (daysLeft <= 7)  { dPts = 20; dRule = 'Due within 7 days'; }
+  else if (daysLeft <= 14) { dPts = 10; dRule = 'Due within 14 days'; }
+  else                     { dPts = 0;  dRule = 'Due in more than 14 days'; }
+  breakdown.push({ factor: 'Days until due', source: 'ORDR.DocDueDate', value: `${String(order.DocDueDate || '').slice(0, 10)} (${daysLeft < 0 ? `${-daysLeft} day${daysLeft === -1 ? '' : 's'} overdue` : daysLeft === 0 ? 'due today' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`})`, rule: dRule, points: dPts, max: W_DAYS });
 
   // SAP Priority field (20 pts)  — SAP stores as string e.g. "Normal","High" or int
   const pRaw = String(order.Priority ?? '').toLowerCase();
-  if (/emerg/.test(pRaw) || pRaw === '4')      score += 20;
-  else if (/high/.test(pRaw)  || pRaw === '3') score += 15;
-  else if (/med/.test(pRaw)   || pRaw === '2') score += 10;
-  // Normal/Low = 0
+  let pPts, pRule;
+  if (/emerg/.test(pRaw) || pRaw === '4')      { pPts = 20; pRule = 'Emergency'; }
+  else if (/high/.test(pRaw)  || pRaw === '3') { pPts = 15; pRule = 'High'; }
+  else if (/med/.test(pRaw)   || pRaw === '2') { pPts = 10; pRule = 'Medium'; }
+  else                                         { pPts = 0;  pRule = 'Normal / Low / not set'; }
+  breakdown.push({ factor: 'Order priority', source: 'Order Priority field', value: order.Priority || '(not set)', rule: pRule, points: pPts, max: W_PRIORITY });
 
   // Order value (20 pts)
   const val = Number(order.DocTotal || 0);
-  if      (val >= 100_000) score += 20;
-  else if (val >=  50_000) score += 16;
-  else if (val >=  20_000) score += 12;
-  else if (val >=   5_000) score +=  7;
-  else if (val >=   1_000) score +=  3;
+  let vPts, vRule;
+  if      (val >= 100_000) { vPts = 20; vRule = '≥ 100,000'; }
+  else if (val >=  50_000) { vPts = 16; vRule = '≥ 50,000'; }
+  else if (val >=  20_000) { vPts = 12; vRule = '≥ 20,000'; }
+  else if (val >=   5_000) { vPts =  7; vRule = '≥ 5,000'; }
+  else if (val >=   1_000) { vPts =  3; vRule = '≥ 1,000'; }
+  else                     { vPts =  0; vRule = '< 1,000'; }
+  breakdown.push({ factor: 'Order value', source: 'ORDR.DocTotal', value: val.toLocaleString(), rule: vRule, points: vPts, max: W_VALUE });
 
   // Customer tier (20 pts)
   const isVip  = cfg.vipCustomers.includes(order.CardCode);
   const isHigh = cfg.highTierGroups.includes(String(order.GroupNum));
-  if      (isVip)  score += 20;
-  else if (isHigh) score += 15;
-  else             score +=  5;
+  let tPts, tRule;
+  if      (isVip)  { tPts = 20; tRule = 'VIP customer (configured list)'; }
+  else if (isHigh) { tPts = 15; tRule = 'High-tier customer group'; }
+  else             { tPts =  5; tRule = 'Standard customer'; }
+  breakdown.push({ factor: 'Customer tier', source: 'ORDR.CardCode + OCRD.GroupNum', value: `${order.CardCode || '—'} · group ${order.GroupNum ?? '—'}`, rule: tRule, points: tPts, max: W_TIER });
 
-  return { score: Math.min(100, score), daysLeft };
+  const total = breakdown.reduce((s, b) => s + b.points, 0);
+  return { score: Math.min(100, total), daysLeft, breakdown };
 }
 
 function tagOrder(score) {
@@ -500,8 +513,8 @@ export async function runRushOrderScan(sap, {
 
   // ── Step 2: Score & tag all orders (sort by score desc) ───────────────────
   const scored = rawOrders.map(o => {
-    const { score, daysLeft } = scoreOrder(o, cfg, today);
-    return { ...o, _score: score, _tag: tagOrder(score), _daysLeft: daysLeft };
+    const { score, daysLeft, breakdown } = scoreOrder(o, cfg, today);
+    return { ...o, _score: score, _tag: tagOrder(score), _daysLeft: daysLeft, _scoreBreakdown: breakdown };
   });
   scored.sort((a, b) => b._score - a._score || new Date(a.DocDueDate) - new Date(b.DocDueDate));
 

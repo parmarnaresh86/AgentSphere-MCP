@@ -21,6 +21,7 @@ const FLOW = {
   editable: { price: true, disc: true, tax: true, wh: true }, payTerms: false,
   stock: true,          // goods go back out of stock — show on-hand qty and block returns beyond it
   batchSerial: true,    // pick the batches / serials being returned for managed items
+  bins: true,           // issue from bin location(s) in bin-enabled warehouses (bins with stock, not restricted for outbound)
   defaultDueDate: () => '',
 };
 

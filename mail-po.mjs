@@ -28,6 +28,13 @@ function getMailConfig() {
   };
 }
 
+// ── PO subject match ─────────────────────────────────────────────────────────
+// IMAP SUBJECT is a substring match ("PO" also hits "Report"), so the server
+// search is a coarse pre-filter and PO_SUBJECT_RE decides on the decoded subject.
+const PO_SUBJECT_SEARCH = ["OR", ["SUBJECT", "purchase order"], ["SUBJECT", "PO"]];
+const PO_SUBJECT_RE     = /purchase\s*order|\bP\.?\s?O\b/i;
+export function isPoSubject(subject) { return PO_SUBJECT_RE.test(subject || ""); }
+
 // ── State ──────────────────────────────────────────────────────────────────
 let _imap      = null;
 let _pollTimer = null;
@@ -113,7 +120,7 @@ function _fetchUnseen(cfg) {
         if (err) { imap.end(); return reject(err); }
 
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        imap.search(["UNSEEN", ["SINCE", today], ["SUBJECT", "purchase order"]], (err, uids) => {
+        imap.search(["UNSEEN", ["SINCE", today], PO_SUBJECT_SEARCH], (err, uids) => {
           if (err) { imap.end(); return reject(err); }   // keep _attempted on transient errors
           if (!uids?.length) { _attempted.clear(); imap.end(); return resolve([]); }
 
@@ -140,7 +147,7 @@ function _fetchUnseen(cfg) {
                   a.contentType === "application/pdf" ||
                   (a.filename && a.filename.toLowerCase().endsWith(".pdf"))
                 );
-                if (pdfAttachments.length > 0) {
+                if (pdfAttachments.length > 0 && isPoSubject(parsed.subject)) {
                   mails.push({
                     seqno, uid,
                     from:    parsed.from?.text || "",
@@ -271,7 +278,7 @@ export function fetchInbox() {
       imap.openBox(cfg.folder, true, (err) => {
         if (err) { imap.end(); return reject(err); }
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        imap.search(["UNSEEN", ["SINCE", today], ["SUBJECT", "purchase order"]], (err2, uids) => {
+        imap.search(["UNSEEN", ["SINCE", today], PO_SUBJECT_SEARCH], (err2, uids) => {
           if (err2 || !uids?.length) { imap.end(); return resolve([]); }
           const fetch = imap.fetch(uids, { bodies: "HEADER.FIELDS (FROM SUBJECT DATE)", struct: true });
           fetch.on("message", (msg, seqno) => {
@@ -294,7 +301,7 @@ export function fetchInbox() {
             });
             msg.once("end", () => {
               const hasPdf = pdfNames.length > 0;
-              mails.push({ uid, seqno, from: headers.from, subject: headers.subject, date: headers.date, hasPdf, pdfNames });
+              if (isPoSubject(headers.subject)) mails.push({ uid, seqno, from: headers.from, subject: headers.subject, date: headers.date, hasPdf, pdfNames });
             });
           });
           fetch.once("end", () => imap.end());

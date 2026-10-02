@@ -32,7 +32,7 @@ Use null/[] for fields that cannot be determined.`;
 const TARGET_LABELS = {
   po_scan:  { label: 'Purchase Order', panel: 'ocr-po-scan-panel', open: 'showOcrPoScanPanel' },
   expense:  { label: 'Expense Invoice', panel: 'ocr-expense-panel', open: 'showOcrExpensePanel' },
-  apinv:    { label: 'A/P Invoice',     panel: 'grpo-apinv-panel',  open: 'showGRPOtoAPInvPanel' },
+  apinv:    { label: 'A/P Invoice',     panel: 'scan-apinv-panel',  open: 'showScanAPInvPanel' },
   inward:   { label: 'Inward Register', panel: 'ocr-inward-panel',  open: 'showOcrInwardPanel' },
   gatepass: { label: 'Gate Pass Register', panel: 'ocr-gatepass-panel', open: 'showOcrGatePassPanel' },
   archive:  { label: 'Archive Only',    panel: null, open: null },

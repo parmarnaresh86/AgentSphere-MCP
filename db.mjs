@@ -584,17 +584,17 @@ export const ALL_PERMISSIONS = [
   { key: 'sales.workflow.incoming_payment',  label: 'Incoming Payment',   section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.sales_analysis_link', label: 'Sales Analysis',  section: 'Sales — O2C', group: 'AI Workflow' },
 
-  // Sales — O2C : Sales Analysis
-  { key: 'sales.analysis.open_orders',     label: 'Open Orders',       section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.open_quotations', label: 'Open Quotations',   section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.top_customers',   label: 'Top Customers',     section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.monthly_trend',   label: 'Monthly Trend',     section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.quarterly_sales', label: 'Quarterly Sales',   section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.top_items',       label: 'Top Items',         section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.by_salesperson',  label: 'By Salesperson',    section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.by_gross_profit', label: 'By Gross Profit',   section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.by_gp_margin',    label: 'By GP Margin',      section: 'Sales — O2C', group: 'Sales Analysis' },
-  { key: 'sales.analysis.by_warehouse',    label: 'By Warehouse',      section: 'Sales — O2C', group: 'Sales Analysis' },
+  // Sales — O2C : Sales Report
+  { key: 'sales.analysis.open_orders',     label: 'Open Orders',       section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.open_quotations', label: 'Open Quotations',   section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.top_customers',   label: 'Top Customers',     section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.monthly_trend',   label: 'Monthly Trend',     section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.quarterly_sales', label: 'Quarterly Sales',   section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.top_items',       label: 'Top Items',         section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.by_salesperson',  label: 'By Salesperson',    section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.by_gross_profit', label: 'By Gross Profit',   section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.by_gp_margin',    label: 'By GP Margin',      section: 'Sales — O2C', group: 'Sales Report' },
+  { key: 'sales.analysis.by_warehouse',    label: 'By Warehouse',      section: 'Sales — O2C', group: 'Sales Report' },
 
   // Purchase — P2P : Quick Create
   { key: 'purchase.create.purchase_order',   label: 'Purchase Order',    section: 'Purchase — P2P', group: 'Quick Create' },
@@ -608,6 +608,7 @@ export const ALL_PERMISSIONS = [
   { key: 'purchase.workflow.pr_to_po',        label: 'PR → PO',                section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.po_to_grpo',      label: 'PO → GRPO',              section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.grpo_to_apinv',   label: 'GRPO → AP Inv',          section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.apinv_service',   label: 'AP Service Invoice',     section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.three_way_match', label: '3-Way Match',            section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.apinv_to_apcm',   label: 'AP Inv → Credit',        section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.outgoing_payment',label: 'Outgoing Payment',       section: 'Purchase — P2P', group: 'AI Workflow' },
@@ -753,7 +754,7 @@ export const LEGACY_PERMISSION_CHILDREN = {
   'sales.workflow':  ['sales.workflow.sales_order','sales.workflow.quotation','sales.workflow.quote_compare','sales.workflow.quote_to_order','sales.workflow.order_to_delivery','sales.workflow.delivery_to_arinv','sales.workflow.arinv_to_arcm','sales.workflow.incoming_payment','sales.workflow.sales_analysis_link'],
   'sales.analysis':  ['sales.analysis.open_orders','sales.analysis.open_quotations','sales.analysis.top_customers','sales.analysis.monthly_trend','sales.analysis.quarterly_sales','sales.analysis.top_items','sales.analysis.by_salesperson','sales.analysis.by_gross_profit','sales.analysis.by_gp_margin','sales.analysis.by_warehouse'],
   'purchase.create':   ['purchase.create.purchase_order','purchase.create.grpo','purchase.create.ap_invoice','purchase.create.outgoing_payment'],
-  'purchase.workflow': ['purchase.workflow.pr_agent','purchase.workflow.po_agent','purchase.workflow.pr_to_po','purchase.workflow.po_to_grpo','purchase.workflow.grpo_to_apinv','purchase.workflow.three_way_match','purchase.workflow.apinv_to_apcm','purchase.workflow.outgoing_payment','purchase.workflow.vp_aging','purchase.workflow.purchase_analysis_link'],
+  'purchase.workflow': ['purchase.workflow.pr_agent','purchase.workflow.po_agent','purchase.workflow.pr_to_po','purchase.workflow.po_to_grpo','purchase.workflow.grpo_to_apinv','purchase.workflow.apinv_service','purchase.workflow.three_way_match','purchase.workflow.apinv_to_apcm','purchase.workflow.outgoing_payment','purchase.workflow.vp_aging','purchase.workflow.purchase_analysis_link'],
   'purchase.analysis': ['purchase.analysis.purchase_analysis','purchase.analysis.top_vendors','purchase.analysis.vendor_list','purchase.analysis.customer_list'],
   'finance':    ['finance.ar_aging','finance.overdue_30','finance.overdue_60','finance.ap_aging','finance.financial_dashboard','finance.customer_aging','finance.reports.balance_sheet','finance.reports.profit_loss','finance.reports.trial_balance'],
   'inventory':  ['inventory.stock_levels','inventory.in_stock_items','inventory.pick_list','inventory.atp_check','inventory.dashboard'],
@@ -973,6 +974,9 @@ const ONE_TIME_GRANTS = [
   // that had never been given Stock Levels.
   { name: 'inventory.dashboard.v2', trigger: ['admin.roles'],
     keys: ['inventory.dashboard'] },
+  // A/P Service Invoice agent → whoever can already post A/P invoices from GRPOs.
+  { name: 'purchase.workflow.apinv_service.v1', trigger: ['purchase.workflow.grpo_to_apinv'],
+    keys: ['purchase.workflow.apinv_service'] },
   // Home Insights → whoever held any permission in that module, which is
   // exactly who saw those insight cards before they had keys of their own.
   ...['finance', 'sales', 'purchase', 'inventory'].map(area => ({
@@ -1585,6 +1589,19 @@ export const cacheRepo = {
   // Wipes cached rows AND sync history for one entity — status goes back to
   // "Never synced" so the next Sync pulls a completely fresh copy from SAP.
   clearEntity(companyId, entity) {
+    this.deleteEntityRows(companyId, entity);
+    db.prepare(`DELETE FROM cache_sync_log WHERE company_id=? AND entity=?`).run(companyId, entity);
+  },
+  // Full refresh: drop this entity's cached rows and write the fresh SAP snapshot
+  // in ONE transaction — so rows deleted/changed in SAP never linger, and a failed
+  // save rolls back to the previous copy instead of leaving the cache half-empty.
+  replaceEntity(companyId, entity, saveFn) {
+    db.transaction(() => {
+      this.deleteEntityRows(companyId, entity);
+      saveFn();
+    })();
+  },
+  deleteEntityRows(companyId, entity) {
     const del = (sql, ...args) => db.prepare(sql).run(companyId, ...args);
     const byEntity = {
       items:         () => del(`DELETE FROM cache_items WHERE company_id=?`),
@@ -1601,7 +1618,6 @@ export const cacheRepo = {
     };
     if (!byEntity[entity]) throw new Error(`Unknown entity: ${entity}`);
     byEntity[entity]();
-    db.prepare(`DELETE FROM cache_sync_log WHERE company_id=? AND entity=?`).run(companyId, entity);
   },
   clearCompany(companyId) {
     ['cache_items','cache_business_partners','cache_tax_codes','cache_warehouses',

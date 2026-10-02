@@ -21,6 +21,8 @@ import { createRequire } from 'module';
 import * as mailPo from '../mail-po.mjs';
 import { mailConfigRepo } from '../db.mjs';
 import { createSoDirect, callAiText as callAiTextShared } from '../lib/sap-order-helpers.mjs';
+import { searchPartners, matchPartner, searchItems, matchItem, getWarehouses } from '../lib/ocr-sap-match.mjs';
+import { runVisionExtraction, nameSimilarity } from '../lib/ocr-extract.mjs';
 
 const _require = createRequire(import.meta.url);
 let pdfParse;
@@ -28,7 +30,45 @@ try { pdfParse = _require('pdf-parse'); } catch (e) { console.warn('pdf-parse lo
 
 const esc = s => String(s || '').replace(/'/g, "''");
 
-// ── PDF text cache (uid → { pdfText, pdfName, ts }) — 30-min TTL ─────────
+// ── Our own company (the seller) ────────────────────────────────────────────
+// Every incoming PO is addressed TO us, so our name sits in its Vendor/Supplier
+// block — it must never be taken as the customer. Cached per SAP client.
+const _ownCompany = new WeakMap();
+async function getOwnCompany(sap) {
+  if (_ownCompany.has(sap)) return _ownCompany.get(sap);
+  let name = '';
+  try { const r = await sap.post('/CompanyService_GetAdminInfo', {}); name = r?.CompanyName || ''; } catch {}
+  if (name) _ownCompany.set(sap, name);
+  return name;
+}
+const isOwnCompany = (name, own) => !!(name && own && nameSimilarity(name, own) >= 0.6);
+const realCode = c => (c && !/^(null|n\/a|na|-)$/i.test(String(c).trim()) ? String(c).trim() : null);
+
+function poExtractionPrompt(ownCompany) {
+  return `You are a purchase order parser. A customer has sent us (the seller) their Purchase Order.
+
+WHO IS THE CUSTOMER:
+- The CUSTOMER (buyer) is the company that ISSUED this PO. Its name, logo and address are normally in the document HEADER / letterhead at the top, or under "Buyer", "Bill To", "Invoice To" or "Ship To".
+- The block labelled "Vendor", "Supplier", "Seller", "To" or "M/s" is the company the PO is addressed TO — that is US${ownCompany ? ` ("${ownCompany}")` : ''}. NEVER return our company as customerName; put it in vendorName.
+
+Return ONLY a valid JSON object — no markdown fences, no explanation, no extra text.
+{
+  "poNumber": "PO number or null",
+  "poDate": "YYYY-MM-DD or null",
+  "deliveryDate": "YYYY-MM-DD or null",
+  "customerName": "buyer company from the PO header",
+  "customerCode": "buyer's code / GSTIN / VAT no. printed for the buyer, or null",
+  "customerAddress": "buyer address from the header, or null",
+  "vendorName": "name in the Vendor/Supplier block (us), or null",
+  "currency": "3-letter ISO code",
+  "paymentTerms": "string or null",
+  "lines": [{ "lineNum":1, "description":"...", "itemCode":"code as printed or null", "qty":1, "unit":"EA", "unitPrice":0, "lineTotal":0 }],
+  "subtotal":0, "tax":0, "total":0, "notes": null
+}
+Use null for strings that cannot be determined and 0 for numbers that cannot be determined.`;
+}
+
+// ── PDF cache (uid → { pdfText, pdfName, pdfBuffer, ts }) — 30-min TTL ────
 const _pdfCache = new Map();
 setInterval(() => {
   const cut = Date.now() - 30 * 60 * 1000;
@@ -66,9 +106,90 @@ async function getItemDefaultUoM(sap, itemCode) {
 }
 
 export function createMailPoAgentRouter(deps) {
-  const { requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER } = deps;
+  const { requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, cacheRepo, getActiveCompanyId } = deps;
   const callAiText = (prompt, maxTokens) => callAiTextShared(prompt, maxTokens, { AI_PROVIDER, azureMessagesCreate, gptChatComplete });
+  const aiDeps = { AI_PROVIDER, gptChatComplete, azureMessagesCreate, USE_AI };
   const router = Router();
+
+  // PDF → PO JSON. Text PDFs go through the text model; scanned (image-only)
+  // PDFs fall back to AI vision on the PDF itself.
+  async function extractPo({ pdfText, pdfBuffer }, ownCompany) {
+    const sys = poExtractionPrompt(ownCompany);
+    let po = null;
+    if (pdfText) {
+      try {
+        const m = (await callAiText(`${sys}\n\nPO TEXT:\n${pdfText.substring(0, 8000)}`, 2500))?.match(/\{[\s\S]*\}/);
+        if (m) po = JSON.parse(m[0]);
+      } catch {}
+    }
+    if (!po && pdfBuffer) po = await runVisionExtraction(pdfBuffer, 'application/pdf', null, aiDeps, sys, null);
+    po = po || { customerName: '', lines: [] };
+    if (!Array.isArray(po.lines)) po.lines = [];
+    po.lines.forEach(l => { l.itemCode = realCode(l.itemCode); });
+    if (!po.total) po.total = po.lines.reduce((s, l) => s + (parseFloat(l.lineTotal) || 0), 0);
+    // Safety net: if the model still took our own name, use the other party on the PO
+    if (isOwnCompany(po.customerName, ownCompany)) {
+      po.customerName = (po.vendorName && !isOwnCompany(po.vendorName, ownCompany)) ? po.vendorName : null;
+    }
+    return po;
+  }
+
+  // PO JSON → SAP customer master + item master matches
+  async function matchPo(sap, po, ownCompany) {
+    let customer = null;
+    if (po.customerName || po.customerCode) {
+      const m = await matchPartner(sap, { name: po.customerName, code: realCode(po.customerCode) }, 'cCustomer');
+      if (m.partner && !isOwnCompany(m.partner.name, ownCompany)) customer = { ...m.partner, score: m.score };
+    }
+    const lines = await Promise.all(po.lines.map(async ol => ({
+      ocrLine: ol,
+      match: await matchItem(sap, { itemCode: ol.itemCode, description: ol.description }),
+    })));
+    return { customer, lines };
+  }
+
+  async function getCachedPdf(uid) {
+    let c = _pdfCache.get(String(uid));
+    if (c?.pdfBuffer) return c;
+    const email = await mailPo.fetchEmail(Number(uid));
+    const pdf = email?.pdfs?.[0];
+    if (!pdf) return null;
+    let pdfText = '';
+    if (pdfParse) { try { pdfText = (await pdfParse(pdf.buffer)).text?.trim() || ''; } catch {} }
+    c = { pdfText, pdfName: pdf.name || 'attachment.pdf', pdfBuffer: pdf.buffer, ts: Date.now() };
+    _pdfCache.set(String(uid), c);
+    return c;
+  }
+
+  // ── Split-view review: PDF bytes, SAP master-data search, lookups ─────────
+  router.get('/pdf', requireAuth, async (req, res) => {
+    try {
+      const c = await getCachedPdf(req.query.uid);
+      if (!c) return res.status(404).json({ ok: false, error: 'No PDF on this email' });
+      res.set('Content-Disposition', `inline; filename="${String(c.pdfName).replace(/"/g, '')}"`);
+      res.type('application/pdf').send(c.pdfBuffer);
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  router.get('/customers', requireAuth, async (req, res) => {
+    const sap = getActiveSap();
+    const own = await getOwnCompany(sap);
+    const list = (await searchPartners(sap, String(req.query.q || '').trim(), 'cCustomer')).filter(c => !isOwnCompany(c.name, own));
+    res.json({ ok: true, customers: list });
+  });
+
+  router.get('/items', requireAuth, async (req, res) => {
+    res.json({ ok: true, items: await searchItems(getActiveSap(), String(req.query.q || '').trim()) });
+  });
+
+  router.get('/lookups', requireAuth, async (_req, res) => {
+    const sap = getActiveSap();
+    const [warehouses, ownCompany] = await Promise.all([
+      getWarehouses(sap, cacheRepo, getActiveCompanyId ? getActiveCompanyId() : ''),
+      getOwnCompany(sap),
+    ]);
+    res.json({ ok: true, warehouses, ownCompany });
+  });
 
   router.get('/status', requireAuth, (_req, res) => {
     const cfg = {
@@ -244,105 +365,37 @@ export function createMailPoAgentRouter(deps) {
     res.json({ ok: true, checks, canPost: !hasErrors, hasErrors, hasWarnings });
   });
 
-  // ── Step 1: Fetch email from IMAP and cache PDF text (fast ~5-10s) ─────────
+  // ── Step 1: Fetch email from IMAP and cache the PDF (fast ~5-10s) ──────────
   router.post('/open', requireAuth, async (req, res) => {
     const { uid } = req.body || {};
     if (!uid) return res.status(400).json({ ok: false, error: "uid required" });
     try {
       const email = await mailPo.fetchEmail(Number(uid));
       if (!email) return res.json({ ok: false, error: "Email not found or already read" });
-      let pdfName = email.pdfs[0]?.name || "";
+      const pdf = email.pdfs[0];
       let pdfText = "";
-      if (email.pdfs.length && pdfParse) {
-        try {
-          const pdfData = await pdfParse(email.pdfs[0].buffer);
-          pdfText = pdfData.text?.trim() || "";
-        } catch (e) { pdfName = pdfName + " (parse error: " + e.message + ")"; }
+      if (pdf && pdfParse) {
+        try { pdfText = (await pdfParse(pdf.buffer)).text?.trim() || ""; } catch {}
       }
-      _pdfCache.set(String(uid), { pdfText, pdfName, ts: Date.now() });
-      res.json({ ok: true, uid, pdfName, hasPdf: email.pdfs.length > 0, hasPdfText: pdfText.length > 0,
+      if (pdf) _pdfCache.set(String(uid), { pdfText, pdfName: pdf.name || "attachment.pdf", pdfBuffer: pdf.buffer, ts: Date.now() });
+      res.json({ ok: true, uid, pdfName: pdf?.name || "", pdfSize: pdf?.buffer?.length || 0, hasPdf: !!pdf, hasPdfText: pdfText.length > 0,
         email: { from: email.from, subject: email.subject, date: email.date } });
     } catch (e) { res.json({ ok: false, error: e.message }); }
   });
 
-  // ── Step 2: AI extract + customer + credit + ATP (uses cached PDF text) ────
+  // ── Step 2: AI extract + match against SAP customer & item master ─────────
   router.post('/extract', requireAuth, async (req, res) => {
     const { uid } = req.body || {};
     if (!uid) return res.status(400).json({ ok: false, error: "uid required" });
-    const cached = _pdfCache.get(String(uid));
-    if (!cached) return res.json({ ok: false, error: "PDF not found in cache — please re-open the email" });
     try {
-      // AI extraction
-      let po = { customerName: "", lines: [], total: 0 };
-      if (cached.pdfText) {
-        const prompt = `You are a purchase order parser. Extract all purchase order data from the text below.
-Return ONLY a valid JSON object — no markdown fences, no explanation.
-{
-  "poNumber": "PO number or null",
-  "poDate": "YYYY-MM-DD or null",
-  "deliveryDate": "YYYY-MM-DD or null",
-  "customerName": "buyer company name",
-  "customerRef": "buyer reference code or null",
-  "currency": "3-letter ISO code",
-  "lines": [{ "lineNum":1, "description":"...", "itemCode":"...", "qty":1, "unit":"EA", "unitPrice":0, "lineTotal":0 }],
-  "subtotal":0, "tax":0, "total":0, "notes": null
-}
-PO TEXT:\n${cached.pdfText.substring(0, 8000)}`;
-        try {
-          const aiText = await callAiText(prompt, 2500);
-          const match  = aiText.match(/\{[\s\S]*\}/);
-          if (match) po = JSON.parse(match[0]);
-        } catch {}
-      }
-      if (!Array.isArray(po.lines)) po.lines = [];
-      if (!po.total) po.total = po.lines.reduce((s, l) => s + (parseFloat(l.lineTotal)||0), 0);
-
-      // Customer lookup
-      const activeSap = getActiveSap();
-      let customer = null;
-      if (po.customerName) {
-        const term = po.customerName.substring(0, 35).replace(/'/g, "").replace(/-/g, " ").trim();
-        for (const filter of [
-          `CardType eq 'cCustomer' and contains(CardName,'${term}')`,
-          `CardType eq 'cCustomer' and startswith(CardName,'${term.split(/\s/)[0]}')`,
-        ]) {
-          try {
-            const r = await activeSap.get("/BusinessPartners", { $filter: filter, $select: "CardCode,CardName,CreditLimit,CurrentAccountBalance", $top: 1 });
-            if (r.value?.[0]) { customer = r.value[0]; break; }
-          } catch {}
-        }
-      }
-
-      // Credit check
-      let creditResult = null;
-      if (customer) {
-        try {
-          const bp = await activeSap.get(`/BusinessPartners('${customer.CardCode.replace(/'/g,"")}')`);
-          const limit = parseFloat(bp.CreditLimit)||0, balance = parseFloat(bp.CurrentAccountBalance)||0;
-          const openOrd = (parseFloat(bp.OrdersBalance)||0) + (parseFloat(bp.OpenDeliveryNotesBalance)||0);
-          const exposure = balance + openOrd, orderAmt = parseFloat(po.total)||0, newExp = exposure + orderAmt;
-          const status = limit === 0 ? "ok" : newExp > limit ? "exceeded" : newExp/limit > 0.8 ? "warning" : "ok";
-          creditResult = { creditLimit: limit, balance, openOrders: openOrd, exposure, orderAmt, newExposure: newExp, status, noLimit: limit === 0, message: status !== "ok" ? `${(newExp/limit*100).toFixed(1)}% of credit limit` : "" };
-        } catch {}
-      }
-
-      // ATP check
-      let atpResult = null;
-      const itemLines = (po.lines||[]).filter(l => l.itemCode && l.itemCode !== "null" && l.itemCode !== "N/A");
-      if (itemLines.length && customer) {
-        try {
-          atpResult = await Promise.all(itemLines.slice(0, 10).map(async l => {
-            try {
-              const item = await activeSap.get(`/Items('${esc(l.itemCode)}')`, { $select: "ItemCode,ItemName,QuantityOnStock,QuantityOrderedByCustomers" });
-              const onStock = parseFloat(item.QuantityOnStock)||0, committed = parseFloat(item.QuantityOrderedByCustomers)||0;
-              const InStock = Math.max(0, onStock - committed), requested = parseFloat(l.qty)||0;
-              return { itemCode: l.itemCode, itemName: item.ItemName, InStock, requested, ok: InStock >= requested };
-            } catch { return { itemCode: l.itemCode, error: "not found", InStock: 0, requested: parseFloat(l.qty)||0 }; }
-          }));
-        } catch {}
-      }
-
-      res.json({ ok: true, po, customer, creditResult, atpResult });
+      const cached = await getCachedPdf(uid);
+      if (!cached) return res.json({ ok: false, error: "No PDF attached to this email" });
+      const sap = getActiveSap();
+      const ownCompany = await getOwnCompany(sap);
+      const po = await extractPo(cached, ownCompany);
+      if (!po.lines.length && !po.customerName) return res.json({ ok: false, error: "Could not read purchase order data from this PDF." });
+      const { customer, lines } = await matchPo(sap, po, ownCompany);
+      res.json({ ok: true, po, customer, lines, ownCompany, scanned: !cached.pdfText });
     } catch (e) { res.json({ ok: false, error: e.message }); }
   });
 
@@ -351,7 +404,12 @@ PO TEXT:\n${cached.pdfText.substring(0, 8000)}`;
     const { uid, fromEmail, subject, cardCode, poNumber, poDate, deliveryDate, currency, notes, lines = [], allowDuplicateRef } = req.body || {};
     if (!cardCode) return res.status(400).json({ ok: false, error: "cardCode required" });
     try {
-      const docLines = lines.filter(l => l.itemCode).map(l => ({ ItemCode: l.itemCode, Quantity: parseFloat(l.qty)||1, UnitPrice: parseFloat(l.unitPrice)||0, ...(l.uomCode && l.uomCode !== "Manual" ? { UoMCode: l.uomCode } : {}) }));
+      const docLines = lines.filter(l => l.itemCode).map(l => ({
+        ItemCode: l.itemCode, Quantity: parseFloat(l.qty)||1, UnitPrice: parseFloat(l.unitPrice)||0,
+        ...(l.uomCode && l.uomCode !== "Manual" ? { UoMCode: l.uomCode } : {}),
+        ...(l.warehouse ? { WarehouseCode: l.warehouse } : {}),
+        ...(l.freeText  ? { FreeText: String(l.freeText).slice(0, 100) } : {}),
+      }));
       if (!docLines.length) return res.json({ ok: false, error: "No valid item lines to create SO" });
       const { DocNum: docNum } = await createSoDirect(getActiveSap(), { cardCode, docDate: poDate, docDueDate: deliveryDate, numAtCard: poNumber, currency, comments: notes || "", docLines, allowDuplicateRef });
 
@@ -378,84 +436,41 @@ PO TEXT:\n${cached.pdfText.substring(0, 8000)}`;
   });
 
   // ── Register PDF workflow callback for mail-po ────────────────────────────
+  // Auto mode posts only confident matches; anything else is left unread so it
+  // is reviewed in the split-view screen.
+  const AUTO_MIN_CUSTOMER = 0.8, AUTO_MIN_ITEM = 0.9;
   mailPo.setOnPdf(async (pdfBuffer, fileName, fromEmail, subject) => {
-    if (!pdfParse) throw new Error("pdf-parse not available");
+    let pdfText = "";
+    if (pdfParse) { try { pdfText = (await pdfParse(pdfBuffer)).text?.trim() || ""; } catch {} }
 
-    // Step 1: Parse PDF
-    const pdfData  = await pdfParse(pdfBuffer);
-    const rawText  = pdfData.text?.trim();
-    if (!rawText) throw new Error("PDF appears to be image-only — cannot extract text");
+    const activeSap  = getActiveSap();
+    const ownCompany = await getOwnCompany(activeSap);
+    const po = await extractPo({ pdfText, pdfBuffer }, ownCompany);
+    if (!po.lines.length && !po.customerName) throw new Error("AI could not extract structured PO data");
+    const total = po.total;
 
-    const prompt = `You are a purchase order parser. Extract all purchase order data from the text below.
-Return ONLY a valid JSON object — no markdown fences, no explanation, no extra text.
-{
-  "poNumber": "PO number string or null",
-  "poDate": "YYYY-MM-DD or null",
-  "deliveryDate": "YYYY-MM-DD or null",
-  "customerName": "the BUYER company name who placed the order",
-  "customerRef": "buyer reference code if visible or null",
-  "currency": "3-letter ISO code",
-  "lines": [{ "lineNum":1, "description":"...", "itemCode":"...", "qty":1, "unit":"EA", "unitPrice":0, "lineTotal":0 }],
-  "subtotal":0, "tax":0, "total":0, "notes": null
-}
-PO TEXT:
-${rawText.substring(0, 8000)}`;
-
-    const aiText  = await callAiText(prompt, 2500);
-    const match   = aiText.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("AI could not extract structured PO data");
-    const po      = JSON.parse(match[0]);
-    const lines   = Array.isArray(po.lines) ? po.lines : [];
-    const total   = po.total || lines.reduce((s, l) => s + (parseFloat(l.lineTotal) || 0), 0);
-
-    // Step 2: Find customer
-    const activeSap = getActiveSap();
-    let customer    = null;
-    if (po.customerName) {
-      const term = po.customerName.substring(0, 35).replace(/'/g, "").replace(/-/g, " ").trim();
-      try {
-        const r = await activeSap.get("/BusinessPartners", {
-          $filter: `CardType eq 'cCustomer' and contains(CardName,'${term}')`,
-          $select: "CardCode,CardName,CreditLimit,CurrentAccountBalance",
-          $top: 1,
-        });
-        customer = r.value?.[0] || null;
-      } catch {}
-      if (!customer) {
-        const fw = po.customerName.split(/[\s\-]/)[0];
-        if (fw?.length > 2) {
-          try {
-            const r = await activeSap.get("/BusinessPartners", {
-              $filter: `CardType eq 'cCustomer' and startswith(CardName,'${fw.replace(/'/g,"")}')`,
-              $select: "CardCode,CardName,CreditLimit,CurrentAccountBalance",
-              $top: 1,
-            });
-            customer = r.value?.[0] || null;
-          } catch {}
-        }
-      }
+    const { customer, lines } = await matchPo(activeSap, po, ownCompany);
+    if (!customer || customer.score < AUTO_MIN_CUSTOMER) {
+      return { docNum: null, message: `Customer "${po.customerName || "—"}" not matched confidently in SAP B1. Review it in Mail PO → SO.`, poNumber: po.poNumber, currency: po.currency, total };
     }
-    if (!customer) {
-      return { docNum: null, message: `Customer "${po.customerName}" not found in SAP B1. Manual processing required.`, poNumber: po.poNumber, currency: po.currency, total };
+    const weak = lines.filter(l => !l.match || l.match.score < AUTO_MIN_ITEM);
+    if (!lines.length || weak.length) {
+      return { docNum: null, message: `${weak.length || "No"} line(s) could not be matched to the SAP item master. Review it in Mail PO → SO.`, poNumber: po.poNumber, customerName: customer.name, currency: po.currency, total };
     }
 
-    // Step 3: Create SO directly (skip credit block — mail flow is auto, flag if exceeded)
-    const docLines = await Promise.all(lines.filter(l => l.itemCode && l.itemCode !== "null").map(async l => {
-      const uomCode = (l.uomCode && l.uomCode !== "Manual") ? l.uomCode : await getItemDefaultUoM(activeSap, l.itemCode);
+    // Create SO directly (skip credit block — mail flow is auto, flag if exceeded)
+    const docLines = await Promise.all(lines.map(async ({ ocrLine, match }) => {
+      const uomCode = await getItemDefaultUoM(activeSap, match.code);
       return {
-        ItemCode:  l.itemCode,
-        Quantity:  parseFloat(l.qty)       || 1,
-        UnitPrice: parseFloat(l.unitPrice) || 0,
+        ItemCode:  match.code,
+        Quantity:  parseFloat(ocrLine.qty)       || 1,
+        UnitPrice: parseFloat(ocrLine.unitPrice) || 0,
         ...(uomCode ? { UoMCode: uomCode } : {}),
       };
     }));
 
-    if (!docLines.length) {
-      return { docNum: null, message: "No item codes found in PO — manual mapping required.", poNumber: po.poNumber, customerName: customer.CardName, currency: po.currency, total };
-    }
-
     const { DocNum, DocEntry } = await createSoDirect(activeSap, {
-      cardCode:    customer.CardCode,
+      cardCode:    customer.code,
       docDate:     po.poDate     || new Date().toISOString().split("T")[0],
       docDueDate:  po.deliveryDate || undefined,
       numAtCard:   po.poNumber,
@@ -467,7 +482,7 @@ ${rawText.substring(0, 8000)}`;
     return {
       docNum:       DocNum,
       docEntry:     DocEntry,
-      customerName: customer.CardName,
+      customerName: customer.name,
       poNumber:     po.poNumber,
       currency:     po.currency,
       total,

@@ -31,6 +31,27 @@ function dbAvailable() { return dbIsConnected(); }
 function col(name, isHana) { return isHana ? `"${name}"` : name; }
 function boolFlag(raw) { return raw === 'Y' ? 'tYES' : 'tNO'; }
 
+// SAP B1 Active/Inactive semantics, shared by Items (OITM) and BPs (OCRD).
+// Two separate flags — validFor ("Active", SL: Valid) and frozenFor ("Inactive",
+// SL: Frozen) — each with an optional From/To date range. validFor='N' does NOT
+// mean inactive: plenty of perfectly active records have both flags 'N'. Only
+// frozenFor='Y' (within its range) or validFor='Y' with a range that excludes
+// today makes a record inactive. Accepts DB 'Y'/'N' or SL 'tYES'/'tNO'.
+function toDay(v) {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v) ? null : v.toISOString().slice(0, 10);
+  const s = String(v).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+function frozenFlag({ valid, validFrom, validTo, frozen, frozenFrom, frozenTo }) {
+  const yes = v => v === 'Y' || v === 'tYES';
+  const today = new Date().toISOString().slice(0, 10);
+  const inRange = (from, to) => { const f = toDay(from), t = toDay(to); return (!f || f <= today) && (!t || t >= today); };
+  if (yes(frozen)) return inRange(frozenFrom, frozenTo) ? 'tYES' : 'tNO';
+  if (yes(valid) && (toDay(validFrom) || toDay(validTo))) return inRange(validFrom, validTo) ? 'tNO' : 'tYES';
+  return 'tNO';
+}
+
 // HANA returns unquoted SELECT aliases in UPPERCASE (driver behaviour), while
 // MSSQL preserves the case exactly as written — so every row from fetchDB must
 // be read case-insensitively or HANA rows come back with all-undefined fields.
@@ -101,26 +122,49 @@ const ENTITIES = {
   items: {
     label: 'Item Master',
     icon:  '📦',
-    fetchSL: async (sap) => fetchAll(sap, '/Items', {
-      $filter: "ItemType eq 'itItems'",
-      $select: 'ItemCode,ItemName,ItemsGroupCode,SalesUnit,PurchaseUnit,SalesVATGroup,ManageBatchNumbers,ManageSerialNumbers,QuantityOnStock,Frozen',
-    }),
+    fetchSL: async (sap) => {
+      const [items, groups] = await Promise.all([
+        fetchAll(sap, '/Items', {
+          $filter: "ItemType eq 'itItems'",
+          $select: 'ItemCode,ItemName,ItemsGroupCode,SalesUnit,PurchaseUnit,InventoryUOM,SalesVATGroup,PurchaseVATGroup,' +
+                   'ManageBatchNumbers,ManageSerialNumbers,QuantityOnStock,Valid,ValidFrom,ValidTo,Frozen,FrozenFrom,FrozenTo',
+        }),
+        fetchAll(sap, '/ItemGroups', { $select: 'Number,GroupName' }).catch(() => []),
+      ]);
+      const groupName = new Map(groups.map(g => [g.Number, g.GroupName]));
+      return items.map(r => ({
+        ItemCode: r.ItemCode, ItemName: r.ItemName || '', ItemsGroupCode: r.ItemsGroupCode,
+        ItemGroupName: groupName.get(r.ItemsGroupCode) || '', SalesUnit: r.SalesUnit || '', PurchaseUnit: r.PurchaseUnit || '',
+        InventoryUoM: r.InventoryUOM || '', SalesVATGroup: r.SalesVATGroup || '', PurchVATGroup: r.PurchaseVATGroup || '',
+        ManageBatchNumbers: r.ManageBatchNumbers || 'tNO', ManageSerialNumbers: r.ManageSerialNumbers || 'tNO',
+        QuantityOnStock: r.QuantityOnStock || 0,
+        Frozen: frozenFlag({ valid: r.Valid, validFrom: r.ValidFrom, validTo: r.ValidTo, frozen: r.Frozen, frozenFrom: r.FrozenFrom, frozenTo: r.FrozenTo }),
+      })).filter(r => r.ItemCode);
+    },
     fetchDB: async () => {
       const cfg = getActiveConfig(), isHana = dbGetActiveType() === 'hana';
       const oitm = tableRef('OITM', cfg), oitb = tableRef('OITB', cfg);
       const c = n => col(n, isHana);
+      // ItemType='I' matches the Service Layer path's "ItemType eq 'itItems'" filter
+      // (excludes Labor/Travel/Fixed Asset items) so both paths cache the same set.
       const rows = await executeSQL(
         `SELECT i.${c('ItemCode')} AS ItemCode, i.${c('ItemName')} AS ItemName, i.${c('ItmsGrpCod')} AS ItemsGroupCode,
                 g.${c('ItmsGrpNam')} AS ItemGroupName, i.${c('SalUnitMsr')} AS SalesUnit, i.${c('BuyUnitMsr')} AS PurchaseUnit,
-                i.${c('InvntryUom')} AS InventoryUoM, i.${c('ManBtchNum')} AS ManBtchNumRaw, i.${c('ManSerNum')} AS ManSerNumRaw,
-                i.${c('OnHand')} AS QuantityOnStock, i.${c('validFor')} AS ValidForRaw
-         FROM ${oitm} i LEFT JOIN ${oitb} g ON i.${c('ItmsGrpCod')} = g.${c('ItmsGrpCod')}`
+                i.${c('InvntryUom')} AS InventoryUoM, i.${c('VatGourpSa')} AS SalesVATGroup, i.${c('VatGroupPu')} AS PurchVATGroup,
+                i.${c('ManBtchNum')} AS ManBtchNumRaw, i.${c('ManSerNum')} AS ManSerNumRaw, i.${c('OnHand')} AS QuantityOnStock,
+                i.${c('validFor')} AS ValidRaw, i.${c('validFrom')} AS ValidFrom, i.${c('validTo')} AS ValidTo,
+                i.${c('frozenFor')} AS FrozenRaw, i.${c('frozenFrom')} AS FrozenFrom, i.${c('frozenTo')} AS FrozenTo
+         FROM ${oitm} i LEFT JOIN ${oitb} g ON i.${c('ItmsGrpCod')} = g.${c('ItmsGrpCod')}
+         WHERE i.${c('ItemType')} = 'I'`
       );
       return rows.map(r => ({
         ItemCode: pick(r,'ItemCode'), ItemName: pick(r,'ItemName') || '', ItemsGroupCode: pick(r,'ItemsGroupCode'),
         ItemGroupName: pick(r,'ItemGroupName') || '', SalesUnit: pick(r,'SalesUnit') || '', PurchaseUnit: pick(r,'PurchaseUnit') || '',
-        InventoryUoM: pick(r,'InventoryUoM') || '', ManageBatchNumbers: boolFlag(pick(r,'ManBtchNumRaw')), ManageSerialNumbers: boolFlag(pick(r,'ManSerNumRaw')),
-        QuantityOnStock: pick(r,'QuantityOnStock') || 0, Frozen: pick(r,'ValidForRaw') === 'N' ? 'tYES' : 'tNO',
+        InventoryUoM: pick(r,'InventoryUoM') || '', SalesVATGroup: pick(r,'SalesVATGroup') || '', PurchVATGroup: pick(r,'PurchVATGroup') || '',
+        ManageBatchNumbers: boolFlag(pick(r,'ManBtchNumRaw')), ManageSerialNumbers: boolFlag(pick(r,'ManSerNumRaw')),
+        QuantityOnStock: pick(r,'QuantityOnStock') || 0,
+        Frozen: frozenFlag({ valid: pick(r,'ValidRaw'), validFrom: pick(r,'ValidFrom'), validTo: pick(r,'ValidTo'),
+                             frozen: pick(r,'FrozenRaw'), frozenFrom: pick(r,'FrozenFrom'), frozenTo: pick(r,'FrozenTo') }),
       })).filter(r => r.ItemCode);
     },
     save: (companyId, rows) => cacheRepo.upsertItems(companyId, rows),
@@ -128,20 +172,14 @@ const ENTITIES = {
   customers: {
     label: 'Customer Master',
     icon:  '👤',
-    fetchSL: async (sap) => fetchAll(sap, '/BusinessPartners', {
-      $filter: "CardType eq 'cCustomer'",
-      $select: 'CardCode,CardName,CardType,GroupCode,Currency,PayTermsGrpCode,Phone1,EmailAddress,City,Country,Frozen',
-    }),
+    fetchSL: async (sap) => fetchBPsFromSL(sap, 'cCustomer'),
     fetchDB: async () => fetchBPsFromDB('C'),
     save: (companyId, rows) => cacheRepo.upsertBPs(companyId, rows),
   },
   suppliers: {
     label: 'Supplier Master',
     icon:  '🏭',
-    fetchSL: async (sap) => fetchAll(sap, '/BusinessPartners', {
-      $filter: "CardType eq 'cSupplier'",
-      $select: 'CardCode,CardName,CardType,GroupCode,Currency,PayTermsGrpCode,Phone1,EmailAddress,City,Country,Frozen',
-    }),
+    fetchSL: async (sap) => fetchBPsFromSL(sap, 'cSupplier'),
     fetchDB: async () => fetchBPsFromDB('S'),
     save: (companyId, rows) => cacheRepo.upsertBPs(companyId, rows),
   },
@@ -317,23 +355,48 @@ const ENTITIES = {
   },
 };
 
-// ── OCRD direct fetch — shared by customers/suppliers ────────────────────────
+// ── Business Partner fetch — shared by customers/suppliers ───────────────────
+async function fetchBPsFromSL(sap, cardType) {
+  const [bps, groups] = await Promise.all([
+    fetchAll(sap, '/BusinessPartners', {
+      $filter: `CardType eq '${cardType}'`,
+      $select: 'CardCode,CardName,CardType,GroupCode,Currency,PayTermsGrpCode,Phone1,EmailAddress,City,Country,' +
+               'Valid,ValidFrom,ValidTo,Frozen,FrozenFrom,FrozenTo',
+    }),
+    fetchAll(sap, '/BusinessPartnerGroups', { $select: 'Code,Name' }).catch(() => []),
+  ]);
+  const groupName = new Map(groups.map(g => [g.Code, g.Name]));
+  return bps.map(r => ({
+    CardCode: r.CardCode, CardName: r.CardName || '', CardType: cardType,
+    GroupCode: r.GroupCode, GroupName: groupName.get(r.GroupCode) || '', Currency: r.Currency || '', PayTermsGrpCode: r.PayTermsGrpCode,
+    Phone1: r.Phone1 || '', EmailAddress: r.EmailAddress || '', City: r.City || '', Country: r.Country || '',
+    Frozen: frozenFlag({ valid: r.Valid, validFrom: r.ValidFrom, validTo: r.ValidTo, frozen: r.Frozen, frozenFrom: r.FrozenFrom, frozenTo: r.FrozenTo }),
+  })).filter(r => r.CardCode);
+}
+
+// OCRD uses its own column names (GroupNum = payment terms, frozenFor/validFor
+// = Inactive/Active flags) — NOT the Service Layer names PayTermsGrpCode/Frozen,
+// which don't exist in the table and made this query always fail over to SL.
 async function fetchBPsFromDB(cardType) {
   const cfg = getActiveConfig(), isHana = dbGetActiveType() === 'hana';
-  const ocrd = tableRef('OCRD', cfg);
+  const ocrd = tableRef('OCRD', cfg), ocrg = tableRef('OCRG', cfg);
   const c = n => col(n, isHana);
   const rows = await executeSQL(
-    `SELECT ${c('CardCode')} AS CardCode, ${c('CardName')} AS CardName, ${c('CardType')} AS CardType,
-            ${c('GroupCode')} AS GroupCode, ${c('Currency')} AS Currency, ${c('PayTermsGrpCode')} AS PayTermsGrpCode,
-            ${c('Phone1')} AS Phone1, ${c('E_Mail')} AS EmailAddress, ${c('City')} AS City, ${c('Country')} AS Country,
-            ${c('Frozen')} AS FrozenRaw
-     FROM ${ocrd} WHERE ${c('CardType')} = '${cardType}'`
+    `SELECT b.${c('CardCode')} AS CardCode, b.${c('CardName')} AS CardName,
+            b.${c('GroupCode')} AS GroupCode, g.${c('GroupName')} AS GroupName, b.${c('Currency')} AS Currency,
+            b.${c('GroupNum')} AS PayTermsGrpCode, b.${c('Phone1')} AS Phone1, b.${c('E_Mail')} AS EmailAddress,
+            b.${c('City')} AS City, b.${c('Country')} AS Country,
+            b.${c('validFor')} AS ValidRaw, b.${c('validFrom')} AS ValidFrom, b.${c('validTo')} AS ValidTo,
+            b.${c('frozenFor')} AS FrozenRaw, b.${c('frozenFrom')} AS FrozenFrom, b.${c('frozenTo')} AS FrozenTo
+     FROM ${ocrd} b LEFT JOIN ${ocrg} g ON b.${c('GroupCode')} = g.${c('GroupCode')}
+     WHERE b.${c('CardType')} = '${cardType}'`
   );
   return rows.map(r => ({
     CardCode: pick(r,'CardCode'), CardName: pick(r,'CardName') || '', CardType: cardType === 'C' ? 'cCustomer' : 'cSupplier',
-    GroupCode: pick(r,'GroupCode'), Currency: pick(r,'Currency') || '', PayTermsGrpCode: pick(r,'PayTermsGrpCode'),
+    GroupCode: pick(r,'GroupCode'), GroupName: pick(r,'GroupName') || '', Currency: pick(r,'Currency') || '', PayTermsGrpCode: pick(r,'PayTermsGrpCode'),
     Phone1: pick(r,'Phone1') || '', EmailAddress: pick(r,'EmailAddress') || '', City: pick(r,'City') || '', Country: pick(r,'Country') || '',
-    Frozen: pick(r,'FrozenRaw') === 'Y' ? 'tYES' : 'tNO',
+    Frozen: frozenFlag({ valid: pick(r,'ValidRaw'), validFrom: pick(r,'ValidFrom'), validTo: pick(r,'ValidTo'),
+                         frozen: pick(r,'FrozenRaw'), frozenFrom: pick(r,'FrozenFrom'), frozenTo: pick(r,'FrozenTo') }),
   })).filter(r => r.CardCode);
 }
 
@@ -366,7 +429,11 @@ export function createDataSyncRouter({ requireAuth, getActiveSap }) {
         }
       }
       if (rows === null) rows = await withTimeout(def.fetchSL(sap), `${entityKey} Service Layer fetch`);
-      def.save(companyId, rows);
+      // Full refresh: replace the entity's cached snapshot so every field reflects
+      // SAP now and rows deleted in SAP drop out. An empty fetch keeps the old copy —
+      // some fetchers swallow errors into [] and that must not wipe the cache.
+      if (rows.length) cacheRepo.replaceEntity(companyId, entityKey, () => def.save(companyId, rows));
+      else console.warn(`[data-sync] ${entityKey}: fetch returned 0 rows — keeping existing cached data`);
       console.log(`[data-sync] ${entityKey}: synced ${rows.length} rows via ${source === 'sl' ? 'Service Layer' : 'direct DB (' + source + ')'}`);
       cacheRepo.logSync(companyId, entityKey, 'ok', rows.length);
       return { entity: entityKey, label: def.label, count: rows.length, status: 'ok', source };

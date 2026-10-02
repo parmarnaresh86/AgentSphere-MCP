@@ -4,7 +4,7 @@
  *  The chat flow itself is shared with the other copy-from agents — see lib/copy-doc-flow.mjs.
  */
 import { Router } from 'express';
-import { createCopyFlowChatHandler, today, datePlusDays } from '../lib/copy-doc-flow.mjs';
+import { createCopyFlowChatHandler, batchSerialRoute, today, datePlusDays } from '../lib/copy-doc-flow.mjs';
 
 function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -17,6 +17,10 @@ const FLOW = {
   source: { entity: '/Invoices', baseType: 13, label: 'A/R Invoice', short: 'INV', plural: 'A/R invoices', dueLabel: 'Due Date' },
   target: { entity: '/CreditNotes', label: 'A/R Credit Memo', dueLabel: 'Due Date (blank = payment terms)', dueRequired: false, refLabel: 'Customer Ref', qtyLabel: 'Credit Qty' },
   editable: { price: true, disc: true, tax: true, wh: false }, payTerms: false,
+  batchSerial: true,    // managed items must carry batches / serials …
+  batchSource: true,    // … taken from the A/R invoice (or its delivery) or newly created — goods come back in, not out of stock
+  bins: true,           // receiving bin(s) for bin-enabled warehouses
+  allParties: true,     // step 1 lists every customer, with their open-invoice count
   defaultDueDate: () => '',
 };
 
@@ -139,6 +143,9 @@ export function createARInvToARCMRouter(deps) {
   const router = Router();
 
   router.post('/chat', requireAuth, createCopyFlowChatHandler(FLOW, getActiveSap));
+
+  // Bins a credit memo may receive into, for the Batch / Serial / Bin window
+  router.get('/batch-serials', requireAuth, batchSerialRoute());
 
   // Sessions live in the shared handler and are replaced on the next "Restart" — nothing to drop here.
   router.post('/reset', requireAuth, (req, res) => res.json({ ok: true }));

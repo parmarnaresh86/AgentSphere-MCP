@@ -19,6 +19,7 @@ const FLOW = {
   editable: { price: false, disc: false, tax: false, wh: true }, payTerms: false,
   stock: true,          // show on-hand qty per warehouse and block posting beyond it
   batchSerial: true,    // batch / serial selection for managed items
+  bins: true,           // bin allocation (allowed bins with stock) for bin-enabled warehouses
   defaultDueDate: () => today(),
 };
 

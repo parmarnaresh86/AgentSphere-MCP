@@ -339,6 +339,9 @@
 #${PANEL_ID} .ia-muted{color:#CBD5E1}
 #${PANEL_ID} .ia-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap}
 #${PANEL_ID} .ia-score{display:inline-flex;align-items:center;gap:6px}
+#${PANEL_ID} .ia-score-click{cursor:pointer;border-radius:4px;padding:2px 4px;margin:-2px -4px}
+#${PANEL_ID} .ia-score-click:hover{background:#EEF2FF}
+#${PANEL_ID} .ia-score-click:hover b{text-decoration:underline}
 #${PANEL_ID} .ia-score-track{width:46px;height:5px;background:#E5E7EB;border-radius:3px;display:inline-block;overflow:hidden}
 #${PANEL_ID} .ia-score-track span{display:block;height:100%}
 #${PANEL_ID} .ia-act{font-size:10.5px;padding:3px 8px;border:1px solid #CBD5E1;background:#fff;border-radius:4px;cursor:pointer;margin-right:4px;white-space:nowrap}
@@ -813,7 +816,10 @@ html[data-ui="fiori"] .ia-toast.bad{background:#aa0808}
     const shownGroups = groups ? groups.slice(start, start + size) : null;
     const shown = groups ? shownGroups.flatMap(g => gOpen[g.id] ? g.rows : []) : rows.slice(start, start + size);
     const lead = gb ? Math.max(1, tab.columns.findIndex(c => c.key in (shownGroups[0]?.agg || {}))) : 0;
-    const rowHtml = (r, i) => `<tr class="${rc && r.itemCode === rc.code ? 'sel' : ''}${gb ? ' ia-gchild' : ''}">${tab.columns.map(c => `<td class="${numeric(c) ? 'num' : ''} ${c.wrap ? 'wrap' : ''}">${cell(r, c, dense)}</td>`).join('')}
+    // A score cell whose row carries a scoreBreakdown is clickable and opens the breakdown popup.
+    const cellHtml = (r, c, i) => c.fmt === 'score' && r.scoreBreakdown
+      ? `<span class="ia-score-click" data-sb="${i}" title="Click to see how this score is calculated">${cell(r, c, dense)}</span>` : cell(r, c, dense);
+    const rowHtml = (r, i) => `<tr class="${rc && r.itemCode === rc.code ? 'sel' : ''}${gb ? ' ia-gchild' : ''}">${tab.columns.map(c => `<td class="${numeric(c) ? 'num' : ''} ${c.wrap ? 'wrap' : ''}">${cellHtml(r, c, i)}</td>`).join('')}
           ${actions.length ? `<td>${actions.map(a => `<button class="ia-act" data-i="${i}" data-act="${esc(a.id)}">${esc(a.label)}</button>`).join('')}</td>` : ''}</tr>`;
     let bodyHtml;
     if (groups) {
@@ -887,6 +893,7 @@ html[data-ui="fiori"] .ia-toast.bad{background:#aa0808}
     const sizeSel = tb.querySelector('.ia-pager select');
     if (sizeSel) sizeSel.onchange = () => { st.pageSize = Number(sizeSel.value); goTo(1); };
     tb.querySelectorAll('[data-act]').forEach(b => b.onclick = () => runAction(key, actions.find(a => a.id === b.dataset.act), shown[Number(b.dataset.i)]));
+    tb.querySelectorAll('[data-sb]').forEach(el => el.onclick = () => showScoreBreakdown(shown[Number(el.dataset.sb)]));
     tb.querySelectorAll('tr.ia-grp').forEach(tr => tr.onclick = () => { gOpen[tr.dataset.g] = !gOpen[tr.dataset.g]; renderTab(key); });
     tb.querySelectorAll('[data-gall]').forEach(b => b.onclick = () => {
       const on = b.dataset.gall === '1';
@@ -943,7 +950,25 @@ html[data-ui="fiori"] .ia-toast.bad{background:#aa0808}
     document.body.appendChild(bg);
     return bg;
   }
-  const fill = (tpl, row) => String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => row[k] ?? '');
+  // Popup explaining a row's score: one line per component, plus the priority rule that applied.
+  function showScoreBreakdown(row) {
+    const sb = row?.scoreBreakdown;
+    if (!sb) return;
+    const total = sb.parts.reduce((s, p) => s + p.points, 0);
+    const maxTotal = sb.parts.reduce((s, p) => s + p.max, 0);
+    const body = `
+      ${sb.parts.length ? `<table class="ia-grid"><thead><tr><th>Component</th><th>How it is calculated</th><th>Points</th></tr></thead><tbody>
+        ${sb.parts.map(p => `<tr><td><b>${esc(p.label)}</b><div class="ia-m-hint">${esc(p.detail)}</div></td>
+          <td style="text-align:left;white-space:normal">${esc(p.formula)}</td>
+          <td><b>${nfN.format(p.points)}</b> <span class="ia-m-hint">/ ${p.max}</span></td></tr>`).join('')}
+        <tr><td><b>Total score</b></td><td></td><td><b>${Math.round(total)}</b> <span class="ia-m-hint">/ ${maxTotal}</span></td></tr>
+      </tbody></table>` : ''}
+      <div class="ia-m-hint">${esc(sb.note)}</div>
+      ${sb.priority ? `<div style="font-size:12px">Priority: ${badge(sb.priority)} — ${esc(sb.priorityReason || '')}</div>
+        <div class="ia-m-hint">Priority comes from fixed rules (broken promise, open promise, days overdue), not from the score.</div>` : ''}`;
+    modal(`Score ${row.score ?? Math.round(total)} — ${row.cardName || row.itemName || ''}`, body, [{ label: 'Close', primary: true }]);
+  }
+  const fill = (tpl, row) =>String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => row[k] ?? '');
 
   // Inline chart for one row, drawn above the table in the current tab.
   async function openRowChart(key, act, code, quiet) {
