@@ -30789,6 +30789,7 @@ window.roAskFollowUp = function() {
     if (d.reply) addMsg('agent', d.reply, mode);
     else if (d.error) addMsg('agent', '❌ ' + esc(d.error), mode);
     if (mode !== current) return;
+    if (mode === 'st_req') invaRlSyncAlloc();
     if (d.quickReplies) showQR(d.quickReplies);
     const badge = el('inva-step-badge'); if (badge) badge.textContent = STEP_LABEL[st.step] || 'READY';
     renderSummary();
@@ -30840,6 +30841,7 @@ window.roAskFollowUp = function() {
         + (transfer ? ' · ' + esc(l.fromWh) + ' → ' + esc(l.toWh) : ' · WH ' + esc(l.wh))
         + (l.batches && l.batches.length ? ' · Batch ' + l.batches.map(b => esc(b.batch)).join(', ') : '')
         + (l.serials && l.serials.length ? ' · Serial ' + l.serials.map(s => esc(s.serial)).join(', ') : '')
+        + invaBinSummary(l)
         + (l.unitPrice !== undefined ? ' · @ ' + Number(l.unitPrice).toFixed(2) : '') + '</div>'
         + (editable ? '<button onclick="invaSend(JSON.stringify({action:\'remove_line\',index:' + i + '}))" title="Remove line" style="position:absolute;top:5px;right:6px;background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px">✕</button>' : '')
         + '</div>';
@@ -30849,6 +30851,14 @@ window.roAskFollowUp = function() {
       html += '<div style="text-align:right;font-size:12.5px;margin-top:6px">Total qty: <strong style="color:' + COLOR + '">' + tq.toLocaleString() + '</strong></div>';
     }
     box.innerHTML = html;
+  }
+
+  // " · Bins 01-A1 → 02-B1, …" for a line whose picks carry From/To bins
+  function invaBinSummary(l) {
+    const picks = [].concat(l.batches || [], l.serials || [], l.bins || []).filter(p => p.fromBinCode || p.toBinCode);
+    const label = p => p.fromBinCode && p.toBinCode ? p.fromBinCode + ' → ' + p.toBinCode : p.fromBinCode || '→ ' + p.toBinCode;
+    const pairs = [...new Set(picks.map(label))];
+    return pairs.length ? ' · Bins ' + pairs.map(esc).join(', ') : '';
   }
 
   // ── Form handlers used by the server-rendered HTML ──────────────────────────
@@ -30872,22 +30882,53 @@ window.roAskFollowUp = function() {
     if (list.length === 1) { sel.value = list[0].code; invaItemChange(idx); }
   };
 
-  // Batch/serial allocation status under the "Select…" button — invalidated whenever
+  // Warehouses of ADD_ITEM form idx and whether each side uses bin locations (from the
+  // card's data-binwhs). Goods Issue only takes out (From), Goods Receipt only puts in (To).
+  function invaLineBins(idx) {
+    const card = lastEl('inva-item-' + idx)?.closest('[data-items]');
+    let bw = [];
+    try { bw = JSON.parse(card?.getAttribute('data-binwhs') || '[]'); } catch {}
+    const h = state[current]?.header || {};
+    if (current === 'gi' || current === 'gr') {
+      const wh = lastEl('inva-wh-' + idx)?.value || h.wh || '';
+      return current === 'gi'
+        ? { fromWh: wh, toWh: '', fromBins: bw.includes(wh), toBins: false }
+        : { fromWh: '', toWh: wh, fromBins: false, toBins: bw.includes(wh) };
+    }
+    const fromWh = lastEl('inva-from-' + idx)?.value || h.fromWh || '', toWh = lastEl('inva-to-' + idx)?.value || h.toWh || '';
+    return { fromWh, toWh, fromBins: bw.includes(fromWh), toBins: bw.includes(toWh) };
+  }
+
+  // What form idx's current item needs picked: 'serial' | 'batch' | 'bin' (plain item in a bin warehouse) | ''
+  function invaLineNeed(idx) {
+    if (current === 'str') return '';
+    const sel = lastEl('inva-item-' + idx);
+    const opt = sel && sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return '';
+    if (opt.dataset.serial === '1') return 'serial';
+    if (opt.dataset.batch === '1') return 'batch';
+    const b = invaLineBins(idx);
+    return b.fromBins || b.toBins ? 'bin' : '';
+  }
+
+  // Batch/serial/bin allocation status under the "Select…" button — invalidated whenever
   // the item, warehouse or quantity changes so a stale pick can't be silently posted.
   function invaRefreshAllocStatus(idx) {
     const st = lastEl('inva-alloc-' + idx); if (!st) return;
-    const sel = lastEl('inva-item-' + idx);
-    const opt = sel && sel.options[sel.selectedIndex];
-    const needsBatch  = opt && opt.dataset.batch === '1';
-    const needsSerial = opt && opt.dataset.serial === '1';
+    const need = invaLineNeed(idx);
     const a = invaAlloc[idx];
-    if (!needsBatch && !needsSerial) { st.style.color = '#9ca3af'; st.textContent = 'Not required'; return; }
+    if (!need) { st.style.color = '#9ca3af'; st.textContent = 'Not required'; return; }
     if (a) {
+      const hasBins = a.items.some(p => p.fromBinAbs || p.toBinAbs);
       st.style.color = '#15803d';
-      st.textContent = '✓ ' + (a.kind === 'serial' ? a.items.length + ' serial(s)' : a.items.length + ' batch(es) · ' + a.items.reduce((s, b) => s + (parseFloat(b.qty) || 0), 0).toLocaleString());
+      st.textContent = '✓ ' + (a.kind === 'serial' ? a.items.length + ' serial(s)'
+        : a.kind === 'bin' ? a.items.length + ' bin row(s)'
+        : a.items.length + ' batch(es) · ' + a.items.reduce((s, b) => s + (parseFloat(b.qty) || 0), 0).toLocaleString())
+        + (hasBins && a.kind !== 'bin' ? ' · bins set' : '');
     } else {
+      const b = invaLineBins(idx);
       st.style.color = '#b91c1c';
-      st.textContent = 'Not selected (' + (needsSerial ? 'serial' : 'batch') + ')';
+      st.textContent = 'Not selected (' + need + (need !== 'bin' && (b.fromBins || b.toBins) ? ' + bin' : '') + ')';
     }
   }
   function invaClearAlloc(idx) { delete invaAlloc[idx]; invaRefreshAllocStatus(idx); }
@@ -30925,16 +30966,14 @@ window.roAskFollowUp = function() {
     if (!itemCode) { alert('Please select an item'); return; }
     const qty = parseFloat(lastEl('inva-qty-' + idx)?.value || '0');
     if (!(qty > 0)) { alert('Please enter a quantity greater than 0'); return; }
-    const sel = lastEl('inva-item-' + idx);
-    const opt = sel && sel.options[sel.selectedIndex];
-    const needsBatch  = opt && opt.dataset.batch === '1';
-    const needsSerial = opt && opt.dataset.serial === '1';
+    const need  = invaLineNeed(idx);
     const alloc = invaAlloc[idx];
     const allocQty = alloc ? (alloc.kind === 'serial' ? alloc.items.length : alloc.items.reduce((s, b) => s + (parseFloat(b.qty) || 0), 0)) : 0;
-    if ((needsBatch || needsSerial) && (!alloc || Math.abs(allocQty - qty) > 1e-6)) {
+    if (need && (!alloc || alloc.kind !== need || Math.abs(allocQty - qty) > 1e-6)) {
+      const what = need === 'serial' ? 'serial numbers' : need === 'batch' ? 'batches' : 'bin locations';
       alert(current === 'gr'
-        ? 'Please enter batches for this item (📦 Add Batches… button above) — batch quantities must total ' + qty.toLocaleString() + '.'
-        : 'Please select ' + (needsSerial ? 'serial numbers' : 'batches') + ' for this item (📦 Select… button above).');
+        ? 'Please enter ' + what + ' for this item (📦 Batches / Bins… button above) — quantities must total ' + qty.toLocaleString() + '.'
+        : 'Please select ' + what + ' for this item (📦 Select… button above) — quantities must total ' + qty.toLocaleString() + '.');
       return;
     }
     const payload = { action: 'add_item', itemCode, quantity: qty };
@@ -30946,39 +30985,70 @@ window.roAskFollowUp = function() {
     if (price !== undefined && price !== '') payload.unitPrice = parseFloat(price);
     if (alloc?.kind === 'batch')  payload.batches = alloc.items;
     if (alloc?.kind === 'serial') payload.serials = alloc.items;
+    if (alloc?.kind === 'bin')    payload.bins    = alloc.items;
     send(JSON.stringify(payload));
     delete invaAlloc[idx];
   };
 
   // ── Batch / Serial selection window for the ADD_ITEM form (like SAP's own
   // Batch/Serial Number Selection window), scoped to the row's chosen warehouse ──
+  // Bin-enabled warehouse on either side → bin-aware allocation window; else plain batch/serial window.
   window.invaPickBatchSerial = async function(idx) {
     const sel = lastEl('inva-item-' + idx);
     const itemCode = sel?.value;
     if (!itemCode) { alert('Select an item first.'); return; }
     const opt = sel.options[sel.selectedIndex];
-    const kind = opt.dataset.serial === '1' ? 'serial' : (opt.dataset.batch === '1' ? 'batch' : '');
-    if (!kind) { alert('This item is not batch or serial managed.'); return; }
-    const whs = (lastEl('inva-from-' + idx)?.value) || (lastEl('inva-wh-' + idx)?.value) || '';
+    const kind = invaLineNeed(idx);
+    if (!kind) { alert('This item is not batch or serial managed and its warehouse does not use bin locations — nothing to select.'); return; }
+    const b = invaLineBins(idx);
+    const whs = b.fromWh || b.toWh;
     if (!whs) { alert('Select a warehouse first.'); return; }
     const qty = parseFloat(lastEl('inva-qty-' + idx)?.value || '0');
     if (!(qty > 0)) { alert('Enter a quantity first.'); return; }
     const itemName = opt.textContent.split(' — ').slice(1).join(' — ');
-    invaOpenAllocModal(kind, itemCode, itemName, whs, qty, invaAlloc[idx], a => { invaAlloc[idx] = a; invaRefreshAllocStatus(idx); });
+    if (b.fromBins || b.toBins) {
+      invaOpenTransferAllocModal({ kind, itemCode, itemName, ...b, qty, prev: invaAlloc[idx]?.kind === kind ? invaAlloc[idx].items : [],
+        onConfirm: items => { invaAlloc[idx] = { kind, whs, items }; invaRefreshAllocStatus(idx); } });
+    } else {
+      invaOpenAllocModal(kind, itemCode, itemName, whs, qty, invaAlloc[idx], a => { invaAlloc[idx] = a; invaRefreshAllocStatus(idx); });
+    }
   };
 
+  // Bins of a warehouse that may receive stock (default first) — /batch-serials?kind=receivebins
+  function invaReceiveBins(whs) {
+    return fetch(API + '/batch-serials?' + new URLSearchParams({ kind: 'receivebins', whs }), { headers: { 'x-auth-token': tok() } })
+      .then(x => x.json()).then(r => { if (!r.ok) throw new Error(r.error || 'Lookup failed'); return r.rows || []; });
+  }
+
   // ── Goods Receipt batch entry: the receipt creates new batches, so instead of
-  // picking from stock the user types one row per batch (No., qty, optional dates) ──
-  window.invaEnterGrBatches = function(idx) {
+  // picking from stock the user types one row per batch (No., qty, optional dates),
+  // plus the bin each batch goes into when the warehouse uses bin locations.
+  // A plain item in a bin warehouse just splits its qty over bins. ──
+  window.invaEnterGrBatches = async function(idx) {
     const sel = lastEl('inva-item-' + idx);
     const itemCode = sel?.value;
     if (!itemCode) { alert('Select an item first.'); return; }
     const opt = sel.options[sel.selectedIndex];
-    if (opt.dataset.batch !== '1') { alert('This item is not batch managed.'); return; }
     const qty = parseFloat(lastEl('inva-qty-' + idx)?.value || '0');
     if (!(qty > 0)) { alert('Enter a quantity first.'); return; }
-    const whs = lastEl('inva-wh-' + idx)?.value || state[current]?.header?.wh || '';
+    const { toWh: whs, toBins } = invaLineBins(idx);
     const itemName = opt.textContent.split(' — ').slice(1).join(' — ');
+    if (opt.dataset.serial === '1') { alert('This item is serial-managed — serial numbers must be allocated in the SAP client for a Goods Receipt.'); return; }
+    if (opt.dataset.batch !== '1') {
+      if (!toBins) { alert('This item is not batch managed and warehouse ' + whs + ' does not use bin locations — nothing to enter.'); return; }
+      invaOpenTransferAllocModal({ kind: 'bin', itemCode, itemName, fromWh: '', toWh: whs, fromBins: false, toBins: true, qty, docLabel: 'Goods Receipt',
+        prev: invaAlloc[idx]?.kind === 'bin' ? invaAlloc[idx].items : [],
+        onConfirm: items => { invaAlloc[idx] = { kind: 'bin', whs, items }; invaRefreshAllocStatus(idx); } });
+      return;
+    }
+    let toList = [];
+    if (toBins) {
+      try { toList = await invaReceiveBins(whs); } catch (e) { alert('Could not load bins of ' + whs + ': ' + e.message); return; }
+      if (!toList.length) { alert('Warehouse ' + whs + ' has no active bin that allows receiving stock.'); return; }
+    }
+    const dftTo = toList.find(b => b.isDefault) || toList[0];
+    const binSel = abs => '<select data-f="bin" style="border:1.5px solid #d1d5db;border-radius:5px;padding:5px 6px;font-size:12px;width:100%"><option value="">— Bin —</option>'
+      + toList.map(b => '<option value="' + b.binAbs + '"' + (b.binAbs === Number(abs) ? ' selected' : '') + '>' + esc(b.binCode) + (b.isDefault ? ' (default)' : '') + '</option>').join('') + '</select>';
     const prev = invaAlloc[idx]?.kind === 'batch' ? invaAlloc[idx].items : [];
 
     const inp = 'border:1.5px solid #d1d5db;border-radius:5px;padding:5px 7px;font-size:12.5px;box-sizing:border-box;width:100%';
@@ -30988,11 +31058,12 @@ window.roAskFollowUp = function() {
     ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:760px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden">'
       + '<div style="background:' + COLOR + ';color:#fff;padding:12px 18px;display:flex;align-items:center;gap:10px">'
       +   '<div style="flex:1"><div style="font-size:14px;font-weight:700">📦 Batch Entry — Goods Receipt</div>'
-      +   '<div style="font-size:11.5px;opacity:.85">' + esc(itemCode) + ' — ' + esc(itemName) + (whs ? ' · Warehouse ' + esc(whs) : '') + ' · Quantity <strong>' + qty.toLocaleString() + '</strong></div></div>'
+      +   '<div style="font-size:11.5px;opacity:.85">' + esc(itemCode) + ' — ' + esc(itemName) + (whs ? ' · Warehouse ' + esc(whs) + (toBins ? ' 📍' : '') : '') + ' · Quantity <strong>' + qty.toLocaleString() + '</strong></div></div>'
       +   '<button data-x style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:5px;padding:4px 10px;cursor:pointer">✕</button></div>'
       + '<div style="flex:1;overflow:auto;padding:14px 18px">'
       +   '<table style="width:100%;border-collapse:collapse;font-size:12.5px;color:var(--text)"><thead><tr>'
-      +   '<th style="' + th + '">Batch No. *</th><th style="' + th + ';width:110px;text-align:right">Qty *</th><th style="' + th + ';width:140px">Expiry</th><th style="' + th + ';width:140px">Mfg Date</th><th style="' + th + ';width:34px"></th>'
+      +   '<th style="' + th + '">Batch No. *</th><th style="' + th + ';width:110px;text-align:right">Qty *</th><th style="' + th + ';width:140px">Expiry</th><th style="' + th + ';width:140px">Mfg Date</th>'
+      +   (toBins ? '<th style="' + th + ';width:150px">Bin *</th>' : '') + '<th style="' + th + ';width:34px"></th>'
       +   '</tr></thead><tbody data-rows></tbody></table>'
       +   '<button data-add style="margin-top:10px;background:#fff;border:1px dashed ' + COLOR + ';color:' + COLOR + ';border-radius:6px;padding:6px 14px;font-size:12.5px;cursor:pointer">+ Add Batch</button>'
       + '</div>'
@@ -31015,8 +31086,10 @@ window.roAskFollowUp = function() {
         + '<td style="padding:4px"><input data-f="qty" type="number" min="0" step="any" value="' + (b.qty || '') + '" style="' + inp + ';text-align:right"></td>'
         + '<td style="padding:4px"><input data-f="expiry" type="date" value="' + esc(b.expiry || '') + '" style="' + inp + '"></td>'
         + '<td style="padding:4px"><input data-f="mfg" type="date" value="' + esc(b.mfg || '') + '" style="' + inp + '"></td>'
+        + (toBins ? '<td style="padding:4px">' + binSel(b.toBinAbs ?? dftTo?.binAbs) + '</td>' : '')
         + '<td style="padding:4px;text-align:center"><button data-del title="Remove batch" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td>';
       tr.querySelectorAll('input').forEach(x => x.oninput = update);
+      tr.querySelectorAll('select').forEach(x => x.onchange = update);
       tr.querySelector('[data-del]').onclick = () => { tr.remove(); if (!tbody.children.length) addRow(); update(); };
       tbody.appendChild(tr);
       return tr;
@@ -31027,6 +31100,10 @@ window.roAskFollowUp = function() {
         const b = { batch: v('batch'), qty: parseFloat(v('qty')) || 0 };
         if (v('expiry')) b.expiry = v('expiry');
         if (v('mfg')) b.mfg = v('mfg');
+        if (toBins) {
+          const bin = toList.find(x => x.binAbs === Number(v('bin')));
+          if (bin) { b.toBinAbs = bin.binAbs; b.toBinCode = bin.binCode; }
+        }
         return b;
       }).filter(b => b.batch || b.qty);
     }
@@ -31039,6 +31116,7 @@ window.roAskFollowUp = function() {
       else if (rows.some(b => !(b.qty > 0))) msg = 'Every batch needs a quantity greater than 0.';
       else if (new Set(names).size !== names.length) msg = 'Batch numbers must be unique.';
       else if (rows.some(b => b.expiry && b.mfg && b.mfg > b.expiry)) msg = 'Mfg date is after expiry date.';
+      else if (toBins && rows.some(b => !b.toBinAbs)) msg = 'Pick a bin for every batch.';
       const ok = rows.length && !msg && Math.abs(sum - qty) < 1e-6;
       $('[data-msg]').textContent = msg;
       $('[data-sum]').innerHTML = 'Total <span style="color:' + (Math.abs(sum - qty) < 1e-6 ? '#15803d' : '#dc2626') + '">' + sum.toLocaleString() + '</span> / ' + qty.toLocaleString();
@@ -31055,26 +31133,219 @@ window.roAskFollowUp = function() {
     update();
   };
 
+  // Status under a REQ_LINES "Select…" button, from invaReqAlloc
+  function invaRlShowStatus(lineNum) {
+    const st = lastEl('inva-rlalloc-' + lineNum); if (!st) return;
+    const a = invaReqAlloc[lineNum];
+    if (!a) { st.style.color = '#b91c1c'; st.textContent = 'Not selected'; return; }
+    const n = a.items.length;
+    const hasBins = a.items.some(p => p.fromBinAbs || p.toBinAbs);
+    st.style.color = '#15803d';
+    st.textContent = '✓ ' + (a.kind === 'serial' ? n + ' serial(s)' : a.kind === 'batch' ? n + ' batch(es)' : n + ' bin row(s)')
+      + (hasBins && a.kind !== 'bin' ? ' · bins set' : '');
+  }
+
   window.invaRlClearAlloc = function(lineNum) {
     delete invaReqAlloc[lineNum];
-    const st = lastEl('inva-rlalloc-' + lineNum);
-    if (st) { st.style.color = '#b91c1c'; st.textContent = 'Not selected'; }
+    invaRlShowStatus(lineNum);
   };
 
-  // Same picker, for the st_req REQ_LINES table (warehouse is fixed per request line)
-  window.invaPickReqBatchSerial = async function(lineNum, kind) {
+  // A freshly rendered REQ_LINES table (after an error, "Edit Quantities" or another
+  // request) keeps only picks that still belong to this request and match the row's qty
+  function invaRlSyncAlloc() {
+    const table = lastEl('inva-rl-table'); if (!table) return;
+    table.querySelectorAll('tr[data-line]').forEach(tr => {
+      const n = Number(tr.dataset.line), a = invaReqAlloc[n];
+      const qty = parseFloat(tr.querySelector('.inva-rl-qty')?.value || '0') || 0;
+      if (a && (a.req !== table.dataset.req || Math.abs(a.qty - qty) > 1e-6)) delete invaReqAlloc[n];
+      invaRlShowStatus(n);
+    });
+  }
+
+  // Picker for the st_req REQ_LINES table (warehouses are fixed per request line).
+  // Lines touching a bin-enabled warehouse get the bin-aware transfer window; others
+  // keep the plain batch/serial window.
+  window.invaPickReqBatchSerial = function(lineNum) {
     const table = lastEl('inva-rl-table'); if (!table) return;
     const tr = table.querySelector('tr[data-line="' + lineNum + '"]'); if (!tr) return;
-    const itemCode = tr.dataset.item, whs = tr.dataset.fromwh;
+    const kind = tr.dataset.need; if (!kind) return;
+    const itemCode = tr.dataset.item, fromWh = tr.dataset.fromwh, toWh = tr.dataset.towh;
+    const fromBins = tr.dataset.frombin === '1', toBins = tr.dataset.tobin === '1';
     const qty = parseFloat(tr.querySelector('.inva-rl-qty')?.value || '0');
     if (!(qty > 0)) { alert('Enter a transfer quantity first.'); return; }
-    const itemName = tr.querySelector('strong')?.textContent || itemCode;
-    invaOpenAllocModal(kind, itemCode, itemName, whs, qty, invaReqAlloc[lineNum], a => {
-      invaReqAlloc[lineNum] = a;
-      const st = lastEl('inva-rlalloc-' + lineNum);
-      if (st) { st.style.color = '#15803d'; st.textContent = '✓ ' + (a.kind === 'serial' ? a.items.length + ' serial(s)' : a.items.length + ' batch(es)'); }
-    });
+    const itemName = tr.querySelector('[data-name]')?.textContent || '';
+    const done = a => { invaReqAlloc[lineNum] = { ...a, qty, req: table.dataset.req }; invaRlShowStatus(lineNum); };
+    if (fromBins || toBins) {
+      invaOpenTransferAllocModal({ kind, itemCode, itemName, fromWh, toWh, fromBins, toBins, qty,
+        prev: invaReqAlloc[lineNum]?.items || [], onConfirm: items => done({ kind, whs: fromWh, toWh, items }) });
+    } else {
+      invaOpenAllocModal(kind, itemCode, itemName, fromWh, qty, invaReqAlloc[lineNum], done);
+    }
   };
+
+  // Stock Transfer allocation window for lines touching a bin-enabled warehouse — like
+  // SAP's Bin Location Allocation. Picks come from the From warehouse's real stock
+  // (per bin when From has bins: OBBQ/OSBQ/OIBQ), and each pick gets a To bin that may
+  // receive stock. kind: 'batch' | 'serial' | 'bin' (plain item). A plain item leaving
+  // a non-bin warehouse has nothing to pick, so the user splits the qty over To bins.
+  async function invaOpenTransferAllocModal(o) {
+    const { kind, itemCode, itemName, fromWh, toWh, fromBins, toBins, qty, prev, onConfirm } = o;
+    if (kind === 'serial' && Math.abs(qty - Math.round(qty)) > 1e-6) { alert('Serial-managed items need a whole-number quantity.'); return; }
+    const manual = kind === 'bin' && !fromBins;
+    const noun = kind === 'serial' ? 'serial numbers' : kind === 'batch' ? 'batches' : 'stock';
+    const pin = on => on ? ' 📍' : '';
+    // Goods Issue has only a From side, Goods Receipt only a To side
+    const docLabel = o.docLabel || (current === 'gi' ? 'Goods Issue' : current === 'gr' ? 'Goods Receipt' : 'Stock Transfer');
+    const whText = fromWh && toWh ? esc(fromWh) + pin(fromBins) + ' → ' + esc(toWh) + pin(toBins)
+      : 'Warehouse ' + esc(fromWh || toWh) + pin(fromBins || toBins);
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1200;display:flex;align-items:center;justify-content:center;font-family:var(--font)';
+    ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:900px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden">'
+      + '<div style="background:' + COLOR + ';color:#fff;padding:12px 18px;display:flex;align-items:center;gap:10px">'
+      +   '<div style="flex:1"><div style="font-size:14px;font-weight:700">' + (kind === 'serial' ? '🔢 Serial' : kind === 'batch' ? '📦 Batch' : '📍 Bin') + ' Allocation — ' + esc(docLabel) + '</div>'
+      +   '<div style="font-size:11.5px;opacity:.85">' + esc(itemCode) + (itemName ? ' — ' + esc(itemName) : '') + ' · ' + whText + ' · Needed <strong>' + qty.toLocaleString() + '</strong></div></div>'
+      +   '<button data-x style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:5px;padding:4px 10px;cursor:pointer">✕</button></div>'
+      + '<div data-body style="flex:1;overflow:auto;padding:14px 18px;font-size:12.5px;color:#6b7280">⏳ Loading…</div>'
+      + '<div style="border-top:1px solid #e5e7eb;padding:10px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f9fafb">'
+      +   '<button data-auto style="background:#fff;border:1px solid ' + COLOR + ';color:' + COLOR + ';border-radius:6px;padding:7px 14px;font-size:12.5px;cursor:pointer">⚡ Auto-select</button>'
+      +   '<button data-clear style="background:#fff;border:1px solid #d1d5db;color:#374151;border-radius:6px;padding:7px 14px;font-size:12.5px;cursor:pointer">Clear</button>'
+      +   '<span data-msg style="font-size:12px;color:#b91c1c"></span><span style="flex:1"></span><span data-sum style="font-size:13px;font-weight:700"></span>'
+      +   '<button data-cancel style="background:#fff;border:1px solid #d1d5db;color:#374151;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer">Cancel</button>'
+      +   '<button data-ok disabled style="background:' + COLOR + ';color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">✓ Confirm</button>'
+      + '</div></div>';
+    document.body.appendChild(ov);
+    const $ = s => ov.querySelector(s);
+    const close = () => ov.remove();
+    $('[data-x]').onclick = $('[data-cancel]').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    const fail = html => { $('[data-body]').innerHTML = '<div style="color:#b91c1c">' + html + '</div>'; };
+
+    const get = q => fetch(API + '/batch-serials?' + new URLSearchParams(q), { headers: { 'x-auth-token': tok() } })
+      .then(x => x.json()).then(r => { if (!r.ok) throw new Error(r.error || 'Lookup failed'); return r.rows || []; });
+    let rows = [], toList = [];
+    try {
+      [rows, toList] = await Promise.all([
+        manual ? [] : get({ kind, itemCode, whs: fromWh, ...(fromBins ? { bins: '1' } : {}) }),
+        toBins ? invaReceiveBins(toWh) : [],
+      ]);
+    } catch (e) { fail('❌ ' + esc(e.message)); return; }
+    if (!manual && !rows.length) { fail('No ' + noun + ' in stock for this item in warehouse ' + esc(fromWh) + (fromBins ? ' (in bins that allow issuing)' : '') + '.'); return; }
+    if (toBins && !toList.length) { fail('Warehouse ' + esc(toWh) + ' has no active bin that allows receiving stock.'); return; }
+    const dftTo = toList.find(b => b.isDefault) || toList[0];
+
+    const th = 'padding:6px 8px;text-align:left;font-size:10.5px;text-transform:uppercase;color:' + COLOR + ';background:#f3f4f6;position:sticky;top:0';
+    const td = 'padding:5px 8px;border-bottom:1px solid #f3f4f6';
+    const numInp = 'width:90px;border:1.5px solid #d1d5db;border-radius:5px;padding:4px 6px;text-align:right';
+    const toSel = abs => '<select data-to style="border:1.5px solid #d1d5db;border-radius:5px;padding:4px 6px;font-size:12px;max-width:170px"><option value="">— To bin —</option>'
+      + toList.map(b => '<option value="' + b.binAbs + '"' + (b.binAbs === Number(abs) ? ' selected' : '') + '>' + esc(b.binCode) + (b.isDefault ? ' (default)' : '') + '</option>').join('') + '</select>';
+    // previous picks for this line, matched by batch/serial + From bin
+    const keyOf = (id, fromAbs) => String(id ?? '') + '|' + (fromBins ? Number(fromAbs) || 0 : '');
+    const prevBy = new Map((prev || []).map(p => [keyOf(p.batch ?? p.serial, p.fromBinAbs), p]));
+
+    let body = '';
+    if (toBins) body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;color:var(--text)"><span style="font-size:12px">To bin for all rows:</span>' + toSel(dftTo?.binAbs).replace('data-to', 'data-toall') + '</div>';
+    if (kind === 'serial') body += '<input data-filter type="text" placeholder="🔍 Filter serial / manufacturer serial / lot / bin…" style="width:100%;box-sizing:border-box;border:1.5px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:8px">';
+    const head = cols => '<table style="width:100%;border-collapse:collapse;font-size:12.5px;color:var(--text)"><thead><tr>'
+      + cols.map(c => '<th style="' + th + (c.r ? ';text-align:right' : '') + '">' + c.h + '</th>').join('') + '</tr></thead><tbody data-rows>';
+    const fromCol = r => fromBins ? '<td style="' + td + '">' + esc(r.binCode) + (r.isDefault ? ' <span style="color:#9ca3af">(default)</span>' : '') + '</td>' : '';
+    const toCol = abs => toBins ? '<td style="' + td + '">' + toSel(abs) + '</td>' : '';
+
+    if (manual) {
+      body += head([{ h: 'Quantity', r: 1 }, { h: 'To Bin' }, { h: '' }]) + '</tbody></table>'
+        + '<button data-addrow style="margin-top:10px;background:#fff;border:1px dashed ' + COLOR + ';color:' + COLOR + ';border-radius:6px;padding:6px 14px;font-size:12.5px;cursor:pointer">+ Split to another bin</button>';
+    } else if (kind === 'serial') {
+      body += head([{ h: '' }, { h: 'Serial Number' }, { h: 'Mfr Serial' }, { h: 'Lot' }, { h: 'Expiry' }, ...(fromBins ? [{ h: 'From Bin' }] : []), ...(toBins ? [{ h: 'To Bin' }] : [])])
+        + rows.map((s, i) => { const p = prevBy.get(keyOf(s.serial, s.binAbs));
+          return '<tr data-r="' + i + '"><td style="' + td + '"><input type="checkbox" data-c' + (p ? ' checked' : '') + '></td><td style="' + td + ';font-weight:600">' + esc(s.serial) + '</td><td style="' + td + '">' + esc(s.mfrSerial || '—') + '</td><td style="' + td + '">' + esc(s.lot || '—') + '</td><td style="' + td + '">' + esc(s.expiry || '—') + '</td>'
+            + fromCol(s) + toCol(p?.toBinAbs ?? dftTo?.binAbs) + '</tr>'; }).join('') + '</tbody></table>';
+    } else {
+      body += head([...(kind === 'batch' ? [{ h: 'Batch' }, { h: 'Expiry' }, { h: 'Admission' }] : []), ...(fromBins ? [{ h: 'From Bin' }] : []), { h: 'Available', r: 1 }, { h: 'Qty', r: 1 }, ...(toBins ? [{ h: 'To Bin' }] : [])])
+        + rows.map((r, i) => { const p = prevBy.get(keyOf(r.batch, r.binAbs));
+          return '<tr data-r="' + i + '">' + (kind === 'batch' ? '<td style="' + td + ';font-weight:600">' + esc(r.batch) + '</td><td style="' + td + '">' + esc(r.expiry || '—') + '</td><td style="' + td + '">' + esc(r.admission || '—') + '</td>' : '')
+            + fromCol(r) + '<td style="' + td + ';text-align:right">' + Number(r.qty || 0).toLocaleString() + '</td>'
+            + '<td style="' + td + ';text-align:right"><input type="number" data-q min="0" max="' + r.qty + '" step="any" value="' + (p ? p.qty : '') + '" style="' + numInp + '"></td>'
+            + toCol(p?.toBinAbs ?? dftTo?.binAbs) + '</tr>'; }).join('') + '</tbody></table>';
+    }
+    $('[data-body]').innerHTML = body;
+    const tbody = $('[data-rows]');
+
+    function addManualRow(p) {
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-r', '');
+      tr.innerHTML = '<td style="' + td + ';text-align:right"><input type="number" data-q min="0" step="any" value="' + (p.qty || '') + '" style="' + numInp + '"></td>'
+        + '<td style="' + td + '">' + toSel(p.toBinAbs ?? dftTo?.binAbs) + '</td>'
+        + '<td style="' + td + ';text-align:center"><button data-del title="Remove row" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td>';
+      tr.querySelector('[data-del]').onclick = () => { tr.remove(); if (!tbody.children.length) addManualRow({}); update(); };
+      tbody.appendChild(tr);
+      wire(tr);
+    }
+    function wire(scope) {
+      scope.querySelectorAll('[data-q]').forEach(x => x.oninput = update);
+      scope.querySelectorAll('[data-c],[data-to]').forEach(x => x.onchange = update);
+    }
+    if (manual) {
+      (prev && prev.length ? prev : [{ qty }]).forEach(addManualRow);
+      $('[data-addrow]').onclick = () => { const left = qty - rowsNow().reduce((s, x) => s + x.take, 0); addManualRow(left > 0 ? { qty: +left.toFixed(6) } : {}); update(); };
+    } else wire(tbody);
+
+    const rowsNow = () => [...tbody.querySelectorAll('tr[data-r]')].map(tr => {
+      const q = tr.querySelector('[data-q]'), c = tr.querySelector('[data-c]'), t = tr.querySelector('[data-to]');
+      return { tr, r: manual ? null : rows[+tr.dataset.r], take: c ? (c.checked ? 1 : 0) : (parseFloat(q.value) || 0), toAbs: t ? Number(t.value) || 0 : 0 };
+    });
+
+    if (toBins) $('[data-toall]').onchange = e => { tbody.querySelectorAll('[data-to]').forEach(s => { s.value = e.target.value; }); update(); };
+    const f = $('[data-filter]');
+    if (f) f.oninput = e => { const w = e.target.value.trim().toLowerCase(); tbody.querySelectorAll('tr[data-r]').forEach(tr => { tr.style.display = !w || tr.textContent.toLowerCase().includes(w) ? '' : 'none'; }); };
+
+    // Auto-select follows the server's order: batches FEFO, serials by admission, default bin first
+    $('[data-auto]').onclick = () => {
+      if (manual) { tbody.innerHTML = ''; addManualRow({ qty }); }
+      else {
+        let left = qty;
+        rowsNow().forEach(x => {
+          const c = x.tr.querySelector('[data-c]'), q = x.tr.querySelector('[data-q]');
+          if (c) { c.checked = left >= 1 - 1e-9; if (c.checked) left -= 1; }
+          else { const take = Math.min(x.r.qty, Math.max(left, 0)); q.value = take > 0 ? +take.toFixed(6) : ''; left -= take; }
+        });
+      }
+      update();
+    };
+    $('[data-clear]').onclick = () => {
+      if (manual) { tbody.innerHTML = ''; addManualRow({}); }
+      else {
+        tbody.querySelectorAll('[data-q]').forEach(x => { x.value = ''; });
+        tbody.querySelectorAll('[data-c]').forEach(x => { x.checked = false; });
+      }
+      update();
+    };
+
+    function update() {
+      const now = rowsNow(), used = now.filter(x => x.take > 0);
+      const sum = now.reduce((s, x) => s + x.take, 0);
+      let msg = '';
+      if (now.some(x => x.take < 0)) msg = 'Quantities cannot be negative.';
+      else if (now.some(x => x.r && x.take > x.r.qty + 1e-9)) msg = 'A row exceeds the quantity available' + (fromBins ? ' in that bin' : '') + '.';
+      else if (toBins && used.some(x => !x.toAbs)) msg = 'Pick a To bin for every selected row.';
+      const ok = used.length && !msg && Math.abs(sum - qty) < 1e-6;
+      $('[data-msg]').textContent = msg;
+      $('[data-sum]').innerHTML = 'Selected <span style="color:' + (Math.abs(sum - qty) < 1e-6 ? '#15803d' : '#dc2626') + '">' + sum.toLocaleString() + '</span> / ' + qty.toLocaleString();
+      $('[data-ok]').disabled = !ok; $('[data-ok]').style.opacity = ok ? '1' : '.5';
+    }
+    $('[data-ok]').onclick = () => {
+      const items = rowsNow().filter(x => x.take > 0).map(x => {
+        const r = x.r || {}, to = toList.find(b => b.binAbs === x.toAbs);
+        return {
+          ...(kind === 'batch' ? { batch: r.batch } : kind === 'serial' ? { serial: r.serial, sysNumber: r.sysNumber } : {}),
+          qty: x.take,
+          ...(fromBins ? { fromBinAbs: r.binAbs, fromBinCode: r.binCode } : {}),
+          ...(to ? { toBinAbs: to.binAbs, toBinCode: to.binCode } : {}),
+        };
+      });
+      onConfirm(items);
+      close();
+    };
+    update();
+  }
 
   // Shared modal body for both pickers above — fetches real warehouse stock from
   // /batch-serials (server reads SAP's OBTN/OBTQ or OSRN/OSRQ directly) so whatever
@@ -31159,16 +31430,23 @@ window.roAskFollowUp = function() {
 
   window.invaSubmitRequestLines = function() {
     const table = lastEl('inva-rl-table'); if (!table) return;
-    const lines = [];
+    const lines = [], missing = [];
     table.querySelectorAll('tr[data-line]').forEach(tr => {
       if (!tr.querySelector('.inva-rl-chk')?.checked) return;
       const lineNum = Number(tr.dataset.line);
       const line = { lineNum, quantity: parseFloat(tr.querySelector('.inva-rl-qty')?.value || '0') || 0 };
       const alloc = invaReqAlloc[lineNum];
+      // Batch/serial/bin picks must exist and cover exactly the transfer qty
+      if (tr.dataset.need && line.quantity > 0 && (!alloc || Math.abs(alloc.qty - line.quantity) > 1e-6)) missing.push(tr.dataset.item);
       if (alloc?.kind === 'batch')  line.batches = alloc.items;
       if (alloc?.kind === 'serial') line.serials = alloc.items;
+      if (alloc?.kind === 'bin')    line.bins    = alloc.items;
       lines.push(line);
     });
+    if (missing.length) {
+      alert('Batch / serial / bin selection is missing or out of date for: ' + missing.join(', ') + '.\nUse the Select… button on each of these lines.');
+      return;
+    }
     send(JSON.stringify({ action: 'req_lines', lines }));
   };
 

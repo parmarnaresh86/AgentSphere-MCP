@@ -157,6 +157,26 @@ async function listOpenTransferRequests(sap, docNum) {
   return Array.isArray(r.value) ? r.value : [];
 }
 
+// Codes of the warehouses with "Enable Bin Locations" ticked (OWHS.BinActivat) — lines
+// in them need bin allocations. Pages with $skip (the Service Layer caps page size).
+// null on failure, so the caller retries on the next request instead of caching "none".
+async function binWarehouses(sap) {
+  try {
+    const all = [];
+    for (let skip = 0; all.length < 2000;) {
+      const r = await sap.get('/Warehouses', { $filter: "EnableBinLocations eq 'tYES'", $select: 'WarehouseCode', $skip: skip });
+      const rows = Array.isArray(r.value) ? r.value : [];
+      if (!rows.length) break;
+      all.push(...rows.map(w => w.WarehouseCode));
+      skip += rows.length;
+    }
+    return all;
+  } catch (e) {
+    console.error('[Inventory-Agent] bin warehouses', sapErrorText(e));
+    return null;
+  }
+}
+
 // Retries once for two known Service Layer quirks rather than failing the user:
 //  - items without UoM groups reject an explicit UoMCode
 //  - some SL versions only accept BaseType as the numeric object type
@@ -213,6 +233,8 @@ async function buildLine(session, sap, raw) {
     if (!serials.length) return { error: `<strong>${escHtml(itemCode)}</strong> is serial-managed — use the <strong>Select…</strong> button to pick serial numbers for this line.` };
     if (!Number.isInteger(quantity) || serials.length !== quantity)
       return { error: `Select exactly ${fmtQty(quantity)} serial number(s) for <strong>${escHtml(itemCode)}</strong> (selected ${serials.length}).` };
+    if (new Set(serials.map(s => String(s.serial))).size !== serials.length)
+      return { error: `The same serial number is selected twice for <strong>${escHtml(itemCode)}</strong>.` };
   }
   if (info.batch && mode !== 'str') {
     if (mode === 'gr') {
@@ -222,6 +244,7 @@ async function buildLine(session, sap, raw) {
           batch: String(b?.batch || '').trim(), qty: Number(b?.qty),
           ...(isDate(b?.expiry) ? { expiry: b.expiry } : {}),
           ...(isDate(b?.mfg)    ? { mfg: b.mfg }       : {}),
+          ...(Number(b?.toBinAbs) > 0 ? { toBinAbs: Number(b.toBinAbs), toBinCode: String(b.toBinCode || b.toBinAbs) } : {}),
         }))
         .filter(b => b.batch && b.qty > 0);
       if (!batches.length) return { error: `<strong>${escHtml(itemCode)}</strong> is batch-managed — use the <strong>Add Batches…</strong> button to enter batch numbers for this line.` };
@@ -252,6 +275,38 @@ async function buildLine(session, sap, raw) {
   } else {
     line.wh = raw.wh || session.header.wh;
     if (!line.wh) return { error: 'Warehouse is required.' };
+  }
+
+  // Bin-enabled warehouses: every unit leaving a warehouse (transfer From, Goods Issue)
+  // needs a From bin, every unit arriving (transfer To, Goods Receipt) needs a To bin.
+  // Batch/serial picks carry their own bins; plain items send raw.bins [{ qty, fromBinAbs, toBinAbs }].
+  // A Stock Transfer Request moves no stock, so it never takes bins.
+  const binWhs   = new Set(mode === 'str' ? [] : session.binWhs || []);
+  const outWh    = cfg.kind === 'transfer' ? line.fromWh : cfg.kind === 'issue'   ? line.wh : '';
+  const inWh     = cfg.kind === 'transfer' ? line.toWh   : cfg.kind === 'receipt' ? line.wh : '';
+  const fromBins = binWhs.has(outWh), toBins = binWhs.has(inWh);
+  if (fromBins || toBins) {
+    const side = (p, s, on) => (on && Number(p?.[s + 'BinAbs']) > 0
+      ? { [s + 'BinAbs']: Number(p[s + 'BinAbs']), [s + 'BinCode']: String(p[s + 'BinCode'] || p[s + 'BinAbs']) } : {});
+    const bins  = p => ({ ...side(p, 'from', fromBins), ...side(p, 'to', toBins) });
+    const strip = ({ fromBinAbs, fromBinCode, toBinAbs, toBinCode, ...rest }) => rest;
+    const what  = info.serial ? 'serial' : info.batch ? 'batch' : 'quantity';
+    let picks;
+    if (info.serial) {
+      picks = line.serials = serials.map(s => ({ serial: String(s.serial), ...(s.sysNumber ? { sysNumber: Number(s.sysNumber) } : {}), qty: 1, ...bins(s) }));
+    } else if (info.batch) {
+      picks = line.batches = batches.map(b => ({ ...strip(b), batch: String(b.batch), qty: Number(b.qty), ...bins(b) }));
+    } else {
+      picks = line.bins = (Array.isArray(raw.bins) ? raw.bins : []).filter(b => Number(b?.qty) > 0).map(b => ({ qty: Number(b.qty), ...bins(b) }));
+      if (!picks.length) return { error: `<strong>${escHtml(itemCode)}</strong>: warehouse ${escHtml(fromBins ? outWh : inWh)} uses bin locations — use the <strong>${mode === 'gr' ? 'Batches / Bins…' : 'Select…'}</strong> button to pick bins for this line.` };
+      const total = picks.reduce((s, b) => s + b.qty, 0);
+      if (Math.abs(total - quantity) > 1e-6)
+        return { error: `Bin quantity (${fmtQty(total)}) does not match line quantity (${fmtQty(quantity)}) for <strong>${escHtml(itemCode)}</strong>.` };
+    }
+    if (fromBins && picks.some(p => !p.fromBinAbs))
+      return { error: `<strong>${escHtml(itemCode)}</strong>: ${cfg.kind === 'transfer' ? 'From warehouse' : 'Warehouse'} ${escHtml(outWh)} uses bin locations — pick the ${cfg.kind === 'transfer' ? 'From ' : ''}bin for every ${what}.` };
+    if (toBins && picks.some(p => !p.toBinAbs))
+      return { error: `<strong>${escHtml(itemCode)}</strong>: ${cfg.kind === 'transfer' ? 'To warehouse' : 'Warehouse'} ${escHtml(inWh)} uses bin locations — pick the ${cfg.kind === 'transfer' ? 'To ' : ''}bin for every ${what}.` };
   }
   if (mode === 'gr' && raw.unitPrice !== undefined && raw.unitPrice !== '' && Number(raw.unitPrice) >= 0) {
     line.unitPrice = Number(raw.unitPrice);
@@ -343,9 +398,10 @@ const S = {
   err:    'color:#b91c1c;margin-bottom:8px',
 };
 
-function whOptions(warehouses, selected, withBlank = '— Select —') {
+// binWhs: codes marked 📍 (bin locations enabled)
+function whOptions(warehouses, selected, withBlank = '— Select —', binWhs = []) {
   return [`<option value="">${withBlank}</option>`, ...warehouses.map(w =>
-    `<option value="${escHtml(w.WarehouseCode)}"${w.WarehouseCode === selected ? ' selected' : ''}>${escHtml(w.WarehouseCode)}${w.WarehouseName ? ' — ' + escHtml(w.WarehouseName) : ''}</option>`)].join('');
+    `<option value="${escHtml(w.WarehouseCode)}"${w.WarehouseCode === selected ? ' selected' : ''}>${escHtml(w.WarehouseCode)}${w.WarehouseName ? ' — ' + escHtml(w.WarehouseName) : ''}${binWhs.includes(w.WarehouseCode) ? ' 📍' : ''}</option>`)].join('');
 }
 
 function cacheWarning(what) {
@@ -385,28 +441,31 @@ function buildLineHtml(session, items, warehouses) {
     `<option value="${escHtml(i.ItemCode)}" data-batch="${i.ManageBatchNumbers === 'tYES' ? 1 : 0}" data-serial="${i.ManageSerialNumbers === 'tYES' ? 1 : 0}">${escHtml(i.ItemCode)} — ${escHtml(i.ItemName)}</option>`).join('');
   const itemsJson = escHtml(JSON.stringify(items.map(i => ({ code: i.ItemCode, name: i.ItemName, batch: i.ManageBatchNumbers === 'tYES', serial: i.ManageSerialNumbers === 'tYES' }))));
   const h = session.header;
+  const binWhs = mode === 'str' ? [] : session.binWhs || [];
 
+  // every warehouse select clears the line's batch/serial/bin picks (they belong to one warehouse)
   const whFields = cfg.kind === 'transfer'
-    ? `<div><div style="${S.label}">From WH</div><select id="inva-from-${idx}" style="${S.input}" onchange="invaShowAvail(${idx})">${whOptions(warehouses, h.fromWh, '— Header —')}</select></div>
-       <div><div style="${S.label}">To WH</div><select id="inva-to-${idx}" style="${S.input}">${whOptions(warehouses, h.toWh, '— Header —')}</select></div>`
-    : `<div><div style="${S.label}">Warehouse</div><select id="inva-wh-${idx}" style="${S.input}" onchange="invaShowAvail(${idx})">${whOptions(warehouses, h.wh, '— Header —')}</select></div>`;
+    ? `<div><div style="${S.label}">From WH</div><select id="inva-from-${idx}" style="${S.input}" onchange="invaShowAvail(${idx})">${whOptions(warehouses, h.fromWh, '— Header —', binWhs)}</select></div>
+       <div><div style="${S.label}">To WH</div><select id="inva-to-${idx}" style="${S.input}" onchange="invaShowAvail(${idx})">${whOptions(warehouses, h.toWh, '— Header —', binWhs)}</select></div>`
+    : `<div><div style="${S.label}">Warehouse</div><select id="inva-wh-${idx}" style="${S.input}" onchange="invaShowAvail(${idx})">${whOptions(warehouses, h.wh, '— Header —', binWhs)}</select></div>`;
   const priceField = mode === 'gr'
     ? `<div><div style="${S.label}">Unit Price</div><input type="number" id="inva-price-${idx}" placeholder="Item cost" min="0" step="0.01" style="${S.input}"></div>` : '';
   // Batch/serial-managed items consumed from stock (transfer/issue) are picked from
   // actual warehouse stock via a modal (invaPickBatchSerial); Goods Receipt creates
   // new stock, so its modal (invaEnterGrBatches) lets the user type several batches.
+  // Both also assign bins when the line's warehouse(s) use bin locations.
   const batchField = mode === 'str' ? '' : mode === 'gr'
-    ? `<div><div style="${S.label}">Batches</div>
-         <button type="button" onclick="invaEnterGrBatches(${idx})" style="${S.btn2};width:100%;text-align:left">📦 Add Batches…</button>
+    ? `<div><div style="${S.label}">Batches / Bins</div>
+         <button type="button" onclick="invaEnterGrBatches(${idx})" style="${S.btn2};width:100%;text-align:left">📦 Batches / Bins…</button>
          <div id="inva-alloc-${idx}" style="font-size:10.5px;color:#9ca3af;margin-top:2px">Not required</div>
        </div>`
-    : `<div><div style="${S.label}">Batch / Serial</div>
+    : `<div><div style="${S.label}">Batch / Serial / Bin</div>
          <button type="button" onclick="invaPickBatchSerial(${idx})" style="${S.btn2};width:100%;text-align:left">📦 Select…</button>
          <div id="inva-alloc-${idx}" style="font-size:10.5px;color:#9ca3af;margin-top:2px">Not required</div>
        </div>`;
   const cols = 1 + (cfg.kind === 'transfer' ? 2 : 1) + (mode === 'gr' ? 1 : 0) + (mode === 'str' ? 0 : 1);
 
-  return `<div style="${S.card}" data-items="${itemsJson}" data-mode="${mode}">
+  return `<div style="${S.card}" data-items="${itemsJson}" data-mode="${mode}" data-binwhs="${escHtml(JSON.stringify(binWhs))}">
     ${items.length ? '' : cacheWarning('Item')}
     <div style="${S.title}">Add Line Item (${items.length} items available):</div>
     <div style="margin-bottom:8px">
@@ -430,10 +489,20 @@ function buildLineHtml(session, items, warehouses) {
   </div>`;
 }
 
-// A line's batches/serials joined for display, e.g. "B001 (5), B002 (3)" or "SN01, SN02"
+// "[01-A1 → 02-B1]" for a transfer pick, "[01-A1]" for an issue, "[→ 02-B1]" for a receipt
+function binLabel(p) {
+  if (p.fromBinCode && p.toBinCode) return ` [${p.fromBinCode} → ${p.toBinCode}]`;
+  if (p.fromBinCode) return ` [${p.fromBinCode}]`;
+  if (p.toBinCode)   return ` [→ ${p.toBinCode}]`;
+  return '';
+}
+
+// A line's batches/serials/bins joined for display, e.g. "B001 (5) [01-A1 → 02-B1]" or "SN01, SN02"
 function batchSerialDisplay(l) {
-  if (l.batches?.length) return l.batches.map(b => `${b.batch} (${fmtQty(b.qty)})`).join(', ');
-  if (l.serials?.length) return l.serials.map(s => s.serial).join(', ');
+  const bin = binLabel;
+  if (l.batches?.length) return l.batches.map(b => `${b.batch} (${fmtQty(b.qty)})${bin(b)}`).join(', ');
+  if (l.serials?.length) return l.serials.map(s => `${s.serial}${bin(s)}`).join(', ');
+  if (l.bins?.length)    return l.bins.map(b => `${fmtQty(b.qty)}${bin(b)}`).join(', ');
   return '';
 }
 
@@ -453,7 +522,7 @@ function linesTableHtml(session, { removable = false } = {}) {
   const total = session.lines.reduce((s, l) => s + Number(l.quantity || 0), 0);
   return `<table style="width:100%;border-collapse:collapse;background:#fff">
     <tr style="background:#eef6fc;color:${COLOR}"><th style="${S.th}">#</th><th style="${S.th}">Item</th><th style="${S.th};text-align:right">Qty</th>${whHead}
-      ${mode === 'gr' ? `<th style="${S.th};text-align:right">Price</th>` : ''}${mode === 'str' ? '' : `<th style="${S.th}">Batch</th>`}${removable ? '<th></th>' : ''}</tr>
+      ${mode === 'gr' ? `<th style="${S.th};text-align:right">Price</th>` : ''}${mode === 'str' ? '' : `<th style="${S.th}">Batch / Serial / Bin</th>`}${removable ? '<th></th>' : ''}</tr>
     ${rows}
   </table>
   <div style="text-align:right;font-size:12px;padding:6px 4px 0;color:#374151">${session.lines.length} line(s) · Total qty <strong>${fmtQty(total)}</strong></div>`;
@@ -513,28 +582,39 @@ function buildRequestListHtml(requests) {
   </div>`;
 }
 
-function buildRequestLinesHtml(req, items) {
-  const batchItems  = new Set(items.filter(i => i.ManageBatchNumbers === 'tYES').map(i => i.ItemCode));
-  const serialItems = new Set(items.filter(i => i.ManageSerialNumbers === 'tYES').map(i => i.ItemCode));
-  const rows = req.lines.map(l => `<tr data-line="${l.lineNum}" data-item="${escHtml(l.itemCode)}" data-fromwh="${escHtml(l.fromWh)}">
-      <td style="${S.td}"><input type="checkbox" class="inva-rl-chk" checked></td>
-      <td style="${S.td}"><strong>${escHtml(l.itemCode)}</strong><div style="font-size:11px;color:#6b7280">${escHtml(l.itemName)}</div></td>
-      <td style="${S.td}">${escHtml(l.fromWh)} → ${escHtml(l.toWh)}</td>
+// `entered` (lineNum → { quantity }) re-fills the user's last submitted quantities when
+// the table is shown again after an error or "Edit Quantities"; lines left out were unticked.
+function buildRequestLinesHtml(req, entered = {}) {
+  const binWhs = new Set(req.binWhs || []);
+  const reEntry = Object.keys(entered).length > 0;
+  const pin = on => (on ? ' <span title="Bin locations enabled">📍</span>' : '');
+  const rows = req.lines.map(l => {
+    const fromBin = binWhs.has(l.fromWh), toBin = binWhs.has(l.toWh);
+    // what the line needs picked: batch/serial numbers, or just bins for a plain item
+    const need = l.manage || (fromBin || toBin ? 'bin' : '');
+    const qty  = entered[l.lineNum]?.quantity ?? l.openQty;
+    const label = need === 'bin' ? '📍 Select Bins…' : `📦 Select${fromBin || toBin ? ' / Bins' : ''}…`;
+    return `<tr data-line="${l.lineNum}" data-item="${escHtml(l.itemCode)}" data-fromwh="${escHtml(l.fromWh)}" data-towh="${escHtml(l.toWh)}" data-need="${need}" data-frombin="${fromBin ? 1 : 0}" data-tobin="${toBin ? 1 : 0}">
+      <td style="${S.td}"><input type="checkbox" class="inva-rl-chk"${!reEntry || entered[l.lineNum] ? ' checked' : ''}></td>
+      <td style="${S.td}"><strong>${escHtml(l.itemCode)}</strong><div data-name style="font-size:11px;color:#6b7280">${escHtml(l.itemName)}</div></td>
+      <td style="${S.td}">${escHtml(l.fromWh)}${pin(fromBin)} → ${escHtml(l.toWh)}${pin(toBin)}</td>
       <td style="${S.td};text-align:right">${fmtQty(l.quantity)}</td>
       <td style="${S.td};text-align:right">${fmtQty(l.openQty)}</td>
-      <td style="${S.td}"><input type="number" class="inva-rl-qty" value="${l.openQty}" min="0" max="${l.openQty}" step="0.001" style="${S.input};width:90px" onchange="invaRlClearAlloc(${l.lineNum})"></td>
-      <td style="${S.td}">${batchItems.has(l.itemCode) || serialItems.has(l.itemCode)
-        ? `<button type="button" onclick="invaPickReqBatchSerial(${l.lineNum},'${serialItems.has(l.itemCode) ? 'serial' : 'batch'}')" style="${S.btn2}">📦 Select…</button>
+      <td style="${S.td}"><input type="number" class="inva-rl-qty" value="${qty}" min="0" max="${l.openQty}" step="0.001" style="${S.input};width:90px" onchange="invaRlClearAlloc(${l.lineNum})"></td>
+      <td style="${S.td}">${need
+        ? `<button type="button" onclick="invaPickReqBatchSerial(${l.lineNum})" style="${S.btn2}">${label}</button>
            <div id="inva-rlalloc-${l.lineNum}" style="font-size:10.5px;color:#b91c1c;margin-top:2px">Not selected</div>`
         : '<span style="color:#9ca3af">—</span>'}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   return `<div style="${S.card}">
     <div style="${S.title}">🔁 Request #${req.docNum} — ${escHtml(req.fromWh)} → ${escHtml(req.toWh)}</div>
     ${req.comments ? `<div style="font-size:12px;color:#374151;margin-bottom:8px">📝 ${escHtml(req.comments)}</div>` : ''}
-    <div style="overflow-x:auto"><table id="inva-rl-table" style="width:100%;border-collapse:collapse;background:#fff;min-width:560px">
-      <tr style="background:#eef6fc;color:${COLOR}"><th></th><th style="${S.th}">Item</th><th style="${S.th}">From → To</th><th style="${S.th};text-align:right">Requested</th><th style="${S.th};text-align:right">Open</th><th style="${S.th}">Transfer Qty</th><th style="${S.th}">Batch / Serial</th></tr>
+    <div style="overflow-x:auto"><table id="inva-rl-table" data-req="${Number(req.docEntry)}" style="width:100%;border-collapse:collapse;background:#fff;min-width:560px">
+      <tr style="background:#eef6fc;color:${COLOR}"><th></th><th style="${S.th}">Item</th><th style="${S.th}">From → To</th><th style="${S.th};text-align:right">Requested</th><th style="${S.th};text-align:right">Open</th><th style="${S.th}">Transfer Qty</th><th style="${S.th}">Batch / Serial / Bin</th></tr>
       ${rows}
     </table></div>
+    ${binWhs.size ? '<div style="font-size:11.5px;color:#6b7280;margin-top:6px">📍 = warehouse uses bin locations — pick the From bin and/or To bin for those lines.</div>' : ''}
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <button onclick="invaSubmitRequestLines()" style="${S.btn}">Review Transfer →</button>
       <button onclick="invaSend(JSON.stringify({action:'list_requests'}))" style="${S.btn2}">← Other Request</button>
@@ -569,11 +649,41 @@ function buildPayload(session, action) {
     ...(action.comments ? { Comments: String(action.comments).slice(0, 254) } : {}),
     ...(action.memo     ? { JournalMemo: String(action.memo).slice(0, 50) }   : {}),
   };
-  const batchOf  = l => (l.batches?.length ? { BatchNumbers: l.batches.map(b => ({
-    BatchNumber: String(b.batch), Quantity: Number(b.qty),
-    ...(b.expiry ? { ExpiryDate: sapDate(b.expiry) } : {}),
-    ...(b.mfg    ? { ManufacturingDate: sapDate(b.mfg) } : {}),
-  })) } : {});
+  // One BatchNumbers entry per batch — a batch picked from several bins is summed here,
+  // and its bin allocations point at this entry by index (SerialAndBatchNumbersBaseLine)
+  const batchNames = l => [...new Set((l.batches || []).map(b => String(b.batch)))];
+  const batchOf  = l => (l.batches?.length ? { BatchNumbers: batchNames(l).map(name => {
+    const picks = l.batches.filter(b => String(b.batch) === name);
+    const b = picks[0];
+    return {
+      BatchNumber: name, Quantity: picks.reduce((s, p) => s + Number(p.qty), 0),
+      ...(b.expiry ? { ExpiryDate: sapDate(b.expiry) } : {}),
+      ...(b.mfg    ? { ManufacturingDate: sapDate(b.mfg) } : {}),
+    };
+  }) } : {});
+  // Bin allocations of line i — same bin + batch/serial merged into one row. Transfers
+  // carry both sides (BinActionType); Goods Issue takes from bins, Goods Receipt puts into them.
+  const binsOf = (l, i) => {
+    const transfer = cfg.kind === 'transfer';
+    const out = new Map();
+    const add = (abs, qty, snb, type) => {
+      if (!(Number(abs) > 0)) return;
+      const k = `${type}|${snb}|${abs}`;
+      if (out.has(k)) out.get(k).Quantity += qty;
+      else out.set(k, { BinAbsEntry: Number(abs), Quantity: qty, AllowNegativeQuantity: 'tNO', SerialAndBatchNumbersBaseLine: snb,
+        ...(transfer ? { BinActionType: type } : {}), BaseLineNumber: i });
+    };
+    const names = batchNames(l);
+    const picks = l.serials?.length ? l.serials.map((s, n) => ({ ...s, qty: 1, snb: n }))
+      : l.batches?.length ? l.batches.map(b => ({ ...b, snb: names.indexOf(String(b.batch)) }))
+      : (l.bins || []).map(b => ({ ...b, snb: -1 }));
+    for (const p of picks) {
+      add(p.fromBinAbs, Number(p.qty), p.snb, 'batFromWarehouse');
+      add(p.toBinAbs,   Number(p.qty), p.snb, 'batToWarehouse');
+    }
+    if (!out.size) return {};
+    return { [transfer ? 'StockTransferLinesBinAllocations' : 'DocumentLinesBinAllocations']: [...out.values()] };
+  };
   const serialOf = l => (l.serials?.length ? { SerialNumbers: l.serials.map(s => ({ InternalSerialNumber: String(s.serial), ...(s.sysNumber ? { SystemSerialNumber: Number(s.sysNumber) } : {}), Quantity: 1 })) } : {});
   const uomOf    = l => (l.uom ? { UoMCode: l.uom } : {});
 
@@ -586,13 +696,13 @@ function buildPayload(session, action) {
         FromWarehouse: session.header.fromWh,
         ToWarehouse:   session.header.toWh,
         ...(session.request ? { Comments: action.comments || `Based on Stock Transfer Request #${session.request.docNum}` } : {}),
-        StockTransferLines: session.lines.map(l => ({
+        StockTransferLines: session.lines.map((l, i) => ({
           ItemCode:          l.itemCode,
           Quantity:          Number(l.quantity),
           FromWarehouseCode: l.fromWh,
           WarehouseCode:     l.toWh,
           ...(session.request ? { BaseType: 'InventoryTransferRequest', BaseEntry: session.request.docEntry, BaseLine: l.baseLine } : uomOf(l)),
-          ...(mode === 'str' ? {} : { ...batchOf(l), ...serialOf(l) }),
+          ...(mode === 'str' ? {} : { ...batchOf(l), ...serialOf(l), ...binsOf(l, i) }),
         })),
       },
     };
@@ -601,7 +711,7 @@ function buildPayload(session, action) {
     linesKey: 'DocumentLines',
     payload: {
       ...common,
-      DocumentLines: session.lines.map(l => ({
+      DocumentLines: session.lines.map((l, i) => ({
         ItemCode:      l.itemCode,
         Quantity:      Number(l.quantity),
         WarehouseCode: l.wh,
@@ -609,6 +719,7 @@ function buildPayload(session, action) {
         ...uomOf(l),
         ...batchOf(l),
         ...serialOf(l),
+        ...binsOf(l, i),
       })),
     },
   };
@@ -739,6 +850,8 @@ export function createInventoryAgentRouter(deps) {
       }
 
       const sap  = getActiveSap();
+      // Bin-enabled warehouses, once per session (null after a failed lookup → retried next call)
+      if (mode !== 'str' && !session.binWhs) session.binWhs = await binWarehouses(sap);
       const msg  = String(message).trim();
       const msgL = msg.toLowerCase();
       let reply = '';
@@ -811,7 +924,7 @@ export function createInventoryAgentRouter(deps) {
           const i = Number(action.index);
           if (session.lines[i]) session.lines.splice(i, 1);
           if (mode === 'st_req') {
-            reply = session.lines.length ? buildReviewHtml(session) : buildRequestLinesHtml(session.request, items());
+            reply = session.lines.length ? buildReviewHtml(session) : buildRequestLinesHtml(session.request);
             session.step = session.lines.length ? 'REVIEW' : 'REQ_LINES';
           } else {
             reply = lineForm(session.lines.length ? addedBlock('Line removed') : '<div style="margin-bottom:6px">Line removed — no lines left.</div>');
@@ -846,11 +959,19 @@ export function createInventoryAgentRouter(deps) {
               }))
               .filter(l => l.openQty > 0);
             if (!lines.length) throw new Error(`Request #${r.DocNum} has no open quantity left`);
-            session.request = { docEntry: r.DocEntry, docNum: r.DocNum, fromWh: r.FromWarehouse, toWh: r.ToWarehouse, comments: r.Comments || '', lines };
+            // Batch/serial flags live from SAP — the cached item list is capped, so it can't be
+            // relied on to know every request item (a missed flag would hide the picker)
+            const codes = [...new Set(lines.map(l => l.itemCode))];
+            const infos = new Map(await Promise.all(codes.map(async c => [c, await getItemInfo(sap, c).catch(() => null)])));
+            for (const l of lines) {
+              const info = infos.get(l.itemCode);
+              l.manage = info?.serial ? 'serial' : info?.batch ? 'batch' : '';
+            }
+            session.request = { docEntry: r.DocEntry, docNum: r.DocNum, fromWh: r.FromWarehouse, toWh: r.ToWarehouse, comments: r.Comments || '', lines, binWhs: session.binWhs || [] };
             session.header  = { fromWh: r.FromWarehouse, toWh: r.ToWarehouse };
             session.lines   = [];
             session.step    = 'REQ_LINES';
-            reply = buildRequestLinesHtml(session.request, items());
+            reply = buildRequestLinesHtml(session.request);
           } catch (e) {
             reply = `<div style="${S.err}">❌ ${escHtml(sapErrorText(e))}</div>` + await showRequests();
           }
@@ -871,7 +992,7 @@ export function createInventoryAgentRouter(deps) {
                 continue;
               }
               const { line, error } = await buildLine(session, sap, {
-                itemCode: base.itemCode, quantity: Number(p.quantity), batches: p.batches, serials: p.serials,
+                itemCode: base.itemCode, quantity: Number(p.quantity), batches: p.batches, serials: p.serials, bins: p.bins,
                 fromWh: base.fromWh, toWh: base.toWh, baseLine: base.lineNum, openQty: base.openQty,
               });
               if (error) errors.push(error); else session.lines.push(line);
@@ -879,7 +1000,8 @@ export function createInventoryAgentRouter(deps) {
             if (!picked.length) errors.push('Select at least one line with a quantity greater than 0.');
             if (errors.length) {
               session.lines = [];
-              reply = `<div style="${S.err}">⚠️ ${errors.join('<br>')}</div>` + buildRequestLinesHtml(req, items());
+              const entered = Object.fromEntries((action.lines || []).map(p => [Number(p.lineNum), { quantity: Number(p.quantity) || 0 }]));
+              reply = `<div style="${S.err}">⚠️ ${errors.join('<br>')}</div>` + buildRequestLinesHtml(req, entered);
             } else {
               session.step = 'REVIEW';
               reply = buildReviewHtml(session);
@@ -888,8 +1010,9 @@ export function createInventoryAgentRouter(deps) {
         }
 
         else if (action?.action === 'back_to_request') {
+          const entered = Object.fromEntries(session.lines.map(l => [Number(l.baseLine), { quantity: Number(l.quantity) }]));
           session.lines = []; session.step = 'REQ_LINES';
-          reply = buildRequestLinesHtml(session.request, items());
+          reply = buildRequestLinesHtml(session.request, entered);
         }
 
         else if (action?.action === 'post') {
