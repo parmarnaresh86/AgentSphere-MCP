@@ -142,7 +142,7 @@
         {
           "id": "grpo-agent",
           "label": "GRPO Agent",
-          "description": "Receive an open PO as a Goods Receipt PO: pick supplier → open PO, edit item / qty / price / warehouse / tax code per line, create multiple batches or serials, allocate bin locations in bin-enabled warehouses.",
+          "description": "Receive an open PO as a Goods Receipt PO: vendor → open PO → edit qty / price / discount / tax code / warehouse per line, create multiple batches or serial numbers, allocate receiving bins in bin-enabled warehouses, add substitute items.",
           "kind": "controller",
           "existingTools": ["create_goods_receipt_po"],
           "existingController": { "mount": "/api/po-to-grpo", "chatEndpoint": "/chat" },
@@ -407,7 +407,7 @@
         {
           "id": "grpo-receiving-agent",
           "label": "GRPO Receiving Agent",
-          "description": "Receive an open PO as a Goods Receipt PO: pick supplier → open PO, edit item / qty / price / warehouse / tax code per line, create multiple batches or serials, allocate bin locations in bin-enabled warehouses.",
+          "description": "Receive an open PO as a Goods Receipt PO: vendor → open PO → edit qty / price / discount / tax code / warehouse per line, create multiple batches or serial numbers, allocate receiving bins in bin-enabled warehouses, add substitute items.",
           "kind": "controller",
           "existingTools": ["create_goods_receipt_po"],
           "existingController": { "mount": "/api/po-to-grpo", "chatEndpoint": "/chat" },

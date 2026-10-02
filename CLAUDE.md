@@ -56,7 +56,7 @@ Each controller exports a `create*Router(deps)` factory that receives injected d
 |---|---|---|
 | `pr-agent.mjs` | `/api/pr-agent` | Conversational Purchase Request wizard (state machine) |
 | `pr-to-po-agent.mjs` | `/api/pr-to-po` | Convert open PRs → Purchase Order |
-| `po-to-grpo-agent.mjs` | `/api/po-to-grpo` | Receive POs as GRPO: supplier → PO → line form (item swap, qty, price, warehouse, tax code, batches/serials, bin allocation). Lookups: `/bins`, `/items`, `/item/:code` |
+| `po-to-grpo-agent.mjs` | `/api/po-to-grpo` | Receive an open PO as a GRPO (shared `lib/copy-doc-flow.mjs`, `receive` mode): vendor → PO → lines (qty, price, disc, tax, warehouse), create batches/serials, receiving bins, "+ Add Line" for substitute items |
 | `grpo-to-apinv-agent.mjs` | `/api/grpo-apinv` | Match GRPOs to AP Invoices with OCR |
 | `forecasting.mjs` | `/api/forecasting` | Product demand forecasting agent |
 | `rush-orders.mjs` | `/api/rush-orders` | Rush order prioritisation agent |
