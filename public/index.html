@@ -29256,7 +29256,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
 
 <!-- ── GRPO Line Entry Modal (used by PO-TO-GRPO panel) ──────────────────── -->
 <div id="pgrpo-line-form-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:10px;width:980px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(0,0,0,.35);overflow:hidden">
+  <div style="background:#fff;border-radius:10px;width:1240px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(0,0,0,.35);overflow:hidden">
     <!-- Header -->
     <div style="background:#0f766e;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0">
       <span style="font-size:18px">📦</span>
@@ -29281,7 +29281,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
         <input type="text" id="pgrpo-form-comments" placeholder="Optional remarks…" style="flex:1;border:1px solid #d1d5db;border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--text)">
       </div>
       <div id="pgrpo-form-legend" style="font-size:10px;color:#6b7280;white-space:nowrap">
-        <span style="background:#fef9c3;border:1px solid #ca8a04;padding:2px 6px;border-radius:3px;font-weight:600">Yellow</span> = price differs from PO
+        <span style="background:#fef9c3;border:1px solid #ca8a04;padding:2px 6px;border-radius:3px;font-weight:600">Yellow</span> = price differs from PO · 📍 = bin-managed warehouse
       </div>
     </div>
     <!-- Lines table -->
@@ -29302,6 +29302,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
             <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;color:#0f766e;text-transform:uppercase;white-space:nowrap">Rcpt Price ✎</th>
             <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;color:#374151;text-transform:uppercase;white-space:nowrap">Subtotal</th>
             <th style="padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#374151;text-transform:uppercase">Whs ✎</th>
+            <th style="padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#374151;text-transform:uppercase;white-space:nowrap">Tax Code ✎</th>
           </tr>
         </thead>
         <tbody id="pgrpo-form-tbody"></tbody>
@@ -32350,8 +32351,64 @@ window.roAskFollowUp = function() {
   }
 
   // ── Line entry form modal ─────────────────────────────────────────────────────
+  // Per line the user can swap the item, edit qty / price / warehouse / tax code,
+  // create batches or serials (many per line) and — in bin-enabled warehouses —
+  // allocate the received quantity to bin locations.
+  let _pgrpoBins     = {};   // line index → [{binAbs,binCode,qty}] for non batch/serial lines
+  let _pgrpoBinCache = {};   // warehouse code → Promise<[{abs,code}]>
+
+  const pgrpoLookups = () => _pgrpoCurrentPO?.lookups || { warehouses: [], taxCodes: [] };
+  const pgrpoWhsInfo = code => pgrpoLookups().warehouses.find(w => w.code === String(code || '').toUpperCase()) || null;
+  const pgrpoWhsOf   = i => (document.getElementById(`pgrpo-whs-${i}`)?.value || _pgrpoCurrentPO?.lines[i]?.warehouse || '').trim().toUpperCase();
+  const pgrpoInBins  = i => { const l = _pgrpoCurrentPO?.lines[i]; return !!(l && l.cur.inventory !== false && pgrpoWhsInfo(pgrpoWhsOf(i))?.binEnabled); };
+
+  function pgrpoGetBins(whs) {
+    whs = String(whs || '').toUpperCase();
+    if (!whs) return Promise.resolve([]);
+    if (!_pgrpoBinCache[whs]) {
+      _pgrpoBinCache[whs] = fetch(`/api/po-to-grpo/bins?warehouse=${encodeURIComponent(whs)}`, { headers: { 'x-auth-token': tok() } })
+        .then(r => r.json()).then(d => d.bins || [])
+        .catch(() => { delete _pgrpoBinCache[whs]; return []; });
+    }
+    return _pgrpoBinCache[whs];
+  }
+
+  const pgrpoSel = 'border:1px solid #d1d5db;border-radius:4px;padding:4px 6px;font-size:11.5px;font-family:var(--font);background:#fff';
+
+  function pgrpoWhsControl(i, cur) {
+    const whs = pgrpoLookups().warehouses;
+    if (!whs.length) return `<input type="text" id="pgrpo-whs-${i}" value="${escHtml(cur)}" placeholder="Whs" onchange="pgrpoWhsChanged(${i})" style="width:78px;${pgrpoSel};text-transform:uppercase">`;
+    const opts = whs.some(w => w.code === cur) ? '' : `<option value="${escHtml(cur)}">${escHtml(cur || '—')}</option>`;
+    return `<select id="pgrpo-whs-${i}" onchange="pgrpoWhsChanged(${i})" style="width:110px;${pgrpoSel}">${opts}${whs.map(w =>
+      `<option value="${escHtml(w.code)}" ${w.code === cur ? 'selected' : ''} title="${escHtml(w.name)}">${w.binEnabled ? '📍 ' : ''}${escHtml(w.code)}${w.name ? ' – ' + escHtml(w.name) : ''}</option>`).join('')}</select>`;
+  }
+
+  function pgrpoTaxControl(i, cur) {
+    const tc = pgrpoLookups().taxCodes;
+    if (!tc.length) return `<input type="text" id="pgrpo-tax-${i}" value="${escHtml(cur)}" placeholder="Tax" style="width:72px;${pgrpoSel}">`;
+    const opts = !cur || tc.some(t => t.code === cur) ? '' : `<option value="${escHtml(cur)}">${escHtml(cur)}</option>`;
+    return `<select id="pgrpo-tax-${i}" style="width:100px;${pgrpoSel}"><option value="">—</option>${opts}${tc.map(t =>
+      `<option value="${escHtml(t.code)}" ${t.code === cur ? 'selected' : ''} title="${escHtml(t.name)}">${escHtml(t.code)}${t.rate ? ` (${t.rate}%)` : ''}</option>`).join('')}</select>`;
+  }
+
+  function pgrpoItemCell(i) {
+    const l = _pgrpoCurrentPO.lines[i], c = l.cur;
+    const badge = c.managedBy === 'batch'
+      ? `<span style="display:inline-block;font-size:9px;background:#fef3c7;color:#92400e;border-radius:3px;padding:1px 4px;margin-top:2px;font-weight:700">🏷️ BATCH</span>`
+      : c.managedBy === 'serial'
+      ? `<span style="display:inline-block;font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:3px;padding:1px 4px;margin-top:2px;font-weight:700">🔢 SERIAL</span>` : '';
+    const changed = c.itemCode !== l.itemCode;
+    return `<div style="display:flex;align-items:center;gap:4px">
+        <span style="font-size:11.5px;font-weight:700;color:${changed ? '#b45309' : '#0f766e'}">${escHtml(c.itemCode)}</span>
+        <button type="button" onclick="pgrpoChangeItem(${i})" title="Change item" style="background:none;border:1px solid #d1d5db;border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;line-height:16px">✎</button>
+        ${changed ? `<button type="button" onclick="pgrpoRevertItem(${i})" title="Back to PO item ${escHtml(l.itemCode)}" style="background:none;border:1px solid #d1d5db;border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;line-height:16px">↺</button>` : ''}
+      </div>${badge}
+      ${changed ? `<div style="font-size:9.5px;color:#b45309;margin-top:2px;white-space:normal;max-width:150px">PO item ${escHtml(l.itemCode)} replaced — line not linked to PO</div>` : ''}`;
+  }
+
   function pgrpoOpenLineForm(poDetail) {
     _pgrpoCurrentPO = poDetail;
+    _pgrpoAlloc = {}; _pgrpoBins = {};
     const modal     = document.getElementById('pgrpo-line-form-modal');
     const title     = document.getElementById('pgrpo-form-title');
     const sub       = document.getElementById('pgrpo-form-sub');
@@ -32377,68 +32434,48 @@ window.roAskFollowUp = function() {
     } else {
       empty.style.display = 'none';
       poDetail.lines.forEach((l, i) => {
+        // Current (editable) item of the line — starts as the PO item
+        l.cur = { itemCode: l.itemCode, itemName: l.itemName, managedBy: l.managedBy, factor: l.factor || 1, unit: l.unit, inventory: true };
+
         const tr = document.createElement('tr');
         tr.id = `pgrpo-tr-${i}`;
         tr.style.cssText = `border-bottom:1px solid #f0f0f0;transition:opacity .1s;${i % 2 === 1 ? 'background:#f9fafb;' : ''}`;
-
         const priceFmt = l.unitPrice > 0 ? l.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '0.00';
 
-        const mgmtBadge = l.managedBy === 'batch'
-          ? `<span style="display:block;font-size:9px;background:#fef3c7;color:#92400e;border-radius:3px;padding:1px 4px;margin-top:2px;font-weight:700">🏷️ BATCH</span>`
-          : l.managedBy === 'serial'
-          ? `<span style="display:block;font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:3px;padding:1px 4px;margin-top:2px;font-weight:700">🔢 SERIAL</span>`
-          : '';
-
         tr.innerHTML = `
-          <td style="padding:7px 10px;text-align:center">
+          <td style="padding:7px 8px;text-align:center">
             <input type="checkbox" id="pgrpo-chk-${i}" data-idx="${i}" checked onchange="pgrpoToggleLine(${i})" style="width:14px;height:14px;cursor:pointer;accent-color:#0f766e">
           </td>
-          <td style="padding:7px 10px;font-size:11.5px;font-weight:700;color:#0f766e;white-space:nowrap">${escHtml(l.itemCode)}${mgmtBadge}</td>
-          <td style="padding:7px 10px;font-size:11px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151" title="${escHtml(l.itemName)}">${escHtml(l.itemName || '—')}</td>
-          <td style="padding:7px 10px;text-align:center;font-size:11px;color:#6b7280">${escHtml(l.unit)}</td>
-          <td style="padding:7px 10px;text-align:right;font-size:11px;color:#9ca3af">${l.orderedQty.toLocaleString()}</td>
-          <td style="padding:7px 10px;text-align:right;font-size:11.5px;font-weight:700;color:#0f766e">${l.openQty.toLocaleString()}</td>
-          <td style="padding:7px 10px;text-align:right">
+          <td id="pgrpo-item-${i}" style="padding:7px 8px;white-space:nowrap">${pgrpoItemCell(i)}</td>
+          <td id="pgrpo-name-${i}" style="padding:7px 8px;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151" title="${escHtml(l.itemName)}">${escHtml(l.itemName || '—')}</td>
+          <td id="pgrpo-unit-${i}" style="padding:7px 8px;text-align:center;font-size:11px;color:#6b7280">${escHtml(l.unit)}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:11px;color:#9ca3af">${l.orderedQty.toLocaleString()}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:11.5px;font-weight:700;color:#0f766e">${l.openQty.toLocaleString()}</td>
+          <td style="padding:7px 8px;text-align:right">
             <input type="number" id="pgrpo-qty-${i}" value="${l.openQty}" min="0.001" max="${l.openQty}" step="0.001"
               data-open="${l.openQty}" data-idx="${i}" oninput="pgrpoCalcLine(${i})"
-              style="width:80px;border:1.5px solid #0f766e;border-radius:4px;padding:4px 6px;text-align:right;font-size:12.5px;font-family:var(--font);font-weight:600;background:#f0fdf9;outline:none">
+              style="width:78px;border:1.5px solid #0f766e;border-radius:4px;padding:4px 6px;text-align:right;font-size:12.5px;font-family:var(--font);font-weight:600;background:#f0fdf9;outline:none">
           </td>
-          <td style="padding:7px 10px;text-align:right;font-size:11px;color:#9ca3af">${priceFmt}</td>
-          <td style="padding:7px 10px;text-align:right">
+          <td style="padding:7px 8px;text-align:right;font-size:11px;color:#9ca3af">${priceFmt}</td>
+          <td style="padding:7px 8px;text-align:right">
             <input type="number" id="pgrpo-price-${i}" value="${l.unitPrice}" min="0" step="0.01"
               data-orig="${l.unitPrice}" data-idx="${i}" oninput="pgrpoCalcLine(${i})"
-              style="width:100px;border:1.5px solid #d1d5db;border-radius:4px;padding:4px 6px;text-align:right;font-size:12px;font-family:var(--font);outline:none">
+              style="width:92px;border:1.5px solid #d1d5db;border-radius:4px;padding:4px 6px;text-align:right;font-size:12px;font-family:var(--font);outline:none">
           </td>
-          <td id="pgrpo-sub-${i}" style="padding:7px 10px;text-align:right;font-size:12px;font-weight:600;color:#0f766e">
+          <td id="pgrpo-sub-${i}" style="padding:7px 8px;text-align:right;font-size:12px;font-weight:600;color:#0f766e">
             ${(l.openQty * l.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </td>
-          <td style="padding:7px 10px">
-            <input type="text" id="pgrpo-whs-${i}" value="${escHtml(l.warehouse)}"
-              data-idx="${i}" placeholder="Whs"
-              style="width:68px;border:1px solid #d1d5db;border-radius:4px;padding:4px 6px;font-size:11.5px;font-family:var(--font);text-transform:uppercase">
-          </td>`;
+          <td style="padding:7px 8px">${pgrpoWhsControl(i, l.warehouse)}</td>
+          <td style="padding:7px 8px">${pgrpoTaxControl(i, l.taxCode || '')}</td>`;
         tbody.appendChild(tr);
 
-        // ── Batch / Serial sub-row: button opens the creation window ───────
-        if (l.managedBy === 'batch' || l.managedBy === 'serial') {
-          const isBatch = l.managedBy === 'batch';
-          const mgmtRow = document.createElement('tr');
-          mgmtRow.id = `pgrpo-mgmt-row-${i}`;
-          mgmtRow.dataset.managedBy = l.managedBy;
-          mgmtRow.style.cssText = `background:#fafafa;border-bottom:2px solid #e5e7eb`;
-          mgmtRow.innerHTML = `<td colspan="11" style="padding:6px 12px 8px 52px">
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <button type="button" onclick="pgrpoOpenBatchSerial(${i})"
-                style="padding:4px 12px;background:#fff;border:1.5px solid ${isBatch ? '#d97706' : '#7c3aed'};border-radius:5px;font-size:11.5px;font-weight:700;color:${isBatch ? '#92400e' : '#5b21b6'};cursor:pointer;font-family:var(--font)">
-                ${isBatch ? '🏷️ Create Batches' : '🔢 Create Serials'}
-              </button>
-              <span id="pgrpo-alloc-st-${i}" style="font-size:11px;font-weight:600;color:#dc2626"></span>
-            </div>
-          </td>`;
-          tbody.appendChild(mgmtRow);
-          _pgrpoAlloc[i] = null;
-          pgrpoAllocStatus(i);
-        }
+        // Sub-row: batch / serial creation and bin allocation (shown only when needed)
+        const mgmtRow = document.createElement('tr');
+        mgmtRow.id = `pgrpo-mgmt-row-${i}`;
+        mgmtRow.style.cssText = 'background:#fafafa;border-bottom:2px solid #e5e7eb';
+        mgmtRow.innerHTML = `<td colspan="12" id="pgrpo-mgmt-cell-${i}" style="padding:6px 12px 8px 46px"></td>`;
+        tbody.appendChild(mgmtRow);
+        pgrpoResetAlloc(i);
       });
     }
 
@@ -32463,19 +32500,134 @@ window.roAskFollowUp = function() {
     if (qrArea) qrArea.innerHTML = '';
   }
 
+  // Drop batches / serials / bins of a line (item or warehouse changed) and pre-fill the
+  // default bin for plain items in a bin-enabled warehouse.
+  function pgrpoResetAlloc(i) {
+    _pgrpoAlloc[i] = null;
+    const l = _pgrpoCurrentPO.lines[i];
+    const dft = pgrpoWhsInfo(pgrpoWhsOf(i))?.defaultBin;
+    _pgrpoBins[i] = l.cur.managedBy === 'none' && pgrpoInBins(i) && dft
+      ? [{ binAbs: dft.abs, binCode: dft.code, qty: pgrpoNeed(i), auto: true }] : null;
+    pgrpoRenderSubRow(i);
+  }
+
+  function pgrpoRenderSubRow(i) {
+    const cell = document.getElementById(`pgrpo-mgmt-cell-${i}`);
+    const row  = document.getElementById(`pgrpo-mgmt-row-${i}`);
+    const l    = _pgrpoCurrentPO?.lines[i];
+    if (!cell || !l) return;
+    const m = l.cur.managedBy, inBins = pgrpoInBins(i);
+    if (m === 'none' && !inBins) { row.style.display = 'none'; cell.innerHTML = ''; return; }
+    row.style.display = '';
+    const whs = pgrpoWhsOf(i);
+    const btn = (label, fn, color, fg) => `<button type="button" onclick="${fn}(${i})" style="padding:4px 12px;background:#fff;border:1.5px solid ${color};border-radius:5px;font-size:11.5px;font-weight:700;color:${fg};cursor:pointer;font-family:var(--font)">${label}</button>`;
+    let h = '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+    if (m === 'batch')       h += btn(inBins ? '🏷️ Create Batches + Bins' : '🏷️ Create Batches', 'pgrpoOpenBatchSerial', '#d97706', '#92400e');
+    else if (m === 'serial') h += btn(inBins ? '🔢 Create Serials + Bins' : '🔢 Create Serials', 'pgrpoOpenBatchSerial', '#7c3aed', '#5b21b6');
+    else                     h += btn('📍 Bin Locations', 'pgrpoOpenBins', '#0f766e', '#0f766e');
+    h += `<span id="pgrpo-alloc-st-${i}" style="font-size:11px;font-weight:600;color:#dc2626"></span>`;
+    if (inBins) h += `<span style="font-size:10.5px;color:#6b7280">📍 ${escHtml(whs)} is bin-managed</span>`;
+    cell.innerHTML = h + '</div>';
+    pgrpoAllocStatus(i);
+    const on = document.getElementById(`pgrpo-chk-${i}`)?.checked !== false;
+    row.style.opacity = on ? '1' : '.4';
+  }
+
+  window.pgrpoWhsChanged = function(i) {
+    const el = document.getElementById(`pgrpo-whs-${i}`);
+    if (el && el.tagName === 'INPUT') el.value = el.value.toUpperCase();
+    const hadAlloc = (_pgrpoAlloc[i] && _pgrpoAlloc[i].length) || (_pgrpoBins[i] && !_pgrpoBins[i][0]?.auto);
+    if (!hadAlloc) { pgrpoResetAlloc(i); return; }
+    // Keep batch / serial numbers, but bins belong to the old warehouse — clear them
+    if (_pgrpoAlloc[i]) _pgrpoAlloc[i] = _pgrpoAlloc[i].map(({ binAbs, binCode, ...r }) => r);
+    const dft = pgrpoWhsInfo(pgrpoWhsOf(i))?.defaultBin;
+    _pgrpoBins[i] = _pgrpoCurrentPO.lines[i].cur.managedBy === 'none' && pgrpoInBins(i) && dft
+      ? [{ binAbs: dft.abs, binCode: dft.code, qty: pgrpoNeed(i), auto: true }] : null;
+    pgrpoRenderSubRow(i);
+  };
+
+  // ── Change item of a line ─────────────────────────────────────────────────────
+  function pgrpoApplyItem(i, info) {
+    const l = _pgrpoCurrentPO.lines[i];
+    l.cur = { itemCode: info.itemCode, itemName: info.itemName, managedBy: info.managedBy, factor: info.factor || 1, unit: info.unit || l.unit, inventory: info.inventory !== false };
+    const changed = l.cur.itemCode !== l.itemCode;
+    document.getElementById(`pgrpo-item-${i}`).innerHTML = pgrpoItemCell(i);
+    const nm = document.getElementById(`pgrpo-name-${i}`); nm.textContent = l.cur.itemName || '—'; nm.title = l.cur.itemName || '';
+    document.getElementById(`pgrpo-unit-${i}`).textContent = l.cur.unit || '';
+    // A replaced item is a free line (no PO base link) — the open-qty cap doesn't apply
+    const q = document.getElementById(`pgrpo-qty-${i}`);
+    if (q) { if (changed) q.removeAttribute('max'); else q.max = l.openQty; }
+    pgrpoResetAlloc(i);
+    pgrpoCalcLine(i);
+  }
+
+  window.pgrpoRevertItem = function(i) {
+    const l = _pgrpoCurrentPO?.lines[i]; if (!l) return;
+    pgrpoApplyItem(i, { itemCode: l.itemCode, itemName: l.itemName, managedBy: l.managedBy, factor: l.factor, unit: l.unit, inventory: true });
+  };
+
+  window.pgrpoChangeItem = function(i) {
+    const l = _pgrpoCurrentPO?.lines[i]; if (!l) return;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1300;display:flex;align-items:center;justify-content:center;font-family:var(--font)';
+    ov.innerHTML = `<div style="background:#fff;border-radius:10px;width:520px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div style="background:#0f766e;color:#fff;padding:12px 16px;display:flex;align-items:center">
+        <div style="flex:1"><div style="font-size:14px;font-weight:700">✎ Change Item</div>
+        <div style="font-size:11px;opacity:.85">PO line item: ${escHtml(l.itemCode)} — ${escHtml(l.itemName || '')}</div></div>
+        <button data-x style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:5px;padding:3px 9px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:10px 16px;border-bottom:1px solid #e5e7eb">
+        <input data-q type="text" placeholder="Search item code or name…" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:5px;padding:7px 10px;font-size:13px;font-family:var(--font)">
+        <div style="font-size:10.5px;color:#b45309;margin-top:6px">⚠ A replaced item is posted as a separate GRPO line and does not close the PO line.</div>
+      </div>
+      <div data-list style="flex:1;overflow:auto;padding:6px 10px 12px;min-height:120px"></div></div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('[data-x]').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    const list = ov.querySelector('[data-list]'), q = ov.querySelector('[data-q]');
+    let timer = null, seq = 0;
+    async function search() {
+      const my = ++seq;
+      list.innerHTML = '<div style="padding:14px;color:#9ca3af;font-size:12px">Searching…</div>';
+      try {
+        const r = await fetch(`/api/po-to-grpo/items?q=${encodeURIComponent(q.value.trim())}`, { headers: { 'x-auth-token': tok() } });
+        const d = await r.json(); if (my !== seq) return;
+        const items = d.items || [];
+        list.innerHTML = items.length ? '' : '<div style="padding:14px;color:#9ca3af;font-size:12px">No items found</div>';
+        items.forEach(it => {
+          const row = document.createElement('div');
+          row.style.cssText = 'padding:7px 10px;border-radius:5px;cursor:pointer;display:flex;gap:10px;font-size:12px';
+          row.onmouseover = () => { row.style.background = '#e6f7f5'; }; row.onmouseout = () => { row.style.background = ''; };
+          row.innerHTML = `<strong style="color:#0f766e;min-width:110px">${escHtml(it.itemCode)}</strong><span style="color:#374151">${escHtml(it.itemName || '')}</span>`;
+          row.onclick = async () => {
+            row.style.opacity = '.5';
+            try {
+              const rr = await fetch(`/api/po-to-grpo/item/${encodeURIComponent(it.itemCode)}`, { headers: { 'x-auth-token': tok() } });
+              const dd = await rr.json();
+              if (!dd.ok) { alert(dd.error || 'Item not found'); row.style.opacity = '1'; return; }
+              if (dd.item.frozen) { alert(`Item ${it.itemCode} is inactive.`); row.style.opacity = '1'; return; }
+              close(); pgrpoApplyItem(i, dd.item);
+            } catch (e) { alert(e.message); row.style.opacity = '1'; }
+          };
+          list.appendChild(row);
+        });
+      } catch (e) { if (my === seq) list.innerHTML = `<div style="padding:14px;color:#dc2626;font-size:12px">${escHtml(e.message)}</div>`; }
+    }
+    q.oninput = () => { clearTimeout(timer); timer = setTimeout(search, 250); };
+    q.focus(); search();
+  };
+
   window.pgrpoToggleLine = function(i, silent) {
     const chk     = document.getElementById(`pgrpo-chk-${i}`);
     const tr      = document.getElementById(`pgrpo-tr-${i}`);
     const mgmtRow = document.getElementById(`pgrpo-mgmt-row-${i}`);
-    const qInp    = document.getElementById(`pgrpo-qty-${i}`);
-    const pInp    = document.getElementById(`pgrpo-price-${i}`);
-    const wInp    = document.getElementById(`pgrpo-whs-${i}`);
     const on      = chk?.checked;
     if (tr) tr.style.opacity = on ? '1' : '.4';
     if (mgmtRow) mgmtRow.style.opacity = on ? '1' : '.4';
-    if (qInp) qInp.disabled = !on;
-    if (pInp) pInp.disabled = !on;
-    if (wInp) wInp.disabled = !on;
+    ['qty', 'price', 'whs', 'tax'].forEach(k => { const el = document.getElementById(`pgrpo-${k}-${i}`); if (el) el.disabled = !on; });
+    tr?.querySelectorAll('button').forEach(b => { b.disabled = !on; });
+    mgmtRow?.querySelectorAll('button').forEach(b => { b.disabled = !on; });
     if (!silent) pgrpoRecalcTotals();
   };
 
@@ -32484,8 +32636,8 @@ window.roAskFollowUp = function() {
     const pInp = document.getElementById(`pgrpo-price-${i}`);
     const subEl = document.getElementById(`pgrpo-sub-${i}`);
 
-    // Cap qty at open qty
-    if (qInp) {
+    // Cap qty at open qty (PO-linked lines only)
+    if (qInp && qInp.hasAttribute('max')) {
       const v = parseFloat(qInp.value);
       const maxQ = parseFloat(qInp.dataset.open);
       if (!isNaN(v) && !isNaN(maxQ) && v > maxQ) qInp.value = maxQ;
@@ -32511,8 +32663,11 @@ window.roAskFollowUp = function() {
         ? sub.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '—';
     }
+    // An untouched default-bin allocation follows the quantity
+    const b = _pgrpoBins[i];
+    if (b && b.length === 1 && b[0].auto) b[0].qty = pgrpoNeed(i);
     pgrpoRecalcTotals();
-    // Batch/serial status turns red when the confirmed entries no longer match the qty
+    // Batch/serial/bin status turns red when the confirmed entries no longer match the qty
     pgrpoAllocStatus(i);
   };
 
@@ -32543,50 +32698,162 @@ window.roAskFollowUp = function() {
   };
 
   // ── Batch / Serial creation windows (like SAP's Batch / Serial Number Creation) ─
-  // Quantities are in inventory units: received qty × the PO line's units-per-UoM factor.
+  // Quantities are in inventory units: received qty × the line item's units-per-UoM factor.
   function pgrpoNeed(i) {
     const l = _pgrpoCurrentPO?.lines[i]; if (!l) return 0;
-    return (parseFloat(document.getElementById(`pgrpo-qty-${i}`)?.value || 0) || 0) * (l.factor || 1);
+    return (parseFloat(document.getElementById(`pgrpo-qty-${i}`)?.value || 0) || 0) * (l.cur?.factor || l.factor || 1);
   }
   function pgrpoAllocQty(l, a) {
-    return !a ? 0 : l.managedBy === 'serial' ? a.length : a.reduce((s, b) => s + (Number(b.Quantity) || 0), 0);
+    return !a ? 0 : l.cur.managedBy === 'serial' ? a.length : a.reduce((s, b) => s + (Number(b.Quantity) || 0), 0);
   }
   function pgrpoFmt(n) { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 }); }
+
+  // Error text for a line's batch / serial / bin entries, or '' when they are complete
+  function pgrpoAllocError(i) {
+    const l = _pgrpoCurrentPO?.lines[i]; if (!l) return '';
+    const m = l.cur.managedBy, need = pgrpoNeed(i), inBins = pgrpoInBins(i);
+    if (m === 'batch' || m === 'serial') {
+      const a = _pgrpoAlloc[i], have = pgrpoAllocQty(l, a), what = m === 'batch' ? 'batches' : 'serial numbers';
+      if (!a || !a.length) return `click "Create ${m === 'batch' ? 'Batches' : 'Serials'}" and enter ${what} for ${pgrpoFmt(need)}`;
+      if (Math.abs(have - need) > 1e-6) return `${what} total ${pgrpoFmt(have)} must equal the received quantity ${pgrpoFmt(need)}`;
+      if (inBins && a.some(x => !(Number(x.binAbs) > 0))) return `warehouse ${pgrpoWhsOf(i)} uses bin locations — pick a bin for every ${m === 'batch' ? 'batch' : 'serial number'}`;
+      return '';
+    }
+    if (inBins) {
+      const b = (_pgrpoBins[i] || []).filter(x => Number(x.binAbs) > 0 && Number(x.qty) > 0);
+      const sum = b.reduce((s, x) => s + Number(x.qty), 0);
+      if (!b.length) return `warehouse ${pgrpoWhsOf(i)} uses bin locations — allocate ${pgrpoFmt(need)} to bins`;
+      if (Math.abs(sum - need) > 1e-6) return `bin quantities ${pgrpoFmt(sum)} must equal the received quantity ${pgrpoFmt(need)}`;
+    }
+    return '';
+  }
 
   window.pgrpoAllocStatus = function(i) {
     const st = document.getElementById(`pgrpo-alloc-st-${i}`);
     const l  = _pgrpoCurrentPO?.lines[i];
     if (!st || !l) return;
-    const a = _pgrpoAlloc[i], need = pgrpoNeed(i), have = pgrpoAllocQty(l, a);
-    const ok = a && a.length && Math.abs(have - need) < 1e-6;
-    const what = l.managedBy === 'serial' ? 'serial number(s)' : 'batch(es)';
-    st.style.color = ok ? '#059669' : '#dc2626';
-    st.textContent = !a || !a.length ? `Not created — ${pgrpoFmt(need)} required`
-      : ok ? `✓ ${a.length} ${what} · ${pgrpoFmt(have)}`
-      : `⚠ ${pgrpoFmt(have)} created but ${pgrpoFmt(need)} required — reopen to adjust`;
+    const err = pgrpoAllocError(i);
+    st.style.color = err ? '#dc2626' : '#059669';
+    if (err) { st.textContent = '⚠ ' + err.charAt(0).toUpperCase() + err.slice(1); return; }
+    const m = l.cur.managedBy, a = _pgrpoAlloc[i];
+    if (m === 'batch' || m === 'serial') {
+      const bins = [...new Set(a.map(x => x.binCode).filter(Boolean))];
+      st.textContent = `✓ ${a.length} ${m === 'serial' ? 'serial number(s)' : 'batch(es)'} · ${pgrpoFmt(pgrpoAllocQty(l, a))}${bins.length ? ` · bins ${bins.join(', ')}` : ''}`;
+    } else {
+      const b = (_pgrpoBins[i] || []).filter(x => Number(x.qty) > 0);
+      st.textContent = `✓ ${b.map(x => `${x.binCode}: ${pgrpoFmt(x.qty)}`).join(' · ')}`;
+    }
   };
 
-  window.pgrpoOpenBatchSerial = function(i) {
+  // ── Bin allocation window (plain items in a bin-enabled warehouse) ────────────
+  window.pgrpoOpenBins = async function(i) {
     const l = _pgrpoCurrentPO?.lines[i]; if (!l) return;
-    const isBatch = l.managedBy === 'batch';
+    const need = pgrpoNeed(i);
+    if (!(need > 0)) { alert('Enter a received quantity first.'); return; }
+    const whs  = pgrpoWhsOf(i);
+    const bins = await pgrpoGetBins(whs);
+    if (!bins.length) { alert(`No active bin locations found in warehouse ${whs}.`); return; }
+    const color = '#0f766e';
+    const cell = 'border:1px solid #d1d5db;border-radius:4px;padding:4px 6px;font-size:12px;font-family:var(--font);box-sizing:border-box;width:100%';
+    const binOpts = sel => `<option value="">— select bin —</option>` + bins.map(b => `<option value="${b.abs}" ${Number(sel) === Number(b.abs) ? 'selected' : ''}>${escHtml(b.code)}</option>`).join('');
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1300;display:flex;align-items:center;justify-content:center;font-family:var(--font)';
+    ov.innerHTML = `<div style="background:#fff;border-radius:10px;width:560px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div style="background:${color};color:#fff;padding:12px 18px;display:flex;align-items:center">
+        <div style="flex:1"><div style="font-size:14px;font-weight:700">📍 Bin Location Allocation</div>
+        <div style="font-size:11.5px;opacity:.9">${escHtml(l.cur.itemCode)} — ${escHtml(l.cur.itemName || '')} · Warehouse ${escHtml(whs)} · Quantity <strong>${pgrpoFmt(need)}</strong></div></div>
+        <button data-x style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:5px;padding:4px 10px;cursor:pointer">✕</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:10px 18px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>
+          <th style="padding:6px;text-align:left;font-size:10.5px;color:${color};text-transform:uppercase;width:30px">#</th>
+          <th style="padding:6px;text-align:left;font-size:10.5px;color:${color};text-transform:uppercase">Bin Location *</th>
+          <th style="padding:6px;text-align:left;font-size:10.5px;color:${color};text-transform:uppercase;width:120px">Quantity *</th>
+          <th style="width:26px"></th></tr></thead><tbody data-rows></tbody></table>
+        <button type="button" data-add style="margin-top:8px;background:#fff;border:1px solid #d1d5db;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">+ Add Bin</button>
+      </div>
+      <div style="border-top:1px solid #e5e7eb;padding:10px 18px;display:flex;align-items:center;gap:10px;background:#f9fafb">
+        <span data-msg style="font-size:12px;color:#dc2626"></span><span style="flex:1"></span>
+        <span data-sum style="font-size:13px;font-weight:700"></span>
+        <button type="button" data-cancel style="background:#fff;border:1px solid #d1d5db;border-radius:6px;padding:7px 14px;font-size:12.5px;cursor:pointer">Cancel</button>
+        <button type="button" data-ok disabled style="background:${color};color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">✓ Confirm</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    const $ = s => ov.querySelector(s), tbody = $('[data-rows]');
+    const close = () => ov.remove();
+    $('[data-x]').onclick = $('[data-cancel]').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    function addRow(v) {
+      v = v || {};
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td style="padding:4px 6px;color:#9ca3af"></td>
+        <td style="padding:3px"><select data-bin style="${cell}">${binOpts(v.binAbs)}</select></td>
+        <td style="padding:3px"><input data-qty type="number" min="0" step="any" value="${v.qty != null ? v.qty : ''}" style="${cell}"></td>
+        <td style="padding:3px"><button type="button" data-del style="background:none;border:none;color:#dc2626;font-size:17px;cursor:pointer">×</button></td>`;
+      tr.querySelector('[data-bin]').onchange = update;
+      tr.querySelector('[data-qty]').oninput = update;
+      tr.querySelector('[data-del]').onclick = () => { tr.remove(); update(); };
+      tbody.appendChild(tr);
+    }
+    const collect = () => [...tbody.children].map(tr => {
+      const s = tr.querySelector('[data-bin]');
+      return { binAbs: Number(s.value) || 0, binCode: s.selectedOptions[0]?.textContent || '', qty: parseFloat(tr.querySelector('[data-qty]').value) || 0 };
+    });
+    function update() {
+      [...tbody.children].forEach((tr, k) => { tr.firstElementChild.textContent = k + 1; });
+      const rows = collect(), used = rows.filter(r => r.binAbs);
+      const total = rows.reduce((s, r) => s + r.qty, 0);
+      const ids = used.map(r => r.binAbs), dup = ids.find((x, k) => ids.indexOf(x) !== k);
+      let msg = '';
+      if (dup) msg = 'The same bin is selected twice';
+      else if (rows.some(r => r.qty > 0 && !r.binAbs)) msg = 'A row has a quantity but no bin';
+      else if (used.some(r => !(r.qty > 0))) msg = 'Every bin needs a quantity above 0';
+      const ok = !msg && used.length > 0 && Math.abs(total - need) < 1e-6;
+      $('[data-msg]').textContent = msg;
+      $('[data-sum]').innerHTML = `Allocated <span style="color:${ok ? '#059669' : '#dc2626'}">${pgrpoFmt(total)}</span> / ${pgrpoFmt(need)}`;
+      $('[data-ok]').disabled = !ok; $('[data-ok]').style.opacity = ok ? '1' : '.5';
+    }
+    const prev = _pgrpoBins[i];
+    if (prev && prev.length) prev.forEach(addRow);
+    else addRow({ binAbs: pgrpoWhsInfo(whs)?.defaultBin?.abs, qty: need });
+    $('[data-add]').onclick = () => {
+      const rem = need - collect().reduce((s, r) => s + r.qty, 0);
+      addRow({ qty: rem > 0 ? +rem.toFixed(6) : '' }); update();
+    };
+    $('[data-ok]').onclick = () => {
+      _pgrpoBins[i] = collect().filter(r => r.binAbs && r.qty > 0);
+      close(); pgrpoAllocStatus(i);
+    };
+    update();
+  };
+
+  window.pgrpoOpenBatchSerial = async function(i) {
+    const l = _pgrpoCurrentPO?.lines[i]; if (!l) return;
+    const isBatch = l.cur.managedBy === 'batch';
     const need = pgrpoNeed(i);
     if (!(need > 0)) { alert('Enter a received quantity first.'); return; }
     if (!isBatch && Math.abs(need - Math.round(need)) > 1e-6) { alert('Serial-managed items need a whole-number quantity.'); return; }
     const color = isBatch ? '#b45309' : '#6d28d9';
     const receipt = document.getElementById('pgrpo-form-date')?.value || new Date().toISOString().slice(0, 10);
-    const whs = (document.getElementById(`pgrpo-whs-${i}`)?.value || l.warehouse || '').toUpperCase();
+    const whs = pgrpoWhsOf(i);
+    // Bin-enabled warehouse: every batch / serial gets a bin location
+    const inBins = pgrpoInBins(i);
+    const bins = inBins ? await pgrpoGetBins(whs) : [];
+    if (inBins && !bins.length) { alert(`No active bin locations found in warehouse ${whs}.`); return; }
+    const dftBin = inBins ? (pgrpoWhsInfo(whs)?.defaultBin?.abs || '') : '';
     const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const cell = 'border:1px solid #d1d5db;border-radius:4px;padding:4px 6px;font-size:12px;font-family:var(--font);box-sizing:border-box;width:100%';
     const th   = 'padding:6px;text-align:left;font-size:10.5px;text-transform:uppercase;color:' + color + ';background:#f3f4f6;position:sticky;top:0;z-index:1';
     const btn  = (label, attr, primary) => `<button type="button" ${attr} style="background:${primary ? color : '#fff'};color:${primary ? '#fff' : '#374151'};border:1px solid ${primary ? color : '#d1d5db'};border-radius:6px;padding:7px 14px;font-size:12.5px;cursor:pointer;font-family:var(--font);${primary ? 'font-weight:700' : ''}">${label}</button>`;
-    const defaultPrefix = (l.itemCode + '-' + receipt.replace(/-/g, '')).slice(0, 30);
+    const binSelect = (sel, attr) => `<select ${attr} style="${cell}"><option value="">— bin —</option>${bins.map(b => `<option value="${b.abs}" ${Number(sel) === Number(b.abs) ? 'selected' : ''}>${esc(b.code)}</option>`).join('')}</select>`;
+    const defaultPrefix = (l.cur.itemCode + '-' + receipt.replace(/-/g, '')).slice(0, 30);
 
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1300;display:flex;align-items:center;justify-content:center;font-family:var(--font)';
-    ov.innerHTML = `<div style="background:#fff;border-radius:10px;width:1040px;max-width:97vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden">
+    ov.innerHTML = `<div style="background:#fff;border-radius:10px;width:1140px;max-width:97vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden">
       <div style="background:${color};color:#fff;padding:12px 18px;display:flex;align-items:center;gap:10px">
         <div style="flex:1"><div style="font-size:14px;font-weight:700">${isBatch ? '🏷️ Batch Number Creation' : '🔢 Serial Number Creation'}</div>
-          <div style="font-size:11.5px;opacity:.9">${esc(l.itemCode)} — ${esc(l.itemName || '')} · Warehouse ${esc(whs || '—')} · Quantity <strong>${pgrpoFmt(need)}</strong></div></div>
+          <div style="font-size:11.5px;opacity:.9">${esc(l.cur.itemCode)} — ${esc(l.cur.itemName || '')} · Warehouse ${esc(whs || '—')}${inBins ? ' 📍 bin-managed' : ''} · Quantity <strong>${pgrpoFmt(need)}</strong></div></div>
         <button data-x style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:5px;padding:4px 10px;cursor:pointer">✕</button>
       </div>
       <div style="padding:10px 18px;border-bottom:1px solid #e5e7eb;background:#fafafa;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px">
@@ -32596,8 +32863,10 @@ window.roAskFollowUp = function() {
           ? `No. of batches <input data-count type="number" min="1" value="1" style="${cell};width:70px">`
           : `Start no. <input data-start type="number" min="0" value="1" style="${cell};width:80px"> Digits <input data-pad type="number" min="1" max="10" value="4" style="${cell};width:55px">`}
         Expiry <input data-aexp type="date" style="${cell};width:140px">
+        ${inBins ? `Bin <span style="display:inline-block;width:130px">${binSelect(dftBin, 'data-abin')}</span>` : ''}
         ${btn('Create', 'data-gen', true)}
         ${isBatch ? btn('+ Add Row', 'data-add') : btn('📋 Paste List', 'data-paste')}
+        ${inBins ? btn('Apply bin to all', 'data-binall') : ''}
         ${btn('Clear', 'data-clear')}
       </div>
       <div data-pastebox style="display:none;padding:8px 18px;border-bottom:1px solid #e5e7eb">
@@ -32608,8 +32877,8 @@ window.roAskFollowUp = function() {
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px"><thead><tr>
           <th style="${th};width:34px">#</th>
           ${isBatch
-            ? ['Batch *', 'Quantity *', 'Expiry Date', 'Mfg Date', 'Admission Date', 'Batch Attribute 1', 'Batch Attribute 2', 'Location', ''].map(h => `<th style="${th}">${h}</th>`).join('')
-            : ['Serial Number *', 'Mfr Serial No.', 'Lot Number', 'Expiry Date', 'Mfg Date', 'Location'].map(h => `<th style="${th}">${h}</th>`).join('')}
+            ? ['Batch *', 'Quantity *', ...(inBins ? ['Bin Location *'] : []), 'Expiry Date', 'Mfg Date', 'Admission Date', 'Batch Attribute 1', 'Batch Attribute 2', 'Location', ''].map(h => `<th style="${th}">${h}</th>`).join('')
+            : ['Serial Number *', ...(inBins ? ['Bin Location *'] : []), 'Mfr Serial No.', 'Lot Number', 'Expiry Date', 'Mfg Date', 'Location'].map(h => `<th style="${th}">${h}</th>`).join('')}
         </tr></thead><tbody data-rows></tbody></table>
       </div>
       <div style="border-top:1px solid #e5e7eb;padding:10px 18px;display:flex;align-items:center;gap:10px;background:#f9fafb">
@@ -32625,32 +32894,41 @@ window.roAskFollowUp = function() {
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
 
     const inp = (f, v, type, extra) => `<input data-f="${f}" type="${type || 'text'}" value="${esc(v || '')}" ${extra || ''} style="${cell}">`;
+    const binTd = v => inBins ? `<td style="padding:3px;width:130px">${binSelect(v.binAbs != null ? v.binAbs : dftBin, 'data-b')}</td>` : '';
     function addRow(v) {
       v = v || {};
       const tr = document.createElement('tr');
       tr.innerHTML = `<td style="padding:4px 6px;color:#9ca3af">${tbody.children.length + 1}</td>` + (isBatch
-        ? `<td style="padding:3px;min-width:190px">${inp('BatchNumber', v.BatchNumber, 'text', 'maxlength="36"')}</td>
+        ? `<td style="padding:3px;min-width:170px">${inp('BatchNumber', v.BatchNumber, 'text', 'maxlength="36"')}</td>
            <td style="padding:3px;width:95px">${inp('Quantity', v.Quantity, 'number', 'min="0" step="any"')}</td>
-           <td style="padding:3px;width:135px">${inp('ExpiryDate', v.ExpiryDate, 'date')}</td>
-           <td style="padding:3px;width:135px">${inp('ManufacturingDate', v.ManufacturingDate, 'date')}</td>
-           <td style="padding:3px;width:135px">${inp('AddmisionDate', v.AddmisionDate || receipt, 'date')}</td>
+           ${binTd(v)}
+           <td style="padding:3px;width:130px">${inp('ExpiryDate', v.ExpiryDate, 'date')}</td>
+           <td style="padding:3px;width:130px">${inp('ManufacturingDate', v.ManufacturingDate, 'date')}</td>
+           <td style="padding:3px;width:130px">${inp('AddmisionDate', v.AddmisionDate || receipt, 'date')}</td>
            <td style="padding:3px">${inp('ManufacturerSerialNumber', v.ManufacturerSerialNumber)}</td>
            <td style="padding:3px">${inp('InternalSerialNumber', v.InternalSerialNumber)}</td>
            <td style="padding:3px">${inp('Location', v.Location)}</td>
            <td style="padding:3px;width:26px"><button type="button" data-del style="background:none;border:none;color:#dc2626;font-size:17px;cursor:pointer">×</button></td>`
         : `<td style="padding:3px">${inp('InternalSerialNumber', v.InternalSerialNumber, 'text', 'maxlength="36"')}</td>
+           ${binTd(v)}
            <td style="padding:3px">${inp('ManufacturerSerialNumber', v.ManufacturerSerialNumber)}</td>
            <td style="padding:3px">${inp('BatchID', v.BatchID)}</td>
-           <td style="padding:3px;width:135px">${inp('ExpiryDate', v.ExpiryDate, 'date')}</td>
-           <td style="padding:3px;width:135px">${inp('ManufactureDate', v.ManufactureDate, 'date')}</td>
+           <td style="padding:3px;width:130px">${inp('ExpiryDate', v.ExpiryDate, 'date')}</td>
+           <td style="padding:3px;width:130px">${inp('ManufactureDate', v.ManufactureDate, 'date')}</td>
            <td style="padding:3px">${inp('Location', v.Location)}</td>`);
       tr.querySelectorAll('input').forEach(x => x.oninput = update);
+      const bs = tr.querySelector('[data-b]'); if (bs) bs.onchange = update;
       const del = tr.querySelector('[data-del]');
       if (del) del.onclick = () => { tr.remove(); renumber(); update(); };
       tbody.appendChild(tr);
     }
     const renumber = () => [...tbody.children].forEach((tr, k) => { tr.firstElementChild.textContent = k + 1; });
-    const rowVals = tr => Object.fromEntries([...tr.querySelectorAll('input[data-f]')].map(x => [x.dataset.f, x.value.trim()]));
+    const rowVals = tr => {
+      const o = Object.fromEntries([...tr.querySelectorAll('input[data-f]')].map(x => [x.dataset.f, x.value.trim()]));
+      const bs = tr.querySelector('[data-b]');
+      if (bs) { o.binAbs = Number(bs.value) || 0; o.binCode = bs.value ? bs.selectedOptions[0].textContent : ''; }
+      return o;
+    };
     const collect = () => [...tbody.children].map(rowVals);
 
     function update() {
@@ -32664,6 +32942,7 @@ window.roAskFollowUp = function() {
       if (dup) msg = `Duplicate ${isBatch ? 'batch' : 'serial'} number: ${dup}`;
       else if (isBatch && vals.some(v => v.BatchNumber && !(parseFloat(v.Quantity) > 0))) msg = 'Every batch needs a quantity above 0';
       else if (isBatch && vals.some(v => !v.BatchNumber && parseFloat(v.Quantity) > 0)) msg = 'A row has a quantity but no batch number';
+      else if (inBins && filled.some(v => !v.binAbs)) msg = `Select a bin location for every ${isBatch ? 'batch' : 'serial number'}`;
       const ok = !msg && filled.length > 0 && Math.abs(total - need) < 1e-6;
       $('[data-msg]').textContent = msg;
       $('[data-sum]').innerHTML = `${isBatch ? 'Total' : 'Entered'} <span style="color:${ok ? '#059669' : '#dc2626'}">${pgrpoFmt(total)}</span> / ${pgrpoFmt(need)}`;
@@ -32677,8 +32956,9 @@ window.roAskFollowUp = function() {
     else for (let k = 0; k < Math.round(need); k++) addRow();
     if (!isBatch) while (tbody.children.length < Math.round(need)) addRow();
 
+    const autoBin = () => (inBins ? Number($('[data-abin]').value) || '' : '');
     $('[data-gen]').onclick = () => {
-      const prefix = $('[data-prefix]').value.trim(), exp = $('[data-aexp]').value;
+      const prefix = $('[data-prefix]').value.trim(), exp = $('[data-aexp]').value, bin = autoBin();
       if (!prefix) { alert('Enter a prefix'); return; }
       if (isBatch) {
         const n = Math.max(1, parseInt($('[data-count]').value, 10) || 1);
@@ -32687,18 +32967,26 @@ window.roAskFollowUp = function() {
         tbody.innerHTML = '';
         for (let k = 0; k < n; k++) {
           const q = k === n - 1 ? +(need - each * (n - 1)).toFixed(6) : each;
-          addRow({ BatchNumber: n === 1 ? prefix : `${prefix}-${String(k + 1).padStart(2, '0')}`, Quantity: q, ExpiryDate: exp });
+          addRow({ BatchNumber: n === 1 ? prefix : `${prefix}-${String(k + 1).padStart(2, '0')}`, Quantity: q, ExpiryDate: exp, binAbs: bin });
         }
       } else {
         const start = parseInt($('[data-start]').value, 10) || 0, pad = parseInt($('[data-pad]').value, 10) || 1;
         [...tbody.children].forEach((tr, k) => {
           tr.querySelector('[data-f="InternalSerialNumber"]').value = prefix + String(start + k).padStart(pad, '0');
           if (exp) tr.querySelector('[data-f="ExpiryDate"]').value = exp;
+          if (bin) tr.querySelector('[data-b]').value = bin;
         });
       }
       update();
     };
-    if (isBatch) $('[data-add]').onclick = () => { addRow(); update(); };
+    if (inBins) $('[data-binall]').onclick = () => {
+      const bin = autoBin(); if (!bin) { alert('Select a bin first'); return; }
+      tbody.querySelectorAll('[data-b]').forEach(s => { s.value = bin; }); update();
+    };
+    if (isBatch) $('[data-add]').onclick = () => {
+      const rem = need - collect().reduce((s, v) => s + (parseFloat(v.Quantity) || 0), 0);
+      addRow({ Quantity: rem > 0 ? +rem.toFixed(6) : '' }); update();
+    };
     else {
       $('[data-paste]').onclick = () => { const b = $('[data-pastebox]'); b.style.display = b.style.display === 'none' ? 'block' : 'none'; };
       $('[data-pasteapply]').onclick = () => {
@@ -32717,7 +33005,7 @@ window.roAskFollowUp = function() {
       const key = isBatch ? 'BatchNumber' : 'InternalSerialNumber';
       _pgrpoAlloc[i] = collect().filter(v => v[key]).map(v => {
         const o = {};
-        Object.entries(v).forEach(([k, val]) => { if (val !== '') o[k] = k === 'Quantity' ? parseFloat(val) : val; });
+        Object.entries(v).forEach(([k, val]) => { if (val !== '' && val !== 0) o[k] = k === 'Quantity' ? parseFloat(val) : val; });
         if (!isBatch) o.Quantity = 1;
         return o;
       });
@@ -32735,6 +33023,7 @@ window.roAskFollowUp = function() {
 
     const lines = [];
     let validationError = null;
+    const noBinCode = ({ binCode, ...r }) => r;
 
     _pgrpoCurrentPO.lines.forEach((l, i) => {
       if (validationError) return;
@@ -32742,22 +33031,25 @@ window.roAskFollowUp = function() {
       if (!chk?.checked) return;
       const qty   = parseFloat(document.getElementById(`pgrpo-qty-${i}`)?.value   || 0);
       const price = parseFloat(document.getElementById(`pgrpo-price-${i}`)?.value || 0);
-      const whs   = (document.getElementById(`pgrpo-whs-${i}`)?.value || '').trim().toUpperCase();
+      const whs   = pgrpoWhsOf(i);
+      const tax   = (document.getElementById(`pgrpo-tax-${i}`)?.value || '').trim();
       if (qty <= 0) return;
 
-      let batchNumbers  = null;
-      let serialNumbers = null;
+      const err = pgrpoAllocError(i);
+      if (err) { validationError = `Item ${l.cur.itemCode}: ${err}.`; return; }
+      const m = l.cur.managedBy;
+      const batchNumbers  = m === 'batch'  ? _pgrpoAlloc[i].map(noBinCode) : null;
+      const serialNumbers = m === 'serial' ? _pgrpoAlloc[i].map(noBinCode) : null;
+      const bins = m === 'none' && pgrpoInBins(i) ? (_pgrpoBins[i] || []).map(b => ({ binAbs: b.binAbs, qty: b.qty })) : null;
 
-      if (l.managedBy === 'batch' || l.managedBy === 'serial') {
-        const a = _pgrpoAlloc[i], need = pgrpoNeed(i);
-        const what = l.managedBy === 'batch' ? 'batches' : 'serial numbers';
-        if (!a || !a.length) { validationError = `Item ${l.itemCode}: click "Create ${l.managedBy === 'batch' ? 'Batches' : 'Serials'}" and enter ${what} for ${pgrpoFmt(need)}.`; return; }
-        const have = pgrpoAllocQty(l, a);
-        if (Math.abs(have - need) > 1e-6) { validationError = `Item ${l.itemCode}: ${what} total ${pgrpoFmt(have)} must equal the received quantity ${pgrpoFmt(need)}. Reopen the window to adjust.`; return; }
-        if (l.managedBy === 'batch') batchNumbers = a; else serialNumbers = a;
-      }
-
-      lines.push({ baseEntry: _pgrpoCurrentPO.docEntry, baseLine: l.baseLine, itemCode: l.itemCode, qty, price, warehouse: whs || l.warehouse, batchNumbers, serialNumbers });
+      lines.push({
+        baseEntry: _pgrpoCurrentPO.docEntry, baseLine: l.baseLine,
+        itemCode: l.cur.itemCode, itemChanged: l.cur.itemCode !== l.itemCode,
+        qty, price, warehouse: whs || l.warehouse, taxCode: tax,
+        batchNumbers, serialNumbers, bins,
+        // display-only (summary sidebar)
+        binText: m === 'none' ? (_pgrpoBins[i] || []).map(b => b.binCode).join(', ') : [...new Set((_pgrpoAlloc[i] || []).map(x => x.binCode).filter(Boolean))].join(', '),
+      });
     });
 
     if (validationError) { alert(validationError); return; }
@@ -32776,7 +33068,7 @@ window.roAskFollowUp = function() {
     _pgrpoState.grpoLines = lines;
     pgrpoUpdateSummary();
 
-    pgrpoSend(JSON.stringify({ action: 'post_grpo', receiptDate, numAtCard, comments, lines }));
+    pgrpoSend(JSON.stringify({ action: 'post_grpo', receiptDate, numAtCard, comments, lines: lines.map(({ binText, ...r }) => r) }));
   };
 
   // Close modal on backdrop click
@@ -32879,6 +33171,10 @@ window.roAskFollowUp = function() {
           <div style="font-size:11.5px;font-weight:700;color:#0f766e">${escHtml(l.itemCode||'')}</div>
           <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">
             <span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e6f7f5;color:#0f766e">Qty: ${l.qty}</span>
+            ${l.warehouse ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f3f4f6;color:#374151">Whs: ${escHtml(l.warehouse)}</span>` : ''}
+            ${l.binText ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f3f4f6;color:#374151">📍 ${escHtml(l.binText)}</span>` : ''}
+            ${l.taxCode ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f3f4f6;color:#374151">Tax: ${escHtml(l.taxCode)}</span>` : ''}
+            ${l.itemChanged ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#fef3c7;color:#92400e">item replaced</span>` : ''}
             ${lt > 0 ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e6f7f5;color:#0f766e">${lt.toLocaleString('en-US',{minimumFractionDigits:2})}</span>` : ''}
           </div>
         </div>`;

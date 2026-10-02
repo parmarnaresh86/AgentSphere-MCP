@@ -2,7 +2,9 @@
  * PO-to-GRPO Agent — redesigned flow:
  *  1. Vendor list with open PO counts → user selects supplier
  *  2. PO list for that supplier → user selects one PO
- *  3. Line-entry modal → user edits qty / price per line → posts GRPO
+ *  3. Line-entry modal → user edits item / qty / price / warehouse / tax code per line,
+ *     creates batches or serials (multiple per line), allocates bins in bin-enabled
+ *     warehouses → posts GRPO
  */
 import { Router } from 'express';
 
@@ -132,10 +134,148 @@ function buildPODetail(full, mgmtMap = {}) {
         unit:       l.UoMCode || l.MeasureUnit || 'EA',
         unitPrice:  Number(l.UnitPrice || l.Price || 0),
         warehouse:  l.WarehouseCode || '',
+        taxCode:    l.TaxCode || l.VatGroup || '',
         managedBy:  mgmtMap[l.ItemCode] || 'none',
         factor:     Number(l.UnitsOfMeasurment || 1) || 1,   // inventory units per purchase unit
       })),
   };
+}
+
+// India / US localisations carry the line tax in TaxCode (OSTC); VAT localisations in VatGroup (OVTG).
+function taxField(full) {
+  const lines = full?.DocumentLines || [];
+  if (lines.some(l => l.TaxCode)) return 'TaxCode';
+  if (lines.some(l => l.VatGroup)) return 'VatGroup';
+  return 'TaxCode';
+}
+
+const escOData = s => String(s || '').replace(/'/g, "''");
+
+async function fetchAllPages(sap, endpoint, params, hardCap = 1000) {
+  const all = [];
+  while (all.length < hardCap) {
+    const r    = await sap.get(endpoint, { ...params, $skip: all.length });
+    const rows = Array.isArray(r.value) ? r.value : [];
+    if (!rows.length) break;
+    all.push(...rows);
+  }
+  return all;
+}
+
+// Warehouses (with bin flag + default bin) and tax codes for the line-entry form
+async function fetchLookups(sap, cacheRepo, companyId) {
+  const out = { warehouses: [], taxCodes: [] };
+  try {
+    const whs = await fetchAllPages(sap, '/Warehouses', {
+      $filter: "Inactive eq 'tNO'", $select: 'WarehouseCode,WarehouseName,EnableBinLocations,DefaultBin', $orderby: 'WarehouseCode asc',
+    });
+    const dft = {};
+    await Promise.all(whs.filter(w => w.EnableBinLocations === 'tYES' && Number(w.DefaultBin) > 0).map(async w => {
+      const b = await sap.get(`/BinLocations(${Number(w.DefaultBin)})`, { $select: 'AbsEntry,BinCode' }).catch(() => null);
+      dft[w.WarehouseCode] = { abs: Number(w.DefaultBin), code: b?.BinCode || String(w.DefaultBin) };
+    }));
+    out.warehouses = whs.map(w => ({
+      code: w.WarehouseCode, name: w.WarehouseName || '',
+      binEnabled: w.EnableBinLocations === 'tYES', defaultBin: dft[w.WarehouseCode] || null,
+    }));
+  } catch (e) { console.error('[PO-TO-GRPO] warehouses', e.message); }
+
+  const cached = cacheRepo?.getTaxCodes && companyId ? cacheRepo.getTaxCodes(companyId) : [];
+  if (cached.length) {
+    out.taxCodes = cached.map(t => ({ code: t.Code, name: t.Name || '', rate: Number(t.Rate || 0) }));
+  } else {
+    for (const ep of ['/SalesTaxCodes', '/VatGroups']) {
+      try {
+        const rows = await fetchAllPages(sap, ep, { $select: 'Code,Name' }, 500);
+        if (rows.length) { out.taxCodes = rows.map(t => ({ code: t.Code, name: t.Name || '', rate: 0 })); break; }
+      } catch { /* entity not present in this localisation */ }
+    }
+  }
+  return out;
+}
+
+// Batch/serial/bin master data of one item (used when the user swaps the line's item)
+async function fetchItemInfo(sap, itemCode) {
+  const sel = 'ItemCode,ItemName,ManageBatchNumbers,ManageSerialNumbers,PurchaseUnit,PurchaseItemsPerUnit,InventoryItem,Frozen';
+  let it = null;
+  try { it = await sap.get(`/Items('${escOData(itemCode)}')`, { $select: sel }); }
+  catch { it = await sap.get(`/Items('${escOData(itemCode)}')`).catch(() => null); }
+  if (!it?.ItemCode) return null;
+  return {
+    itemCode:  it.ItemCode,
+    itemName:  it.ItemName || it.ItemCode,
+    managedBy: it.ManageSerialNumbers === 'tYES' ? 'serial' : it.ManageBatchNumbers === 'tYES' ? 'batch' : 'none',
+    unit:      it.PurchaseUnit || 'EA',
+    factor:    Number(it.PurchaseItemsPerUnit || 1) || 1,
+    inventory: it.InventoryItem !== 'tNO',
+    frozen:    it.Frozen === 'tYES',
+  };
+}
+
+// ── Build GRPO DocumentLines from the line-entry form ─────────────────────────
+// Each form line: { baseLine, itemCode, itemChanged, qty, price, warehouse, taxCode,
+//   batchNumbers:[{BatchNumber,Quantity,…,binAbs}], serialNumbers:[{InternalSerialNumber,…,binAbs}], bins:[{binAbs,qty}] }
+// Quantities in batches / serials / bins are inventory UoM (qty × factor).
+async function buildGRPOLines(sap, session, full, formLines) {
+  const poLines = new Map((full.DocumentLines || []).map(l => [Number(l.LineNum), l]));
+  const tf      = taxField(full);
+  const whsList = session.lookups?.warehouses || (await fetchLookups(sap)).warehouses;
+  const binWhs  = new Set(whsList.filter(w => w.binEnabled).map(w => w.code));
+  const out = [];
+
+  for (const l of formLines) {
+    const qty = Number(l.qty);
+    if (!(qty > 0)) continue;
+    const po = poLines.get(Number(l.baseLine));
+    if (!po) return { error: `PO line ${l.baseLine} not found on PO #${full.DocNum}.` };
+    const whs     = String(l.warehouse || po.WarehouseCode || '').toUpperCase();
+    const changed = !!l.itemChanged && l.itemCode && l.itemCode !== po.ItemCode;
+    let manage = session.itemMgmtMap[po.ItemCode] || 'none', factor = Number(po.UnitsOfMeasurment || 1) || 1, inventory = true;
+    const label = changed ? l.itemCode : po.ItemCode;
+
+    if (changed) {
+      const info = await fetchItemInfo(sap, l.itemCode);
+      if (!info) return { error: `Item **${l.itemCode}** not found in SAP.` };
+      if (info.frozen) return { error: `Item **${l.itemCode}** is inactive (frozen).` };
+      manage = info.managedBy; factor = info.factor; inventory = info.inventory;
+    } else if (qty > Number(po.RemainingOpenQuantity || 0) + 1e-9) {
+      return { error: `**${label}**: received ${fmtN(qty)} exceeds the open quantity ${fmtN(po.RemainingOpenQuantity)}.` };
+    }
+
+    const invQty = qty * factor;
+    const inBins = inventory && binWhs.has(whs);
+    const strip  = ({ binAbs, ...rest }) => rest;
+    const binRow = (abs, q, snb) => ({ BinAbsEntry: Number(abs), Quantity: q, AllowNegativeQuantity: 'tNO', SerialAndBatchNumbersBaseLine: snb, BaseLineNumber: out.length });
+    const line = changed
+      ? { ItemCode: l.itemCode, Quantity: qty }
+      : { BaseType: 22, BaseEntry: Number(full.DocEntry), BaseLine: Number(po.LineNum), Quantity: qty };
+    if (Number(l.price) >= 0 && l.price !== '' && l.price != null) line.UnitPrice = Number(l.price);
+    if (whs) line.WarehouseCode = whs;
+    if (l.taxCode) line[tf] = String(l.taxCode);
+
+    if (manage === 'batch') {
+      const b = (l.batchNumbers || []).filter(x => x.BatchNumber && Number(x.Quantity) > 0);
+      const sum = b.reduce((s, x) => s + Number(x.Quantity), 0);
+      if (!b.length || Math.abs(sum - invQty) > 1e-6) return { error: `**${label}**: batch quantities (${fmtN(sum, 3)}) must equal the received quantity ${fmtN(invQty, 3)}.` };
+      if (inBins && b.some(x => !(Number(x.binAbs) > 0))) return { error: `**${label}**: warehouse ${whs} uses bin locations — pick a bin for every batch.` };
+      line.BatchNumbers = b.map(strip);
+      if (inBins) line.DocumentLinesBinAllocations = b.map((x, k) => binRow(x.binAbs, Number(x.Quantity), k));
+    } else if (manage === 'serial') {
+      const s = (l.serialNumbers || []).filter(x => x.InternalSerialNumber);
+      if (Math.abs(invQty - Math.round(invQty)) > 1e-6 || s.length !== Math.round(invQty)) return { error: `**${label}**: enter exactly ${fmtN(invQty, 0)} serial number(s) (entered ${s.length}).` };
+      if (inBins && s.some(x => !(Number(x.binAbs) > 0))) return { error: `**${label}**: warehouse ${whs} uses bin locations — pick a bin for every serial number.` };
+      line.SerialNumbers = s.map(x => ({ ...strip(x), Quantity: 1 }));
+      if (inBins) line.DocumentLinesBinAllocations = s.map((x, k) => binRow(x.binAbs, 1, k));
+    } else if (inBins) {
+      const bins = (l.bins || []).filter(x => Number(x.binAbs) > 0 && Number(x.qty) > 0);
+      const sum  = bins.reduce((s, x) => s + Number(x.qty), 0);
+      if (Math.abs(sum - invQty) > 1e-6) return { error: `**${label}**: warehouse ${whs} uses bin locations — allocate exactly ${fmtN(invQty, 3)} to bins (allocated ${fmtN(sum, 3)}).` };
+      line.DocumentLinesBinAllocations = bins.map(x => binRow(x.binAbs, Number(x.qty), -1));
+    }
+    out.push(line);
+  }
+  if (!out.length) return { error: 'No lines with a quantity above 0.' };
+  return { lines: out };
 }
 
 // ── Vendor summary text ────────────────────────────────────────────────────────
@@ -158,8 +298,9 @@ function buildVendorSummaryText(groups, totalPOs) {
 
 // ── Main router factory ────────────────────────────────────────────────────────
 export function createPOtoGRPOAgentRouter(deps) {
-  const { requireAuth, printAuth, getActiveSap } = deps;
+  const { requireAuth, printAuth, getActiveSap, cacheRepo, getActiveCompanyId } = deps;
   const router = Router();
+  const companyId = () => { try { return getActiveCompanyId?.() || null; } catch { return null; } };
 
   router.post('/chat', requireAuth, async (req, res) => {
     try {
@@ -193,22 +334,15 @@ export function createPOtoGRPOAgentRouter(deps) {
             quickReplies = ['Retry', 'Cancel'];
           } else {
             try {
+              const built = await buildGRPOLines(sap, session, full, lines);
+              if (built.error) throw Object.assign(new Error(built.error), { validation: true });
               const grpoPayload = {
                 DocDate:    sapDate(action.receiptDate || today()),
                 DocDueDate: sapDate(action.receiptDate || today()),
                 ...(full.CardCode      ? { CardCode:  full.CardCode      } : {}),
                 ...(action.numAtCard   ? { NumAtCard: action.numAtCard   } : {}),
                 ...(action.comments    ? { Comments:  action.comments    } : {}),
-                DocumentLines: lines.map(l => ({
-                  BaseType:  22,
-                  BaseEntry: Number(l.baseEntry),
-                  BaseLine:  Number(l.baseLine),
-                  Quantity:  Number(l.qty),
-                  ...(Number(l.price) > 0 ? { UnitPrice: Number(l.price) } : {}),
-                  ...(l.warehouse ? { WarehouseCode: l.warehouse } : {}),
-                  ...(l.batchNumbers?.length  ? { BatchNumbers:  l.batchNumbers  } : {}),
-                  ...(l.serialNumbers?.length ? { SerialNumbers: l.serialNumbers } : {}),
-                })),
+                DocumentLines: built.lines,
               };
               const result = await sap.post('/PurchaseDeliveryNotes', grpoPayload);
               session.result = { docEntry: result.DocEntry, docNum: result.DocNum };
@@ -233,7 +367,9 @@ export function createPOtoGRPOAgentRouter(deps) {
                 lineCount:   lines.length,
               };
             } catch (e) {
-              reply = `❌ **Failed to post Goods Receipt PO**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
+              reply = e.validation
+                ? `❌ **Cannot post Goods Receipt PO**\n\n${e.message}\n\nWould you like to **retry** or **cancel**?`
+                : `❌ **Failed to post Goods Receipt PO**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
               quickReplies = ['Retry', 'Cancel'];
             }
           }
@@ -310,7 +446,7 @@ export function createPOtoGRPOAgentRouter(deps) {
 
         } else if (/retry/i.test(msgL) && session.selectedPODoc) {
           reply = `Re-opening PO #${session.selectedPODoc.DocNum} — enter quantities:`;
-          poDetail = buildPODetail(session.selectedPODoc, session.itemMgmtMap);
+          poDetail = { ...buildPODetail(session.selectedPODoc, session.itemMgmtMap), lookups: session.lookups, taxField: taxField(session.selectedPODoc) };
 
         } else if (/cancel/i.test(msgL)) {
           session.selectedPODoc = null;
@@ -333,8 +469,13 @@ export function createPOtoGRPOAgentRouter(deps) {
               } else {
                 session.selectedPODoc = full;
                 const itemCodes = (full.DocumentLines || []).map(l => l.ItemCode).filter(Boolean);
-                session.itemMgmtMap = await fetchItemManagement(sap, itemCodes);
-                const detail = buildPODetail(full, session.itemMgmtMap);
+                const [mgmt, lookups] = await Promise.all([
+                  fetchItemManagement(sap, itemCodes),
+                  session.lookups ? Promise.resolve(session.lookups) : fetchLookups(sap, cacheRepo, companyId()),
+                ]);
+                session.itemMgmtMap = mgmt;
+                session.lookups     = lookups;
+                const detail = { ...buildPODetail(full, session.itemMgmtMap), lookups, taxField: taxField(full) };
                 const batchCount  = detail.lines.filter(l => l.managedBy === 'batch').length;
                 const serialCount = detail.lines.filter(l => l.managedBy === 'serial').length;
                 const mgmtNote = (batchCount || serialCount)
@@ -405,6 +546,45 @@ export function createPOtoGRPOAgentRouter(deps) {
       console.error('[PO-TO-GRPO] chat error:', e);
       res.status(500).json({ ok: false, error: e.message });
     }
+  });
+
+  // GET /bins?warehouse= ── active bin locations of one warehouse ──────────────
+  router.get('/bins', requireAuth, async (req, res) => {
+    try {
+      const whs = String(req.query.warehouse || '').trim();
+      if (!whs) return res.json({ ok: true, bins: [] });
+      const rows = await fetchAllPages(getActiveSap(), '/BinLocations', {
+        $filter: `Warehouse eq '${escOData(whs)}' and Inactive eq 'tNO'`, $select: 'AbsEntry,BinCode', $orderby: 'BinCode asc',
+      }, 2000).catch(() => fetchAllPages(getActiveSap(), '/BinLocations', {
+        $filter: `WarehouseCode eq '${escOData(whs)}' and Inactive eq 'tNO'`, $select: 'AbsEntry,BinCode', $orderby: 'BinCode asc',
+      }, 2000));
+      res.json({ ok: true, bins: rows.map(b => ({ abs: b.AbsEntry, code: b.BinCode })) });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // GET /items?q= ── item search for swapping a line's item ─────────────────────
+  router.get('/items', requireAuth, async (req, res) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      const cid = companyId();
+      if (cacheRepo?.searchItems && cid) {
+        const rows = cacheRepo.searchItems(cid, q, 20);
+        if (rows.length) return res.json({ ok: true, items: rows.map(r => ({ itemCode: r.ItemCode, itemName: r.ItemName })) });
+      }
+      let filter = "Frozen eq 'tNO' and PurchaseItem eq 'tYES'";
+      if (q) filter += ` and (contains(ItemCode,'${escOData(q)}') or contains(ItemName,'${escOData(q)}'))`;
+      const r = await getActiveSap().get('/Items', { $filter: filter, $select: 'ItemCode,ItemName', $top: 20, $orderby: 'ItemCode asc' });
+      res.json({ ok: true, items: (r.value || []).map(i => ({ itemCode: i.ItemCode, itemName: i.ItemName })) });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // GET /item/:code ── batch/serial management + purchase UoM of one item ──────
+  router.get('/item/:code', requireAuth, async (req, res) => {
+    try {
+      const info = await fetchItemInfo(getActiveSap(), req.params.code);
+      if (!info) return res.status(404).json({ ok: false, error: `Item ${req.params.code} not found` });
+      res.json({ ok: true, item: info });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
   // POST /reset ──────────────────────────────────────────────────────────────────

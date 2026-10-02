@@ -6205,6 +6205,7 @@ app.use('/api/pr-to-po', createPRtoPOAgentRouter({
 // ── PO to GRPO Receipt Agent routes ────────────────────────────────────────
 app.use('/api/po-to-grpo', createPOtoGRPOAgentRouter({
   requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+  cacheRepo, getActiveCompanyId: () => connRepo.getActive()?.company || 'default',
 }));
 
 // ── GRPO to AP Invoice OCR Agent routes ────────────────────────────────────
