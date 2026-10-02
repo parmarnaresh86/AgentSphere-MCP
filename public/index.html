@@ -43,29 +43,10 @@
   }).catch(() => {});
 })();
 </script>
-<script>
-// ── Number display locale ────────────────────────────────────
-// Digit grouping follows the connected company's base currency (see
-// refreshAppCurrency): INR → Indian grouping (12,34,567), everything else →
-// US grouping (1,234,567). Bare toLocaleString()/Intl.NumberFormat calls would
-// otherwise use the *browser's* locale, so an Indian browser showed lakh
-// grouping for a US-localized SAP company. Dates are not affected.
-window.APP_LOCALE = 'en-US';
-window.appLocaleFor = cur => (cur && cur.code === 'INR') ? 'en-IN' : 'en-US';
-(function(){
-  const nativeToLocale = Number.prototype.toLocaleString;
-  Number.prototype.toLocaleString = function(locales, opts) {
-    return nativeToLocale.call(this, locales === undefined ? window.APP_LOCALE : locales, opts);
-  };
-  const NativeNF = Intl.NumberFormat;
-  function AppNumberFormat(locales, opts) {
-    return new NativeNF(locales === undefined ? window.APP_LOCALE : locales, opts);
-  }
-  AppNumberFormat.prototype = NativeNF.prototype;
-  AppNumberFormat.supportedLocalesOf = NativeNF.supportedLocalesOf.bind(NativeNF);
-  Intl.NumberFormat = AppNumberFormat;
-})();
-</script>
+<!-- Display locale follows the company's base currency (see refreshAppCurrency):
+     INR → en-IN, everything else → en-US — for numbers, dates and date fields,
+     never the browser's own locale. -->
+<script src="/app-locale.js"></script>
 <script>
 window.addEventListener('error', function(e) {
   document.getElementById('err-bar').style.display='block';
@@ -130,9 +111,14 @@ body{font-family:var(--font);color:var(--text);display:flex}
 
 /* Collapsed rail: logo + toggle + icon-only main menu, full nav content hidden */
 .sidebar.collapsed{width:var(--sidebar-w-collapsed)}
-.sidebar.collapsed .brand{padding:0 10px;justify-content:center}
+/* Logo stacked above the toggle so nothing gets clipped in the 64px rail */
+.sidebar.collapsed .brand{height:auto;padding:10px 0 8px;flex-direction:column;justify-content:center;gap:8px}
+.sidebar.collapsed .brand-avatar{width:44px;height:44px;padding:3px}
+/* Client/company: logo only, centred and large; name hidden */
+.sidebar.collapsed #brand-company-row{justify-content:center;padding:8px 0 !important;margin-top:0 !important}
+.sidebar.collapsed #brand-company-logo{width:52px;height:auto;max-height:52px;max-width:52px}
 .sidebar.collapsed .brand-text,
-.sidebar.collapsed #brand-company-row,
+.sidebar.collapsed #brand-company-name,
 .sidebar.collapsed .nav-section,
 .sidebar.collapsed .sidebar-bottom{display:none}
 .sidebar.collapsed .sidebar-toggle-btn{transform:rotate(180deg)}
@@ -165,7 +151,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
   display:flex;align-items:center;gap:12px;flex-shrink:0;
 }
 .brand-avatar{
-  width:32px;height:32px;border-radius:8px;
+  width:38px;height:38px;border-radius:8px;
   background:linear-gradient(135deg,#3b82f6,#1d4ed8);
   display:flex;align-items:center;justify-content:center;
   color:#fff;font-size:14px;font-weight:800;flex-shrink:0;
@@ -173,6 +159,8 @@ body{font-family:var(--font);color:var(--text);display:flex}
   overflow:hidden;padding:4px;
 }
 .brand-avatar img{width:100%;height:100%;object-fit:contain}
+/* Height-driven so wide wordmark logos aren't shrunk into a small square */
+#brand-company-logo{height:40px;width:auto;max-width:150px;object-fit:contain;border-radius:4px;flex-shrink:0}
 .brand-text{flex:1;min-width:0}
 .brand-name{font-size:14.5px;font-weight:700;color:#fff;line-height:1.2;letter-spacing:.2px}
 .brand-sub{font-size:9.5px;color:rgba(255,255,255,.45);letter-spacing:.6px;text-transform:uppercase;margin-top:1px}
@@ -192,7 +180,7 @@ body{font-family:var(--font);color:var(--text);display:flex}
   padding:8px 12px;font-size:9.5px;color:rgba(255,255,255,.4);
   flex-shrink:0;
 }
-.sidebar-powered-by img{height:13px;width:auto}
+.sidebar-powered-by img{height:26px;width:auto;max-width:120px;object-fit:contain}
 
 /* Section accordion headers */
 .nav-section{padding:2px 8px}
@@ -1750,6 +1738,16 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
 }
 .pvm-field-value.empty{color:#B0BCC8;font-style:italic;font-weight:400;font-size:12px}
 .pvm-field-value.filled{border-color:#B5CBF0;background:#EDF3FF}
+.pvm-edit-input{
+  font-size:12.5px;font-weight:600;color:#1A2940;font-family:var(--font);
+  padding:4px 8px;background:#fff;border:1px solid #B5CBF0;border-radius:5px;min-height:28px;box-sizing:border-box;width:100%;
+}
+.pvm-lines-table .pvm-edit-input{width:auto}
+.pvm-edit-input.r{text-align:right}
+.pvm-edit-input:focus{outline:none;border-color:#2563A8;box-shadow:0 0 0 2px rgba(37,99,168,.15)}
+.pvm-edit-input::placeholder{color:#B0BCC8;font-style:italic;font-weight:400}
+.pvm-del-line{background:none;border:1px solid transparent;color:#CC4444;cursor:pointer;border-radius:4px;padding:2px 6px;font-size:12px}
+.pvm-del-line:hover{background:#FFF0F0;border-color:#FFCCCC}
 /* ── Lines table ── */
 .pvm-lines-wrap{overflow-x:auto}
 .pvm-lines-table{width:100%;border-collapse:collapse;font-size:12px}
@@ -1853,6 +1851,11 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
   body.mobile-sidebar-open .sidebar.collapsed{width:var(--sidebar-w)}
   body.mobile-sidebar-open .sidebar.collapsed .brand-text,
   body.mobile-sidebar-open .sidebar.collapsed #brand-company-row{display:flex}
+  body.mobile-sidebar-open .sidebar.collapsed #brand-company-name{display:inline}
+  body.mobile-sidebar-open .sidebar.collapsed .brand{height:52px;padding:0 10px 0 16px;flex-direction:row;justify-content:flex-start;gap:12px}
+  body.mobile-sidebar-open .sidebar.collapsed .brand-avatar{width:38px;height:38px;padding:4px}
+  body.mobile-sidebar-open .sidebar.collapsed #brand-company-row{justify-content:flex-start;padding:0 16px 10px !important}
+  body.mobile-sidebar-open .sidebar.collapsed #brand-company-logo{height:40px;width:auto;max-width:150px;max-height:none}
   body.mobile-sidebar-open .sidebar.collapsed .nav-section{display:block}
   body.mobile-sidebar-open .sidebar.collapsed .sidebar-bottom{display:flex}
   body.mobile-sidebar-open .sidebar.collapsed .sidebar-icon-rail{display:none}
@@ -2062,7 +2065,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
     </button>
   </div>
   <div id="brand-company-row" style="display:none;align-items:center;gap:8px;padding:0 16px 10px;margin-top:-6px">
-    <img id="brand-company-logo" src="" alt="Company logo" style="width:20px;height:20px;object-fit:contain;border-radius:3px;display:none"/>
+    <img id="brand-company-logo" src="" alt="Company logo" style="display:none"/>
     <span id="brand-company-name" style="font-size:11px;color:rgba(255,255,255,.55);font-weight:600"></span>
   </div>
   <script>
@@ -2485,7 +2488,6 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-inv-ops">
-        <div class="nav-subitem" onclick="showInventoryDashboardPanel()" id="nav-inv-dashboard" data-perm="inventory.dashboard" style="cursor:pointer"><span class="dot-icon" data-fi="bar-chart" style="background:#0f766e"></span>Inventory Dashboard</div>
         <div class="nav-subitem" data-prompt="show stock levels" data-perm="inventory.stock_levels"><span class="dot-icon" data-fi="inventory" style="background:#0070F2"></span>Stock Levels</div>
         <div class="nav-subitem" data-prompt="show in stock only items" data-perm="inventory.in_stock_items"><span class="dot-icon" data-fi="sap-box" style="background:#107E3E"></span>In-Stock Items</div>
         <div class="nav-subitem" data-prompt="pick list for order" data-perm="inventory.pick_list"><span class="dot-icon" data-fi="checklist-item" style="background:#6A1DE8"></span>Pick List</div>
@@ -2508,6 +2510,20 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showInvAgentPanel('st')" id="nav-inv-st" data-perm="inventory.workflow.transfer_direct" style="cursor:pointer"><span class="dot-icon" data-fi="forward" style="background:#1d4ed8"></span>Stock Transfer (Direct)</div>
         <div class="nav-subitem" onclick="showInvAgentPanel('gi')" id="nav-inv-gi" data-perm="inventory.workflow.goods_issue" style="cursor:pointer"><span class="dot-icon" data-fi="outbox" style="background:#b91c1c"></span>Goods Issue</div>
         <div class="nav-subitem" onclick="showInvAgentPanel('gr')" id="nav-inv-gr" data-perm="inventory.workflow.goods_receipt" style="cursor:pointer"><span class="dot-icon" data-fi="inbox" style="background:#107E3E"></span>Goods Receipt</div>
+      </div>
+    </div>
+
+    <!-- Reports: inventory dashboard & SAP-style stock reports (controllers/inventory-dashboard-agent.mjs) -->
+    <div class="nav-group">
+      <div class="nav-group-header" data-group="inv-reports" data-fi="bar-chart">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Reports
+        </span>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="nav-group-body" id="grp-inv-reports">
+        <div class="nav-subitem" onclick="showInventoryDashboardPanel()" id="nav-inv-dashboard" data-perm="inventory.dashboard" style="cursor:pointer"><span class="dot-icon" data-fi="bar-chart" style="background:#0f766e"></span>Inventory Dashboard</div>
       </div>
     </div>
   </div>
@@ -2565,7 +2581,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="nav-group-body" id="grp-ai-agents-ocr">
-        <div class="nav-subitem" onclick="showOcrPoScanPanel()" id="nav-ocr-po-scan" data-perm="ai.ocr.po_scan" style="cursor:pointer"><span class="dot-icon" data-fi="camera" style="background:#6366f1"></span>Scan Purchase Order</div>
+        <div class="nav-subitem" onclick="showOcrPoScanPanel()" id="nav-ocr-po-scan" data-perm="ai.ocr.po_scan" style="cursor:pointer"><span class="dot-icon" data-fi="camera" style="background:#6366f1"></span>Scan PO</div>
         <div class="nav-subitem" onclick="showOcrExpensePanel()" id="nav-ocr-expense" data-perm="ai.ocr.expense" style="cursor:pointer"><span class="dot-icon" data-fi="expense-report" style="background:#f59e0b"></span>Scan Expense Invoice</div>
         <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-ocr-apinv" data-perm="ai.ocr.apinv" style="cursor:pointer"><span class="dot-icon" data-fi="pdf-attachment" style="background:#1d4ed8"></span>Scan A/P Invoice</div>
         <div class="nav-subitem" onclick="showOcrInwardPanel()" id="nav-ocr-inward" data-perm="ai.ocr.inward" style="cursor:pointer"><span class="dot-icon" data-fi="journey-arrive" style="background:#16a34a"></span>Scan Inward</div>
@@ -9165,7 +9181,7 @@ async function refreshAppCurrency() {
   try {
     const s = await api('/api/db-connections/status');
     updateDbStatusDot(s.connected);
-    if (s.currency) { window.APP_CURRENCY = s.currency; window.APP_LOCALE = appLocaleFor(s.currency); }
+    if (s.currency) setAppCurrency(s.currency);
     return s;
   } catch { return null; }
 }
@@ -9835,7 +9851,7 @@ function wfHandleFile(file) {
   document.getElementById('wf-steps').style.display = 'flex';
   document.getElementById('wf-steps').style.flexDirection = 'column';
   document.getElementById('wf-steps').style.gap = '10px';
-  wfRunWorkflow();
+  wfRunPoToSoWorkflow();
 }
 
 // ── Step UI helpers ───────────────────────────────────────────────
@@ -9864,7 +9880,7 @@ function fmt(n, dec=2) { return n == null ? '—' : parseFloat(n).toLocaleString
 function pill(label, cls) { return `<span class="wf-pill wf-pill-${cls}">${label}</span>`; }
 
 // ── Main workflow runner ──────────────────────────────────────────
-async function wfRunWorkflow() {
+async function wfRunPoToSoWorkflow() {
   const file = wfData.file;
   if (!file) return;
 
@@ -9884,9 +9900,20 @@ async function wfRunWorkflow() {
     if (!res.ok || po.error) throw new Error(po.error || `Server error HTTP ${res.status}`);
     if (!res.ok || po.error) throw new Error(po.error || `HTTP ${res.status}`);
     wfData.po = po;
-    const lines = po.lines || [];
-    const total = po.total || lines.reduce((s,l)=>s+(l.lineTotal||0),0);
-    wfSetStep('s1','success', `${lines.length} lines · ${po.currency||''} ${fmt(total)}`, `
+    wfRenderS1();
+  } catch(e) {
+    wfSetStep('s1','error',`Failed`,`<div class="wf-error-banner">❌ ${e.message}</div>`);
+    return;
+  }
+
+  await wfRunCustomerStep();
+}
+
+function wfRenderS1(edited) {
+  const po = wfData.po;
+  const lines = po.lines || [];
+  const total = po.total || lines.reduce((s,l)=>s+(l.lineTotal||0),0);
+  wfSetStep('s1','success', `${lines.length} lines · ${po.currency||''} ${fmt(total)}${edited ? ' · edited' : ''}`, `
       <div class="wf-kv-row"><span class="wf-kv-key">PO Number</span><span class="wf-kv-val">${po.poNumber||'N/A'}</span></div>
       <div class="wf-kv-row"><span class="wf-kv-key">PO Date</span><span class="wf-kv-val">${po.poDate||'N/A'}</span></div>
       <div class="wf-kv-row"><span class="wf-kv-key">Delivery</span><span class="wf-kv-val">${po.deliveryDate||'N/A'}</span></div>
@@ -9897,15 +9924,13 @@ async function wfRunWorkflow() {
       <div style="margin-top:10px">
         <button class="wf-btn" style="background:#E8F0FC;color:#2C5FA8;border:1px solid #B8D0F0;font-size:11.5px;padding:5px 12px;display:inline-flex;align-items:center;gap:6px" onclick="wfShowPoView()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          View Extraction Detail
+          View / Edit Extraction Detail
         </button>
       </div>
     `);
-  } catch(e) {
-    wfSetStep('s1','error',`Failed`,`<div class="wf-error-banner">❌ ${e.message}</div>`);
-    return;
-  }
+}
 
+async function wfRunCustomerStep() {
   // ─ Step 2: Find Customer ─
   wfSetStep('s2','running','Searching SAP B1…');
   try {
@@ -10254,8 +10279,18 @@ async function wfShowPoView() {
     if (n == null || n === '' || isNaN(Number(n))) return '—';
     return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
   }
-  function fieldCell(label, sapField, value, matched, loading, cellId) {
+  function fieldCell(label, sapField, value, matched, loading, cellId, editKey) {
     const empty = value == null || value === '' || value === 'null';
+    if (editKey) {
+      return `
+    <div class="pvm-field-cell">
+      <div class="pvm-field-label">
+        ${esc(label)}
+        <span class="pvm-sap-tag">${esc(sapField)}</span>
+      </div>
+      <input class="pvm-edit-input" data-po-field="${editKey}" value="${empty ? '' : esc(value)}" placeholder="Not found in PDF — enter value">
+    </div>`;
+    }
     const borderStyle = matched ? 'border-left:2.5px solid #22C55E;' : '';
     const tagStyle = matched ? 'background:#DCFCE7;color:#16A34A' : '';
     const badge = matched ? `<span style="font-size:9px;background:#16A34A;color:#fff;border-radius:3px;padding:1px 5px;margin-left:5px;letter-spacing:.3px">SAP MATCH</span>` : '';
@@ -10280,39 +10315,22 @@ async function wfShowPoView() {
   const custMatch = wfData.selectedCustomer || {};
   const needsLookup = !custMatch.CardCode && (po.customerName || po.customerRef);
 
-  // ── Header fields (SAP B1 label, SAP field name, extracted value, isMatched, loading, cellId)
+  // ── Header fields (SAP B1 label, SAP field name, extracted value, isMatched, loading, cellId, editable po key)
   const fields = [
-    ['Customer Name (PDF)',    'CardName',    po.customerName,            false, false, null        ],
+    ['Customer Name (PDF)',    'CardName',    po.customerName,            false, false, null, 'customerName'],
     ['Customer Code (SAP B1)','CardCode',    custMatch.CardCode||null,   true,  needsLookup, 'pvm-match-code'],
     ['Customer Name (SAP B1)','CardName',    custMatch.CardName||null,   true,  needsLookup, 'pvm-match-name'],
-    ['Customer Ref (PDF)',     'NumAtCard',   po.customerRef,             false, false, null        ],
-    ['Document Date',          'DocDate',     po.poDate,                  false, false, null        ],
-    ['Delivery Date',          'DocDueDate',  po.deliveryDate,            false, false, null        ],
-    ['PO / Ref Number',        'NumAtCard',   po.poNumber,                false, false, null        ],
-    ['Vendor Reference',       'Ref2',        po.vendorRef,               false, false, null        ],
-    ['Currency',               'DocCurrency', po.currency,                false, false, null        ],
-    ['Remarks',                'Comments',    po.notes,                   false, false, null        ],
+    ['Customer Ref (PDF)',     'NumAtCard',   po.customerRef,             false, false, null, 'customerRef' ],
+    ['Document Date',          'DocDate',     po.poDate,                  false, false, null, 'poDate'      ],
+    ['Delivery Date',          'DocDueDate',  po.deliveryDate,            false, false, null, 'deliveryDate'],
+    ['PO / Ref Number',        'NumAtCard',   po.poNumber,                false, false, null, 'poNumber'    ],
+    ['Vendor Reference',       'Ref2',        po.vendorRef,               false, false, null, 'vendorRef'   ],
+    ['Currency',               'DocCurrency', po.currency,                false, false, null, 'currency'    ],
+    ['Remarks',                'Comments',    po.notes,                   false, false, null, 'notes'       ],
   ];
 
-  // ── Line rows
-  const lineRows = lines.length ? lines.map((l, i) => {
-    const hasCode = l.itemCode && l.itemCode !== 'null';
-    return `
-    <tr>
-      <td><div class="pvm-row-num">${i+1}</div></td>
-      <td>${hasCode
-        ? `<span class="pvm-item-code">${esc(l.itemCode)}</span>`
-        : `<span class="pvm-no-item">Not mapped</span>`}
-      </td>
-      <td><div class="pvm-desc">${esc(l.description||'—')}</div></td>
-      <td class="r">
-        <div style="font-size:13px;font-weight:700;color:#1A2940">${money(l.qty,0)}</div>
-        <div class="pvm-unit">${esc(l.unit||'EA')}</div>
-      </td>
-      <td class="r" style="font-size:12.5px;color:#3A5A7A">${money(l.unitPrice)}</td>
-      <td class="r" style="font-size:13px;font-weight:700;color:#1B3A6B">${cur} ${money(l.lineTotal)}</td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="6" style="text-align:center;color:#B0BCC8;padding:24px;font-size:12.5px">No line items extracted from this PDF</td></tr>`;
+  // ── Line rows (editable)
+  const lineRows = lines.map((l, i) => wfPoLineRowHtml(l, i)).join('');
 
   const subtotal = po.subtotal || lines.reduce((s,l)=>s+(parseFloat(l.lineTotal)||0), 0);
   const tax      = po.tax  || 0;
@@ -10352,7 +10370,7 @@ async function wfShowPoView() {
         <span class="pvm-card-header-count">${filledCount} / ${fields.length} fields found</span>
       </div>
       <div class="pvm-fields-grid">
-        ${fields.map(([lbl, sapF, val, matched, loading, cellId]) => fieldCell(lbl, sapF, val, matched, loading, cellId)).join('')}
+        ${fields.map(([lbl, sapF, val, matched, loading, cellId, editKey]) => fieldCell(lbl, sapF, val, matched, loading, cellId, editKey)).join('')}
       </div>
     </div>
 
@@ -10373,10 +10391,14 @@ async function wfShowPoView() {
               <th class="r">Qty <span style="font-weight:400;color:#7A90AA;font-size:9px">→ Quantity</span></th>
               <th class="r">Unit Price <span style="font-weight:400;color:#7A90AA;font-size:9px">→ UnitPrice</span></th>
               <th class="r">Line Total <span style="font-weight:400;color:#7A90AA;font-size:9px">→ LineTotal</span></th>
+              <th style="width:32px"></th>
             </tr>
           </thead>
-          <tbody>${lineRows}</tbody>
+          <tbody id="pvm-lines-body">${lineRows}</tbody>
         </table>
+      </div>
+      <div style="padding:8px 12px;border-top:1px solid #EEF0F4">
+        <button class="wf-btn wf-btn-secondary" style="font-size:11.5px;padding:4px 12px" onclick="wfPoAddLine()">+ Add Line</button>
       </div>
     </div>
 
@@ -10384,12 +10406,18 @@ async function wfShowPoView() {
     <div class="pvm-totals-bar">
       <div class="pvm-totals-inner">
         <span class="pvm-tot-label">Subtotal</span>
-        <span class="pvm-tot-val">${cur} ${money(subtotal)}</span>
+        <span class="pvm-tot-val" id="pvm-tot-sub">${money(subtotal)}</span>
         <span class="pvm-tot-label">Tax / VAT</span>
-        <span class="pvm-tot-val">${cur} ${money(tax)}</span>
+        <span class="pvm-tot-val"><input class="pvm-edit-input r" id="pvm-tax" type="number" step="any" value="${tax}" oninput="wfPoRecalc()" style="width:120px"></span>
         <span class="pvm-tot-label grand">Document Total</span>
-        <span class="pvm-tot-val grand">${cur} ${money(total)}</span>
+        <span class="pvm-tot-val grand" id="pvm-tot-grand">${money(total)}</span>
       </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px">
+      <span style="font-size:11.5px;color:#7A90AA">Saving re-runs the customer, credit and stock checks with your changes.</span>
+      <button class="wf-btn wf-btn-secondary" onclick="document.getElementById('po-view-overlay').classList.remove('open')">Cancel</button>
+      <button class="wf-btn wf-btn-primary" onclick="wfSavePoEdits()">Save &amp; Re-check</button>
     </div>
 
   </div>`;
@@ -10421,6 +10449,110 @@ async function wfShowPoView() {
       const codeEl = document.getElementById('pvm-match-code');
       if (codeEl) { codeEl.className='pvm-field-value empty'; codeEl.textContent='Lookup error: '+e.message; }
     }
+  }
+}
+
+// ── PO Extraction editing ─────────────────────────────────────────
+function wfPoLineRowHtml(l, i) {
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const code = l.itemCode && l.itemCode !== 'null' ? l.itemCode : '';
+  const total = (parseFloat(l.qty)||0) * (parseFloat(l.unitPrice)||0) || parseFloat(l.lineTotal) || 0;
+  return `
+    <tr class="pvm-line-row">
+      <td><div class="pvm-row-num">${i+1}</div></td>
+      <td><input class="pvm-edit-input" data-k="itemCode" value="${esc(code)}" placeholder="Not mapped" style="width:110px"></td>
+      <td><input class="pvm-edit-input" data-k="description" value="${esc(l.description)}" style="min-width:200px"></td>
+      <td class="r" style="white-space:nowrap">
+        <input class="pvm-edit-input r" data-k="qty" type="number" step="any" min="0" value="${l.qty ?? ''}" oninput="wfPoRecalc()" style="width:80px">
+        <input class="pvm-edit-input" data-k="unit" value="${esc(l.unit||'EA')}" style="width:50px">
+      </td>
+      <td class="r"><input class="pvm-edit-input r" data-k="unitPrice" type="number" step="any" min="0" value="${l.unitPrice ?? ''}" oninput="wfPoRecalc()" style="width:100px"></td>
+      <td class="r pvm-line-total" style="font-size:13px;font-weight:700;color:#1B3A6B">${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td><button class="pvm-del-line" title="Remove line" onclick="this.closest('tr').remove();wfPoRecalc()">✕</button></td>
+    </tr>`;
+}
+
+function wfPoAddLine() {
+  const body = document.getElementById('pvm-lines-body');
+  if (!body) return;
+  body.insertAdjacentHTML('beforeend', wfPoLineRowHtml({ qty: 1, unitPrice: 0, unit: 'EA' }, body.querySelectorAll('.pvm-line-row').length));
+  wfPoRecalc();
+}
+
+function wfPoReadLines() {
+  return [...document.querySelectorAll('#pvm-lines-body .pvm-line-row')].map(tr => {
+    const v = k => tr.querySelector(`[data-k="${k}"]`)?.value?.trim() ?? '';
+    const qty = parseFloat(v('qty')) || 0;
+    const unitPrice = parseFloat(v('unitPrice')) || 0;
+    return { itemCode: v('itemCode') || null, description: v('description'), qty, unit: v('unit') || 'EA', unitPrice, lineTotal: +(qty * unitPrice).toFixed(2) };
+  });
+}
+
+function wfPoRecalc() {
+  const money = n => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const rows = [...document.querySelectorAll('#pvm-lines-body .pvm-line-row')];
+  const lines = wfPoReadLines();
+  rows.forEach((tr, i) => {
+    tr.querySelector('.pvm-row-num').textContent = i + 1;
+    tr.querySelector('.pvm-line-total').textContent = money(lines[i].lineTotal);
+  });
+  const sub = lines.reduce((s,l)=>s+l.lineTotal, 0);
+  const tax = parseFloat(document.getElementById('pvm-tax')?.value) || 0;
+  const subEl = document.getElementById('pvm-tot-sub'), grandEl = document.getElementById('pvm-tot-grand');
+  if (subEl) subEl.textContent = money(sub);
+  if (grandEl) grandEl.textContent = money(sub + tax);
+}
+
+async function wfSavePoEdits() {
+  const po = wfData.po;
+  if (!po) return;
+  const prevCustName = po.customerName, prevCustRef = po.customerRef;
+
+  document.querySelectorAll('#po-view-modal [data-po-field]').forEach(inp => {
+    po[inp.dataset.poField] = inp.value.trim() || null;
+  });
+  const lines = wfPoReadLines()
+    .filter(l => l.itemCode || l.description || l.qty)
+    .map((l, i) => ({ ...l, lineNum: i + 1 }));
+  if (!lines.length) { alert('At least one line item is required.'); return; }
+  if (lines.some(l => l.qty <= 0)) { alert('Every line needs a quantity greater than 0.'); return; }
+
+  po.lines = lines;
+  po.subtotal = +lines.reduce((s,l)=>s+l.lineTotal, 0).toFixed(2);
+  po.tax = parseFloat(document.getElementById('pvm-tax')?.value) || 0;
+  po.total = +(po.subtotal + po.tax).toFixed(2);
+  po.edited = true;
+
+  // Downstream results are stale now — re-run from the customer step
+  if (po.customerName !== prevCustName || po.customerRef !== prevCustRef) wfData.selectedCustomer = null;
+  delete wfData.credit; delete wfData.atp; delete wfData.customerResult;
+  wfData.creditOverride = false; delete wfData.overrideReason;
+
+  document.getElementById('po-view-overlay').classList.remove('open');
+  ['wf-review','wf-actions','wf-success'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  ['s2','s3','s4'].forEach(s => {
+    document.getElementById(`wf-${s}`).className = 'wf-step-card';
+    document.getElementById(`wf-${s}-icon`).className = 'wf-step-icon idle';
+    document.getElementById(`wf-${s}-sub`).textContent = 'Waiting…';
+    document.getElementById(`wf-${s}-body`).className = 'wf-step-body hidden';
+    document.getElementById(`wf-${s}-body`).innerHTML = '';
+  });
+  document.getElementById('wf-s2-icon').textContent = '👤';
+  document.getElementById('wf-s3-icon').textContent = '💰';
+  document.getElementById('wf-s4-icon').textContent = '📦';
+  const createBtn = document.getElementById('wf-create-btn');
+  if (createBtn) createBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Create Sales Order in SAP B1';
+
+  wfRenderS1(true);
+  if (wfData.selectedCustomer) {
+    const c = wfData.selectedCustomer;
+    wfSetStep('s2','success',`${c.CardCode} — ${c.CardName}`,`
+      <div class="wf-kv-row"><span class="wf-kv-key">Card Code</span><span class="wf-kv-val"><strong>${c.CardCode}</strong></span></div>
+      <div class="wf-kv-row"><span class="wf-kv-key">Card Name</span><span class="wf-kv-val">${c.CardName}</span></div>
+    `);
+    await wfContinueFromCustomer();
+  } else {
+    await wfRunCustomerStep();
   }
 }
 </script>
@@ -15564,6 +15696,36 @@ setInterval(() => {
     } catch(e) { status.textContent = '❌ ' + e.message; }
   };
 
+  // ── Shared item-suggest dropdown ─────────────────────────────
+  // Rows are bound via listeners (no inline onclick strings) so item codes/names
+  // containing quotes, backslashes or newlines can't break the handler, and
+  // selection fires on mousedown so the input's blur-hide can't swallow the click.
+  const _fdEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const _fdSuggestSeq = {};
+  async function fdFetchItemSuggest(key, q) {
+    const seq = (_fdSuggestSeq[key] = (_fdSuggestSeq[key] || 0) + 1);
+    const items = await apiFetch(`/api/suggest/items?q=${encodeURIComponent(q)}`);
+    return seq === _fdSuggestSeq[key] ? (Array.isArray(items) ? items : []) : null; // null = stale response
+  }
+  function fdRenderItemDropdown(dd, items, onPick, opts = {}) {
+    const hover = opts.hover || '#E8F4FF';
+    dd.innerHTML = items.map((it, i) => opts.global
+      ? `<div data-i="${i}" style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #F0F0F0;display:flex;gap:8px;align-items:center">
+          <span style="font-weight:700;color:#0070F2;min-width:80px">${_fdEsc(it.ItemCode)}</span>
+          <span style="color:var(--muted)">${_fdEsc(it.ItemName)}</span></div>`
+      : `<div data-i="${i}" style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #F0F0F0">
+          <span style="font-weight:600">${_fdEsc(it.ItemCode)}</span>
+          <span style="color:var(--muted);margin-left:6px">${_fdEsc(it.ItemName)}</span></div>`
+    ).join('');
+    dd.querySelectorAll('[data-i]').forEach(el => {
+      const it = items[Number(el.dataset.i)];
+      el.onmouseover = () => { el.style.background = hover; };
+      el.onmouseout  = () => { el.style.background = ''; };
+      el.onmousedown = e => { e.preventDefault(); onPick(String(it.ItemCode ?? ''), String(it.ItemName ?? '')); };
+    });
+    dd.style.display = 'block';
+  }
+
   // ── Global item search ───────────────────────────────────────
   let _gItemTimer = null;
   window.fdGlobalItemSearch = function(q) {
@@ -15576,17 +15738,10 @@ setInterval(() => {
     }
     _gItemTimer = setTimeout(async () => {
       try {
-        const items = await apiFetch(`/api/suggest/items?q=${encodeURIComponent(q)}`);
+        const items = await fdFetchItemSuggest('global', q);
+        if (!items) return;
         if (!items.length) { dd.style.display = 'none'; return; }
-        dd.innerHTML = items.slice(0, 20).map(it =>
-          `<div onclick="fdQueueItem('${it.ItemCode}','${(it.ItemName||'').replace(/'/g,"\\'")}')"
-            style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #F0F0F0;display:flex;gap:8px;align-items:center"
-            onmouseover="this.style.background='#EBF5EB'" onmouseout="this.style.background=''">
-            <span style="font-weight:700;color:#0070F2;min-width:80px">${it.ItemCode}</span>
-            <span style="color:var(--muted)">${it.ItemName||''}</span>
-          </div>`
-        ).join('');
-        dd.style.display = 'block';
+        fdRenderItemDropdown(dd, items.slice(0, 20), fdQueueItem, { global: true, hover: '#EBF5EB' });
       } catch { dd.style.display = 'none'; }
     }, 280);
   };
@@ -16003,15 +16158,10 @@ setInterval(() => {
     if (!q || q.length < 1) { dd.style.display = 'none'; return; }
     _sdSearchTimer = setTimeout(async () => {
       try {
-        const items = await apiFetch(`/api/suggest/items?q=${encodeURIComponent(q)}`);
+        const items = await fdFetchItemSuggest('sd', q);
+        if (!items) return;
         if (!items.length) { dd.style.display = 'none'; return; }
-        dd.innerHTML = items.map(it => `<div onclick="fdSdSelectItem('${it.ItemCode}','${(it.ItemName||'').replace(/'/g,"\\'")}')"
-          style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #F0F0F0"
-          onmouseover="this.style.background='#E8F4FF'" onmouseout="this.style.background=''">
-          <span style="font-weight:600">${it.ItemCode}</span>
-          <span style="color:var(--muted);margin-left:6px">${it.ItemName||''}</span>
-        </div>`).join('');
-        dd.style.display = 'block';
+        fdRenderItemDropdown(dd, items, fdSdSelectItem);
       } catch { dd.style.display = 'none'; }
     }, 300);
   };
@@ -16211,15 +16361,10 @@ setInterval(() => {
     if (!q || q.length < 1) { dd.style.display='none'; return; }
     _fcSearchTimer = setTimeout(async () => {
       try {
-        const items = await apiFetch(`/api/suggest/items?q=${encodeURIComponent(q)}`);
+        const items = await fdFetchItemSuggest('fc', q);
+        if (!items) return;
         if (!items.length) { dd.style.display='none'; return; }
-        dd.innerHTML = items.map(it=>`<div onclick="fdFcSelectItem('${it.ItemCode}','${(it.ItemName||'').replace(/'/g,"\\'")}')"
-          style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #F0F0F0"
-          onmouseover="this.style.background='#E8F4FF'" onmouseout="this.style.background=''">
-          <span style="font-weight:600">${it.ItemCode}</span>
-          <span style="color:var(--muted);margin-left:6px">${it.ItemName||''}</span>
-        </div>`).join('');
-        dd.style.display='block';
+        fdRenderItemDropdown(dd, items, fdFcSelectItem);
       } catch { dd.style.display='none'; }
     }, 300);
   };
@@ -17455,6 +17600,7 @@ setInterval(() => {
     enrichedItems: [],
     filteredItems: [],
     draftPOs: [],
+    draftedItems: new Map(), // itemCode → enriched item moved into a draft (restored if the draft is discarded)
     postedPOs: [],
     sessionId: `mrp_${Date.now()}`,
     mrpChatOpen: false,
@@ -17475,6 +17621,7 @@ setInterval(() => {
     document.getElementById('nav-mrp-auto-po')?.classList.add('active');
     mrpSetStep(0);
     mrpLoadAuditLog();
+    mrpLoadDrafts();
   };
 
   // ── Patch existing show functions to hide this panel ─────────────────────
@@ -17560,7 +17707,6 @@ setInterval(() => {
     mrpProgressClear();
     MRP.enrichedItems = [];
     MRP.filteredItems = [];
-    MRP.draftPOs = [];
     mrpTab('scan');
 
     try {
@@ -17574,8 +17720,13 @@ setInterval(() => {
       mrpProgressLog('Checking inventory threshold (min stock vs available)…');
       const checkRes = await apiFetch('/api/mrp/inventory-check');
       if(!checkRes.ok) throw new Error(checkRes.error);
-      const { items: rawItems, summary } = checkRes;
-      mrpProgressLog(`Found ${rawItems.length} items below minimum stock. Critical:${summary.critical} High:${summary.high} Medium:${summary.medium}`, rawItems.length?'warn':'ok');
+      const { items: scannedItems, summary } = checkRes;
+      mrpProgressLog(`Found ${scannedItems.length} items below minimum stock. Critical:${summary.critical} High:${summary.high} Medium:${summary.medium}`, scannedItems.length?'warn':'ok');
+      // Items already in a saved (unposted) draft PO are not offered again
+      const rawItems = scannedItems.filter(i => !i.draftId);
+      const inDraftCount = scannedItems.length - rawItems.length;
+      if(inDraftCount) mrpProgressLog(`${inDraftCount} item(s) already in saved draft POs — skipped (see Draft POs tab).`, 'info');
+      await mrpLoadDrafts();
 
       mrpUpdateKPIs(summary);
       const scanSummary = document.getElementById('mrp-scan-summary');
@@ -17603,9 +17754,16 @@ setInterval(() => {
       }
 
       if(!rawItems.length) {
-        mrpProgressLog('All items are above minimum stock. No reorder needed.', 'ok');
-        mrpSetStep(0);
-        mrpStatus('✅ All stock OK');
+        mrpRenderItemsTable([]);
+        if(inDraftCount) {
+          mrpProgressLog('All items needing reorder are already in draft POs. Review and post them from the Draft POs tab.', 'ok');
+          mrpSetStep(5);
+          mrpStatus(`✅ ${mrpOpenDrafts().length} draft PO(s) pending`);
+        } else {
+          mrpProgressLog('All items are above minimum stock. No reorder needed.', 'ok');
+          mrpSetStep(0);
+          mrpStatus('✅ All stock OK');
+        }
         if(btn) btn.disabled=false;
         return;
       }
@@ -17619,21 +17777,13 @@ setInterval(() => {
       MRP.filteredItems = [...MRP.enrichedItems];
       mrpProgressLog(`AI enriched ${MRP.enrichedItems.length} items. Vendors found: ${analyzeRes.vendorCount}. No-vendor items: ${analyzeRes.noVendorItems?.length||0}`, 'ok');
 
-      mrpRenderItemsTable(MRP.filteredItems);
+      mrpApplyFilter();
 
-      // Step 4: Build Draft POs
+      // Step 4: user selects items on the Items & Vendors tab → Build Draft POs (saved until posted)
       mrpSetStep(4);
-      mrpProgressLog('Building draft POs grouped by preferred vendor…');
-      const draftRes = await apiPost('/api/mrp/build-draft-pos', { items: MRP.enrichedItems });
-      if(!draftRes.ok) throw new Error(draftRes.error);
-      MRP.draftPOs = draftRes.draftPOs;
-      mrpProgressLog(`Created ${MRP.draftPOs.length} draft PO(s). No-vendor items: ${draftRes.noVendorItems?.length||0}`, 'ok');
-      mrpRenderDraftPos(MRP.draftPOs, draftRes.noVendorItems||[]);
-      document.getElementById('mrp-kpi-drafts').textContent = MRP.draftPOs.length;
-
-      mrpSetStep(5); // Ready for approval submission
-      mrpStatus(`✅ Ready — ${MRP.draftPOs.length} draft PO(s)`);
-      mrpProgressLog('Draft POs ready. Go to Draft POs tab to review and post to SAP.', 'ok');
+      mrpStatus(`✅ ${MRP.enrichedItems.length} item(s) to review · ${mrpOpenDrafts().length} draft PO(s) saved`);
+      mrpProgressLog('Select items on the Items & Vendors tab and click Build Draft POs. Items without a vendor can be assigned one in the Draft POs tab.', 'ok');
+      mrpTab('items');
 
     } catch(e) {
       mrpProgressLog(`ERROR: ${e.message}`, 'error');
@@ -17687,6 +17837,8 @@ setInterval(() => {
   };
 
   // ── Build Draft POs from selected items ───────────────────────────────────
+  // Drafts are saved on the server; the selected items leave the Items tab and
+  // stay out of it on later MRP runs until the draft is posted or discarded.
   window.mrpBuildDraftPos = async function() {
     const selected = [...document.querySelectorAll('.mrp-item-chk:checked')].map(c => MRP.filteredItems[+c.dataset.idx]).filter(Boolean);
     if(!selected.length) { alert('Select at least one item'); return; }
@@ -17695,55 +17847,176 @@ setInterval(() => {
     try {
       const res = await apiPost('/api/mrp/build-draft-pos', { items: selected });
       if(!res.ok) throw new Error(res.error);
-      MRP.draftPOs = res.draftPOs;
-      mrpRenderDraftPos(MRP.draftPOs, res.noVendorItems||[]);
-      document.getElementById('mrp-kpi-drafts').textContent = MRP.draftPOs.length;
+      const codes = new Set(selected.map(i => i.itemCode));
+      selected.forEach(i => MRP.draftedItems.set(i.itemCode, i));
+      MRP.enrichedItems = MRP.enrichedItems.filter(i => !codes.has(i.itemCode));
+      mrpApplyFilter();
+      MRP.draftPOs = res.draftPOs || [];
+      mrpRenderDraftPos();
+      mrpSetStep(5);
+      mrpStatus(`✅ ${mrpOpenDrafts().length} draft PO(s) saved`);
       mrpTab('drafts');
     } catch(e) { alert('Error: '+e.message); }
     finally { if(btn) btn.disabled=false; }
   };
 
+  // ── Saved drafts ─────────────────────────────────────────────────────────
+  const mrpOpenDrafts = () => MRP.draftPOs.filter(d => d.status !== 'posted');
+  const mrpFindDraft  = id => MRP.draftPOs.find(d => d.id === id);
+  const mrpEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  window.mrpLoadDrafts = async function() {
+    try {
+      const r = await apiFetch('/api/mrp/drafts');
+      MRP.draftPOs = r.draftPOs || [];
+      mrpRenderDraftPos();
+    } catch(e) { console.warn('[MRP] load drafts:', e.message); }
+  };
+
+  async function mrpDraftRequest(id, method, body) {
+    const r = await fetch(`/api/mrp/drafts/${encodeURIComponent(id)}`, {
+      method, headers:{ 'x-auth-token':tok(), 'Content-Type':'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(x => x.json());
+    if(!r.ok) throw new Error(r.error || 'Request failed');
+    MRP.draftPOs = r.draftPOs || [];
+    mrpRenderDraftPos();
+    return r;
+  }
+
+  // Lines of a discarded draft go back to the Items tab (if we still have their enriched data)
+  function mrpReturnItems(lines) {
+    const back = (lines||[]).map(l => MRP.draftedItems.get(l.itemCode)).filter(Boolean)
+      .filter(it => !MRP.enrichedItems.some(e => e.itemCode === it.itemCode));
+    if(!back.length) return;
+    MRP.enrichedItems.push(...back);
+    mrpApplyFilter();
+  }
+
+  window.mrpDiscardDraft = async function(id) {
+    const d = mrpFindDraft(id);
+    if(!d || !confirm(`Discard draft PO for ${d.vendorName || 'unassigned vendor'}? Its items will be offered again on the Items tab.`)) return;
+    try { await mrpDraftRequest(id, 'DELETE'); mrpReturnItems(d.lines); }
+    catch(e) { alert('Error: '+e.message); }
+  };
+
+  window.mrpRemoveDraftLine = async function(id, itemCode) {
+    const d = mrpFindDraft(id);
+    if(!d) return;
+    const line = d.lines.find(l => l.itemCode === itemCode);
+    try {
+      await mrpDraftRequest(id, 'PUT', { lines: d.lines.filter(l => l.itemCode !== itemCode).map(l => ({ itemCode:l.itemCode })) });
+      mrpReturnItems([line]);
+    } catch(e) { alert('Error: '+e.message); }
+  };
+
+  window.mrpSaveDraftLine = async function(id, itemCode, field, value) {
+    const d = mrpFindDraft(id);
+    if(!d) return;
+    const lines = d.lines.map(l => ({ itemCode:l.itemCode, ...(l.itemCode===itemCode ? { [field]: Number(value) } : {}) }));
+    try { await mrpDraftRequest(id, 'PUT', { lines }); }
+    catch(e) { alert('Error: '+e.message); mrpRenderDraftPos(); }
+  };
+
+  window.mrpSaveDraftDate = async function(id, value) {
+    try { await mrpDraftRequest(id, 'PUT', { deliveryDate: value }); }
+    catch(e) { alert('Error: '+e.message); }
+  };
+
+  let _mrpVendorTimer = null;
+  window.mrpVendorSearch = function(id, q) {
+    clearTimeout(_mrpVendorTimer);
+    _mrpVendorTimer = setTimeout(async () => {
+      try {
+        const r = await apiFetch('/api/mrp/vendors?q='+encodeURIComponent(q||''));
+        const dl = document.getElementById(`mrp-vendor-dl-${id}`);
+        if(dl) dl.innerHTML = (r.vendors||[]).map(v => `<option value="${mrpEsc(v.code)}">${mrpEsc(v.name)}</option>`).join('');
+      } catch(e) { console.warn('[MRP] vendor search:', e.message); }
+    }, 250);
+  };
+
+  window.mrpSetDraftVendor = async function(id) {
+    const inp = document.getElementById(`mrp-vendor-inp-${id}`);
+    const code = inp?.value.trim();
+    if(!code) { alert('Type or pick a vendor code'); return; }
+    const statusEl = document.getElementById(`mrp-po-status-${id}`);
+    if(statusEl) statusEl.textContent = '⏳ Loading vendor…';
+    try {
+      const r = await mrpDraftRequest(id, 'PUT', { vendorCode: code });
+      if(r.mergedInto) mrpStatus('✅ Merged into existing draft for that vendor');
+    } catch(e) { if(statusEl) statusEl.textContent = '❌ '+e.message; }
+  };
+
   // ── Render Draft POs ──────────────────────────────────────────────────────
-  function mrpRenderDraftPos(draftPOs, noVendorItems) {
+  function mrpRenderDraftPos() {
+    const draftPOs = MRP.draftPOs;
+    const kpi = document.getElementById('mrp-kpi-drafts');
+    if(kpi) kpi.textContent = mrpOpenDrafts().length;
     const empty   = document.getElementById('mrp-drafts-empty');
     const content = document.getElementById('mrp-drafts-content');
     if(!empty||!content) return;
 
     if(!draftPOs.length) {
-      empty.style.display='block'; content.style.display='none'; return;
+      empty.style.display='block'; content.style.display='none'; content.innerHTML=''; return;
     }
     empty.style.display='none'; content.style.display='flex';
 
     const fmt = n => Number(n||0).toLocaleString('en-GB', {minimumFractionDigits:2,maximumFractionDigits:2});
-    content.innerHTML = draftPOs.map((po, pi) => {
-      const linesHtml = po.lines.map(l => `
+    const inpStyle = 'width:80px;text-align:right;font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:3px';
+    content.innerHTML = draftPOs.map(po => {
+      const posted = po.status === 'posted';
+      const id = mrpEsc(po.id);
+      const linesHtml = po.lines.map(l => {
+        const ic = mrpEsc(l.itemCode);
+        return `
         <tr style="background:#FAFAFA">
-          <td style="padding:5px 8px">${l.itemCode}</td>
-          <td style="padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.itemName}</td>
-          <td style="padding:5px 8px;text-align:right">${Number(l.qty).toLocaleString()}</td>
-          <td style="padding:5px 8px;text-align:center">${l.uom||'EA'}</td>
-          <td style="padding:5px 8px;text-align:right">${fmt(l.unitPrice)}</td>
+          <td style="padding:5px 8px">${ic}</td>
+          <td style="padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${mrpEsc(l.itemName)}">${mrpEsc(l.itemName)}</td>
+          <td style="padding:5px 8px;text-align:right">${posted ? Number(l.qty).toLocaleString()
+            : `<input type="number" min="0" step="any" value="${Number(l.qty)}" style="${inpStyle}" onchange="mrpSaveDraftLine('${id}','${ic}','qty',this.value)">`}</td>
+          <td style="padding:5px 8px;text-align:center">${mrpEsc(l.uom||'EA')}</td>
+          <td style="padding:5px 8px;text-align:right">${posted ? fmt(l.unitPrice)
+            : `<input type="number" min="0" step="any" value="${Number(l.unitPrice||0)}" style="${inpStyle}" onchange="mrpSaveDraftLine('${id}','${ic}','unitPrice',this.value)">`}</td>
           <td style="padding:5px 8px;text-align:right;font-weight:600">${fmt(l.lineTotal)}</td>
-          <td style="padding:5px 8px;text-align:center"><span style="font-size:9px;padding:1px 6px;border-radius:6px;background:${URGENCY_STYLE[l.urgency]?.bg||'#F5F0FF'};color:${URGENCY_STYLE[l.urgency]?.color||'#8B5CF6'}">${l.urgency}</span></td>
-        </tr>`).join('');
+          <td style="padding:5px 8px;text-align:center"><span style="font-size:9px;padding:1px 6px;border-radius:6px;background:${URGENCY_STYLE[l.urgency]?.bg||'#F5F0FF'};color:${URGENCY_STYLE[l.urgency]?.color||'#8B5CF6'}">${mrpEsc(l.urgency)}</span></td>
+          <td style="padding:5px 8px;text-align:center">${posted ? '' : `<button onclick="mrpRemoveDraftLine('${id}','${ic}')" title="Remove line" style="border:none;background:none;color:#BB0000;cursor:pointer;font-size:14px;line-height:1">&times;</button>`}</td>
+        </tr>`;
+      }).join('');
 
-      const statusBadge = po.docNum
+      const statusBadge = posted
         ? `<span style="background:#107E3E;color:#fff;font-size:10px;padding:2px 8px;border-radius:8px;font-weight:700">POSTED #${po.docNum}</span>`
         : `<span style="background:#F59E0B;color:#fff;font-size:10px;padding:2px 8px;border-radius:8px;font-weight:700">DRAFT</span>`;
 
-      return `<div style="background:#fff;border:1px solid var(--border);border-radius:6px;overflow:hidden" id="mrp-draft-card-${pi}">
+      const vendorHeader = po.vendorCode
+        ? `<span style="font-size:13px;font-weight:700;color:#1a2744">${mrpEsc(po.vendorName)}</span>
+           <span style="font-size:11px;color:#6B7280">(${mrpEsc(po.vendorCode)})</span>`
+        : `<span style="font-size:13px;font-weight:700;color:#BB0000">Vendor not assigned</span>`;
+
+      // Vendor picker: always for unassigned drafts, and lets the user change vendor on any open draft
+      const vendorPicker = posted ? '' : `
+        <div style="display:flex;gap:6px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border);background:${po.vendorCode?'#fff':'#FFF7EE'}">
+          <span style="font-size:11px;color:#6B7280">${po.vendorCode ? 'Change vendor:' : 'Assign vendor:'}</span>
+          <input id="mrp-vendor-inp-${id}" list="mrp-vendor-dl-${id}" placeholder="Search vendor code or name…"
+            oninput="mrpVendorSearch('${id}',this.value)" onfocus="mrpVendorSearch('${id}',this.value)"
+            style="flex:1;max-width:280px;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+          <datalist id="mrp-vendor-dl-${id}"></datalist>
+          <button onclick="mrpSetDraftVendor('${id}')" style="font-size:11px;padding:4px 12px;border:1px solid #2563EB;border-radius:4px;background:#EBF4FF;color:#2563EB;font-weight:600;cursor:pointer">Set</button>
+        </div>`;
+
+      return `<div style="background:#fff;border:1px solid var(--border);border-radius:6px;overflow:hidden">
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);background:#F8FAFF">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
-          <span style="font-size:13px;font-weight:700;color:#1a2744">${po.vendorName}</span>
-          <span style="font-size:11px;color:#6B7280">(${po.vendorCode})</span>
+          ${vendorHeader}
           ${statusBadge}
-          <span style="margin-left:auto;font-size:13px;font-weight:700;color:#107E3E">${po.vendorCurrency} ${fmt(po.totalAmount)}</span>
+          <span style="margin-left:auto;font-size:13px;font-weight:700;color:#107E3E">${mrpEsc(po.vendorCurrency||'')} ${fmt(po.totalAmount)}</span>
         </div>
+        ${vendorPicker}
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0;border-bottom:1px solid var(--border)">
-          <div style="padding:8px 14px;border-right:1px solid var(--border)"><div style="font-size:10px;color:var(--muted)">Order Date</div><div style="font-size:12px;font-weight:600">${po.orderDate}</div></div>
-          <div style="padding:8px 14px;border-right:1px solid var(--border)"><div style="font-size:10px;color:var(--muted)">Delivery Date</div><div style="font-size:12px;font-weight:600">${po.deliveryDate}</div></div>
-          <div style="padding:8px 14px;border-right:1px solid var(--border)"><div style="font-size:10px;color:var(--muted)">Payment Terms</div><div style="font-size:12px">${po.paymentTerms||'—'}</div></div>
-          <div style="padding:8px 14px"><div style="font-size:10px;color:var(--muted)">Vendor Email</div><div style="font-size:12px">${po.vendorEmail||'<span style="color:#999">Not set</span>'}</div></div>
+          <div style="padding:8px 14px;border-right:1px solid var(--border)"><div style="font-size:10px;color:var(--muted)">Created</div><div style="font-size:12px;font-weight:600">${mrpEsc(po.orderDate)}</div></div>
+          <div style="padding:8px 14px;border-right:1px solid var(--border)"><div style="font-size:10px;color:var(--muted)">Delivery Date</div><div style="font-size:12px;font-weight:600">${posted ? mrpEsc(po.deliveryDate)
+            : `<input type="date" value="${mrpEsc(po.deliveryDate)}" onchange="mrpSaveDraftDate('${id}',this.value)" style="font-size:11px;padding:1px 4px;border:1px solid var(--border);border-radius:3px">`}</div></div>
+          <div style="padding:8px 14px;border-right:1px solid var(--border)"><div style="font-size:10px;color:var(--muted)">Payment Terms</div><div style="font-size:12px">${mrpEsc(po.paymentTerms||'—')}</div></div>
+          <div style="padding:8px 14px"><div style="font-size:10px;color:var(--muted)">Vendor Email</div><div style="font-size:12px">${po.vendorEmail ? mrpEsc(po.vendorEmail) : '<span style="color:#999">Not set</span>'}</div></div>
         </div>
         <div style="overflow-x:auto">
           <table style="width:100%;border-collapse:collapse;font-size:11.5px">
@@ -17755,57 +18028,62 @@ setInterval(() => {
               <th style="padding:6px 8px;text-align:right;font-weight:600">Unit Price</th>
               <th style="padding:6px 8px;text-align:right;font-weight:600">Line Total</th>
               <th style="padding:6px 8px;text-align:center;font-weight:600">Priority</th>
+              <th style="padding:6px 8px;width:24px"></th>
             </tr></thead>
             <tbody>${linesHtml}</tbody>
           </table>
         </div>
         <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          ${po.docNum ? `
-            <button onclick="mrpEmailVendor(${pi})" style="background:#107E3E;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
+          ${posted ? `
+            <button onclick="mrpEmailVendor('${id}')" style="background:#107E3E;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
               Email Vendor
             </button>
             <button onclick="mrpLoadApprovalStatus();mrpTab('approval')" style="background:#F59E0B;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer">Check Approval</button>
           ` : `
-            <button onclick="mrpPostPO(${pi})" id="mrp-post-btn-${pi}" style="background:#2563EB;color:#fff;border:none;border-radius:4px;padding:6px 16px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
+            <button onclick="mrpPostPO('${id}')" id="mrp-post-btn-${id}" ${po.vendorCode ? '' : 'disabled title="Assign a vendor first"'} style="background:${po.vendorCode?'#2563EB':'#9CA3AF'};color:#fff;border:none;border-radius:4px;padding:6px 16px;font-size:11px;font-weight:700;cursor:${po.vendorCode?'pointer':'not-allowed'};display:flex;align-items:center;gap:5px">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
               Post to SAP
             </button>
+            <button onclick="mrpDiscardDraft('${id}')" style="background:#fff;color:#BB0000;border:1px solid #FECACA;border-radius:4px;padding:6px 14px;font-size:11px;font-weight:600;cursor:pointer">Discard</button>
           `}
-          <span id="mrp-po-status-${pi}" style="font-size:11px;color:var(--muted)"></span>
+          <span id="mrp-po-status-${id}" style="font-size:11px;color:var(--muted)"></span>
         </div>
       </div>`;
     }).join('');
-
-    if(noVendorItems.length) {
-      content.innerHTML += `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:14px 16px;font-size:12px;color:#78350F">
-        <strong>⚠️ ${noVendorItems.length} item(s) have no preferred vendor</strong> and were excluded from draft POs:<br>
-        ${noVendorItems.map(i=>`<span style="background:#FEF3C7;padding:1px 6px;border-radius:3px;margin:2px;display:inline-block">${i.itemCode}</span>`).join(' ')}
-      </div>`;
-    }
   }
 
   // ── Post PO to SAP ────────────────────────────────────────────────────────
-  window.mrpPostPO = async function(idx) {
-    const po = MRP.draftPOs[idx];
+  window.mrpPostPO = async function(id) {
+    const po = mrpFindDraft(id);
     if(!po) return;
-    const btn = document.getElementById(`mrp-post-btn-${idx}`);
-    const statusEl = document.getElementById(`mrp-po-status-${idx}`);
+    if(!po.vendorCode) { alert('Assign a vendor first'); return; }
+    const btn = document.getElementById(`mrp-post-btn-${id}`);
+    const statusEl = document.getElementById(`mrp-po-status-${id}`);
     if(btn) btn.disabled=true;
     if(statusEl) statusEl.textContent='⏳ Posting to SAP…';
     mrpSetStep(5);
     try {
-      const res = await apiPost('/api/mrp/post-po', { draftPO: po });
+      const res = await apiPost('/api/mrp/post-po', { draftId: id });
       if(!res.ok) throw new Error(res.error);
-      MRP.draftPOs[idx].docNum   = res.docNum;
-      MRP.draftPOs[idx].docEntry = res.docEntry;
-      MRP.draftPOs[idx].status   = 'posted';
       MRP.postedPOs.push({ ...po, docNum:res.docNum, docEntry:res.docEntry });
       document.getElementById('mrp-kpi-posted').textContent = MRP.postedPOs.length;
-      mrpRenderDraftPos(MRP.draftPOs, []);
+      MRP.draftPOs = res.draftPOs || MRP.draftPOs.map(d => d.id===id ? { ...d, status:'posted', docNum:res.docNum, docEntry:res.docEntry } : d);
+      mrpRenderDraftPos();
       mrpSetStep(6);
       mrpUpdatePostedList();
       mrpStatus(`✅ PO #${res.docNum} posted`);
+      // Stock re-read from SAP right after posting
+      const st = document.getElementById(`mrp-po-status-${id}`);
+      if(res.stockSyncError) {
+        if(st) st.textContent = `⚠️ Posted, but stock sync failed: ${res.stockSyncError}`;
+      } else if(res.stock?.length) {
+        const n = v => Number(v||0).toLocaleString();
+        mrpProgressLog(`PO #${res.docNum}: stock synced for ${res.stock.length} item(s)`, 'ok');
+        res.stock.forEach(s => mrpProgressLog(`  ${s.itemCode} — on hand ${n(s.onHand)}, committed ${n(s.committed)}, on order ${n(s.onOrder)} → projected ${n(s.projected)} / min ${n(s.minStock)}`, s.projected >= s.minStock ? 'ok' : 'warn'));
+        if(st) st.innerHTML = '🔄 Stock synced: ' + res.stock.map(s =>
+          `<b>${mrpEsc(s.itemCode)}</b> on order ${n(s.onOrder)} (projected ${n(s.projected)} / min ${n(s.minStock)})`).join(' · ');
+      }
     } catch(e) {
       if(btn) btn.disabled=false;
       if(statusEl) statusEl.textContent='❌ '+e.message;
@@ -17814,8 +18092,8 @@ setInterval(() => {
   };
 
   // ── Email Vendor ──────────────────────────────────────────────────────────
-  window.mrpEmailVendor = async function(idx) {
-    const po = MRP.draftPOs[idx];
+  window.mrpEmailVendor = async function(id) {
+    const po = mrpFindDraft(id);
     if(!po || !po.docNum) { alert('Post PO to SAP first'); return; }
     if(!po.vendorEmail) { alert(`Vendor "${po.vendorName}" has no email address in SAP B1 (OCRD). Please update the vendor record.`); return; }
     if(!confirm(`Send PO #${po.docNum} to ${po.vendorEmail}?`)) return;
@@ -17892,6 +18170,8 @@ setInterval(() => {
         DRAFT_POS_BUILT:{ color:'#F59E0B', icon:'📝' },
         PO_POSTED:     { color:'#107E3E', icon:'✅' },
         PO_POST_ERROR: { color:'#BB0000', icon:'❌' },
+        STOCK_SYNCED:  { color:'#107E3E', icon:'🔄' },
+        STOCK_SYNC_ERROR:{ color:'#BB0000', icon:'⚠️' },
         EMAIL_SENT:    { color:'#0EA5E9', icon:'📧' },
         EMAIL_ERROR:   { color:'#BB0000', icon:'❌' },
       };
@@ -21471,6 +21751,7 @@ BRAND BREAKDOWN:\n${brands}`;
       const r  = await apiFetch(`/api/pricing/analysis?priceList=${pl}&marginTarget=${mt}`);
       if (r.ok) {
         DP.items = r.items || [];
+        DP.priceListNum = r.priceListNum;
         dpUpdateKPIs(r.summary);
         dpApplyFilter();
         status.textContent = `✅ ${r.summary.total} items analysed · ${r.periodFrom}–${r.periodTo}`;
@@ -21706,18 +21987,29 @@ BRAND BREAKDOWN:\n${brands}`;
     noteEl.style.display = 'none';
     errEl.style.display  = 'none';
     try {
+      // Write to the price list selected in the header — the one this analysis was run against.
+      const selPl = Number(document.getElementById('dp-pricelist-sel')?.value || it.priceListNum);
+      if (selPl !== Number(it.priceListNum)) {
+        throw new Error('Price list selection changed — click Refresh to re-analyse before applying');
+      }
       const r = await apiPost('/api/pricing/apply', {
         itemCode:    it.itemCode,
-        priceListNum: it.priceListNum,
+        priceListNum: selPl,
         newPrice:    it.suggestedPrice,
       });
       if (r.ok) {
         noteEl.textContent    = '✅ ' + r.message;
         noteEl.style.display  = 'block';
-        // Update local data
-        it.currentPrice = it.suggestedPrice;
+        // Reflect what SAP actually saved on the price list
+        it.currentPrice = r.newPrice;
+        it.listPrice    = r.newPrice;
+        if (r.currency) it.currency = r.currency;
+        it.suggestedPrice = r.newPrice;
         it.changePct    = 0;
         it.recommendation = 'hold';
+        it.scenario     = 'Applied to SAP';
+        it.priceSource  = `Price list ${r.priceListNum} price`;
+        document.getElementById('pdm-current-price').textContent = (it.currency ? it.currency + ' ' : '') + Number(r.newPrice).toFixed(2);
         applyBtn.style.display = 'none';
         dpApplyFilter();
       } else {
@@ -22046,12 +22338,6 @@ BRAND BREAKDOWN:\n${brands}`;
           </thead>
           <tbody id="pf-modal-fc-tbody"></tbody>
         </table>
-      </div>
-
-      <!-- Analogous products -->
-      <div>
-        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Analogous Products (same group)</div>
-        <div id="pf-modal-analogous" style="font-size:12px;color:var(--muted)">Loading…</div>
       </div>
 
     </div>
@@ -22386,8 +22672,6 @@ BRAND BREAKDOWN:\n${brands}`;
       fcTbody.appendChild(tr);
     });
 
-    // Analogous products
-    pfLoadAnalogous(it.itemCode);
 
     const modal = document.getElementById('pf-detail-modal');
     modal.style.display = 'flex';
@@ -22418,29 +22702,6 @@ BRAND BREAKDOWN:\n${brands}`;
       lbl.textContent = d.month.slice(5); // MM
       labelsEl.appendChild(lbl);
     });
-  }
-
-  async function pfLoadAnalogous(itemCode) {
-    const el = document.getElementById('pf-modal-analogous');
-    el.innerHTML = 'Loading…';
-    try {
-      const r = await apiFetch(`/api/forecasting/analogous/${encodeURIComponent(itemCode)}`);
-      if (!r.ok || !r.analogous?.length) { el.textContent = 'No analogous products found.'; return; }
-      el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:#F8FAFC">
-          <th style="padding:5px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--muted)">Item Code</th>
-          <th style="padding:5px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--muted)">Name</th>
-          <th style="padding:5px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--muted)">Stock</th>
-          <th style="padding:5px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--muted)">Annual Qty (12m)</th>
-        </tr></thead>
-        <tbody>${r.analogous.map(a => `<tr style="border-bottom:1px solid #F1F5F9">
-          <td style="padding:5px 10px;font-family:monospace;color:var(--blue)">${a.ItemCode}</td>
-          <td style="padding:5px 10px">${a.ItemName||'—'}</td>
-          <td style="padding:5px 10px;text-align:right">${(a.QuantityOnStock||0).toLocaleString()}</td>
-          <td style="padding:5px 10px;text-align:right;font-weight:600">${(a.annualQty||0).toLocaleString()}</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
-    } catch { el.textContent = 'Failed to load analogous products.'; }
   }
 
   window.pfCloseDetail = function() {
@@ -22598,6 +22859,10 @@ BRAND BREAKDOWN:\n${brands}`;
     <button id="ro-scan-btn" onclick="roRunScan()" style="height:32px;padding:0 18px;background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       Scan Orders
+    </button>
+    <button id="ro-ai-btn" onclick="roLoadAIInsight()" disabled title="Run a scan first" style="height:32px;padding:0 16px;background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;opacity:.5">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z"/></svg>
+      AI Insight
     </button>
   </div>
 
@@ -22872,10 +23137,10 @@ BRAND BREAKDOWN:\n${brands}`;
       <div id="inva-messages" style="flex:1;overflow-y:auto;padding:16px 20px;background:var(--bg);scroll-behavior:smooth"></div>
       <div id="inva-qr-area" style="padding:0 16px 8px;display:flex;flex-wrap:wrap;gap:7px;background:var(--bg);flex-shrink:0"></div>
       <div style="background:#fff;border-top:1px solid var(--border);padding:8px 16px 12px;flex-shrink:0">
-        <div style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px" onfocusin="this.style.borderColor='#0f766e';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
+        <div id="inva-input-row" style="display:flex;align-items:flex-end;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px" onfocusin="this.style.borderColor='#0a6ed1';this.style.background='#fff'" onfocusout="this.style.borderColor='var(--border)';this.style.background='var(--bg)'">
           <textarea id="inva-input" rows="1" placeholder="Type e.g. “from 01 to 02” or “10 A00001, 5 A00002”…"
             style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;font-family:var(--font);resize:none;max-height:100px;line-height:1.5;min-height:22px"></textarea>
-          <button onclick="invaSendFromInput()" style="width:34px;height:34px;background:#0f766e;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <button id="inva-send-btn" onclick="invaSendFromInput()" style="width:34px;height:34px;background:#0a6ed1;color:#fff;border:none;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
@@ -26798,7 +27063,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
   <div class="fg" id="f-basis" style="display:none"><label>Basis</label>
     <div class="seg" id="seg-basis"><button data-b="period">Month</button><button data-b="ytd" class="on">Year to date</button></div>
   </div>
-  <button class="btn primary" id="btn-run">↻ Refresh</button>
+  <button class="btn primary" id="btn-run">▶ Run</button>
   <div class="spacer"></div>
   <button class="btn" id="btn-csv">⤓ Export CSV</button>
 </div>
@@ -26908,6 +27173,15 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
         <div class="kpis">${'<div class="skeleton" style="height:96px"></div>'.repeat(4)}</div>
         <div class="grid2"><div class="skeleton" style="height:330px"></div><div class="skeleton" style="height:330px"></div></div>
         <div class="skeleton" style="height:360px"></div>`;
+    }
+    // Reports load only when the user clicks Run. Opening a report, switching
+    // tabs or changing a filter clears the view (and cancels any load in flight).
+    function idle() {
+      ++loadSeq;
+      destroyCharts();
+      state.data = null;
+      view.innerHTML = `<div class="state"><h2>${esc(REPORTS[state.report]?.title || 'Financial report')}</h2>Choose the filters above, then click <b>▶ Run</b> to load the report.</div>`;
+      $('#src-badge').textContent = 'Ready';
     }
     function showError(msg) {
       destroyCharts();
@@ -27078,7 +27352,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
         ${kpi('Total debits', compact(t.closeDr), `Closing · opening ${compact(t.openDr)}`, 'var(--series-1)')}
         ${kpi('Total credits', compact(t.closeCr), `Closing · opening ${compact(t.openCr)}`, 'var(--series-2)')}
         ${kpi('Difference', t.balanced ? '0.00' : compact(t.difference), statusHtml(t.balanced, 'Debits = Credits', 'Out of balance'), t.balanced ? 'var(--good)' : 'var(--bad)')}
-        ${kpi('Period activity', compact(t.moveDr), `Debit turnover (net) · ${t.movementAccounts} of ${t.accountCount} accounts moved`, 'var(--series-3)')}
+        ${kpi('Period activity', compact(t.moveDr), `Debit turnover · ${t.movementAccounts} of ${t.accountCount} accounts posted`, 'var(--series-3)')}
       </div>`);
       html.push(`<div class="grid2">
         <div class="card"><div class="card-h"><h3>Closing balances by drawer</h3><span class="hint">Debit vs credit</span></div>
@@ -27099,7 +27373,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       const redraw = () => {
         const q = state.tbFilter.q.toLowerCase();
         const rows = d.rows.filter(r => (!q || String(r.disp).toLowerCase().includes(q) || String(r.name).toLowerCase().includes(q) || String(r.code).toLowerCase().includes(q))
-          && (!state.tbFilter.drawer || String(r.group) === state.tbFilter.drawer) && (!state.tbFilter.hideZero || Math.abs(r.movement) >= 0.005));
+          && (!state.tbFilter.drawer || String(r.group) === state.tbFilter.drawer) && (!state.tbFilter.hideZero || r.moveDr >= 0.005 || r.moveCr >= 0.005));
         const s = { openDr: 0, openCr: 0, moveDr: 0, moveCr: 0, closeDr: 0, closeCr: 0 };
         let last = null, html = '';
         for (const r of rows) {
@@ -27192,14 +27466,14 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       document.getElementById(`nav-fin-${r}`)?.classList.add('active');
       $('#ai-title').textContent = `AI Analyst · ${REPORTS[r].title}`;
       state.chat = []; resetChat();
-      load();
+      idle();
     }
 
     // ── Toolbar wiring ─────────────────────────────────────────────────────────
     root.querySelectorAll('.tab').forEach(b => b.onclick = () => { if (b.dataset.r !== state.report) setReport(b.dataset.r); });
-    $('#sel-period').onchange = () => { resetChat(); load(); };
-    $('#sel-from').onchange = $('#sel-to').onchange = () => { resetChat(); load(); };
-    $('#btn-run').onclick = () => load(true);
+    $('#sel-period').onchange = () => { resetChat(); idle(); };
+    $('#sel-from').onchange = $('#sel-to').onchange = () => { resetChat(); idle(); };
+    $('#btn-run').onclick = () => { resetChat(); load(true); };
 
     // Period vs date-range filter. Period mode uses posting periods; date mode
     // takes any From/To date (whole periods are still served by the calc views).
@@ -27209,7 +27483,11 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       $('#f-period').style.display = !range && r !== 'tb' ? '' : 'none';
       $('#f-from').style.display = $('#f-to').style.display = !range && r === 'tb' ? '' : 'none';
       $('#f-basis').style.display = !range && r === 'pl' ? '' : 'none';
-      $('#f-dfrom').style.display = $('#f-dto').style.display = $('#f-preset').style.display = range ? '' : 'none';
+      $('#f-dfrom').style.display = $('#f-dto').style.display = range ? '' : 'none';
+      // Quick range stays visible in Period mode; picking one switches to Date range.
+      $('#f-preset').style.display = '';
+      $('#d-preset').options[0].textContent = range ? 'Custom' : 'Choose…';
+      if (!range) $('#d-preset').value = '';
       $('#f-dfrom').querySelector('label').textContent = r === 'bs' ? 'Change from' : 'From date';
       $('#f-dto').querySelector('label').textContent = r === 'bs' ? 'As at date' : 'To date';
     }
@@ -27230,7 +27508,12 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       let f = null, to = t;
       if (v === 'mtd') f = `${y}-${pad(m)}-01`;
       else if (v === 'lm') { const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1; f = `${py}-${pad(pm)}-01`; to = eom(py, pm); }
-      else if (v === 'qtd') f = `${y}-${pad(Math.floor((m - 1) / 3) * 3 + 1)}-01`;
+      else if (v === 'qtd') {
+        // Quarters count from the financial-year start, not January.
+        const fy = fyBounds(t), [fy0, fm0] = (fy?.from || `${y}-01-01`).split('-').map(Number);
+        const q = fm0 - 1 + Math.floor(((y - fy0) * 12 + m - fm0) / 3) * 3;
+        f = `${fy0 + Math.floor(q / 12)}-${pad(q % 12 + 1)}-01`;
+      }
       else if (v === 'ytd') f = fyBounds(t)?.from || `${y}-01-01`;
       else if (v === 'ly') {
         const cur = fyBounds(t);
@@ -27241,12 +27524,20 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       $('#d-from').value = f; $('#d-to').value = to;
       return true;
     }
+    let lastPreset = 'ytd';
     $('#seg-mode').querySelectorAll('button').forEach(b => b.onclick = () => {
       if (state.mode === b.dataset.m) return;
-      state.mode = b.dataset.m; syncToolbar(); resetChat(); load();
+      if (state.mode === 'range') lastPreset = $('#d-preset').value;
+      state.mode = b.dataset.m; syncToolbar();
+      if (state.mode === 'range') $('#d-preset').value = lastPreset;
+      resetChat(); idle();
     });
-    $('#d-from').onchange = $('#d-to').onchange = () => { $('#d-preset').value = ''; resetChat(); load(); };
-    $('#d-preset').onchange = (e) => { if (e.target.value && applyPreset(e.target.value)) { resetChat(); load(); } };
+    $('#d-from').onchange = $('#d-to').onchange = () => { $('#d-preset').value = ''; resetChat(); idle(); };
+    $('#d-preset').onchange = (e) => {
+      if (!e.target.value || !applyPreset(e.target.value)) return;
+      if (state.mode !== 'range') { const v = e.target.value; state.mode = 'range'; syncToolbar(); e.target.value = v; }
+      resetChat(); idle();
+    };
     $('#seg-basis').querySelectorAll('button').forEach(b => b.onclick = () => {
       state.basis = b.dataset.b;
       $('#seg-basis').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
@@ -27458,7 +27749,10 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
 #customer-aging-panel .ca-btn{height:32px;padding:0 12px;background:#fff;border:1px solid var(--saf-border);border-radius:8px;font-size:12.5px;color:var(--saf-text);cursor:pointer}
 #customer-aging-panel .ca-btn:hover{border-color:var(--saf-blue);color:var(--saf-blue)}
 #customer-aging-panel .ca-hint{font-size:11px;color:var(--saf-subtle);margin-top:6px}
-#customer-aging-panel .saf-content{flex:1;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column;gap:16px;position:relative}
+#customer-aging-panel .saf-content{flex:1;min-height:0;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column;gap:16px;position:relative}
+/* Children must keep their natural height — otherwise the overflow:hidden table card
+   shrinks to fit the viewport and its last rows are clipped instead of scrolling. */
+#customer-aging-panel .saf-content > *{flex-shrink:0}
 #customer-aging-panel .saf-loading{position:absolute;inset:0;z-index:20;background:rgba(244,246,249,.72);display:none;justify-content:center;align-items:flex-start;padding-top:120px}
 #customer-aging-panel .saf-loading.show{display:flex}
 #customer-aging-panel .saf-loading-box{position:sticky;top:120px;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--saf-border);border-radius:12px;padding:12px 18px;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.08)}
@@ -29226,6 +29520,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
     RO.filterMode = 'all';
     document.querySelectorAll('#rush-orders-panel .pf-filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
     roApplyFilter();
+    roSetAIButton(RO.orders.some(o => o._tag === 'CRITICAL' || o._tag === 'URGENT'));
   };
 
   // ── Show panel ──────────────────────────────────────────────────────────────
@@ -29287,7 +29582,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
 
       const r = await apiPost('/api/rush-orders/scan', {
         urgentWithinDays: days, autoApproveMaxCost: maxCost,
-        maxExpediteCost: maxCost * 10, dryRun, createActivities: createAl, useAI: true,
+        maxExpediteCost: maxCost * 10, dryRun, createActivities: createAl, useAI: false,
       });
 
       clearInterval(ticker);
@@ -29315,6 +29610,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       }
 
       roApplyFilter();
+      roSetAIButton(RO.orders.some(o => o._tag === 'CRITICAL' || o._tag === 'URGENT'));
     } catch (e) {
       clearInterval(ticker);
       prog.style.display = 'none';
@@ -29323,6 +29619,59 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Scan Orders';
+    }
+  };
+
+  // ── AI Insight (on demand — the scan itself is rule-based and instant) ──────
+  function roSetAIButton(enabled) {
+    const b = document.getElementById('ro-ai-btn');
+    if (!b) return;
+    b.disabled = !enabled;
+    b.style.opacity = enabled ? '1' : '.5';
+    b.title = enabled ? 'Get AI recommendations for the top CRITICAL/URGENT orders' : 'Run a scan first';
+  }
+
+  window.roLoadAIInsight = async function() {
+    const btn    = document.getElementById('ro-ai-btn');
+    const status = document.getElementById('ro-status');
+    const top = RO.orders.filter(o => o._tag === 'CRITICAL' || o._tag === 'URGENT').slice(0, 8);
+    if (!top.length) return;
+    const btnHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Loading AI…';
+    status.textContent = `🤖 Getting AI insight for top ${top.length} orders…`;
+    try {
+      const maxCost = Number(document.getElementById('ro-maxcost-sel').value);
+      const r = await apiPost('/api/rush-orders/ai-insight', {
+        orders: top.map(o => ({ DocEntry: o.DocEntry, DocNum: o.DocNum, CardCode: o.CardCode, CardName: o.CardName,
+          DocDueDate: o.DocDueDate, DocTotal: o.DocTotal, _score: o._score, _tag: o._tag, _daysLeft: o._daysLeft,
+          DocumentLines: o.DocumentLines || [] })),
+        stockMap: RO.summary?.stockMap || {},
+        summary: { totalScanned: RO.summary?.totalScanned, critical: RO.summary?.critical, urgent: RO.summary?.urgent, monitor: RO.summary?.monitor },
+        autoApproveMaxCost: maxCost, maxExpediteCost: maxCost * 10,
+      });
+      if (!r.ok) throw new Error(r.error || 'AI insight failed');
+
+      for (const o of top) {
+        const rec = r.recs?.[o.DocEntry ?? o.DocNum];
+        if (rec) { o._aiRec = rec; o._aiSource = 'ai'; }
+      }
+      roApplyFilter();
+
+      const body = document.getElementById('ro-ai-body');
+      const narrative = r.narrative
+        ? ((typeof marked !== 'undefined') ? marked.parse(escHtml(r.narrative)) : escHtml(r.narrative).replace(/\n/g, '<br>'))
+        : '<em>AI summary unavailable — per-order recommendations updated in the table.</em>';
+      body.innerHTML = `<strong style="color:#5B21B6">🤖 AI Insight</strong><div style="margin:6px 0 10px">${narrative}</div><hr style="border:none;border-top:1px solid #FEE2E2;margin:8px 0">` +
+        (roGenerateAISummary(RO.orders, RO.summary) || '');
+      document.getElementById('ro-ai-label').textContent = `AI · top ${top.length} orders · ${new Date().toLocaleTimeString()}`;
+      document.getElementById('ro-ai-card').style.display = 'block';
+      status.textContent = `✓ AI insight loaded for top ${top.length} orders`;
+    } catch (e) {
+      status.textContent = '❌ ' + e.message;
+    } finally {
+      btn.innerHTML = btnHtml;
+      roSetAIButton(true);
     }
   };
 
@@ -29428,7 +29777,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
           <div class="ro-score-ring" style="${scoreRing(o._score)}">${o._score}</div>
         </td>
         <td style="padding:8px 12px;text-align:center"><span class="ro-tag ro-tag-${o._tag}">${o._tag}</span></td>
-        <td style="padding:8px 12px;text-align:center">${rec ? `<span class="ro-rec-badge ro-rec-${rec.recommendation}">${rec.recommendation.replace('_',' ')}</span>` : '<span style="color:var(--muted);font-size:10px">—</span>'}</td>
+        <td style="padding:8px 12px;text-align:center">${rec ? `<span class="ro-rec-badge ro-rec-${rec.recommendation}">${rec.recommendation.replace('_',' ')}</span>${o._aiSource === 'ai' ? ' <span title="AI recommendation" style="font-size:9px;font-weight:700;color:#5B21B6">AI</span>' : ''}` : '<span style="color:var(--muted);font-size:10px">—</span>'}</td>
         <td style="padding:8px 12px;text-align:right;font-weight:600;color:#DC2626">${rec?.expediteShippingCost ? Number(rec.expediteShippingCost).toLocaleString() : '—'}</td>
         <td style="padding:8px 12px;text-align:center;font-size:11px;color:var(--muted)">${rec?.escalateTo || '—'}</td>
         <td style="padding:8px 12px;text-align:center">
@@ -30314,7 +30663,7 @@ window.roAskFollowUp = function() {
 // ══════════════════════════════════════════════════════════════════════════════
 (function() {
   const API   = '/api/inventory-agent';
-  const COLOR = '#0f766e';
+  const COLOR = '#0a6ed1';   // SAP Fiori blue (was teal) — same as the Sales / Purchase agents
   const STEP_LABEL = { HEADER:'WAREHOUSE', SELECT_REQUEST:'SELECT REQUEST', REQ_LINES:'QUANTITIES', ADD_ITEM:'ADD ITEM', REVIEW:'REVIEW', DONE:'DONE' };
   const state   = {};     // mode → { sessionId, header, lines, step }
   let allowed   = [];     // [{mode,label,icon}] from /modes
@@ -30544,10 +30893,6 @@ window.roAskFollowUp = function() {
   window.invaQtyChange = function(idx) { invaClearAlloc(idx); };
 
   window.invaItemChange = function(idx) {
-    const sel = lastEl('inva-item-' + idx);
-    const opt = sel && sel.options[sel.selectedIndex];
-    const batch = lastEl('inva-batch-' + idx);
-    if (batch) batch.placeholder = opt && opt.dataset.batch === '1' ? 'Batch No. *' : 'Not batch-managed';
     invaClearAlloc(idx);
     invaShowAvail(idx);
   };
@@ -30586,17 +30931,18 @@ window.roAskFollowUp = function() {
     const alloc = invaAlloc[idx];
     const allocQty = alloc ? (alloc.kind === 'serial' ? alloc.items.length : alloc.items.reduce((s, b) => s + (parseFloat(b.qty) || 0), 0)) : 0;
     if ((needsBatch || needsSerial) && (!alloc || Math.abs(allocQty - qty) > 1e-6)) {
-      alert('Please select ' + (needsSerial ? 'serial numbers' : 'batches') + ' for this item (📦 Select… button above).');
+      alert(current === 'gr'
+        ? 'Please enter batches for this item (📦 Add Batches… button above) — batch quantities must total ' + qty.toLocaleString() + '.'
+        : 'Please select ' + (needsSerial ? 'serial numbers' : 'batches') + ' for this item (📦 Select… button above).');
       return;
     }
     const payload = { action: 'add_item', itemCode, quantity: qty };
     const from = lastEl('inva-from-' + idx)?.value, to = lastEl('inva-to-' + idx)?.value, wh = lastEl('inva-wh-' + idx)?.value;
-    const price = lastEl('inva-price-' + idx)?.value, batch = lastEl('inva-batch-' + idx)?.value;
+    const price = lastEl('inva-price-' + idx)?.value;
     if (from) payload.fromWh = from;
     if (to) payload.toWh = to;
     if (wh) payload.wh = wh;
     if (price !== undefined && price !== '') payload.unitPrice = parseFloat(price);
-    if (batch) payload.batch = batch.trim();
     if (alloc?.kind === 'batch')  payload.batches = alloc.items;
     if (alloc?.kind === 'serial') payload.serials = alloc.items;
     send(JSON.stringify(payload));
@@ -30618,6 +30964,94 @@ window.roAskFollowUp = function() {
     if (!(qty > 0)) { alert('Enter a quantity first.'); return; }
     const itemName = opt.textContent.split(' — ').slice(1).join(' — ');
     invaOpenAllocModal(kind, itemCode, itemName, whs, qty, invaAlloc[idx], a => { invaAlloc[idx] = a; invaRefreshAllocStatus(idx); });
+  };
+
+  // ── Goods Receipt batch entry: the receipt creates new batches, so instead of
+  // picking from stock the user types one row per batch (No., qty, optional dates) ──
+  window.invaEnterGrBatches = function(idx) {
+    const sel = lastEl('inva-item-' + idx);
+    const itemCode = sel?.value;
+    if (!itemCode) { alert('Select an item first.'); return; }
+    const opt = sel.options[sel.selectedIndex];
+    if (opt.dataset.batch !== '1') { alert('This item is not batch managed.'); return; }
+    const qty = parseFloat(lastEl('inva-qty-' + idx)?.value || '0');
+    if (!(qty > 0)) { alert('Enter a quantity first.'); return; }
+    const whs = lastEl('inva-wh-' + idx)?.value || state[current]?.header?.wh || '';
+    const itemName = opt.textContent.split(' — ').slice(1).join(' — ');
+    const prev = invaAlloc[idx]?.kind === 'batch' ? invaAlloc[idx].items : [];
+
+    const inp = 'border:1.5px solid #d1d5db;border-radius:5px;padding:5px 7px;font-size:12.5px;box-sizing:border-box;width:100%';
+    const th  = 'padding:6px 8px;text-align:left;font-size:10.5px;text-transform:uppercase;color:' + COLOR + ';background:#f3f4f6';
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1200;display:flex;align-items:center;justify-content:center;font-family:var(--font)';
+    ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:760px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden">'
+      + '<div style="background:' + COLOR + ';color:#fff;padding:12px 18px;display:flex;align-items:center;gap:10px">'
+      +   '<div style="flex:1"><div style="font-size:14px;font-weight:700">📦 Batch Entry — Goods Receipt</div>'
+      +   '<div style="font-size:11.5px;opacity:.85">' + esc(itemCode) + ' — ' + esc(itemName) + (whs ? ' · Warehouse ' + esc(whs) : '') + ' · Quantity <strong>' + qty.toLocaleString() + '</strong></div></div>'
+      +   '<button data-x style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:5px;padding:4px 10px;cursor:pointer">✕</button></div>'
+      + '<div style="flex:1;overflow:auto;padding:14px 18px">'
+      +   '<table style="width:100%;border-collapse:collapse;font-size:12.5px;color:var(--text)"><thead><tr>'
+      +   '<th style="' + th + '">Batch No. *</th><th style="' + th + ';width:110px;text-align:right">Qty *</th><th style="' + th + ';width:140px">Expiry</th><th style="' + th + ';width:140px">Mfg Date</th><th style="' + th + ';width:34px"></th>'
+      +   '</tr></thead><tbody data-rows></tbody></table>'
+      +   '<button data-add style="margin-top:10px;background:#fff;border:1px dashed ' + COLOR + ';color:' + COLOR + ';border-radius:6px;padding:6px 14px;font-size:12.5px;cursor:pointer">+ Add Batch</button>'
+      + '</div>'
+      + '<div style="border-top:1px solid #e5e7eb;padding:10px 18px;display:flex;align-items:center;gap:10px;background:#f9fafb">'
+      +   '<span data-msg style="font-size:12px;color:#b91c1c"></span><span style="flex:1"></span><span data-sum style="font-size:13px;font-weight:700"></span>'
+      +   '<button data-cancel style="background:#fff;border:1px solid #d1d5db;color:#374151;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer">Cancel</button>'
+      +   '<button data-ok disabled style="background:' + COLOR + ';color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">✓ Confirm</button>'
+      + '</div></div>';
+    document.body.appendChild(ov);
+    const $ = s => ov.querySelector(s);
+    const close = () => ov.remove();
+    $('[data-x]').onclick = $('[data-cancel]').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    const tbody = $('[data-rows]');
+
+    function addRow(b) {
+      b = b || {};
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td style="padding:4px"><input data-f="batch" type="text" maxlength="36" value="' + esc(b.batch || '') + '" style="' + inp + '"></td>'
+        + '<td style="padding:4px"><input data-f="qty" type="number" min="0" step="any" value="' + (b.qty || '') + '" style="' + inp + ';text-align:right"></td>'
+        + '<td style="padding:4px"><input data-f="expiry" type="date" value="' + esc(b.expiry || '') + '" style="' + inp + '"></td>'
+        + '<td style="padding:4px"><input data-f="mfg" type="date" value="' + esc(b.mfg || '') + '" style="' + inp + '"></td>'
+        + '<td style="padding:4px;text-align:center"><button data-del title="Remove batch" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td>';
+      tr.querySelectorAll('input').forEach(x => x.oninput = update);
+      tr.querySelector('[data-del]').onclick = () => { tr.remove(); if (!tbody.children.length) addRow(); update(); };
+      tbody.appendChild(tr);
+      return tr;
+    }
+    function read() {
+      return [...tbody.children].map(tr => {
+        const v = f => tr.querySelector('[data-f="' + f + '"]').value.trim();
+        const b = { batch: v('batch'), qty: parseFloat(v('qty')) || 0 };
+        if (v('expiry')) b.expiry = v('expiry');
+        if (v('mfg')) b.mfg = v('mfg');
+        return b;
+      }).filter(b => b.batch || b.qty);
+    }
+    function update() {
+      const rows = read();
+      const sum = rows.reduce((s, b) => s + b.qty, 0);
+      const names = rows.map(b => b.batch.toLowerCase());
+      let msg = '';
+      if (rows.some(b => !b.batch)) msg = 'Every row needs a batch number.';
+      else if (rows.some(b => !(b.qty > 0))) msg = 'Every batch needs a quantity greater than 0.';
+      else if (new Set(names).size !== names.length) msg = 'Batch numbers must be unique.';
+      else if (rows.some(b => b.expiry && b.mfg && b.mfg > b.expiry)) msg = 'Mfg date is after expiry date.';
+      const ok = rows.length && !msg && Math.abs(sum - qty) < 1e-6;
+      $('[data-msg]').textContent = msg;
+      $('[data-sum]').innerHTML = 'Total <span style="color:' + (Math.abs(sum - qty) < 1e-6 ? '#15803d' : '#dc2626') + '">' + sum.toLocaleString() + '</span> / ' + qty.toLocaleString();
+      $('[data-ok]').disabled = !ok; $('[data-ok]').style.opacity = ok ? '1' : '.5';
+    }
+    $('[data-add]').onclick = () => {
+      const left = qty - read().reduce((s, b) => s + b.qty, 0);
+      addRow(left > 0 ? { qty: +left.toFixed(6) } : {}).querySelector('[data-f="batch"]').focus();
+      update();
+    };
+    $('[data-ok]').onclick = () => { invaAlloc[idx] = { kind: 'batch', whs, items: read() }; invaRefreshAllocStatus(idx); close(); };
+    (prev.length ? prev : [{ qty }]).forEach(addRow);
+    tbody.querySelector('[data-f="batch"]').focus();
+    update();
   };
 
   window.invaRlClearAlloc = function(lineNum) {
@@ -40400,6 +40834,13 @@ window.almReset = almReset;
 #arinv2arcm-panel .sfx-bubble [style*="solid #9f1239" i]{border-color:var(--sfx-blue-border)!important}
 #arinv2arcm-panel .sfx-bubble [style*="background:#fff1f2" i],#arinv2arcm-panel .sfx-bubble [style*="background:#ffe4e6" i]{background:#f5f9fd!important;border-color:var(--sfx-blue-border)!important}
 #arinv2arcm-panel .sfx-bubble tr[style*="background:#ffe4e6" i],#arinv2arcm-panel .sfx-bubble tr[style*="background:#9f1239" i]{background:var(--sfx-blue-light)!important;color:var(--sfx-subtle)!important}
+/* inventory agent: messages area is not a flex column, so space the welcome card explicitly */
+#inva-messages > .sfx-welcome{margin-bottom:16px}
+/* side builder panels: dark shell header → white Fiori header */
+.sfx-panel [style*="background:var(--shell)"]:not(.sfx-hdr){background:var(--sfx-card)!important;border-bottom:1px solid var(--sfx-border)!important}
+.sfx-panel [style*="background:var(--shell)"]:not(.sfx-hdr) > div:first-child{color:var(--sfx-text)!important;font-weight:600!important}
+.sfx-panel [style*="background:var(--shell)"]:not(.sfx-hdr) > div:not(:first-child){color:var(--sfx-subtle)!important}
+.sfx-panel [id$="-summary"]{background:var(--sfx-bg)}
 @keyframes sfxIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 </style>
 <script>
@@ -40439,6 +40880,10 @@ window.almReset = almReset;
                           steps:[S('Select GRPO',['READY','SELECT GRPO']),S('Invoice',['ENTER INVOICE']),S('Match Review',['REVIEWING','DISCREPANCY']),S('Confirm',['CONFIRM']),S('Posted',['DONE'])] },
     'apcm-panel':       { p:'apcm', icon:'↩️', title:'A/P Invoice → Credit Memo Agent', text:'I’ll copy an A/P Invoice into a Credit Memo. Select a vendor to begin.',
                           steps:[S('Vendor',['READY','VENDOR SEARCH','SELECT VENDOR']),S('Invoice',['SELECT INVOICE']),S('Review',['REVIEW']),S('Posted',['DONE'])] },
+    // ── Inventory ── one panel, one message box per transaction (#inva-msgs-<mode>)
+    'inv-agent-panel':  { p:'inva', icon:'📦', title:'Inventory Workflow Agent', titleFrom:'inva-title', nested:'inva-msgs-',
+                          text:'I\u2019ll guide you step-by-step and post the document live to SAP: pick the warehouse(s), add lines, review and post.',
+                          steps:[S('Warehouse',['READY','WAREHOUSE']),S('Lines',['SELECT REQUEST','QUANTITIES','ADD ITEM']),S('Review',['REVIEW']),S('Posted',['DONE'])] },
     'outpmt-panel':     { p:'outpmt', icon:'💸', title:'Outgoing Payment Agent', text:'I’ll help you pay a vendor against open invoices. Select a vendor to begin.',
                           steps:[S('Vendor',['READY','INIT','SELECT BP']),S('Invoices',['SELECT INVOICES']),S('Review',['REVIEW FORM']),S('Posted',['DONE'])] },
   };
@@ -40495,14 +40940,16 @@ window.almReset = almReset;
   function welcomeEl(cfg) {
     const w = document.createElement('div');
     w.className = 'sfx-welcome';
+    const title = (cfg.titleFrom && document.getElementById(cfg.titleFrom)?.textContent.trim()) || cfg.title;
     w.innerHTML = `<div class="sfx-welcome-ico">${cfg.icon}</div><div>
-      <div class="sfx-welcome-title"><span>Welcome to the ${cfg.title}!</span><span class="sfx-ai-pill">AI Guided Workflow</span></div>
+      <div class="sfx-welcome-title"><span class="sfx-welcome-name">Welcome to the ${title}!</span><span class="sfx-ai-pill">AI Guided Workflow</span></div>
       <div class="sfx-welcome-text">${cfg.text}</div></div>`;
     return w;
   }
 
-  function decorateRow(row) {
+  function decorateRow(row, cfg) {
     if (row.nodeType !== 1 || row.classList.contains('sfx-row') || row.classList.contains('sfx-welcome')) return;
+    if (cfg?.nested && row.id && row.id.startsWith(cfg.nested)) { [...row.children].forEach(r => decorateRow(r, cfg)); return; }
     const st = row.getAttribute('style') || '';
     const isMsgRow = row.classList.contains('msg-row');
     if (!isMsgRow && !/display:\s*flex/.test(st)) return;       // not a chat bubble wrapper
@@ -40524,12 +40971,22 @@ window.almReset = almReset;
       if (cfg.p === 'qcomp') return;                          // side analysis pane — no banner
       if (!area.querySelector(':scope > .sfx-welcome')) area.insertBefore(welcomeEl(cfg), area.firstChild);
     };
-    [...area.children].forEach(decorateRow);
+    [...area.children].forEach(r => decorateRow(r, cfg));
     ensureWelcome();
     new MutationObserver(muts => {
-      muts.forEach(m => m.addedNodes.forEach(decorateRow));
+      muts.forEach(m => {
+        // direct children, or rows inside a nested per-mode box
+        const ok = m.target === area || (cfg.nested && m.target.id && m.target.id.startsWith(cfg.nested));
+        if (ok) m.addedNodes.forEach(r => decorateRow(r, cfg));
+      });
       ensureWelcome();
-    }).observe(area, { childList:true });
+    }).observe(area, { childList:true, subtree: !!cfg.nested });
+    // keep the welcome title in step with the current transaction
+    const tEl = cfg.titleFrom && document.getElementById(cfg.titleFrom);
+    if (tEl) new MutationObserver(() => {
+      const n = area.querySelector(':scope > .sfx-welcome .sfx-welcome-name');
+      if (n) n.textContent = `Welcome to the ${tEl.textContent.trim()}!`;
+    }).observe(tEl, { childList:true, characterData:true, subtree:true });
   }
 
   function init() {

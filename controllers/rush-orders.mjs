@@ -79,6 +79,7 @@ const ORDR_FIELD_CANDIDATES = {
   docDate: ['DocDate'], docDueDate: ['DocDueDate'], docStatus: ['DocStatus'],
   docTotal: ['DocTotal'], shipToCode: ['ShipToCode'],
 };
+const ORDR_OPTIONAL_CANDIDATES = { canceled: ['CANCELED', 'Canceled'] };
 const RDR1_FIELD_CANDIDATES = {
   docEntry: ['DocEntry'], itemCode: ['ItemCode'], itemName: ['Dscription'],
   openQty: ['OpenQty'], price: ['Price'],
@@ -88,112 +89,87 @@ const RUSH_STOCK_FIELD_CANDIDATES = {
 };
 const OCRD_GROUP_CANDIDATES = { cardCode: ['CardCode'], groupNum: ['GroupNum'] };
 
-async function fetchOpenOrdersViaDB(dbDeps, { futureCut, warehouse }) {
-  const { getActiveConfig, getActiveType, getTableColumns, resolveFieldMap, tableRef, executeSQL } = dbDeps;
+function dbCtx(dbDeps) {
+  const { getActiveConfig, getActiveType, tableRef } = dbDeps;
   const cfg    = getActiveConfig();
   const isHana = getActiveType() === 'hana';
-  const q      = n => qcol(n, isHana);
-  const cols   = await getTableColumns('ORDR');
-  const { resolved, missing } = resolveFieldMap(cols, ORDR_FIELD_CANDIDATES);
-  if (missing.length) throw new Error(`ORDR field mapping incomplete: ${missing.join(', ')}`);
+  return { cfg, isHana, q: n => qcol(n, isHana), t: n => tableRef(n, cfg) };
+}
+
+async function resolveOrThrow(dbDeps, table, candidates) {
+  const cols = await dbDeps.getTableColumns(table);
+  const { resolved, missing } = dbDeps.resolveFieldMap(cols, candidates);
+  if (missing.length) throw new Error(`${table} field mapping incomplete: ${missing.join(', ')}`);
+  return { resolved, cols };
+}
+
+// One query: open ORDR headers + OCRD.GroupNum (customer tier) via LEFT JOIN.
+async function fetchOpenOrdersViaDB(dbDeps, { futureCut, warehouse }) {
+  const { q, t } = dbCtx(dbDeps);
+  const [{ resolved: h, cols: hCols }, { resolved: c }] = await Promise.all([
+    resolveOrThrow(dbDeps, 'ORDR', ORDR_FIELD_CANDIDATES),
+    resolveOrThrow(dbDeps, 'OCRD', OCRD_GROUP_CANDIDATES),
+  ]);
+  const { resolved: opt } = dbDeps.resolveFieldMap(hCols, ORDR_OPTIONAL_CANDIDATES);
 
   const esc = s => String(s).replace(/'/g, "''");
-  const conds = [`${q(resolved.docStatus)} = 'O'`, `${q(resolved.docDueDate)} <= '${futureCut}'`];
-  if (warehouse) conds.push(`${q(resolved.shipToCode)} = '${esc(warehouse)}'`);
+  const conds = [`T0.${q(h.docStatus)} = 'O'`, `T0.${q(h.docDueDate)} <= '${futureCut}'`];
+  if (opt.canceled) conds.push(`T0.${q(opt.canceled)} = 'N'`);
+  if (warehouse) conds.push(`T0.${q(h.shipToCode)} = '${esc(warehouse)}'`);
 
-  const sql = `SELECT ${q(resolved.docEntry)} AS ${q('DocEntry')}, ${q(resolved.docNum)} AS ${q('DocNum')}, ` +
-    `${q(resolved.cardCode)} AS ${q('CardCode')}, ${q(resolved.cardName)} AS ${q('CardName')}, ` +
-    `${q(resolved.docDate)} AS ${q('DocDate')}, ${q(resolved.docDueDate)} AS ${q('DocDueDate')}, ` +
-    `${q(resolved.docTotal)} AS ${q('DocTotal')} ` +
-    `FROM ${tableRef('ORDR', cfg)} WHERE ${conds.join(' AND ')}`;
-  const rows = await executeSQL(sql);
+  const sql = `SELECT T0.${q(h.docEntry)} AS ${q('DocEntry')}, T0.${q(h.docNum)} AS ${q('DocNum')}, ` +
+    `T0.${q(h.cardCode)} AS ${q('CardCode')}, T0.${q(h.cardName)} AS ${q('CardName')}, ` +
+    `T0.${q(h.docDate)} AS ${q('DocDate')}, T0.${q(h.docDueDate)} AS ${q('DocDueDate')}, ` +
+    `T0.${q(h.docTotal)} AS ${q('DocTotal')}, T1.${q(c.groupNum)} AS ${q('GroupNum')} ` +
+    `FROM ${t('ORDR')} T0 LEFT JOIN ${t('OCRD')} T1 ON T1.${q(c.cardCode)} = T0.${q(h.cardCode)} ` +
+    `WHERE ${conds.join(' AND ')}`;
+  const rows = await dbDeps.executeSQL(sql);
 
   // Normalized to the same shape the Service Layer /Orders response provides.
   return rows.map(r => ({
     DocEntry: r.DocEntry, DocNum: r.DocNum, CardCode: r.CardCode, CardName: r.CardName,
     DocDate: r.DocDate, DocDueDate: r.DocDueDate, DocTotal: r.DocTotal,
-    DocumentStatus: 'bost_Open', Priority: '', GroupNum: '',
+    DocumentStatus: 'bost_Open', Priority: '', GroupNum: r.GroupNum ?? '',
   }));
 }
 
-async function fetchOrderLinesViaDB(dbDeps, docEntries) {
-  const { getActiveConfig, getActiveType, getTableColumns, resolveFieldMap, tableRef, executeSQL } = dbDeps;
-  const cfg    = getActiveConfig();
-  const isHana = getActiveType() === 'hana';
-  const q      = n => qcol(n, isHana);
-  const cols   = await getTableColumns('RDR1');
-  const { resolved, missing } = resolveFieldMap(cols, RDR1_FIELD_CANDIDATES);
-  if (missing.length) throw new Error(`RDR1 field mapping incomplete: ${missing.join(', ')}`);
+// One query per 500 orders: open RDR1 lines + OITM stock via LEFT JOIN.
+async function fetchLinesAndStockViaDB(dbDeps, docEntries) {
+  const { q, t } = dbCtx(dbDeps);
+  const [{ resolved: l }, { resolved: s }] = await Promise.all([
+    resolveOrThrow(dbDeps, 'RDR1', RDR1_FIELD_CANDIDATES),
+    resolveOrThrow(dbDeps, 'OITM', RUSH_STOCK_FIELD_CANDIDATES),
+  ]);
 
   const linesByOrder = new Map();
-  for (let i = 0; i < docEntries.length; i += 200) {
-    const chunk  = docEntries.slice(i, i + 200);
-    const inList = chunk.join(',');
-    const sql = `SELECT ${q(resolved.docEntry)} AS ${q('DocEntry')}, ${q(resolved.itemCode)} AS ${q('ItemCode')}, ` +
-      `${q(resolved.itemName)} AS ${q('ItemDescription')}, ${q(resolved.openQty)} AS ${q('OpenQty')}, ${q(resolved.price)} AS ${q('Price')} ` +
-      `FROM ${tableRef('RDR1', cfg)} WHERE ${q(resolved.docEntry)} IN (${inList})`;
-    const rows = await executeSQL(sql);
+  const stockMap     = {};
+  for (let i = 0; i < docEntries.length; i += 500) {
+    const inList = docEntries.slice(i, i + 500).map(Number).filter(Number.isFinite).join(',');
+    if (!inList) continue;
+    const sql = `SELECT T0.${q(l.docEntry)} AS ${q('DocEntry')}, T0.${q(l.itemCode)} AS ${q('ItemCode')}, ` +
+      `T0.${q(l.itemName)} AS ${q('ItemDescription')}, T0.${q(l.openQty)} AS ${q('OpenQty')}, T0.${q(l.price)} AS ${q('Price')}, ` +
+      `T1.${q(s.onHand)} AS ${q('OnHand')}, T1.${q(s.committed)} AS ${q('IsCommited')}, T1.${q(s.minInventory)} AS ${q('MinInventory')} ` +
+      `FROM ${t('RDR1')} T0 LEFT JOIN ${t('OITM')} T1 ON T1.${q(s.itemCode)} = T0.${q(l.itemCode)} ` +
+      `WHERE T0.${q(l.docEntry)} IN (${inList}) AND T0.${q(l.openQty)} > 0`;
+    const rows = await dbDeps.executeSQL(sql);
     for (const r of rows) {
       if (!linesByOrder.has(r.DocEntry)) linesByOrder.set(r.DocEntry, []);
       linesByOrder.get(r.DocEntry).push({
         ItemCode: r.ItemCode, ItemDescription: r.ItemDescription,
         OpenQty: r.OpenQty, Quantity: r.OpenQty, Price: r.Price,
       });
+      if (r.ItemCode && !stockMap[r.ItemCode]) {
+        const onHand    = Number(r.OnHand || 0);
+        const committed = Number(r.IsCommited || 0);
+        stockMap[r.ItemCode] = {
+          onHand, committed,
+          minStock:  Number(r.MinInventory || 0),
+          available: Math.max(0, onHand - committed),
+        };
+      }
     }
   }
-  return linesByOrder;
-}
-
-async function checkStockViaDB(dbDeps, codes) {
-  const result = {};
-  if (!codes.length) return result;
-  const { getActiveConfig, getActiveType, getTableColumns, resolveFieldMap, tableRef, executeSQL } = dbDeps;
-  const cfg    = getActiveConfig();
-  const isHana = getActiveType() === 'hana';
-  const q      = n => qcol(n, isHana);
-  const cols   = await getTableColumns('OITM');
-  const { resolved, missing } = resolveFieldMap(cols, RUSH_STOCK_FIELD_CANDIDATES);
-  if (missing.length) throw new Error(`OITM field mapping incomplete: ${missing.join(', ')}`);
-
-  const esc = s => String(s).replace(/'/g, "''");
-  for (let i = 0; i < codes.length; i += 200) {
-    const chunk  = codes.slice(i, i + 200);
-    const inList = chunk.map(c => `'${esc(c)}'`).join(',');
-    const sql = `SELECT ${q(resolved.itemCode)} AS ${q('ItemCode')}, ${q(resolved.onHand)} AS ${q('OnHand')}, ` +
-      `${q(resolved.committed)} AS ${q('IsCommited')}, ${q(resolved.minInventory)} AS ${q('MinInventory')} ` +
-      `FROM ${tableRef('OITM', cfg)} WHERE ${q(resolved.itemCode)} IN (${inList})`;
-    const rows = await executeSQL(sql);
-    for (const it of rows) {
-      const onHand    = Number(it.OnHand || 0);
-      const committed = Number(it.IsCommited || 0);
-      result[it.ItemCode] = {
-        onHand, committed,
-        minStock:  Number(it.MinInventory || 0),
-        available: Math.max(0, onHand - committed),
-      };
-    }
-  }
-  return result;
-}
-
-async function fetchGroupNumsViaDB(dbDeps, cardCodes) {
-  const groupByCard = new Map();
-  if (!cardCodes.length) return groupByCard;
-  const { getActiveConfig, getActiveType, getTableColumns, resolveFieldMap, tableRef, executeSQL } = dbDeps;
-  const cfg    = getActiveConfig();
-  const isHana = getActiveType() === 'hana';
-  const q      = n => qcol(n, isHana);
-  const cols   = await getTableColumns('OCRD');
-  const { resolved, missing } = resolveFieldMap(cols, OCRD_GROUP_CANDIDATES);
-  if (missing.length) throw new Error(`OCRD field mapping incomplete: ${missing.join(', ')}`);
-
-  const esc    = s => String(s).replace(/'/g, "''");
-  const inList = cardCodes.map(c => `'${esc(c)}'`).join(',');
-  const sql = `SELECT ${q(resolved.cardCode)} AS ${q('CardCode')}, ${q(resolved.groupNum)} AS ${q('GroupNum')} ` +
-    `FROM ${tableRef('OCRD', cfg)} WHERE ${q(resolved.cardCode)} IN (${inList})`;
-  const rows = await executeSQL(sql);
-  for (const r of rows) groupByCard.set(r.CardCode, r.GroupNum);
-  return groupByCard;
+  return { linesByOrder, stockMap };
 }
 
 // ── Paginated SL fetch ────────────────────────────────────────────────────────
@@ -287,6 +263,8 @@ async function checkStock(sap, lines = []) {
 }
 
 // ── AI recommendation (structured JSON) ──────────────────────────────────────
+const AI_TIMEOUT_MS = 12_000;
+const AI_INSIGHT_MAX_ORDERS = 8;   // orders sent for per-order AI recs when "AI Insight" is clicked
 async function getAIRecommendation(aiDeps, order, stockMap, cfg) {
   const sys = `You are a supply-chain operations AI for SAP Business One.
 Return ONLY valid JSON — no markdown fences, no explanation outside the JSON.`;
@@ -323,7 +301,11 @@ Return JSON with exactly these keys:
 }`;
 
   try {
-    const raw  = await callAI(aiDeps, [{ role: 'user', content: prompt }], sys, 700);
+    // Cap each AI call — a slow provider must not hold up the whole scan.
+    const raw = await Promise.race([
+      callAI(aiDeps, [{ role: 'user', content: prompt }], sys, 500),
+      new Promise(resolve => setTimeout(() => resolve(''), AI_TIMEOUT_MS)),
+    ]);
     const match = raw.match(/\{[\s\S]+\}/);
     if (match) return JSON.parse(match[0]);
   } catch (e) {
@@ -480,15 +462,13 @@ export async function runRushOrderScan(sap, {
   // ── Step 1: Fetch open orders — DB Direct (ODBC/HANA) preferred, Service Layer fallback ──
   let rawOrders;
   let source = 'service-layer';
+  // Reconnect the saved DB Direct (HANA) connection if it dropped, so we don't silently hit Service Layer.
+  if (dbDeps?.ensureConnected && !dbDeps.isConnected()) {
+    try { await dbDeps.ensureConnected(); } catch (e) { console.warn('[RushOrders] DB reconnect failed:', e.message); }
+  }
   if (dbDeps?.isConnected?.()) {
     try {
       rawOrders = await fetchOpenOrdersViaDB(dbDeps, { futureCut, warehouse });
-      // Customer tier needs OCRD.GroupNum — only worth the extra query when tiers are configured.
-      if (highTierGroups.length && rawOrders.length) {
-        const cardCodes = [...new Set(rawOrders.map(o => o.CardCode).filter(Boolean))];
-        const groupMap  = await fetchGroupNumsViaDB(dbDeps, cardCodes);
-        for (const o of rawOrders) o.GroupNum = groupMap.get(o.CardCode) ?? '';
-      }
       source = dbDeps.getActiveType();
     } catch (dbErr) {
       console.warn('[RushOrders] DB Direct failed, falling back to Service Layer:', dbErr.message);
@@ -501,7 +481,8 @@ export async function runRushOrderScan(sap, {
     if (warehouse) filter += ` and ShipToCode eq '${warehouse.replace(/'/g, "''")}'`;
     rawOrders = await fetchAllPaginated(sap, '/Orders', {
       $filter: filter,
-    }, { pageSize: 20, maxItems: 500 });
+      $select: 'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocumentStatus',
+    }, { pageSize: 100, maxItems: 500 });
     source = 'service-layer';
   }
 
@@ -532,10 +513,9 @@ export async function runRushOrderScan(sap, {
     let linesOk = false;
     if (dbDeps?.isConnected?.()) {
       try {
-        const linesByOrder = await fetchOrderLinesViaDB(dbDeps, needsAnalysis.map(o => o.DocEntry));
-        for (const order of needsAnalysis) order.DocumentLines = linesByOrder.get(order.DocEntry) || [];
-        const allLines = needsAnalysis.flatMap(o => o.DocumentLines);
-        stockMap = await checkStockViaDB(dbDeps, [...new Set(allLines.map(l => l.ItemCode).filter(Boolean))]);
+        const r = await fetchLinesAndStockViaDB(dbDeps, needsAnalysis.map(o => o.DocEntry));
+        for (const order of needsAnalysis) order.DocumentLines = r.linesByOrder.get(order.DocEntry) || [];
+        stockMap = r.stockMap;
         linesOk = true;
       } catch (dbErr) {
         console.warn('[RushOrders] DB Direct (lines/stock) failed, falling back to Service Layer:', dbErr.message);
@@ -564,16 +544,26 @@ export async function runRushOrderScan(sap, {
   }
 
   // ── Step 4: AI recommendation + escalation ─────────────────────────────
-  for (const order of needsAnalysis) {
-    order._aiRec = aiDeps
-      ? await getAIRecommendation(aiDeps, order, stockMap, cfg)
-      : ruleFallback(order, stockMap, cfg);
+  // AI only for the top-scored orders (needsAnalysis is already sorted by score),
+  // all fired in one parallel round; the rest get the instant rule-based recommendation.
+  const AI_MAX_ORDERS = 5, AI_CONCURRENCY = 5;
+  let nextRec = 0;
+  const recWorkers = Array.from({ length: Math.min(AI_CONCURRENCY, needsAnalysis.length) }, async () => {
+    while (nextRec < needsAnalysis.length) {
+      const idx   = nextRec++;
+      const order = needsAnalysis[idx];
+      order._aiRec = aiDeps && idx < AI_MAX_ORDERS
+        ? await getAIRecommendation(aiDeps, order, stockMap, cfg)
+        : ruleFallback(order, stockMap, cfg);
 
-    // ── Escalation engine ────────────────────────────────────────────────
-    if (!dryRun && createActivities && order._aiRec) {
-      order._activityCreated = await createSAPActivity(sap, order, order._aiRec);
+      // ── Escalation engine ──────────────────────────────────────────────
+      if (!dryRun && createActivities && order._aiRec) {
+        order._activityCreated = await createSAPActivity(sap, order, order._aiRec);
+      }
     }
-  }
+  });
+  await Promise.all(recWorkers);
+  console.log(`[RushOrders] scan done in ${Date.now() - today.getTime()} ms — source=${source}, orders=${rawOrders.length}, analysed=${needsAnalysis.length}`);
 
   // ── Step 5: Summary ─────────────────────────────────────────────────────
   const all       = scored;
@@ -616,11 +606,12 @@ export function createRushOrderRouter(deps) {
   const {
     requireAuth, getActiveSap, AI_PROVIDER, USE_AI, gptChatComplete, azureMessagesCreate,
     isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap,
+    ensureConnected,
   } = deps;
   const router  = Router();
   const _aiDeps = () => USE_AI ? { AI_PROVIDER, gptChatComplete, azureMessagesCreate } : null;
   const _dbDeps = isConnected
-    ? { isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap }
+    ? { isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap, ensureConnected }
     : null;
 
   // GET /api/rush-orders/config
@@ -651,6 +642,44 @@ export function createRushOrderRouter(deps) {
         dbDeps: _dbDeps,
       });
       res.json({ ok: true, ...result });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // POST /api/rush-orders/ai-insight — on-demand AI (the scan itself is rule-based and instant).
+  // Body: { orders: [top CRITICAL/URGENT orders from the scan, with DocumentLines], stockMap, summary, autoApproveMaxCost, maxExpediteCost }
+  router.post('/ai-insight', requireAuth, async (req, res) => {
+    try {
+      const aiDeps = _aiDeps();
+      if (!aiDeps) return res.json({ ok: false, error: 'AI not configured.' });
+      const {
+        orders = [], stockMap = {}, summary = {},
+        autoApproveMaxCost = 500, maxExpediteCost = 5000,
+      } = req.body || {};
+      const cfg = { ...DEFAULT_CFG, autoApproveMaxCost, maxExpediteCost };
+      const top = orders.slice(0, AI_INSIGHT_MAX_ORDERS);
+
+      const overview = top.map(o => ({
+        docNum: o.DocNum, customer: o.CardName, due: String(o.DocDueDate || '').slice(0, 10),
+        value: Number(o.DocTotal || 0), score: o._score, tag: o._tag, daysLeft: o._daysLeft,
+        shortLines: (o.DocumentLines || []).filter(l => (stockMap[l.ItemCode]?.available || 0) < (l.OpenQty || 0)).length,
+      }));
+      const narrativePrompt = `Rush order scan result (SAP Business One). Today: ${new Date().toISOString().slice(0, 10)}.
+Totals: scanned=${summary.totalScanned || 0}, critical=${summary.critical || 0}, urgent=${summary.urgent || 0}, monitor=${summary.monitor || 0}.
+Top orders (shortLines = lines with insufficient stock): ${JSON.stringify(overview)}
+
+Write a short markdown insight (max 150 words): 1) the biggest risk, 2) the top 3 orders to act on today and why, 3) one stock/supply action. Use the order numbers. No preamble.`;
+
+      const [recs, narrative] = await Promise.all([
+        Promise.all(top.map(o => getAIRecommendation(aiDeps, o, stockMap, cfg))),
+        Promise.race([
+          callAI(aiDeps, [{ role: 'user', content: narrativePrompt }], 'You are a concise supply-chain operations analyst.', 400),
+          new Promise(resolve => setTimeout(() => resolve(''), AI_TIMEOUT_MS)),
+        ]),
+      ]);
+
+      const byDocEntry = {};
+      top.forEach((o, i) => { byDocEntry[o.DocEntry ?? o.DocNum] = recs[i]; });
+      res.json({ ok: true, recs: byDocEntry, narrative: narrative || '' });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 

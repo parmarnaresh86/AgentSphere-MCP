@@ -734,7 +734,7 @@ html[data-ui="fiori"] .owb-dd div:hover,html[data-ui="fiori"] .owb-dd div.hl{bac
       api: '/api/ocr-po-scan', color: '#6366f1', icon: '📦',
       title: 'Purchase Order Scan Agent',
       subtitle: 'Document on the left · SAP Purchase Order on the right · review, correct and post',
-      dropText: 'Upload a supplier quotation / purchase order',
+      dropText: 'Upload a supplier PO',
       doneTitle: 'Purchase Order posted to SAP',
       form: poForm,
     });

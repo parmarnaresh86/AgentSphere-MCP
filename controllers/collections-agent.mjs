@@ -16,6 +16,8 @@ import {
 import { ptpRepo } from '../lib/insight-store.mjs';
 
 const PTP_GRACE_DAYS = 3;
+const OVERDUE_BUCKETS = AGING_BUCKETS.filter(b => b !== 'Current');
+const bucketKey = b => `b_${b.replace(/\W/g, '_')}`;
 
 // Evaluates each open promise against actual incoming payments and persists
 // the outcome (kept / broken) so collectors see promise reliability.
@@ -62,6 +64,10 @@ async function run(k, p) {
   const promises = evaluatePromises(k.company, ptpRepo.list(k.company), payments, asOf);
 
   const search = String(p.search || '').trim().toLowerCase();
+  // A code picked from the customer list matches exactly; free text matches code or name.
+  const exactCard = search && [...customers.keys()].find(code => code.toLowerCase() === search);
+  const fromDate = String(p.fromDate || '').slice(0, 10);
+  const toDate = String(p.toDate || '').slice(0, 10);
   const minDays = num(p.minOverdueDays);
 
   // Invoice level
@@ -72,7 +78,9 @@ async function run(k, p) {
       docDate: inv.docDate, dueDate: inv.dueDate, total: round(inv.total), balance: round(inv.balance),
       daysOverdue, bucket: agingBucket(daysOverdue),
     };
-  }).filter(r => !search || r.cardCode.toLowerCase().includes(search) || r.cardName.toLowerCase().includes(search));
+  }).filter(r => (!search || (exactCard ? r.cardCode === exactCard
+      : r.cardCode.toLowerCase().includes(search) || r.cardName.toLowerCase().includes(search)))
+    && (!fromDate || r.docDate >= fromDate) && (!toDate || r.docDate <= toDate));
 
   // Customer level
   const byCard = new Map();
@@ -137,6 +145,12 @@ async function run(k, p) {
     return { bucket: b, amount: round(amt), share: totalOut ? round((amt / totalOut) * 100, 1) : 0, customers: new Set(rows.map(r => r.cardCode)).size, invoices: rows.length };
   });
 
+  // Overdue invoices with the balance repeated in its own aging-bucket column.
+  const overdueInv = invRows.filter(r => r.daysOverdue > 0).sort((a, z) => z.daysOverdue - a.daysOverdue)
+    .map(r => ({ ...r, ...Object.fromEntries(OVERDUE_BUCKETS.map(b => [bucketKey(b), r.bucket === b ? r.balance : null])) }));
+
+  const topOut = [...byCard.values()].sort((a, z) => z.outstanding - a.outstanding).slice(0, 10);
+
   const top = overdueCustomers[0];
   const insight = overdueCustomers.length
     ? `**${fmtAmt(totalOverdue)} overdue across ${overdueCustomers.length} customers (${totalOut ? Math.round((totalOverdue / totalOut) * 100) : 0}% of receivables).**\n\n` +
@@ -147,7 +161,7 @@ async function run(k, p) {
       (promisesDue.length ? `- ${promisesDue.length} promise(s) fall due within 7 days — verify receipts.\n` : '')
     : '**No overdue receivables.** All open invoices are within terms.';
 
-  const aiContext = `COLLECTIONS SNAPSHOT as of ${asOf}
+  const aiContext = `COLLECTIONS SNAPSHOT as of ${asOf}${search ? ` | Customer filter: ${p.search}` : ''}${fromDate || toDate ? ` | Invoice dates ${fromDate || '…'} to ${toDate || '…'}` : ''}
 Outstanding ${fmtAmt(totalOut)} | Overdue ${fmtAmt(totalOverdue)} | >90d ${fmtAmt(over90)} | DSO ${dso ?? 'n/a'} | Overdue customers ${overdueCustomers.length}
 AGING: ${bucketRows.map(b => `${b.bucket}=${fmtAmt(b.amount)}`).join(', ')}
 PRIORITY WORKLIST (score 0-100, higher = chase first):
@@ -156,12 +170,6 @@ PROMISES: ${promises.slice(0, 15).map(x => `${x.cardName} ${fmtAmt(x.amount)} by
 
   const actions = [
     { id: 'email', label: 'Draft email', kind: 'text', endpoint: '/api/collections-agent/draft-email' },
-    { id: 'ptp', label: 'Log promise', kind: 'form', endpoint: '/api/collections-agent/ptp', refresh: true,
-      fields: [{ key: 'amount', label: 'Promised amount', type: 'number', from: 'overdue' },
-        { key: 'promiseDate', label: 'Promise date', type: 'date', default: addDays(asOf, 7) },
-        { key: 'note', label: 'Note', type: 'text' }] },
-    { id: 'activity', label: 'Log call in SAP', kind: 'post', endpoint: '/api/collections-agent/activity',
-      confirm: 'Create a follow-up phone-call Activity in SAP for {cardName}?' },
   ];
 
   return {
@@ -175,9 +183,15 @@ PROMISES: ${promises.slice(0, 15).map(x => `${x.cardName} ${fmtAmt(x.amount)} by
       { label: 'Promises due ≤7d', value: promisesDue.length, fmt: 'int' },
       { label: 'Broken promises', value: broken.length, fmt: 'int', tone: broken.length ? 'bad' : 'good' },
     ],
-    chart: { title: 'Receivables aging', type: 'bar', labels: bucketRows.map(b => b.bucket), series: [{ name: 'Balance', values: bucketRows.map(b => b.amount) }] },
+    charts: [
+      { title: 'Receivables aging', type: 'bar', labels: bucketRows.map(b => b.bucket), series: [{ name: 'Balance', values: bucketRows.map(b => b.amount) }] },
+      { title: 'Top 10 outstanding by customer', type: 'bar', horizontal: true, stacked: true,
+        labels: topOut.map(c => c.cardName || c.cardCode),
+        series: [{ name: 'Overdue', values: topOut.map(c => round(c.overdue)), color: '#DC2626' },
+          { name: 'Not yet due', values: topOut.map(c => round(c.outstanding - c.overdue)), color: '#94A3B8' }] },
+    ],
     tabs: [
-      { key: 'worklist', label: `Collection worklist (${overdueCustomers.length})`, rowKey: 'cardCode', actions,
+      { key: 'worklist', label: `Collection worklist (${overdueCustomers.length})`, rowKey: 'cardCode', actions, totals: true,
         rows: overdueCustomers,
         columns: [
           { key: 'priority', label: 'Priority', fmt: 'badge' }, { key: 'cardName', label: 'Customer', sub: 'cardCode' },
@@ -186,15 +200,19 @@ PROMISES: ${promises.slice(0, 15).map(x => `${x.cardName} ${fmtAmt(x.amount)} by
           { key: 'onTimeRate', label: 'On-time %', fmt: 'pct' }, { key: 'ptp', label: 'Promise' },
           { key: 'score', label: 'Score', fmt: 'score', invert: true }, { key: 'action', label: 'Recommended action', wrap: true },
         ] },
-      { key: 'invoices', label: `Overdue invoices (${invRows.filter(r => r.daysOverdue > 0).length})`,
-        rows: invRows.filter(r => r.daysOverdue > 0).sort((a, z) => z.daysOverdue - a.daysOverdue),
+      { key: 'invoices', label: `Overdue invoices (${overdueInv.length})`, totals: true,
+        // Grouped by customer; each group row totals the balance per aging bucket.
+        groupBy: { key: 'cardCode', label: 'cardName', unit: 'invoices', groupUnit: 'customers',
+          sum: ['total', 'balance', ...OVERDUE_BUCKETS.map(bucketKey)], max: ['daysOverdue'], sortBy: 'balance' },
+        rows: overdueInv,
         columns: [
           { key: 'docNum', label: 'Invoice #' }, { key: 'cardName', label: 'Customer', sub: 'cardCode' },
           { key: 'docDate', label: 'Posted', fmt: 'date' }, { key: 'dueDate', label: 'Due', fmt: 'date' },
           { key: 'daysOverdue', label: 'Days overdue', fmt: 'int' }, { key: 'bucket', label: 'Bucket', fmt: 'badge' },
           { key: 'total', label: 'Invoice total', fmt: 'amt' }, { key: 'balance', label: 'Balance', fmt: 'amt' },
+          ...OVERDUE_BUCKETS.map(b => ({ key: bucketKey(b), label: `${b} days`, fmt: 'amt' })),
         ] },
-      { key: 'aging', label: 'Aging summary', rows: bucketRows,
+      { key: 'aging', label: 'Aging summary', rows: bucketRows, totals: ['amount', 'invoices'],
         columns: [
           { key: 'bucket', label: 'Bucket', fmt: 'badge' }, { key: 'amount', label: 'Balance', fmt: 'amt' },
           { key: 'share', label: 'Share', fmt: 'pct' }, { key: 'customers', label: 'Customers', fmt: 'int' }, { key: 'invoices', label: 'Invoices', fmt: 'int' },
@@ -251,6 +269,21 @@ export function createCollectionsAgentRouter(deps) {
         const inv = last?.tabs?.find(t => t.key === 'invoices')?.rows.filter(r => r.cardCode === cardCode) || [];
         return { c, inv };
       };
+
+      // Filter-bar pick list: customer master (cached 10 min per company).
+      const lookupCache = new Map();
+      router.post('/lookups', h.requireAuth, async (req, res) => {
+        try {
+          const k = h.kit();
+          const hit = lookupCache.get(k.company);
+          if (hit && Date.now() - hit.at < 600_000) return res.json({ ok: true, ...hit.data });
+          const customers = [...(await loadPartners(k, 'C')).values()]
+            .map(c => ({ code: c.cardCode, name: c.cardName })).sort((a, b) => a.code.localeCompare(b.code));
+          const data = { customers };
+          lookupCache.set(k.company, { at: Date.now(), data });
+          res.json({ ok: true, ...data });
+        } catch (e) { res.status(e instanceof AgentDataError ? 400 : 500).json({ ok: false, error: e.message }); }
+      });
 
       router.post('/draft-email', h.requireAuth, async (req, res) => {
         const { c, inv } = findCustomer(req, req.body?.row?.cardCode);

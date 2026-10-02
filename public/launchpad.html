@@ -2,6 +2,7 @@
 <html lang="en-US">
 <head>
 <meta charset="utf-8">
+<script src="/app-locale.js"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AgentSphere</title>
 <!-- Fiori theme home screen (admin: Company Setup → Theme). Tiles open the
@@ -549,8 +550,10 @@ const SPACES = [
    {o:'nav-inv-gi',t:'Goods Issue',s:'Issue stock out',i:'outbox',perm:'inventory.workflow.goods_issue'},
    {o:'nav-inv-gr',t:'Goods Receipt',s:'Receive stock in',i:'inbox',perm:'inventory.workflow.goods_receipt'},
   ]},
-  {title:'Stock & Warehouse',tiles:[
+  {title:'Reports',tiles:[
    {o:'nav-inv-dashboard',t:'Inventory Dashboard',s:'Stock, ledger, aging, valuation, profit',i:'bar-chart',perm:'inventory.dashboard'},
+  ]},
+  {title:'Stock & Warehouse',tiles:[
    {p:'show stock levels',t:'Stock Levels',s:'On hand, committed, available',i:'inventory',perm:'inventory.stock_levels'},
    {p:'show in stock only items',t:'In-Stock Items',s:'Items with stock',i:'sap-box',perm:'inventory.in_stock_items'},
    {p:'pick list for order',t:'Pick List',s:'Pick lines for an order',i:'checklist-item',perm:'inventory.pick_list'},
@@ -604,7 +607,7 @@ const SPACES = [
    {o:'nav-po-workflow',t:'PO → Sales Order',s:'Customer PO workflow',i:'customer-order-entry',perm:'ai.sales.po_workflow',ai:1},
   ]},
   {title:'OCR Processing',tiles:[
-   {o:'nav-ocr-po-scan',t:'Scan Purchase Order',s:'Read a customer PO',i:'camera',perm:'ai.ocr.po_scan',ai:1},
+   {o:'nav-ocr-po-scan',t:'Scan PO',s:'Read a customer PO',i:'camera',perm:'ai.ocr.po_scan',ai:1},
    {o:'nav-ocr-expense',t:'Scan Expense Invoice',s:'Read an expense bill',i:'expense-report',perm:'ai.ocr.expense',ai:1},
    {o:'nav-ocr-apinv',t:'Scan A/P Invoice',s:'Read a vendor invoice',i:'pdf-attachment',perm:'ai.ocr.apinv',ai:1},
    {o:'nav-ocr-inward',t:'Scan Inward',s:'Read an inward slip',i:'journey-arrive',perm:'ai.ocr.inward',ai:1},
@@ -1269,7 +1272,7 @@ api('/auth/me').then(u => {
 function loadInsights(){
   const finance = canIns('finance.receivables') || canIns('finance.payables');
   return api('/api/db-connections/status').then(s => {
-    if (s.currency) { CUR = s.currency; LOCALE = CUR.code === 'INR' ? 'en-IN' : 'en-US'; }
+    if (s.currency) { CUR = s.currency; LOCALE = CUR.code === 'INR' ? 'en-IN' : 'en-US'; setAppCurrency(s.currency); }
     if (!s.connected) return;
     return Promise.all([
       api('/api/home/insights').then(h => { HOME = h; }).catch(() => {}),

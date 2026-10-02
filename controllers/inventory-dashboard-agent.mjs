@@ -588,8 +588,11 @@ export function createInventoryDashboardRouter(deps) {
       const k = await kit();
       if (req.query.refresh) _master.delete(k.company);
       const m = await loadMaster(k);
+      // Company local currency drives number/date formatting on the page (USD → en-US, INR → en-IN).
+      const currency = deps.getCompanyCurrency ? await deps.getCompanyCurrency().catch(() => null) : null;
       res.json({
         ok: true, branchEnabled: m.branchEnabled,
+        currency: currency ? { code: currency.code, symbol: currency.symbol } : { code: 'USD', symbol: '$' },
         warehouses: [...m.warehouses.values()].sort((a, z) => a.whsCode.localeCompare(z.whsCode)),
         itemGroups: [...m.groups.entries()].map(([code, name]) => ({ code, name })).sort((a, z) => a.name.localeCompare(z.name)),
         branches: [...m.branches.entries()].map(([id, name]) => ({ id, name })),

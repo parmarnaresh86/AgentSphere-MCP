@@ -38,9 +38,10 @@ export const INV_MODES = {
 // SAP object type of an Inventory Transfer Request, used as BaseType on stock transfer lines
 const ITR_OBJECT_TYPE = 1250000001;
 
-const COLOR  = '#0f766e';
-const BG     = '#f0fdfa';
-const BORDER = '#99f6e4';
+// SAP S/4HANA Fiori palette (same as the Sales / Purchase agents; was teal)
+const COLOR  = '#0a6ed1';
+const BG     = '#f5f9fd';
+const BORDER = '#b0d5f5';
 
 const _sessions = new Map();
 const SESSION_TTL_MS = 4 * 3600 * 1000;
@@ -201,8 +202,9 @@ async function buildLine(session, sap, raw) {
 
   // Batch/serial-managed items consumed from stock (transfer/issue) must be picked
   // from the actual warehouse stock (see /batch-serials) — a typed number can't be
-  // trusted to exist there. Goods Receipt creates new batches, so it keeps a typed
-  // Batch No.; serial creation on receipt is still out of scope for this form.
+  // trusted to exist there. Goods Receipt creates new batches, so the user types
+  // one or more Batch Nos. (with qty) instead; serial creation on receipt is still
+  // out of scope for this form.
   let batches = [];
   let serials = [];
   if (info.serial && mode !== 'str') {
@@ -214,9 +216,20 @@ async function buildLine(session, sap, raw) {
   }
   if (info.batch && mode !== 'str') {
     if (mode === 'gr') {
-      const batch = String(raw.batch || '').trim();
-      if (!batch) return { error: `<strong>${escHtml(itemCode)}</strong> is batch-managed — please enter a <strong>Batch No.</strong> for this line.` };
-      batches = [{ batch, qty: quantity }];
+      const isDate = d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+      batches = (Array.isArray(raw.batches) ? raw.batches : raw.batch ? [{ batch: raw.batch, qty: quantity }] : [])
+        .map(b => ({
+          batch: String(b?.batch || '').trim(), qty: Number(b?.qty),
+          ...(isDate(b?.expiry) ? { expiry: b.expiry } : {}),
+          ...(isDate(b?.mfg)    ? { mfg: b.mfg }       : {}),
+        }))
+        .filter(b => b.batch && b.qty > 0);
+      if (!batches.length) return { error: `<strong>${escHtml(itemCode)}</strong> is batch-managed — use the <strong>Add Batches…</strong> button to enter batch numbers for this line.` };
+      const names = batches.map(b => b.batch.toLowerCase());
+      if (new Set(names).size !== names.length) return { error: `Duplicate batch number entered for <strong>${escHtml(itemCode)}</strong>.` };
+      const total = batches.reduce((s, b) => s + b.qty, 0);
+      if (Math.abs(total - quantity) > 1e-6)
+        return { error: `Batch quantity (${fmtQty(total)}) does not match line quantity (${fmtQty(quantity)}) for <strong>${escHtml(itemCode)}</strong>.` };
     } else {
       batches = Array.isArray(raw.batches) ? raw.batches.filter(b => b && b.batch && Number(b.qty) > 0) : [];
       if (!batches.length) return { error: `<strong>${escHtml(itemCode)}</strong> is batch-managed — use the <strong>Select…</strong> button to pick batches for this line.` };
@@ -380,10 +393,13 @@ function buildLineHtml(session, items, warehouses) {
   const priceField = mode === 'gr'
     ? `<div><div style="${S.label}">Unit Price</div><input type="number" id="inva-price-${idx}" placeholder="Item cost" min="0" step="0.01" style="${S.input}"></div>` : '';
   // Batch/serial-managed items consumed from stock (transfer/issue) are picked from
-  // actual warehouse stock via a modal (invaPickBatchSerial); Goods Receipt still
-  // takes a typed Batch No. since it's creating new stock, not selecting existing.
+  // actual warehouse stock via a modal (invaPickBatchSerial); Goods Receipt creates
+  // new stock, so its modal (invaEnterGrBatches) lets the user type several batches.
   const batchField = mode === 'str' ? '' : mode === 'gr'
-    ? `<div><div style="${S.label}">Batch No.</div><input type="text" id="inva-batch-${idx}" placeholder="If batch item" style="${S.input}"></div>`
+    ? `<div><div style="${S.label}">Batches</div>
+         <button type="button" onclick="invaEnterGrBatches(${idx})" style="${S.btn2};width:100%;text-align:left">📦 Add Batches…</button>
+         <div id="inva-alloc-${idx}" style="font-size:10.5px;color:#9ca3af;margin-top:2px">Not required</div>
+       </div>`
     : `<div><div style="${S.label}">Batch / Serial</div>
          <button type="button" onclick="invaPickBatchSerial(${idx})" style="${S.btn2};width:100%;text-align:left">📦 Select…</button>
          <div id="inva-alloc-${idx}" style="font-size:10.5px;color:#9ca3af;margin-top:2px">Not required</div>
@@ -436,7 +452,7 @@ function linesTableHtml(session, { removable = false } = {}) {
     </tr>`).join('');
   const total = session.lines.reduce((s, l) => s + Number(l.quantity || 0), 0);
   return `<table style="width:100%;border-collapse:collapse;background:#fff">
-    <tr style="background:#ccfbf1;color:${COLOR}"><th style="${S.th}">#</th><th style="${S.th}">Item</th><th style="${S.th};text-align:right">Qty</th>${whHead}
+    <tr style="background:#eef6fc;color:${COLOR}"><th style="${S.th}">#</th><th style="${S.th}">Item</th><th style="${S.th};text-align:right">Qty</th>${whHead}
       ${mode === 'gr' ? `<th style="${S.th};text-align:right">Price</th>` : ''}${mode === 'str' ? '' : `<th style="${S.th}">Batch</th>`}${removable ? '<th></th>' : ''}</tr>
     ${rows}
   </table>
@@ -490,7 +506,7 @@ function buildRequestListHtml(requests) {
   return `<div style="${S.card}">
     <div style="${S.title}">🔁 Open Stock Transfer Requests (${requests.length})</div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;background:#fff;min-width:520px">
-      <tr style="background:#ccfbf1;color:${COLOR}"><th style="${S.th}">Request</th><th style="${S.th}">Date</th><th style="${S.th}">Due</th><th style="${S.th}">From → To</th><th style="${S.th}">Comments</th><th></th></tr>
+      <tr style="background:#eef6fc;color:${COLOR}"><th style="${S.th}">Request</th><th style="${S.th}">Date</th><th style="${S.th}">Due</th><th style="${S.th}">From → To</th><th style="${S.th}">Comments</th><th></th></tr>
       ${rows}
     </table></div>
     <div style="font-size:11.5px;color:#6b7280;margin-top:8px">Or type a request number in the chat box.</div>
@@ -516,7 +532,7 @@ function buildRequestLinesHtml(req, items) {
     <div style="${S.title}">🔁 Request #${req.docNum} — ${escHtml(req.fromWh)} → ${escHtml(req.toWh)}</div>
     ${req.comments ? `<div style="font-size:12px;color:#374151;margin-bottom:8px">📝 ${escHtml(req.comments)}</div>` : ''}
     <div style="overflow-x:auto"><table id="inva-rl-table" style="width:100%;border-collapse:collapse;background:#fff;min-width:560px">
-      <tr style="background:#ccfbf1;color:${COLOR}"><th></th><th style="${S.th}">Item</th><th style="${S.th}">From → To</th><th style="${S.th};text-align:right">Requested</th><th style="${S.th};text-align:right">Open</th><th style="${S.th}">Transfer Qty</th><th style="${S.th}">Batch / Serial</th></tr>
+      <tr style="background:#eef6fc;color:${COLOR}"><th></th><th style="${S.th}">Item</th><th style="${S.th}">From → To</th><th style="${S.th};text-align:right">Requested</th><th style="${S.th};text-align:right">Open</th><th style="${S.th}">Transfer Qty</th><th style="${S.th}">Batch / Serial</th></tr>
       ${rows}
     </table></div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
@@ -534,7 +550,7 @@ function buildSuccessHtml(session, result, printUrl) {
       <button onclick="poaShowPrintModal('${printUrl}','${escHtml(cfg.docName)} #${result.DocNum}')" style="${S.btn};padding:7px 18px">🖨️ Print</button>
     </div>
     <table style="width:100%;border-collapse:collapse;margin-bottom:12px;background:#fff">
-      <tr style="background:#ccfbf1"><td style="padding:7px 12px;font-size:12px;font-weight:700;color:${COLOR};width:35%">Document No.</td><td style="padding:7px 12px;font-size:13.5px;font-weight:700;color:${COLOR}">#${result.DocNum}</td></tr>
+      <tr style="background:#eef6fc"><td style="padding:7px 12px;font-size:12px;font-weight:700;color:${COLOR};width:35%">Document No.</td><td style="padding:7px 12px;font-size:13.5px;font-weight:700;color:${COLOR}">#${result.DocNum}</td></tr>
       <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Doc Entry</td><td style="padding:7px 12px;font-size:12.5px">${result.DocEntry}</td></tr>
       <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Details</td><td style="padding:7px 12px;font-size:12.5px">${headerSummary(session)}</td></tr>
       <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Posting Date</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(String(result.DocDate || today()).slice(0, 10))}</td></tr>
@@ -553,7 +569,11 @@ function buildPayload(session, action) {
     ...(action.comments ? { Comments: String(action.comments).slice(0, 254) } : {}),
     ...(action.memo     ? { JournalMemo: String(action.memo).slice(0, 50) }   : {}),
   };
-  const batchOf  = l => (l.batches?.length ? { BatchNumbers: l.batches.map(b => ({ BatchNumber: String(b.batch), Quantity: Number(b.qty) })) } : {});
+  const batchOf  = l => (l.batches?.length ? { BatchNumbers: l.batches.map(b => ({
+    BatchNumber: String(b.batch), Quantity: Number(b.qty),
+    ...(b.expiry ? { ExpiryDate: sapDate(b.expiry) } : {}),
+    ...(b.mfg    ? { ManufacturingDate: sapDate(b.mfg) } : {}),
+  })) } : {});
   const serialOf = l => (l.serials?.length ? { SerialNumbers: l.serials.map(s => ({ InternalSerialNumber: String(s.serial), ...(s.sysNumber ? { SystemSerialNumber: Number(s.sysNumber) } : {}), Quantity: 1 })) } : {});
   const uomOf    = l => (l.uom ? { UoMCode: l.uom } : {});
 

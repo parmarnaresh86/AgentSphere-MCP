@@ -37,6 +37,11 @@ const monthLabel = key => `${MON[Number(key.slice(5, 7)) - 1]} ${key.slice(2, 4)
 const daysInMonth = key => new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)), 0)).getUTCDate();
 const monthRange = (from, n) => Array.from({ length: n }, (_, i) => addMonths(from, i));
 
+// Per-item series from the last run, so a row's chart / override grid opens
+// instantly without re-running the whole analysis. Keyed by company + user.
+const lastRuns = new Map();
+const runKey = (company, req) => `${company}|${String(req?.user?.id ?? req?.user?.username ?? 'anon')}`;
+
 // ── Exponential smoothing (ETS A,Ad,A) ───────────────────────────────────────
 // One-step-ahead fit over the whole series; the grid search keeps the lowest
 // SSE per model form, then AIC picks between simple / trend / trend+season so
@@ -218,7 +223,7 @@ function lotSize(need, rule) {
 }
 
 // ── Analysis ─────────────────────────────────────────────────────────────────
-async function run(k, p) {
+async function run(k, p, ctx = {}) {
   const asOf = p.asOf;
   const historyMonths = clamp(Math.round(num(p.historyMonths) || 36), 6, 60);
   const horizon = clamp(Math.round(num(p.horizonMonths) || 12), 3, 18);
@@ -231,6 +236,8 @@ async function run(k, p) {
   const source = String(p.demandSource || 'invoices') === 'orders' ? 'orders' : 'invoices';
   const warehouse = String(p.warehouse || '').trim();
   const groupFilter = String(p.group || '').trim().toLowerCase();
+  // A group picked from the list matches exactly; free text still means "contains".
+  const groupMatch = g => { const v = String(g || '').toLowerCase(); return v === groupFilter || v.includes(groupFilter); };
   const focus = String(p.item || '').trim();
 
   const cur = asOf.slice(0, 7);
@@ -268,7 +275,7 @@ async function run(k, p) {
   for (const code of codes) {
     const it = items.get(code);
     if (!it) continue;                                   // non-inventory lines
-    if (groupFilter && !it.group.toLowerCase().includes(groupFilter)) continue;
+    if (groupFilter && !groupMatch(it.group)) continue;
     const dm = demand.get(code) || new Map();
     const full = histMonths.map(mo => Math.max(0, dm.get(mo) || 0));
     const mtd = Math.max(0, dm.get(cur) || 0);
@@ -393,33 +400,46 @@ async function run(k, p) {
   // ── Timeline (focus item in qty, else all items in value) ─────────────────
   const focusRow = focus ? rows.find(r => r.itemCode.toLowerCase() === focus.toLowerCase()) : null;
   if (focus && !focusRow) throw new AgentDataError(`Item ${focus} has no demand or open POs in this window${groupFilter ? ' / group filter' : ''}.`);
-  const set = focusRow ? [focusRow] : rows;
-  const w = r => (focusRow ? 1 : r.unitCost);
   const showHist = histMonths.slice(-Math.min(historyMonths, 24));
   const offset = historyMonths - showHist.length;
-  const timeline = [];
-  showHist.forEach((mo, j) => {
-    const i = offset + j;
-    let actual = 0, fitted = 0, hasFit = false, supply = 0;
-    for (const r of set) {
-      actual += r._full[i] * w(r);
-      supply += r._poHist[i] * w(r);
-      const fi = r._y0 >= 0 ? i - r._y0 : -1;
-      const fv = fi >= 0 ? r._fitted[fi] : null;
-      if (fv != null) { fitted += Math.max(0, fv) * w(r); hasFit = true; }
-    }
-    timeline.push({ month: monthLabel(mo), key: mo, phase: 'Actual', actual: round(actual), forecast: hasFit ? round(fitted) : null, lower: null, upper: null, supply: round(supply), inventory: null, planned: null });
+  const buildTimeline = (set, w) => {
+    const timeline = [];
+    showHist.forEach((mo, j) => {
+      const i = offset + j;
+      let actual = 0, fitted = 0, hasFit = false, supply = 0;
+      for (const r of set) {
+        actual += r._full[i] * w(r);
+        supply += r._poHist[i] * w(r);
+        const fi = r._y0 >= 0 ? i - r._y0 : -1;
+        const fv = fi >= 0 ? r._fitted[fi] : null;
+        if (fv != null) { fitted += Math.max(0, fv) * w(r); hasFit = true; }
+      }
+      timeline.push({ month: monthLabel(mo), key: mo, phase: 'Actual', actual: round(actual), forecast: hasFit ? round(fitted) : null, lower: null, upper: null, supply: round(supply), inventory: null, planned: null });
+    });
+    planMonths.forEach((mo, i) => {
+      // Item errors are treated as independent, so band half-widths add in quadrature.
+      let f = 0, hw2 = 0, supply = 0, inv = 0, planned = 0;
+      for (const r of set) {
+        f += r._fc[i].value * w(r); hw2 += (r._fc[i].hw * w(r)) ** 2;
+        supply += r._proj[i].supply * w(r); inv += r._proj[i].invC * w(r); planned += r._proj[i].planned * w(r);
+      }
+      timeline.push({ month: monthLabel(mo), key: mo, phase: i === 0 ? 'Current (MTD)' : 'Forecast', actual: i === 0 ? round(set.reduce((a, r) => a + r.mtd * w(r), 0)) : null,
+        forecast: round(f), lower: round(Math.max(0, f - Math.sqrt(hw2))), upper: round(f + Math.sqrt(hw2)), supply: round(supply), inventory: round(inv), planned: round(planned) });
+    });
+    return timeline;
+  };
+  const chartSpec = (title, timeline) => ({
+    title, type: 'bar', labels: timeline.map(t => t.month),
+    series: [
+      { name: 'Actual demand', values: timeline.map(t => t.actual), color: '#0F766E' },
+      { name: 'Supply (PO)', values: timeline.map(t => t.supply), color: '#CBD5E1' },
+      { name: 'Forecast', type: 'line', values: timeline.map(t => t.forecast), color: '#2563EB' },
+      { name: `Lower ${conf}%`, type: 'line', values: timeline.map(t => t.lower), color: '#93C5FD' },
+      { name: `Upper ${conf}%`, type: 'line', values: timeline.map(t => t.upper), color: '#93C5FD' },
+      { name: 'Projected inventory', type: 'line', values: timeline.map(t => t.inventory), color: '#D97706' },
+    ],
   });
-  planMonths.forEach((mo, i) => {
-    // Item errors are treated as independent, so band half-widths add in quadrature.
-    let f = 0, hw2 = 0, supply = 0, inv = 0, planned = 0;
-    for (const r of set) {
-      f += r._fc[i].value * w(r); hw2 += (r._fc[i].hw * w(r)) ** 2;
-      supply += r._proj[i].supply * w(r); inv += r._proj[i].invC * w(r); planned += r._proj[i].planned * w(r);
-    }
-    timeline.push({ month: monthLabel(mo), key: mo, phase: i === 0 ? 'Current (MTD)' : 'Forecast', actual: i === 0 ? round(set.reduce((a, r) => a + r.mtd * w(r), 0)) : null,
-      forecast: round(f), lower: round(Math.max(0, f - Math.sqrt(hw2))), upper: round(f + Math.sqrt(hw2)), supply: round(supply), inventory: round(inv), planned: round(planned) });
-  });
+  const timeline = focusRow ? buildTimeline([focusRow], () => 1) : buildTimeline(rows, r => r.unitCost);
   const unitWord = focusRow ? 'qty' : 'value';
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
@@ -452,8 +472,8 @@ async function run(k, p) {
   const projRows = [...rows].sort((a, b) => riskRank[a.status] - riskRank[b.status] || 'ABC'.indexOf(a.abc) - 'ABC'.indexOf(b.abc) || b.horizonValue - a.horizonValue);
   const paceRows = rows.filter(r => r.paceStatus !== 'NO PLAN').sort((a, b) => Math.abs(100 - (b.pace ?? 100)) * b.planThisMonth * b.unitCost - Math.abs(100 - (a.pace ?? 100)) * a.planThisMonth * a.unitCost);
   const accRows = withHist.concat(rows.filter(r => r.accuracyPct == null)).sort((a, b) => b.histTotal * b.unitCost - a.histTotal * a.unitCost);
-  const focusAct = { id: 'focus', label: 'Chart', kind: 'focus', param: 'item', from: 'itemCode' };
-  const overrideAct = { id: 'override', label: 'Override', kind: 'form', endpoint: '/api/demand-forecast-agent/override', refresh: true,
+  const focusAct = { id: 'chart', label: 'Chart', kind: 'chart', endpoint: '/api/demand-forecast-agent/item', from: 'itemCode' };
+  const overrideAct = { id: 'override', label: 'Override', kind: 'grid', load: '/api/demand-forecast-agent/item', endpoint: '/api/demand-forecast-agent/override', refresh: true,
     fields: [{ key: 'month', label: `Month (YYYY-MM, ${planMonths[0]} … ${planMonths[planMonths.length - 1]})`, default: planMonths[1] || planMonths[0] },
       { key: 'qty', label: 'Forecast qty (leave blank to clear that month)' }] };
   const clearAct = { id: 'clear', label: 'Clear overrides', kind: 'post', endpoint: '/api/demand-forecast-agent/override/clear', refresh: true, confirm: 'Remove all manual forecast overrides for {itemCode}?' };
@@ -470,12 +490,12 @@ async function run(k, p) {
         { key: 'openPo', label: 'Open PO', fmt: 'num' }, { key: 'minInv', label: 'Min inv.', fmt: 'num', hint: `Daily forecast × lead time × (1 + ${marginPct}%)` },
         ...monthCols('p', false), { key: 'firstShort', label: 'Stock-out' }, { key: 'coverMonths', label: 'Cover (m)', fmt: 'num' },
         { key: 'leadTime', label: 'Lead (d)', fmt: 'int', sub: 'leadTimeSource' }] },
-    { key: 'orders', label: `Required orders (${recs.length})`, rows: recs,
+    { key: 'orders', label: `Required orders (${recs.length})`, rows: recs, actions: [focusAct],
       columns: [{ key: 'urgency', label: 'Urgency', fmt: 'badge', badge: { EXPEDITE: 'red', 'ORDER NOW': 'amber', PLANNED: 'blue' } }, ...idCols,
         { key: 'vendor', label: 'Pref. vendor' }, { key: 'month', label: 'Needed in' }, { key: 'qty', label: 'Order qty', fmt: 'num', strong: true },
         { key: 'value', label: 'Value', fmt: 'amt' }, { key: 'orderBy', label: 'Order by', fmt: 'date' }, { key: 'leadTime', label: 'Lead (d)', fmt: 'int' },
         { key: 'note', label: 'Note', wrap: true }] },
-    { key: 'supply', label: `Open PO supply (${poRows.length})`, rows: poRows,
+    { key: 'supply', label: `Open PO supply (${poRows.length})`, rows: poRows, actions: [focusAct],
       columns: [{ key: 'arrivalStatus', label: 'Arrival', fmt: 'badge', badge: { STALE: 'grey', LATE: 'red', 'DUE 30D': 'amber', SCHEDULED: 'green' } },
         { key: 'docNum', label: 'PO #' }, { key: 'cardName', label: 'Vendor', sub: 'cardCode' }, { key: 'itemCode', label: 'Item', sub: 'itemName' },
         { key: 'openQty', label: 'Open qty', fmt: 'num' }, { key: 'value', label: 'Value', fmt: 'amt' }, { key: 'arrival', label: 'Arrival date', fmt: 'date' },
@@ -500,6 +520,22 @@ async function run(k, p) {
         { key: 'supply', label: 'Supply (PO)', fmt: 'num' }, { key: 'inventory', label: 'Projected inventory', fmt: 'num' },
         { key: 'planned', label: 'Required order', fmt: 'num' }] },
   ];
+  // Keep each item's private series for /item before they are stripped from the payload.
+  const priv = new Map(rows.map(r => [r.itemCode, { ...r }]));
+  lastRuns.set(runKey(k.company, ctx.req), {
+    at: Date.now(),
+    item(code) {
+      const r = priv.get(code);
+      if (!r) return null;
+      return {
+        itemCode: r.itemCode, itemName: r.itemName, abc: r.abc, status: r.status, method: r.method,
+        chart: chartSpec(`${r.itemCode} — ${r.itemName} (qty)`, buildTimeline([r], () => 1)),
+        months: planMonths.map((mo, i) => ({ key: mo, label: monthLabel(mo), stat: round(r._fc[i].stat, 2), value: round(r._fc[i].value, 2),
+          manual: r._fc[i].manual, lower: round(r._fc[i].lower, 2), upper: round(r._fc[i].upper, 2), inventory: round(r._proj[i].invC, 2) })),
+      };
+    },
+  });
+  if (lastRuns.size > 50) lastRuns.delete(lastRuns.keys().next().value);
   for (const r of rows) for (const kk of Object.keys(r)) if (kk.startsWith('_')) delete r[kk];
 
   // ── Narrative ─────────────────────────────────────────────────────────────
@@ -540,18 +576,7 @@ ${latePo.length ? `LATE PO LINES:\n${ctxTable(latePo, [['docNum', 'PO'], ['cardN
       { label: 'Forecast bias', value: bias, fmt: 'pct', tone: Math.abs(bias) <= 10 ? 'good' : 'warn', hint: '+ under-forecast / − over-forecast' },
       { label: `MTD pace ${monthLabel(cur)}`, value: planMtdValue > 0 ? (mtdValue / planMtdValue) * 100 : null, fmt: 'pct' },
     ],
-    chart: {
-      title: focusRow ? `${focusRow.itemCode} — ${focusRow.itemName} (qty)` : 'All items — demand, supply & projected inventory (value)',
-      type: 'bar', labels: timeline.map(t => t.month),
-      series: [
-        { name: 'Actual demand', values: timeline.map(t => t.actual), color: '#0F766E' },
-        { name: 'Supply (PO)', values: timeline.map(t => t.supply), color: '#CBD5E1' },
-        { name: 'Forecast', type: 'line', values: timeline.map(t => t.forecast), color: '#2563EB' },
-        { name: `Lower ${conf}%`, type: 'line', values: timeline.map(t => t.lower), color: '#93C5FD' },
-        { name: `Upper ${conf}%`, type: 'line', values: timeline.map(t => t.upper), color: '#93C5FD' },
-        { name: 'Projected inventory', type: 'line', values: timeline.map(t => t.inventory), color: '#D97706' },
-      ],
-    },
+    chart: chartSpec(focusRow ? `${focusRow.itemCode} — ${focusRow.itemName} (qty)` : 'All items — demand, supply & projected inventory (value)', timeline),
     tabs, insight, aiContext,
     paramsOut: { item: focusRow ? focusRow.itemCode : '' },
     notes: [
@@ -572,26 +597,64 @@ export function createDemandForecastAgentRouter(deps) {
     run,
     extra(router, h) {
       const company = () => h.kit().company;
+      const fail = (res, e) => res.status(e instanceof AgentDataError ? 400 : 500).json({ ok: false, error: e.message });
+
+      // Filter-bar pick lists: inventory items, item groups, warehouses (cached 10 min per company).
+      const lookupCache = new Map();
+      router.post('/lookups', h.requireAuth, async (req, res) => {
+        try {
+          const k = h.kit();
+          const hit = lookupCache.get(k.company);
+          if (hit && Date.now() - hit.at < 600_000) return res.json({ ok: true, ...hit.data });
+          const items = await loadItems(k);
+          const groups = [...new Set([...items.values()].map(i => i.group).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+          let warehouses = [];
+          if (await k.has('OWHS', 'WhsName')) warehouses = (await k.run(`SELECT {WhsCode}, {WhsName} FROM @OWHS`)).map(r => ({ code: r.WhsCode, name: r.WhsName || '' }));
+          const data = {
+            items: [...items.values()].map(i => ({ code: i.itemCode, name: i.itemName, group: i.group })).sort((a, b) => a.code.localeCompare(b.code)),
+            groups, warehouses,
+          };
+          lookupCache.set(k.company, { at: Date.now(), data });
+          res.json({ ok: true, ...data });
+        } catch (e) { fail(res, e); }
+      });
+
+      // One item's chart + monthly forecast (statistical vs manual) from the last Analyze.
+      router.post('/item', h.requireAuth, (req, res) => {
+        try {
+          const code = String(req.body?.itemCode || req.body?.row?.itemCode || '').trim();
+          if (!code) return res.status(400).json({ ok: false, error: 'Item required.' });
+          const last = lastRuns.get(runKey(company(), req));
+          if (!last) return res.status(400).json({ ok: false, error: 'Run Analyze first.' });
+          const d = last.item(code);
+          if (!d) return res.status(400).json({ ok: false, error: `${code} is not in the current analysis (filters / no demand).` });
+          res.json({ ok: true, ...d });
+        } catch (e) { fail(res, e); }
+      });
+
+      // Manual forecast overrides. Accepts { months: { 'YYYY-MM': qty | '' } } or the
+      // single { month, qty } form; a blank qty clears that month.
       router.post('/override', h.requireAuth, (req, res) => {
         try {
           const { row = {}, values = {} } = req.body || {};
-          const month = String(values.month || '').trim();
           if (!row.itemCode) return res.status(400).json({ ok: false, error: 'Item required.' });
-          if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ ok: false, error: 'Month must be YYYY-MM.' });
+          const changes = values.months && typeof values.months === 'object' ? values.months : { [String(values.month || '').trim()]: values.qty };
           const s = agentSettingsRepo.get(company(), SETTINGS_KEY);
           const ov = s.overrides || {};
           const item = ov[row.itemCode] || {};
-          const raw = String(values.qty ?? '').trim();
-          if (raw === '') delete item[month];
-          else {
+          let set = 0, cleared = 0;
+          for (const [month, val] of Object.entries(changes)) {
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ ok: false, error: 'Month must be YYYY-MM.' });
+            const raw = String(val ?? '').trim();
+            if (raw === '') { if (month in item) { delete item[month]; cleared++; } continue; }
             const q = Number(raw);
-            if (!Number.isFinite(q) || q < 0) return res.status(400).json({ ok: false, error: 'Quantity must be a number ≥ 0.' });
-            item[month] = q;
+            if (!Number.isFinite(q) || q < 0) return res.status(400).json({ ok: false, error: `Quantity for ${month} must be a number ≥ 0.` });
+            item[month] = q; set++;
           }
           if (Object.keys(item).length) ov[row.itemCode] = item; else delete ov[row.itemCode];
           agentSettingsRepo.set(company(), SETTINGS_KEY, { ...s, overrides: ov });
-          res.json({ ok: true, message: raw === '' ? `Override for ${row.itemCode} ${month} cleared.` : `${row.itemCode} ${month} forecast set to ${raw}.` });
-        } catch (e) { res.status(e instanceof AgentDataError ? 400 : 500).json({ ok: false, error: e.message }); }
+          res.json({ ok: true, message: `${row.itemCode}: ${set} month(s) overridden, ${cleared} cleared. Re-analyzing…` });
+        } catch (e) { fail(res, e); }
       });
       router.post('/override/clear', h.requireAuth, (req, res) => {
         try {
@@ -602,7 +665,7 @@ export function createDemandForecastAgentRouter(deps) {
           delete ov[code];
           agentSettingsRepo.set(company(), SETTINGS_KEY, { ...s, overrides: ov });
           res.json({ ok: true, message: `Manual overrides for ${code} removed.` });
-        } catch (e) { res.status(e instanceof AgentDataError ? 400 : 500).json({ ok: false, error: e.message }); }
+        } catch (e) { fail(res, e); }
       });
     },
   });

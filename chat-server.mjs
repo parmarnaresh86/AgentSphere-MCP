@@ -709,6 +709,12 @@ const DIM_SQL_FILTER = {
   SalesEmployeeOrBuyerNumber:  { tbl:'T0', col:'SlpCode', numeric: true },
 };
 
+// Rush Order agent: re-open the saved DB Direct (HANA/MSSQL) connection if it dropped.
+async function rushEnsureDb() {
+  const savedDb = dbConnRepo.getActive();
+  if (savedDb) await connectDB(savedDb);
+}
+
 async function queryDimensionDetail(value, ctx) {
   const { groupByField, dimName, fromDate, toDate } = ctx;
 
@@ -1836,7 +1842,7 @@ async function demoReply(message) {
     const sap = getActiveSap();
     try {
       const aiDeps = USE_AI ? { AI_PROVIDER, gptChatComplete, azureMessagesCreate } : null;
-      const dbDeps = isConnected() ? { isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap } : null;
+      const dbDeps = { isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap, ensureConnected: rushEnsureDb };
       const result = await runRushOrderScan(sap, { urgentWithinDays: intent.urgentWithinDays, aiDeps, dbDeps, dryRun: true });
       const { orders, summary: s } = result;
 
@@ -6304,6 +6310,7 @@ app.use('/api/activity-agent', createActivityAgentRouter({
 app.use('/api/rush-orders', createRushOrderRouter({
   requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
   isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap,
+  ensureConnected: rushEnsureDb,
 }));
 
 // ── Sales Analysis Dashboard routes ───────────────────────────────────────
@@ -6333,7 +6340,7 @@ app.use('/api/purchase-analysis', createPurchaseAnalysisRouter({
 // ── Inventory Dashboard & Reports (stock, ledger, posting, valuation, aging, dead stock, profit) ──
 app.use('/api/inventory-dashboard', createInventoryDashboardRouter({
   requireAuth,
-  isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns,
+  isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, getCompanyCurrency,
   // reconnect the saved DB Direct connection if it dropped, like the other DB-backed agents
   ensureConnected: async () => {
     if (isConnected()) return;

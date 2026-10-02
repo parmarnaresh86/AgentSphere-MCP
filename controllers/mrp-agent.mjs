@@ -13,6 +13,86 @@ import { Router } from 'express';
 import nodemailer from 'nodemailer';
 import { executeSQL, isConnected, getActiveType, getActiveConfig, tableRef, getTableColumns, resolveFieldMap } from '../db-connector.mjs';
 import { qcol } from '../lib/sql-dialect.mjs';
+import db, { connRepo } from '../db.mjs';
+
+// ── Persisted draft POs ──────────────────────────────────────────────────────
+// Draft POs survive page reloads and MRP re-runs until they are posted to SAP
+// (or discarded). Items sitting in an open draft are flagged by
+// /inventory-check so the UI does not offer them again.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS mrp_draft_pos (
+    id          TEXT PRIMARY KEY,
+    company_id  TEXT NOT NULL,
+    vendor_code TEXT,
+    status      TEXT NOT NULL DEFAULT 'draft',
+    doc_num     INTEGER,
+    doc_entry   INTEGER,
+    data        TEXT NOT NULL,
+    created_by  TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    posted_at   DATETIME
+  );
+  CREATE INDEX IF NOT EXISTS idx_mrp_draft_pos_company ON mrp_draft_pos (company_id, status);
+`);
+
+function mrpCompanyId() {
+  const conn = connRepo.getActive();
+  return conn ? conn.company : 'default';
+}
+
+const draftRepo = {
+  rowToDraft(r) {
+    const d = JSON.parse(r.data);
+    return { ...d, id: r.id, status: r.status, docNum: r.doc_num ?? undefined, docEntry: r.doc_entry ?? undefined,
+      createdAt: r.created_at, postedAt: r.posted_at || undefined };
+  },
+  // Open drafts + anything posted in the last 24h (so the user still sees the result)
+  list(companyId) {
+    return db.prepare(`SELECT * FROM mrp_draft_pos WHERE company_id=? AND
+        (status='draft' OR (status='posted' AND posted_at >= datetime('now','-1 day')))
+        ORDER BY status='posted', created_at`).all(companyId).map(r => this.rowToDraft(r));
+  },
+  get(companyId, id) {
+    const r = db.prepare(`SELECT * FROM mrp_draft_pos WHERE company_id=? AND id=?`).get(companyId, id);
+    return r ? this.rowToDraft(r) : null;
+  },
+  openForVendor(companyId, vendorCode) {
+    const r = vendorCode
+      ? db.prepare(`SELECT * FROM mrp_draft_pos WHERE company_id=? AND status='draft' AND vendor_code=? LIMIT 1`).get(companyId, vendorCode)
+      : db.prepare(`SELECT * FROM mrp_draft_pos WHERE company_id=? AND status='draft' AND vendor_code IS NULL LIMIT 1`).get(companyId);
+    return r ? this.rowToDraft(r) : null;
+  },
+  openItemCodes(companyId) {
+    const map = new Map();
+    for (const d of this.list(companyId)) {
+      if (d.status !== 'draft') continue;
+      for (const l of d.lines || []) map.set(l.itemCode, d.id);
+    }
+    return map;
+  },
+  save(companyId, draft, user) {
+    const { id, status = 'draft', docNum, docEntry, createdAt, postedAt, ...data } = draft;
+    db.prepare(`INSERT INTO mrp_draft_pos (id, company_id, vendor_code, status, doc_num, doc_entry, data, created_by)
+        VALUES (?,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET vendor_code=excluded.vendor_code, status=excluded.status,
+          doc_num=excluded.doc_num, doc_entry=excluded.doc_entry, data=excluded.data, updated_at=CURRENT_TIMESTAMP`)
+      .run(id, companyId, data.vendorCode || null, status, docNum ?? null, docEntry ?? null, JSON.stringify(data), user || null);
+  },
+  markPosted(companyId, id, docNum, docEntry) {
+    db.prepare(`UPDATE mrp_draft_pos SET status='posted', doc_num=?, doc_entry=?, posted_at=CURRENT_TIMESTAMP,
+        updated_at=CURRENT_TIMESTAMP WHERE company_id=? AND id=?`).run(docNum, docEntry, companyId, id);
+  },
+  remove(companyId, id) {
+    return db.prepare(`DELETE FROM mrp_draft_pos WHERE company_id=? AND id=? AND status='draft'`).run(companyId, id).changes;
+  },
+};
+
+const recalcDraft = d => {
+  d.lines = (d.lines || []).map(l => ({ ...l, lineTotal: Number(l.unitPrice || 0) * Number(l.qty || 0) }));
+  d.totalAmount = d.lines.reduce((s, l) => s + l.lineTotal, 0);
+  return d;
+};
 
 const _mrpAuditLog = [];
 const _mrpSessions = new Map();
@@ -140,6 +220,61 @@ export async function mrpFetchPricesViaDB(itemCodes) {
   return rows;
 }
 
+// Vendor details for a draft PO header — local cache first, then Service Layer
+async function mrpLookupVendor(sap, vendorCode) {
+  const cid = mrpCompanyId();
+  let v = null;
+  try {
+    const c = db.prepare(`SELECT CardCode, CardName, EmailAddress, Currency, PayTermsGrpCode FROM cache_business_partners
+        WHERE company_id=? AND CardCode=?`).get(cid, vendorCode);
+    if (c) v = { CardCode: c.CardCode, CardName: c.CardName, EmailAddress: c.EmailAddress, Currency: c.Currency, PaymentGroupCode: c.PayTermsGrpCode };
+  } catch { /* cache table may be empty */ }
+  if (!v) {
+    v = await sap.get(`/BusinessPartners('${String(vendorCode).replace(/'/g, "''")}')`,
+      { $select: "CardCode,CardName,EmailAddress,Currency,PaymentGroupCode" });
+  }
+  let paymentTerms = null;
+  if (v.PaymentGroupCode != null) {
+    try {
+      paymentTerms = db.prepare(`SELECT PaymentTermsGroupName FROM cache_payment_terms WHERE company_id=? AND GroupNumber=?`)
+        .get(cid, v.PaymentGroupCode)?.PaymentTermsGroupName || null;
+    } catch {}
+    if (!paymentTerms) {
+      try { paymentTerms = (await sap.get(`/PaymentTermsTypes(${v.PaymentGroupCode})`, { $select: "PaymentTermsGroupName" }))?.PaymentTermsGroupName || null; } catch {}
+    }
+  }
+  return {
+    vendorCode: v.CardCode, vendorName: v.CardName || v.CardCode,
+    vendorEmail: v.EmailAddress || null, vendorCurrency: v.Currency && v.Currency !== '##' ? v.Currency : 'GBP',
+    paymentGroupCode: v.PaymentGroupCode ?? null, paymentTerms,
+  };
+}
+
+// Re-read stock for the given items from SAP after a PO post and refresh the local
+// item cache, so on-order quantities are current everywhere. Non-fatal by design.
+async function mrpSyncItemStock(sap, itemCodes) {
+  const cid = mrpCompanyId();
+  const esc = s => String(s).replace(/'/g, "''");
+  const out = [];
+  for (let i = 0; i < itemCodes.length; i += 50) {
+    const chunk = itemCodes.slice(i, i + 50);
+    const r = await sap.get('/Items', {
+      $filter: chunk.map(c => `ItemCode eq '${esc(c)}'`).join(' or '),
+      $select: 'ItemCode,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,MinInventory',
+      $top: 50,
+    });
+    out.push(...(r.value || []));
+  }
+  const upd = db.prepare(`UPDATE cache_items SET QuantityOnStock=? WHERE company_id=? AND ItemCode=?`);
+  return out.map(it => {
+    try { upd.run(Number(it.QuantityOnStock || 0), cid, it.ItemCode); } catch {}
+    const onHand = Number(it.QuantityOnStock || 0), committed = Number(it.QuantityOrderedByCustomers || 0);
+    const onOrder = Number(it.QuantityOrderedFromVendors || 0), minStock = Number(it.MinInventory || 0);
+    return { itemCode: it.ItemCode, onHand, committed, onOrder, minStock,
+      available: onHand - committed, projected: onHand - committed + onOrder };
+  });
+}
+
 const MRP_GPT_TOOLS = [
   { type:"function", function:{ name:"run_mrp_check",
     description:"Scan all inventory items vs reorder points. Returns items below min stock with urgency, gap, reorder qty, preferred vendor and last price.",
@@ -231,9 +366,12 @@ export function createMrpAgentRouter(deps) {
         const minStock  = Number(it.MinInventory || 0);
         const maxStock  = Number(it.MaxInventory || 0);
         const available = onHand - committed;
-        if (available >= minStock) return null;
-        const gap        = minStock - available;
-        const reorderQty = Math.max(1, maxStock > 0 ? maxStock - available - onOrder : gap * 2);
+        // Open PO quantity counts toward supply, so an item whose shortfall is already
+        // covered by a posted PO is not suggested again.
+        const projected = available + onOrder;
+        if (projected >= minStock) return null;
+        const gap        = minStock - projected;
+        const reorderQty = Math.max(1, maxStock > 0 ? maxStock - projected : gap * 2);
         const urgency    = available <= 0 ? 'critical' : gap / minStock >= 0.7 ? 'high' : 'medium';
         return {
           itemCode: it.ItemCode, itemName: it.ItemName,
@@ -244,6 +382,10 @@ export function createMrpAgentRouter(deps) {
           lastPurchasePrice: 0, // fetched per-item in ai-analyze step
         };
       }).filter(Boolean);
+
+      // Flag items already sitting in an open (unposted) draft PO
+      const inDraft = draftRepo.openItemCodes(mrpCompanyId());
+      for (const it of items) it.draftId = inDraft.get(it.itemCode) || null;
 
       const summary = {
         total: items.length,
@@ -374,69 +516,180 @@ export function createMrpAgentRouter(deps) {
     }
   });
 
-  // 3. Build Draft POs — group enriched items by vendor, no SAP write yet
+  // 3. Build Draft POs — group selected items by vendor and persist them (no SAP write yet).
+  // Items merge into an existing open draft for the same vendor. Items with no preferred
+  // vendor go into an "unassigned" draft where the user picks the vendor before posting.
   router.post('/build-draft-pos', requireAuth, async (req, res) => {
     try {
       const { items } = req.body;
       if (!Array.isArray(items) || !items.length) return res.status(400).json({ ok: false, error: 'items required' });
+      const cid   = mrpCompanyId();
       const today = new Date();
+      const todayStr = today.toISOString().slice(0, 10);
 
       const byVendor = new Map();
       const noVendorItems = [];
       for (const item of items) {
-        if (!item.preferredVendor) { noVendorItems.push(item); continue; }
-        if (!byVendor.has(item.preferredVendor)) byVendor.set(item.preferredVendor, []);
-        byVendor.get(item.preferredVendor).push(item);
+        const vc = item.preferredVendor || null;
+        if (!vc) noVendorItems.push(item);
+        if (!byVendor.has(vc)) byVendor.set(vc, []);
+        byVendor.get(vc).push(item);
       }
 
       const suggestDate = lines => {
         const maxLead = lines.reduce((m, l) => Math.max(m, l.leadTime || 7), 7);
         return new Date(today.getTime() + maxLead * 86400000).toISOString().slice(0, 10);
       };
+      const toLine = l => ({
+        itemCode:  l.itemCode, itemName: l.itemName,
+        qty:       l.reorderQty, uom: l.uom,
+        unitPrice: l.unitPrice || 0,
+        lineTotal: (l.unitPrice || 0) * l.reorderQty,
+        urgency:   l.urgency,
+        leadTime:  l.leadTime || 7,
+      });
 
-      const draftPOs = [...byVendor.entries()].map(([vendorCode, lines]) => ({
-        id:               `mrp_${Date.now()}_${vendorCode}`,
-        vendorCode,
-        vendorName:       lines[0].vendorName || vendorCode,
-        vendorEmail:      lines[0].vendorEmail || null,
-        vendorCurrency:   lines[0].vendorCurrency || 'GBP',
-        paymentGroupCode: lines[0].paymentGroupCode ?? null,
-        paymentTerms:     lines[0].paymentTerms || null,
-        orderDate:        today.toISOString().slice(0, 10),
-        deliveryDate:     suggestDate(lines),
-        status:           'draft',
-        lines: lines.map(l => ({
-          itemCode:  l.itemCode, itemName: l.itemName,
-          qty:       l.reorderQty, uom: l.uom,
-          unitPrice: l.unitPrice || 0,
-          lineTotal: (l.unitPrice || 0) * l.reorderQty,
-          urgency:   l.urgency,
-        })),
-        totalAmount: lines.reduce((s, l) => s + (l.unitPrice || 0) * l.reorderQty, 0),
-      })).sort((a, b) => b.totalAmount - a.totalAmount);
+      const touched = [];
+      for (const [vendorCode, lines] of byVendor.entries()) {
+        let draft = draftRepo.openForVendor(cid, vendorCode);
+        if (draft) {
+          const codes = new Set(lines.map(l => l.itemCode));
+          draft.lines = [...draft.lines.filter(l => !codes.has(l.itemCode)), ...lines.map(toLine)];
+          draft.deliveryDate = suggestDate(draft.lines);
+        } else {
+          draft = {
+            id:               `mrp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            vendorCode,
+            vendorName:       vendorCode ? (lines[0].vendorName || vendorCode) : null,
+            vendorEmail:      lines[0].vendorEmail || null,
+            vendorCurrency:   lines[0].vendorCurrency || 'GBP',
+            paymentGroupCode: lines[0].paymentGroupCode ?? null,
+            paymentTerms:     lines[0].paymentTerms || null,
+            orderDate:        todayStr,
+            deliveryDate:     suggestDate(lines),
+            status:           'draft',
+            lines:            lines.map(toLine),
+          };
+        }
+        recalcDraft(draft);
+        draftRepo.save(cid, draft, req.user?.username);
+        touched.push(draft.id);
+      }
 
-      mrpLog('DRAFT_POS_BUILT', { count: draftPOs.length, noVendor: noVendorItems.length });
-      res.json({ ok: true, draftPOs, noVendorItems, generatedAt: today.toISOString() });
+      mrpLog('DRAFT_POS_BUILT', { count: touched.length, items: items.length, noVendor: noVendorItems.length });
+      res.json({ ok: true, draftPOs: draftRepo.list(cid), touched, noVendorItems, generatedAt: today.toISOString() });
+    } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // 3b. Saved draft POs — list / update (vendor, qty, price, delivery date) / discard
+  router.get('/drafts', requireAuth, (req, res) => {
+    try { res.json({ ok: true, draftPOs: draftRepo.list(mrpCompanyId()) }); }
+    catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  router.put('/drafts/:id', requireAuth, async (req, res) => {
+    try {
+      const cid = mrpCompanyId();
+      const draft = draftRepo.get(cid, req.params.id);
+      if (!draft) return res.status(404).json({ ok: false, error: 'Draft not found' });
+      if (draft.status !== 'draft') return res.status(400).json({ ok: false, error: 'Draft already posted' });
+      const { vendorCode, lines, deliveryDate } = req.body || {};
+
+      if (Array.isArray(lines)) {
+        const upd = new Map(lines.map(l => [l.itemCode, l]));
+        draft.lines = draft.lines
+          .filter(l => upd.has(l.itemCode))
+          .map(l => {
+            const u = upd.get(l.itemCode);
+            return { ...l,
+              qty:       u.qty != null ? Math.max(0, Number(u.qty)) : l.qty,
+              unitPrice: u.unitPrice != null ? Math.max(0, Number(u.unitPrice)) : l.unitPrice };
+          });
+        if (!draft.lines.length) {
+          draftRepo.remove(cid, draft.id);
+          mrpLog('DRAFT_DISCARDED', { draftId: draft.id, reason: 'all lines removed' });
+          return res.json({ ok: true, removed: true, draftPOs: draftRepo.list(cid) });
+        }
+      }
+      if (deliveryDate) draft.deliveryDate = String(deliveryDate).slice(0, 10);
+
+      if (vendorCode && vendorCode !== draft.vendorCode) {
+        const v = await mrpLookupVendor(getActiveSap(), vendorCode);
+        const other = draftRepo.openForVendor(cid, v.vendorCode);
+        if (other && other.id !== draft.id) {
+          // Vendor already has an open draft — merge this one into it
+          const codes = new Set(draft.lines.map(l => l.itemCode));
+          other.lines = [...other.lines.filter(l => !codes.has(l.itemCode)), ...draft.lines];
+          draftRepo.save(cid, recalcDraft(other), req.user?.username);
+          draftRepo.remove(cid, draft.id);
+          mrpLog('DRAFT_VENDOR_SET', { draftId: other.id, vendorCode: v.vendorCode, merged: true });
+          return res.json({ ok: true, mergedInto: other.id, draftPOs: draftRepo.list(cid) });
+        }
+        Object.assign(draft, v);
+        mrpLog('DRAFT_VENDOR_SET', { draftId: draft.id, vendorCode: v.vendorCode });
+      }
+
+      draftRepo.save(cid, recalcDraft(draft), req.user?.username);
+      res.json({ ok: true, draft, draftPOs: draftRepo.list(cid) });
+    } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  router.delete('/drafts/:id', requireAuth, (req, res) => {
+    try {
+      const cid = mrpCompanyId();
+      if (!draftRepo.remove(cid, req.params.id)) return res.status(404).json({ ok: false, error: 'Draft not found or already posted' });
+      mrpLog('DRAFT_DISCARDED', { draftId: req.params.id });
+      res.json({ ok: true, draftPOs: draftRepo.list(cid) });
+    } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // Vendor search for assigning a vendor to a draft — local BP cache first, SL fallback
+  router.get('/vendors', requireAuth, async (req, res) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      let rows = [];
+      try {
+        rows = db.prepare(`SELECT CardCode, CardName FROM cache_business_partners
+            WHERE company_id=? AND CardType='cSupplier' AND (CardCode LIKE ? OR CardName LIKE ?)
+            ORDER BY CardName LIMIT 30`).all(mrpCompanyId(), `%${q}%`, `%${q}%`);
+      } catch {}
+      if (!rows.length) {
+        const esc = s => s.replace(/'/g, "''");
+        const filter = "CardType eq 'cSupplier'" + (q ? ` and (contains(CardCode,'${esc(q)}') or contains(CardName,'${esc(q)}'))` : '');
+        const r = await getActiveSap().get('/BusinessPartners', { $filter: filter, $select: 'CardCode,CardName', $orderby: 'CardName', $top: 30 });
+        rows = r.value || [];
+      }
+      res.json({ ok: true, vendors: rows.map(v => ({ code: v.CardCode, name: v.CardName })) });
     } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
   // 4. Post PO to SAP B1 — triggers approval workflow automatically
   // Always via Service Layer: DB Direct (executeSQL) is SELECT-only by design, so writes
   // (PO creation) cannot go through ODBC/HANA regardless of which source read the data.
+  // Posts the saved draft (by draftId) so edits made in the Draft POs tab are what goes to SAP.
   router.post('/post-po', requireAuth, async (req, res) => {
     try {
-      const { draftPO } = req.body;
-      if (!draftPO) return res.status(400).json({ ok: false, error: 'draftPO required' });
+      const cid = mrpCompanyId();
+      const { draftId } = req.body;
+      const draftPO = draftId ? draftRepo.get(cid, draftId) : req.body.draftPO;
+      if (!draftPO) return res.status(400).json({ ok: false, error: 'draftId required' });
+      if (draftPO.status === 'posted') return res.status(400).json({ ok: false, error: `Already posted as PO #${draftPO.docNum}` });
+      if (!draftPO.vendorCode) return res.status(400).json({ ok: false, error: 'Assign a vendor before posting' });
+      const lines = (draftPO.lines || []).filter(l => Number(l.qty) > 0);
+      if (!lines.length) return res.status(400).json({ ok: false, error: 'No lines with quantity > 0' });
       const sap = getActiveSap();
       const today = new Date().toISOString().slice(0, 10);
+      // A draft saved on an earlier day posts with today's date
+      const docDate = draftPO.orderDate && draftPO.orderDate > today ? draftPO.orderDate : today;
+      const dueDate = draftPO.deliveryDate && draftPO.deliveryDate >= docDate ? draftPO.deliveryDate : docDate;
 
       const body = {
         CardCode:    draftPO.vendorCode,
-        DocDate:     draftPO.orderDate  || today,
-        DocDueDate:  draftPO.deliveryDate || today,
+        DocDate:     docDate,
+        DocDueDate:  dueDate,
         Comments:    `MRP Auto-PO — AI Procurement Agent — ${today}`,
         ...(draftPO.paymentGroupCode != null ? { PaymentGroupCode: draftPO.paymentGroupCode } : {}),
-        DocumentLines: (draftPO.lines || []).map(l => ({
+        DocumentLines: lines.map(l => ({
           ItemCode:  l.itemCode,
           Quantity:  Number(l.qty),
           UnitPrice: Number(l.unitPrice || 0),
@@ -445,14 +698,27 @@ export function createMrpAgentRouter(deps) {
       };
 
       const po = await sap.post('/PurchaseOrders', body);
+      if (draftId) draftRepo.markPosted(cid, draftId, po.DocNum, po.DocEntry);
       const entry = mrpLog('PO_POSTED', {
         docNum: po.DocNum, docEntry: po.DocEntry,
         vendorCode: draftPO.vendorCode, vendorName: draftPO.vendorName,
         totalAmount: draftPO.totalAmount,
       });
-      res.json({ ok: true, docNum: po.DocNum, docEntry: po.DocEntry, docStatus: po.DocumentStatus || 'bost_Open', logEntry: entry });
+
+      // Sync stock for the posted items (on-order qty now includes this PO)
+      let stock = [], stockSyncError = null;
+      try {
+        stock = await mrpSyncItemStock(sap, lines.map(l => l.itemCode));
+        mrpLog('STOCK_SYNCED', { docNum: po.DocNum, items: stock.length });
+      } catch (e) {
+        stockSyncError = e.message;
+        mrpLog('STOCK_SYNC_ERROR', { docNum: po.DocNum, error: e.message });
+      }
+
+      res.json({ ok: true, docNum: po.DocNum, docEntry: po.DocEntry, docStatus: po.DocumentStatus || 'bost_Open', logEntry: entry,
+        stock, stockSyncError, draftPOs: draftRepo.list(cid) });
     } catch(e) {
-      mrpLog('PO_POST_ERROR', { error: e.message, vendorCode: req.body?.draftPO?.vendorCode });
+      mrpLog('PO_POST_ERROR', { error: e.message, draftId: req.body?.draftId, vendorCode: req.body?.draftPO?.vendorCode });
       res.status(500).json({ ok: false, error: e.message });
     }
   });

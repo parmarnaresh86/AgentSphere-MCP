@@ -670,7 +670,7 @@ export const ALL_PERMISSIONS = [
   { key: 'ai.supply.vendor_perf',       label: 'Vendor Performance',       section: 'AI Agents', group: 'Supply Chain' },
 
   // AI Agents : OCR Processing
-  { key: 'ai.ocr.po_scan',  label: 'Scan Purchase Order',  section: 'AI Agents', group: 'OCR Processing' },
+  { key: 'ai.ocr.po_scan',  label: 'Scan PO',           section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.expense',  label: 'Scan Expense Invoice', section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.apinv',    label: 'Scan A/P Invoice',     section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.inward',   label: 'Scan Inward',          section: 'AI Agents', group: 'OCR Processing' },
@@ -968,6 +968,10 @@ const ONE_TIME_GRANTS = [
     keys: ['ai.supply.sc_forecast'] },
   // Inventory Dashboard & Reports (read-only) → whoever can already see Stock Levels.
   { name: 'inventory.dashboard.v1', trigger: ['inventory.stock_levels'],
+    keys: ['inventory.dashboard'] },
+  // …and to admin roles (anyone who can manage roles) — v1 missed admin roles
+  // that had never been given Stock Levels.
+  { name: 'inventory.dashboard.v2', trigger: ['admin.roles'],
     keys: ['inventory.dashboard'] },
   // Home Insights → whoever held any permission in that module, which is
   // exactly who saw those insight cards before they had keys of their own.

@@ -91,6 +91,66 @@ async function fetchSalesSignalsViaDB(fromDate, toDate) {
   }));
 }
 
+const PRICING_ITM1_CANDIDATES = { itemCode: ['ItemCode'], priceList: ['PriceList'], price: ['Price'], currency: ['Currency'] };
+
+// Actual price of every item on the SELECTED price list (ITM1) — this is what
+// the recommendation must be based on, since it is what apply writes back to.
+async function fetchListPricesViaDB(priceListNum) {
+  const cfg    = getActiveConfig();
+  const isHana = getActiveType() === 'hana';
+  const q      = n => qcol(n, isHana);
+  const cols   = await getTableColumns('ITM1');
+  const { resolved, missing } = resolveFieldMap(cols, PRICING_ITM1_CANDIDATES);
+  if (missing.length) throw new Error(`ITM1 field mapping incomplete: ${missing.join(', ')}`);
+
+  const sql = `SELECT ${q(resolved.itemCode)} AS ${q('ItemCode')}, ${q(resolved.price)} AS ${q('Price')}, ` +
+    `${q(resolved.currency)} AS ${q('Currency')} FROM ${tableRef('ITM1', cfg)} ` +
+    `WHERE ${q(resolved.priceList)} = ${Number(priceListNum)}`;
+  const rows = await executeSQL(sql);
+  return new Map(rows.map(r => [r.ItemCode, { price: Number(r.Price || 0), currency: r.Currency || '' }]));
+}
+
+// Writes one item's price on one price list the same way a manual edit in the
+// SAP item master / price list window does, then reads it back to confirm SAP
+// actually stored it. Always via Service Layer — DB Direct is SELECT-only.
+async function applyPriceListPrice(sap, itemCode, priceListNum, newPrice) {
+  const listNo = Number(priceListNum);
+  const price  = Math.round(Number(newPrice) * 1e6) / 1e6;
+  if (!itemCode || !listNo || !Number.isFinite(price) || price < 0)
+    throw new Error('Valid itemCode, priceListNum and newPrice are required');
+
+  const path = `/Items('${esc(itemCode)}')`;
+  const [item, list] = await Promise.all([
+    sap.get(path, { $select: 'ItemCode,ItemPrices' }),
+    sap.get(`/PriceLists(${listNo})`).catch(() => null),
+  ]);
+  const line = (item.ItemPrices || []).find(p => Number(p.PriceList) === listNo);
+  if (!line) throw new Error(`Price list ${listNo} not found on item ${itemCode}`);
+
+  const oldPrice = Number(line.Price || 0);
+  const update = { PriceList: listNo, Price: price };
+  const currency = line.Currency || list?.DefaultPrimeCurrency;
+  if (currency) update.Currency = currency;
+  // A list derived from another list (Factor x base) would recalculate over a
+  // plain Price write. Pointing the line's base at itself makes it a manual
+  // price — what SAP does when you overwrite a derived price by hand.
+  const base = Number(line.BasePriceList ?? list?.BasePriceList ?? listNo);
+  if (base && base !== listNo) { update.BasePriceList = listNo; update.Factor = 1; }
+
+  await sap.patch(path, { ItemPrices: [update] });
+
+  const after = await sap.get(path, { $select: 'ItemPrices' });
+  const saved = (after.ItemPrices || []).find(p => Number(p.PriceList) === listNo);
+  const savedPrice = Number(saved?.Price);
+  if (!saved || Math.abs(savedPrice - price) > 0.005)
+    throw new Error(`SAP did not store the new price for ${itemCode} on price list ${listNo} (now ${saved ? savedPrice : 'n/a'})`);
+
+  return {
+    itemCode, priceListNum: listNo, priceListName: list?.PriceListName || '',
+    oldPrice, newPrice: savedPrice, currency: saved.Currency || currency || '',
+  };
+}
+
 const PRICING_OPLN_CANDIDATES = { listNum: ['ListNum'], listName: ['ListName'], currency: ['PrimCurr'] };
 
 async function fetchPriceListsViaDB() {
@@ -120,12 +180,13 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
     const slFrom = fromDate.toISOString().slice(0, 10);
     const slTo   = today.toISOString().slice(0, 10);
 
-    let items, salesRows, source = 'service-layer';
+    let items, salesRows, listPrices, source = 'service-layer';
     if (isConnected()) {
       try {
-        [items, salesRows] = await Promise.all([
+        [items, salesRows, listPrices] = await Promise.all([
           fetchPricingItemsViaDB(),
           fetchSalesSignalsViaDB(slFrom, slTo),
+          fetchListPricesViaDB(priceListNum),
         ]);
         source = getActiveType();
       } catch (dbErr) {
@@ -136,7 +197,7 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
       const [itemsR, salesRowsR] = await Promise.allSettled([
         sap.get("/Items", {
           $filter: "SalesItem eq 'tYES' and Frozen eq 'tNO'",
-          $select: "ItemCode,ItemName,ItemsGroupCode,QuantityOnStock,MinInventory,MaxInventory,AvgStdPrice",
+          $select: "ItemCode,ItemName,ItemsGroupCode,QuantityOnStock,MinInventory,MaxInventory,AvgStdPrice,ItemPrices",
           $top: 1000,
         }),
         callSMLSVCPost("sales", buildParamList({ fromDate: fromStr, toDate: toStr })).catch(() => []),
@@ -144,6 +205,11 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
       items     = itemsR.status === 'fulfilled' ? (itemsR.value?.value || []) : [];
       salesRows = salesRowsR.status === 'fulfilled' ? (salesRowsR.value || []) : [];
       source    = 'service-layer';
+      listPrices = new Map();
+      for (const it of items) {
+        const p = (it.ItemPrices || []).find(x => Number(x.PriceList) === Number(priceListNum));
+        if (p) listPrices.set(it.ItemCode, { price: Number(p.Price || 0), currency: p.Currency || '' });
+      }
     }
     const dataSource = `all sale items · signals from SO/PO activity (${slFrom} – ${slTo})`;
 
@@ -165,11 +231,16 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
       const gp       = Number(sales.GrossProfitLC             || 0);
       const gpPct    = Number(sales.GPMarginPct               || 0);
 
-      // ── Current price derivation (four tiers) ────────────────────────────────
+      // ── Current price derivation (five tiers — selected price list first) ────
       const avgSellingPrice = revenue > 0 && quantity > 0 ? revenue / quantity : 0;
       const impliedPrice    = costPrice > 0 ? costPrice / (1 - marginTarget / 100) : 0;
+      const listEntry       = listPrices.get(it.ItemCode);
+      const listPrice       = listEntry?.price || 0;
       let currentPrice, priceSource;
-      if (avgSellingPrice > 0) {
+      if (listPrice > 0) {
+        currentPrice = listPrice;
+        priceSource  = `Price list ${priceListNum} price`;
+      } else if (avgSellingPrice > 0) {
         currentPrice = avgSellingPrice;
         priceSource  = 'Avg realized selling price (last 12 months)';
       } else if (impliedPrice > 0) {
@@ -323,7 +394,8 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
         recommendation,
         scenario,
         reason,
-        currency: '',
+        currency: listEntry?.currency || '',
+        listPrice,
         priceSource,
         factors: {
           demand: {
@@ -425,10 +497,8 @@ async function executePricingTool(name, args, sap, smlsvcDeps) {
     return { priceLists: r.value || [], source: 'service-layer' };
   }
   if (name === 'apply_price_change') {
-    await sap.patch(`/Items('${esc(args.itemCode)}')`, {
-      ItemPrices: [{ PriceList: Number(args.priceListNum), Price: Number(args.newPrice) }],
-    });
-    return { applied: true, itemCode: args.itemCode, priceListNum: args.priceListNum, newPrice: args.newPrice };
+    const r = await applyPriceListPrice(sap, args.itemCode, args.priceListNum, args.newPrice);
+    return { applied: true, ...r };
   }
   return { error: `Unknown pricing tool: ${name}` };
 }
@@ -479,11 +549,10 @@ export function createPricingAgentRouter(deps) {
       const { itemCode, priceListNum, newPrice } = req.body;
       if (!itemCode || !priceListNum || newPrice == null)
         return res.status(400).json({ ok: false, error: 'itemCode, priceListNum, and newPrice are required' });
-      const sap = getActiveSap();
-      await sap.patch(`/Items('${esc(itemCode)}')`, {
-        ItemPrices: [{ PriceList: Number(priceListNum), Price: Number(newPrice) }],
-      });
-      res.json({ ok: true, message: `Price updated for ${itemCode} → ${Number(newPrice).toFixed(2)} on price list ${priceListNum}` });
+      const r = await applyPriceListPrice(getActiveSap(), itemCode, priceListNum, newPrice);
+      const listLabel = r.priceListName ? `${r.priceListName} (${r.priceListNum})` : `price list ${r.priceListNum}`;
+      res.json({ ok: true, ...r,
+        message: `Price updated for ${itemCode} on ${listLabel}: ${r.oldPrice.toFixed(2)} → ${r.newPrice.toFixed(2)}${r.currency ? ' ' + r.currency : ''}` });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 

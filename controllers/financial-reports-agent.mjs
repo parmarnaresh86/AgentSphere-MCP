@@ -485,8 +485,9 @@ async function buildProfitLoss(periodCode, range = null) {
 
 // ── Trial Balance Agent ──────────────────────────────────────────────────────
 // Opening = balance before the first day, closing = balance at the end of the
-// last day. Period mode is just a range on period boundaries, so it is always
-// served by GLAccountPeriodBalanceQuery; mid-period dates fall back to JDT1.
+// last day. Period mode is just a range on period boundaries, so balances are
+// always served by GLAccountPeriodBalanceQuery; mid-period dates fall back to
+// JDT1. Debit/credit turnover is read from JDT1 in both modes.
 async function buildTrialBalance(fromCode, toCode, range = null) {
   const [periods, chart, pkg] = await Promise.all([loadPeriods(), loadChart(), hanaPackage()]);
   let pf, pt;
@@ -498,24 +499,36 @@ async function buildTrialBalance(fromCode, toCode, range = null) {
     if (pf.from > pt.from) [pf, pt] = [pt, pf];
   }
 
-  const [o, c] = await Promise.all([balanceAt(pkg, periods, pf.from, 'open'), balanceAt(pkg, periods, pt.to, 'close')]);
+  // Debit/Credit columns are gross turnover in the range, as in SAP's own
+  // Trial Balance (not the net movement split by sign). The calc views have
+  // no debit/credit split, so turnover always comes from JDT1. Without it, an
+  // account that nets to zero (every P&L account after year-end closing)
+  // would drop out of the report.
+  const jdt1 = tableRef('JDT1', getActiveConfig());
+  const [o, c, turnRows] = await Promise.all([
+    balanceAt(pkg, periods, pf.from, 'open'), balanceAt(pkg, periods, pt.to, 'close'),
+    executeSQL(`SELECT "Account" AS "A", SUM("Debit") AS "D", SUM("Credit") AS "C" FROM ${jdt1} WHERE "RefDate" BETWEEN '${pf.from}' AND '${pt.to}' GROUP BY "Account"`),
+  ]);
   const open = o.map, close = c.map, segCode = new Map([...o.seg, ...c.seg]);
+  const turnover = new Map(turnRows.map(r => [r.A, { dr: num(r.D), cr: num(r.C) }]));
   const { source, views } = mergeSources([o, c]);
+  if (!views.includes('JDT1')) views.push('JDT1');
 
   const rows = [];
   const drawerTotals = new Map();
   const tot = { openDr: 0, openCr: 0, moveDr: 0, moveCr: 0, closeDr: 0, closeCr: 0 };
-  for (const code of new Set([...open.keys(), ...close.keys()])) {
+  for (const code of new Set([...open.keys(), ...close.keys(), ...turnover.keys()])) {
     const a = chart.get(code);
     const o = open.get(code) || 0, c = close.get(code) || 0, m = c - o;
-    if (Math.abs(o) < 0.005 && Math.abs(c) < 0.005 && Math.abs(m) < 0.005) continue;
+    const t = turnover.get(code) || { dr: 0, cr: 0 };
+    if (Math.abs(o) < 0.005 && Math.abs(c) < 0.005 && Math.abs(t.dr) < 0.005 && Math.abs(t.cr) < 0.005) continue;
     const g = a?.group || 8, d = drawerOf(g);
     const row = {
       code, disp: segCode.get(code) || a?.fmt || code, name: a?.name || code, group: g, drawer: d.key,
       drawerLabel: drawerName(chart, g),
       section: ancestorAt(chart, code, 2)?.name || '',
       opening: o, movement: m, closing: c,
-      openDr: o > 0 ? o : 0, openCr: o < 0 ? -o : 0, moveDr: m > 0 ? m : 0, moveCr: m < 0 ? -m : 0, closeDr: c > 0 ? c : 0, closeCr: c < 0 ? -c : 0,
+      openDr: o > 0 ? o : 0, openCr: o < 0 ? -o : 0, moveDr: t.dr, moveCr: t.cr, closeDr: c > 0 ? c : 0, closeCr: c < 0 ? -c : 0,
     };
     rows.push(row);
     for (const k of Object.keys(tot)) tot[k] += row[k];
@@ -530,7 +543,7 @@ async function buildTrialBalance(fromCode, toCode, range = null) {
     fromPeriod: pf, toPeriod: pt, rows,
     drawers: [...drawerTotals.values()].sort((x, y) => x.group - y.group),
     totals: { ...tot, difference, balanced: Math.abs(difference) < 0.01, accountCount: rows.length,
-      movementAccounts: rows.filter(r => Math.abs(r.movement) >= 0.005).length },
+      movementAccounts: rows.filter(r => r.moveDr >= 0.005 || r.moveCr >= 0.005).length },
   });
 }
 
@@ -584,7 +597,8 @@ function reportContext(d) {
   const t = d.totals;
   const lines = [`TRIAL BALANCE ${d.fromPeriod.name} to ${d.toPeriod.name}, currency ${cur}, source ${d.source}.`,
     `Closing debit ${f(t.closeDr)}, closing credit ${f(t.closeCr)}, difference ${f(t.difference)} (${t.balanced ? 'balanced' : 'NOT balanced'}). ${t.accountCount} accounts with balances, ${t.movementAccounts} with movement in range.`,
-    `By drawer: ${d.drawers.map(x => `${x.label} Dr ${f(x.closeDr)} / Cr ${f(x.closeCr)}, movement ${f(x.movement)}`).join('; ')}`,
+    `Turnover in range: debits ${f(t.moveDr)}, credits ${f(t.moveCr)}.`,
+    `By drawer: ${d.drawers.map(x => `${x.label} Dr ${f(x.closeDr)} / Cr ${f(x.closeCr)}, net movement ${f(x.movement)}`).join('; ')}`,
     `\nLargest movements: ${[...d.rows].sort((a, b) => Math.abs(b.movement) - Math.abs(a.movement)).slice(0, 15).map(r => `${r.disp} ${r.name} ${f(r.movement)} (closing ${f(r.closing)})`).join('; ')}`,
     `\nLargest closing balances: ${[...d.rows].sort((a, b) => Math.abs(b.closing) - Math.abs(a.closing)).slice(0, 15).map(r => `${r.disp} ${r.name} ${f(r.closing)}`).join('; ')}`,
     `Balances are debit-positive (negative = credit).`];

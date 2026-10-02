@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<script src="/app-locale.js"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <meta http-equiv="Cache-Control" content="no-store"/>
 <title>Inventory Dashboard — SAP B1</title>
@@ -32,7 +33,6 @@ button{font-family:inherit}
 .shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;position:sticky;top:0}
 .shell-back{color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.2)}
 .shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
-.embedded .shell-back{display:none}
 .shell-icon{width:28px;height:28px;border-radius:4px;background:#0f766e;display:flex;align-items:center;justify-content:center;color:#fff}
 .shell-title{font-size:14px;font-weight:600;color:#fff}
 .shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
@@ -50,7 +50,13 @@ button{font-family:inherit}
 .fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .fg input,.fg select,.ms-btn{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);font-family:var(--font);outline:none}
 .fg input:focus,.fg select:focus,.ms-btn:focus{border-color:var(--blue);background:var(--white)}
-.fg input[type=date]{width:132px}
+.dwrap{position:relative;display:flex}
+.fg .dtxt{width:112px;border-top-right-radius:0;border-bottom-right-radius:0}
+.dbtn{height:30px;width:30px;border:1px solid var(--border);border-left:none;border-radius:0 var(--r) var(--r) 0;background:var(--white);cursor:pointer;font-size:13px}
+.dbtn:hover{background:var(--blue-light)}
+.fg input.dpick{position:absolute;right:0;bottom:0;width:30px;height:30px;opacity:0;pointer-events:none;padding:0;border:0}
+.fg .dtxt.bad{border-color:var(--red)}
+.cur{color:var(--muted);font-weight:600;text-transform:none}
 .fg.w-code input{width:170px}
 .fg.w-name input{width:170px}
 .ms-btn{min-width:150px;max-width:210px;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;overflow:hidden}
@@ -172,9 +178,9 @@ table.sub tr.op td{background:#F7F9FB;font-style:italic}
 </head>
 <body>
 <div class="shell-bar">
-  <a class="shell-back" href="/">← Back</a>
+  <a class="shell-back" href="/" onclick="return goBack()" title="Back">← Back</a>
   <div class="shell-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
-  <div><div class="shell-title">Inventory Dashboard &amp; Reports</div><div class="shell-subtitle">SAP B1 inventory journal (OINM) · live</div></div>
+  <div><div class="shell-title">Inventory Dashboard &amp; Reports</div><div class="shell-subtitle">SAP B1 inventory journal (OINM) · live · <span id="curNote">Amounts in USD ($)</span></div></div>
   <div class="shell-spacer"></div>
   <span class="shell-badge" id="badge">Ready</span>
   <button class="shell-btn" onclick="exportCsv()" title="Export the current report to CSV / Excel">⬇ Export</button>
@@ -182,8 +188,8 @@ table.sub tr.op td{background:#F7F9FB;font-style:italic}
 </div>
 
 <div class="filter-bar">
-  <div class="fg"><label>From date</label><input type="date" id="fFrom"/></div>
-  <div class="fg"><label>To date</label><input type="date" id="fTo"/></div>
+  <div class="fg"><label>From date</label><div class="dwrap"><input id="fFrom" class="dtxt" autocomplete="off"/><input type="date" class="dpick" data-native-date tabindex="-1" aria-hidden="true"/><button type="button" class="dbtn" title="Pick a date">📅</button></div></div>
+  <div class="fg"><label>To date</label><div class="dwrap"><input id="fTo" class="dtxt" autocomplete="off"/><input type="date" class="dpick" data-native-date tabindex="-1" aria-hidden="true"/><button type="button" class="dbtn" title="Pick a date">📅</button></div></div>
   <div class="presets">
     <button onclick="preset('mtd')">MTD</button><button onclick="preset('qtd')">QTD</button>
     <button onclick="preset('ytd')">YTD</button><button onclick="preset('ly')">Last yr</button>
@@ -205,6 +211,14 @@ table.sub tr.op td{background:#F7F9FB;font-style:italic}
 <script>
 const TOKEN = () => localStorage.getItem('hanny_token') || '';
 if (window.top !== window.self) document.body.classList.add('embedded');
+// Embedded in the main app (iframe panel): close the panel there instead of
+// loading the app inside the iframe. Standalone: follow the link to the app.
+function goBack() {
+  try {
+    if (window.top !== window.self && typeof window.parent.showChatPanel === 'function') { window.parent.showChatPanel(); return false; }
+  } catch {}
+  return true;
+}
 
 const TABS = [
   { key:'dashboard',    label:'Dashboard' },
@@ -219,16 +233,38 @@ const TABS = [
 
 // ── Formatting ───────────────────────────────────────────────────────────────
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const fmtAmt = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
-const fmtQty = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits:3 });
-const fmtInt = n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('en-US');
+// Number and date style follow the company's local currency (OADM.MainCurncy,
+// sent by /filters): INR → Indian grouping and DD/MM/YYYY, anything else → US
+// grouping and MM/DD/YYYY. Never the browser's own locale.
+let CUR = { code:'USD', symbol:'$' }, LOCALE = 'en-US';
+try { const pc = window.parent !== window && window.parent.APP_CURRENCY; if (pc && pc.code) { CUR = pc; LOCALE = pc.code === 'INR' ? 'en-IN' : 'en-US'; } } catch {}
+function setCurrency(c) {
+  if (c && c.code) CUR = { code:c.code, symbol:c.symbol || c.code };
+  LOCALE = CUR.code === 'INR' ? 'en-IN' : 'en-US';
+  if (window.Chart) Chart.defaults.locale = LOCALE;
+  const el = document.getElementById('curNote');
+  if (el) el.textContent = `Amounts in ${CUR.code}${sym() && sym() !== CUR.code ? ` (${sym()})` : ''}`;
+}
+const fmtAmt = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString(LOCALE, { minimumFractionDigits:2, maximumFractionDigits:2 });
+const fmtQty = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString(LOCALE, { maximumFractionDigits:3 });
+const fmtInt = n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString(LOCALE);
 const fmtPct = n => n == null || isNaN(n) ? '—' : `${Number(n).toFixed(1)}%`;
-const fmtShort = n => { const a = Math.abs(n); return a >= 1e9 ? (n/1e9).toFixed(2)+'B' : a >= 1e6 ? (n/1e6).toFixed(2)+'M' : a >= 1e3 ? (n/1e3).toFixed(1)+'K' : Number(n).toFixed(0); };
+const sym = () => String(CUR.symbol || '').trim();
+const fmtMoney = n => n == null || isNaN(n) ? '—' : `${n < 0 ? '-' : ''}${sym()}${fmtAmt(Math.abs(n))}`;
+const fmtShort = n => {
+  const a = Math.abs(n), sg = n < 0 ? '-' : '';
+  if (CUR.code === 'INR') return sg + (a >= 1e7 ? (a/1e7).toFixed(2)+' Cr' : a >= 1e5 ? (a/1e5).toFixed(2)+' L' : a >= 1e3 ? (a/1e3).toFixed(1)+'K' : a.toFixed(0));
+  return sg + (a >= 1e9 ? (a/1e9).toFixed(2)+'B' : a >= 1e6 ? (a/1e6).toFixed(2)+'M' : a >= 1e3 ? (a/1e3).toFixed(1)+'K' : a.toFixed(0));
+};
+const fmtShortMoney = n => { const t = fmtShort(n); return t.startsWith('-') ? `-${sym()}${t.slice(1)}` : `${sym()}${t}`; };
+// ISO dates anywhere in a string (e.g. "before 2024-10-01") → company style
+const fmtDate = v => v == null ? '' : String(v).replace(/(\d{4})-(\d{2})-(\d{2})/g, (_, y, m, d) => LOCALE === 'en-IN' ? `${d}/${m}/${y}` : `${m}/${d}/${y}`);
+const fmtMonth = ym => { const m = /^(\d{4})-(\d{2})$/.exec(ym || ''); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleString(LOCALE, { month:'short', year:'numeric', timeZone:'UTC' }) : (ym || ''); };
 function fmtVal(v, f) {
   if (v === '' || v == null) return '';
   switch (f) {
     case 'amt': return fmtAmt(v); case 'qty': return fmtQty(v); case 'int': return fmtInt(v);
-    case 'pct': return fmtPct(v); case 'cost': return v ? Number(v).toLocaleString('en-US',{maximumFractionDigits:4}) : '—';
+    case 'pct': return fmtPct(v); case 'cost': return v ? Number(v).toLocaleString(LOCALE,{maximumFractionDigits:4}) : '—';
     case 'x': return v == null ? '—' : `${v}×`; default: return esc(v);
   }
 }
@@ -281,6 +317,26 @@ let MS = { whs: null, grp: null, branch: null };
 
 // ── Dates ────────────────────────────────────────────────────────────────────
 const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const pad2 = n => String(n).padStart(2, '0');
+// Typed text (MM/DD/YYYY, or DD/MM/YYYY for INR companies; ISO also accepted) → ISO, or null if invalid
+function parseDate(txt) {
+  const t = String(txt || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/.exec(t);
+  if (!m) return null;
+  const [mm, dd] = LOCALE === 'en-IN' ? [+m[2], +m[1]] : [+m[1], +m[2]];
+  const d = new Date(Date.UTC(+m[3], mm - 1, dd));
+  return d.getUTCMonth() === mm - 1 && d.getUTCDate() === dd ? `${m[3]}-${pad2(mm)}-${pad2(dd)}` : null;
+}
+function setDate(el, isoVal) { el.dataset.iso = isoVal; el.value = fmtDate(isoVal); el.classList.remove('bad'); el.parentElement.querySelector('.dpick').value = isoVal; }
+function getDate(el) { const v = parseDate(el.value); if (v) { el.dataset.iso = v; el.classList.remove('bad'); } else el.classList.add('bad'); return v || el.dataset.iso || ''; }
+function wireDate(el) {
+  const pick = el.parentElement.querySelector('.dpick');
+  el.placeholder = LOCALE === 'en-IN' ? 'DD/MM/YYYY' : 'MM/DD/YYYY';
+  el.parentElement.querySelector('.dbtn').onclick = () => { pick.value = getDate(el); try { pick.showPicker(); } catch { pick.focus(); pick.click(); } };
+  pick.onchange = () => { if (pick.value) setDate(el, pick.value); };
+  el.onblur = () => { const v = parseDate(el.value); if (v) setDate(el, v); else el.classList.add('bad'); };
+}
 function preset(k) {
   const t = new Date(), y = t.getFullYear(), m = t.getMonth();
   const ranges = {
@@ -288,7 +344,7 @@ function preset(k) {
     ytd: [new Date(y, 0, 1), t], ly: [new Date(y - 1, 0, 1), new Date(y - 1, 11, 31)],
   };
   const [a, b] = ranges[k];
-  fFrom.value = iso(a); fTo.value = iso(b);
+  setDate(fFrom, iso(a)); setDate(fTo, iso(b));
   run(true);
 }
 
@@ -304,7 +360,7 @@ async function api(path, body) {
 }
 function filters() {
   return {
-    fromDate: fFrom.value, toDate: fTo.value, itemCode: fCode.value.trim(), itemName: fName.value.trim(),
+    fromDate: getDate(fFrom), toDate: getDate(fTo), itemCode: fCode.value.trim(), itemName: fName.value.trim(),
     warehouses: MS.whs?.values() || [], itemGroups: MS.grp?.values() || [], branches: S.master?.branchEnabled ? (MS.branch?.values() || []) : [],
     deadDays: S.deadDays, slowDays: S.slowDays,
   };
@@ -405,7 +461,7 @@ function renderTree(host, spec) {
   walk(tree);
   const sortMark = k => view.sort?.key === k ? `<span class="ar">${view.sort.dir > 0 ? ' ▲' : ' ▼'}</span>` : '';
   const head = `${spec.groupHeads ? `<tr><th class="grp-h l"></th>${spec.groupHeads.map(g => `<th class="grp-h" colspan="${g.span}">${esc(g.label)}</th>`).join('')}</tr>` : ''}
-    <tr><th class="l" data-s="_label">${esc(spec.firstCol || 'Item')}${sortMark('_label')}</th>${vcols.map(c => `<th data-s="${c.key}">${esc(c.label)}${sortMark(c.key)}</th>`).join('')}</tr>`;
+    <tr><th class="l" data-s="_label">${esc(spec.firstCol || 'Item')}${sortMark('_label')}</th>${vcols.map(c => `<th data-s="${c.key}">${esc(c.label)}${['amt', 'cost'].includes(c.fmt) && sym() ? ` <span class="cur">(${esc(sym())})</span>` : ''}${sortMark(c.key)}</th>`).join('')}</tr>`;
   const foot = `<tr><td class="l">Grand total · ${fmtInt(rows.length)} lines</td>${vcols.map(c => numCell(tree.vals[c.key], c.fmt)).join('')}</tr>`;
   host.innerHTML = rows.length
     ? `<div class="tbl-wrap"><table class="tt"><thead>${head}</thead><tbody>${out.join('')}</tbody><tfoot>${foot}</tfoot></table></div>`
@@ -485,7 +541,7 @@ function wireToolbar(view, onChange) {
 }
 function meta(d, extra = '') {
   const el = document.getElementById('meta');
-  if (el) el.textContent = `${d.params.fromDate} → ${d.params.toDate} · ${fmtInt(d.rows?.length || 0)} rows${extra}`;
+  if (el) el.textContent = `${fmtDate(d.params.fromDate)} → ${fmtDate(d.params.toDate)} · ${fmtInt(d.rows?.length || 0)} rows${extra}`;
 }
 
 // ── Render dispatcher ────────────────────────────────────────────────────────
@@ -501,9 +557,10 @@ function render() {
 Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
 Chart.defaults.font.size = 11;
 Chart.defaults.color = '#52514e';
+Chart.defaults.locale = LOCALE;
 const GRID = { color:'#e1e0d9' }, TICK = { color:'#898781' };
 const AGE_RAMP = ['#86b6ef', '#5598e7', '#3987e5', '#256abf', '#184f95', '#0d366b'];
-const tipAmt = { callbacks:{ label: c => `${c.dataset.label ? c.dataset.label + ': ' : ''}${fmtAmt(c.parsed.x ?? c.parsed.y ?? c.parsed)}` } };
+const tipAmt = { callbacks:{ label: c => `${c.dataset.label ? c.dataset.label + ': ' : ''}${fmtMoney(c.parsed.x ?? c.parsed.y ?? c.parsed)}` } };
 
 function chart(id, cfg) {
   const el = document.getElementById(id); if (!el) return;
@@ -514,12 +571,12 @@ const barDs = (label, data, color) => ({ label, data, backgroundColor:color, bor
 const hBar = (labels, data, color, extra = {}) => ({
   type:'bar', data:{ labels, datasets:[barDs('', data, color)] },
   options:{ indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:{ ...tipAmt, ...(extra.tooltip || {}) } },
-    scales:{ x:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, y:{ grid:{ display:false }, ticks:{ color:'#52514e', autoSkip:false } } } },
+    scales:{ x:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShortMoney(v) } }, y:{ grid:{ display:false }, ticks:{ color:'#52514e', autoSkip:false } } } },
 });
 
 function renderDashboard(d) {
   const kp = d.kpis.map(k => `<div class="kpi ${k.tone || ''}"><div class="l">${esc(k.label)}</div>
-    <div class="v">${k.fmt === 'amt' ? fmtAmt(k.value) : k.fmt === 'num' ? fmtQty(k.value) : k.fmt === 'x' ? (k.value == null ? '—' : k.value + '×') : fmtInt(k.value)}</div>
+    <div class="v">${k.fmt === 'amt' ? fmtMoney(k.value) : k.fmt === 'num' ? fmtQty(k.value) : k.fmt === 'x' ? (k.value == null ? '—' : k.value + '×') : fmtInt(k.value)}</div>
     ${k.hint ? `<div class="h">${esc(k.hint)}</div>` : ''}</div>`).join('');
   const c = d.charts;
   const lg = items => `<div class="legend">${items.map(([t, col]) => `<span><i style="background:${col}"></i>${t}</span>`).join('')}</div>`;
@@ -529,9 +586,9 @@ function renderDashboard(d) {
     <div class="charts">
       <div class="card wide"><h3>Inward vs outward value by month</h3><div class="sub">Stock value received and issued per month (transfers excluded — they net to zero)</div>
         ${lg([['Inward', 'var(--s1)'], ['Outward', 'var(--s2)']])}<div class="cv"><canvas id="cTrend"></canvas></div></div>
-      <div class="card"><h3>Closing stock value by item group</h3><div class="sub">As of ${esc(d.params.toDate)}</div><div class="cv"><canvas id="cGroup"></canvas></div></div>
-      <div class="card"><h3>Closing stock value by warehouse</h3><div class="sub">As of ${esc(d.params.toDate)}</div><div class="cv"><canvas id="cWhs"></canvas></div></div>
-      ${c.byBranch?.length ? `<div class="card"><h3>Closing stock value by branch</h3><div class="sub">As of ${esc(d.params.toDate)}</div><div class="cv"><canvas id="cBranch"></canvas></div></div>` : ''}
+      <div class="card"><h3>Closing stock value by item group</h3><div class="sub">As of ${esc(fmtDate(d.params.toDate))}</div><div class="cv"><canvas id="cGroup"></canvas></div></div>
+      <div class="card"><h3>Closing stock value by warehouse</h3><div class="sub">As of ${esc(fmtDate(d.params.toDate))}</div><div class="cv"><canvas id="cWhs"></canvas></div></div>
+      ${c.byBranch?.length ? `<div class="card"><h3>Closing stock value by branch</h3><div class="sub">As of ${esc(fmtDate(d.params.toDate))}</div><div class="cv"><canvas id="cBranch"></canvas></div></div>` : ''}
       <div class="card"><h3>Movement by transaction type</h3><div class="sub">Inward and outward value in the period</div>
         ${lg([['Inward', 'var(--s1)'], ['Outward', 'var(--s2)']])}<div class="cv"><canvas id="cMix"></canvas></div></div>
       <div class="card"><h3>Inventory aging</h3><div class="sub">Closing value by days since receipt (FIFO)</div><div class="cv"><canvas id="cAging"></canvas></div></div>
@@ -543,23 +600,23 @@ function renderDashboard(d) {
     </div>
     <p class="note">Click a tab above for the detailed report behind each chart. Values are in company currency.</p>`;
 
-  chart('cTrend', { type:'bar', data:{ labels:c.trend.map(t => t.month), datasets:[barDs('Inward', c.trend.map(t => t.inVal), '#2a78d6'), barDs('Outward', c.trend.map(t => t.outVal), '#eb6834')] },
-    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
+  chart('cTrend', { type:'bar', data:{ labels:c.trend.map(t => fmtMonth(t.month)), datasets:[barDs('Inward', c.trend.map(t => t.inVal), '#2a78d6'), barDs('Outward', c.trend.map(t => t.outVal), '#eb6834')] },
+    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShortMoney(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
   chart('cGroup', hBar(c.byGroup.map(x => x.label), c.byGroup.map(x => x.value), '#2a78d6'));
   chart('cWhs', hBar(c.byWarehouse.map(x => x.label), c.byWarehouse.map(x => x.value), '#2a78d6'));
   if (c.byBranch?.length) chart('cBranch', hBar(c.byBranch.map(x => x.label), c.byBranch.map(x => x.value), '#2a78d6'));
   chart('cMix', { type:'bar', data:{ labels:c.transMix.map(x => x.label), datasets:[barDs('Inward', c.transMix.map(x => x.inVal), '#2a78d6'), barDs('Outward', c.transMix.map(x => x.outVal), '#eb6834')] },
-    options:{ indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ x:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, y:{ grid:{ display:false }, ticks:{ autoSkip:false } } } } });
+    options:{ indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ x:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShortMoney(v) } }, y:{ grid:{ display:false }, ticks:{ autoSkip:false } } } } });
   chart('cAging', { type:'bar', data:{ labels:c.aging.map(b => `${b.bucket} d`), datasets:[{ ...barDs('Value', c.aging.map(b => b.value), AGE_RAMP), maxBarThickness:46 }] },
-    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
+    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShortMoney(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
   chart('cDead', hBar(c.deadSplit.map(x => x.label), c.deadSplit.map(x => x.value), ['#d03b3b', '#ec835a', '#0ca30c']));
   chart('cTopItems', hBar(c.topItems.map(x => x.label), c.topItems.map(x => x.value), '#2a78d6',
-    { tooltip:{ callbacks:{ title: it => { const x = c.topItems[it[0].dataIndex]; return `${x.label} — ${x.name}`; }, label: t => fmtAmt(t.parsed.x) } } }));
+    { tooltip:{ callbacks:{ title: it => { const x = c.topItems[it[0].dataIndex]; return `${x.label} — ${x.name}`; }, label: t => fmtMoney(t.parsed.x) } } }));
   chart('cTopProfit', hBar(c.topProfit.map(x => x.label), c.topProfit.map(x => x.gp), '#1baf7a',
-    { tooltip:{ callbacks:{ title: it => { const x = c.topProfit[it[0].dataIndex]; return `${x.label} — ${x.name}`; }, label: t => `GP ${fmtAmt(t.parsed.x)} · revenue ${fmtAmt(c.topProfit[t.dataIndex].revenue)}` } } }));
-  chart('cProfit', { type:'bar', data:{ labels:c.profitMonths.map(m => m.month), datasets:[
+    { tooltip:{ callbacks:{ title: it => { const x = c.topProfit[it[0].dataIndex]; return `${x.label} — ${x.name}`; }, label: t => `GP ${fmtMoney(t.parsed.x)} · revenue ${fmtMoney(c.topProfit[t.dataIndex].revenue)}` } } }));
+  chart('cProfit', { type:'bar', data:{ labels:c.profitMonths.map(m => fmtMonth(m.month)), datasets:[
       barDs('Revenue', c.profitMonths.map(m => m.revenue), '#2a78d6'), barDs('Cost', c.profitMonths.map(m => m.cost), '#eb6834'), barDs('Gross profit', c.profitMonths.map(m => m.gp), '#1baf7a')] },
-    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShort(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
+    options:{ plugins:{ legend:{ display:false }, tooltip:tipAmt }, scales:{ y:{ grid:GRID, ticks:{ ...TICK, callback:v => fmtShortMoney(v) } }, x:{ grid:{ display:false }, ticks:TICK } } } });
 }
 
 // ── Stock report ─────────────────────────────────────────────────────────────
@@ -654,7 +711,7 @@ function ledgerLines(rows) {
     <table class="sub"><thead><tr><th class="l">Date</th><th class="l">Transaction</th><th class="l">Doc no.</th><th class="l">Business partner / memo</th>
       <th>In qty</th><th>Out qty</th><th>Balance qty</th><th>Cost</th><th>Trans. value</th><th>Balance value</th></tr></thead><tbody>
       <tr class="op"><td class="l" colspan="6">Opening balance</td><td>${fmtQty(g.openQty)}</td><td></td><td></td><td>${fmtAmt(g.openVal)}</td></tr>
-      ${shown.map(l => `<tr><td class="l">${esc(l.date)}</td><td class="l">${esc(l.transName)}</td><td class="l">${esc(l.docNum)}</td>
+      ${shown.map(l => `<tr><td class="l">${esc(fmtDate(l.date))}</td><td class="l">${esc(l.transName)}</td><td class="l">${esc(l.docNum)}</td>
         <td class="l">${esc(l.cardName || l.memo)}${l.cardName && l.memo ? ` <span class="meta">· ${esc(l.memo)}</span>` : ''}</td>
         <td class="in">${l.inQty ? fmtQty(l.inQty) : ''}</td><td class="out">${l.outQty ? fmtQty(l.outQty) : ''}</td><td>${fmtQty(l.balQty)}</td>
         <td>${fmtVal(l.cost, 'cost')}</td><td class="${l.value < 0 ? 'neg' : ''}">${fmtAmt(l.value)}</td><td>${fmtAmt(l.balVal)}</td></tr>`).join('')}
@@ -668,8 +725,8 @@ function ledgerLines(rows) {
 function renderPosting(d) {
   const v = S.view.posting;
   const T = { id:r => r.transName, label:r => r.transName };
-  const M = { id:r => r.date.slice(0, 7), label:r => r.date.slice(0, 7) };
-  const D = { id:r => `${r.type}|${r.docNum}|${r.date}|${r.cardCode}`, label:r => `#${r.docNum}`, sub:r => [r.date, r.cardName].filter(Boolean).join(' · ') };
+  const M = { id:r => r.date.slice(0, 7), label:r => fmtMonth(r.date.slice(0, 7)) };
+  const D = { id:r => `${r.type}|${r.docNum}|${r.date}|${r.cardCode}`, label:r => `#${r.docNum}`, sub:r => [fmtDate(r.date), r.cardName].filter(Boolean).join(' · ') };
   const G = { type:{ label:'Transaction → Document', levels:[T, D] }, 'month-type':{ label:'Month → Transaction → Document', levels:[M, T, D] }, 'type-month':{ label:'Transaction → Month → Document', levels:[T, M, D] } };
   if (!G[v.group]) v.group = 'type';
   content.innerHTML = (d.truncated ? `<div class="warn-note">Showing the latest ${fmtInt(d.limit)} documents — narrow the date range or filters for the full list.</div>` : '')
@@ -703,7 +760,7 @@ function renderValuation(d) {
     { key:'sh', label:'% of total', fmt:'pct', calc:s => d.totals.bookValue ? (s.bv / d.totals.bookValue) * 100 : null },
   ];
   const spec = { rows:d.rows, levels:GROUPINGS[v.group].levels, cols, view:v, search:searchText, firstCol:'Item group / Item / Warehouse' };
-  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` · valued as of ${d.params.toDate}`); };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` · valued as of ${fmtDate(d.params.toDate)}`); };
   draw();
 }
 
@@ -719,11 +776,11 @@ function renderAging(d) {
     ...d.bucketKeys.map(b => ({ key:`b${b}`, label:`${b} days`, fmt:isV ? 'amt' : 'qty', get:r => r[`${isV ? 'v' : 'q'}_${b}`] })),
     { key:'_w', label:'', fmt:'', get:r => r.avgAgeDays * r.qty, hidden:true },
     { key:'age', label:'Avg age (days)', fmt:'int', calc:s => s.q ? s._w / s.q : null },
-    { key:'old', label:'Oldest receipt', fmt:'', leaf:r => r.oldestReceipt || '' },
+    { key:'old', label:'Oldest receipt', fmt:'', leaf:r => fmtDate(r.oldestReceipt) },
   ];
   const spec = { rows:d.rows, levels:GROUPINGS[v.group].levels, cols, view:v, search:searchText, firstCol:'Item group / Item / Warehouse',
     groupHeads:[{ label:'Closing stock', span:2 }, { label:`Age since receipt — ${isV ? 'value' : 'qty'}`, span:d.bucketKeys.length }, { label:'', span:2 }] };
-  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` · aged as of ${d.params.toDate}`); };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta(d, ` · aged as of ${fmtDate(d.params.toDate)}`); };
   draw();
 }
 
@@ -731,9 +788,9 @@ function renderAging(d) {
 function renderDead(d) {
   const v = S.view.deadstock;
   content.innerHTML = `<div class="kpis">
-      <div class="kpi bad"><div class="l">Dead stock value</div><div class="v">${fmtAmt(d.totals.deadValue)}</div><div class="h">${fmtInt(d.totals.deadLines)} item-warehouse lines · no consumption ≥ ${S.deadDays} days</div></div>
-      <div class="kpi warn"><div class="l">Slow-moving value</div><div class="v">${fmtAmt(d.totals.slowValue)}</div><div class="h">${fmtInt(d.totals.slowLines)} lines · idle ${S.slowDays}–${S.deadDays} days</div></div>
-      <div class="kpi"><div class="l">Total stock value</div><div class="v">${fmtAmt(d.totals.totalValue)}</div><div class="h">as of ${esc(d.params.toDate)}</div></div>
+      <div class="kpi bad"><div class="l">Dead stock value</div><div class="v">${fmtMoney(d.totals.deadValue)}</div><div class="h">${fmtInt(d.totals.deadLines)} item-warehouse lines · no consumption ≥ ${S.deadDays} days</div></div>
+      <div class="kpi warn"><div class="l">Slow-moving value</div><div class="v">${fmtMoney(d.totals.slowValue)}</div><div class="h">${fmtInt(d.totals.slowLines)} lines · idle ${S.slowDays}–${S.deadDays} days</div></div>
+      <div class="kpi"><div class="l">Total stock value</div><div class="v">${fmtMoney(d.totals.totalValue)}</div><div class="h">as of ${esc(fmtDate(d.params.toDate))}</div></div>
       <div class="kpi bad"><div class="l">Dead + slow share</div><div class="v">${d.totals.totalValue ? fmtPct(((d.totals.deadValue + d.totals.slowValue) / d.totals.totalValue) * 100) : '—'}</div></div>
     </div>` + toolbarHtml(v, `${groupSelect(v, ['grp-item-whs', 'grp-item', 'item-whs', 'whs-grp-item', 'whs-item'])}
     <div class="grp">Status ${seg('status', v.status, [['all', 'All'], ['DEAD', 'Dead'], ['SLOW', 'Slow']])}</div>
@@ -743,13 +800,13 @@ function renderDead(d) {
   const rows = v.status === 'all' ? d.rows : d.rows.filter(r => r.status === v.status);
   const cols = [
     { key:'q', label:'Qty', fmt:'qty', get:r => r.qty }, { key:'v', label:'Value', fmt:'amt', get:r => r.value },
-    { key:'lu', label:'Last consumed', fmt:'', leaf:r => r.lastUsed || 'Never' }, { key:'lr', label:'Last receipt', fmt:'', leaf:r => r.lastReceipt || '—' },
+    { key:'lu', label:'Last consumed', fmt:'', leaf:r => r.lastUsed ? fmtDate(r.lastUsed) : 'Never' }, { key:'lr', label:'Last receipt', fmt:'', leaf:r => r.lastReceipt ? fmtDate(r.lastReceipt) : '—' },
     { key:'id', label:'Idle days', fmt:'int', leaf:r => r.idleDays ?? '' }, { key:'u', label:'Consumed 12m', fmt:'qty', get:r => r.used12m },
     { key:'cm', label:'Cover (months)', fmt:'', leaf:r => r.coverMonths == null ? '∞' : r.coverMonths },
   ];
   const spec = { rows, levels:GROUPINGS[v.group].levels, cols, view:v, search:searchText, firstCol:'Item group / Item / Warehouse',
     extraLabel: n => n.depth === GROUPINGS[v.group].levels.length - 1 && n.rows.length === 1 ? `<span class="pill ${n.rows[0].status}">${n.rows[0].status}</span>` : '' };
-  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta({ ...d, rows }, ` · as of ${d.params.toDate}`); };
+  const draw = () => { renderTree(document.getElementById('tbl'), spec); meta({ ...d, rows }, ` · as of ${fmtDate(d.params.toDate)}`); };
   draw();
 }
 
@@ -757,9 +814,9 @@ function renderDead(d) {
 function renderProfit(d) {
   const v = S.view.profit;
   content.innerHTML = `<div class="kpis">
-      <div class="kpi"><div class="l">Revenue</div><div class="v">${fmtAmt(d.totals.revenue)}</div></div>
-      <div class="kpi warn"><div class="l">Cost of sales</div><div class="v">${fmtAmt(d.totals.cost)}</div></div>
-      <div class="kpi ${d.totals.gp < 0 ? 'bad' : 'good'}"><div class="l">Gross profit</div><div class="v">${fmtAmt(d.totals.gp)}</div><div class="h">${fmtPct(d.totals.marginPct)} margin</div></div>
+      <div class="kpi"><div class="l">Revenue</div><div class="v">${fmtMoney(d.totals.revenue)}</div></div>
+      <div class="kpi warn"><div class="l">Cost of sales</div><div class="v">${fmtMoney(d.totals.cost)}</div></div>
+      <div class="kpi ${d.totals.gp < 0 ? 'bad' : 'good'}"><div class="l">Gross profit</div><div class="v">${fmtMoney(d.totals.gp)}</div><div class="h">${fmtPct(d.totals.marginPct)} margin</div></div>
       <div class="kpi"><div class="l">Items sold</div><div class="v">${fmtInt(d.totals.items)}</div><div class="h">${fmtQty(d.totals.qty)} units</div></div>
       <div class="kpi ${d.totals.lossItems ? 'bad' : 'good'}"><div class="l">Loss-making lines</div><div class="v">${fmtInt(d.totals.lossItems)}</div><div class="h">item-warehouse with negative GP</div></div>
     </div>` + toolbarHtml(v, `<div class="grp">View ${seg('sub', v.sub, [['items', 'By item'], ['customers', 'By customer'], ['months', 'By month']])}</div>
@@ -776,7 +833,7 @@ function renderProfit(d) {
   if (v.sub === 'customers') {
     spec = { rows:d.customers, levels:[{ id:r => r.cardCode, label:r => r.cardCode, sub:r => r.cardName }], cols, view:v, search:r => `${r.cardCode} ${r.cardName}`, firstCol:'Customer' };
   } else if (v.sub === 'months') {
-    spec = { rows:d.months, levels:[{ id:r => r.month, label:r => r.month }], cols, view:v, search:r => r.month, firstCol:'Month' };
+    spec = { rows:d.months, levels:[{ id:r => r.month, label:r => fmtMonth(r.month) }], cols, view:v, search:r => r.month, firstCol:'Month' };
   } else {
     const levels = GROUPINGS[v.group].levels;
     const leafIsItemLevel = levels[levels.length - 1] === LV.item || levels[levels.length - 1] === LV.whs;
@@ -794,7 +851,7 @@ const drillKey = n => `${n.rows[0].itemCode}|${new Set(n.rows.map(r => r.whsCode
 function profitDocsHtml(lines) {
   if (!lines.length) return '<span class="meta">No invoice lines.</span>';
   return `<table class="sub"><thead><tr><th class="l">Date</th><th class="l">Document</th><th class="l">Customer</th><th class="l">Whs</th><th>Qty</th><th>Unit price</th><th>Revenue</th><th>Cost</th><th>Gross profit</th><th>Margin</th></tr></thead><tbody>
-    ${lines.slice(0, 300).map(l => `<tr><td class="l">${esc(l.date)}</td><td class="l">${esc(l.docType)} #${esc(l.docNum)}</td><td class="l">${esc(l.cardCode)} <span class="meta">${esc(l.cardName)}</span></td><td class="l">${esc(l.whsCode)}</td>
+    ${lines.slice(0, 300).map(l => `<tr><td class="l">${esc(fmtDate(l.date))}</td><td class="l">${esc(l.docType)} #${esc(l.docNum)}</td><td class="l">${esc(l.cardCode)} <span class="meta">${esc(l.cardName)}</span></td><td class="l">${esc(l.whsCode)}</td>
       <td>${fmtQty(l.qty)}</td><td>${fmtVal(l.unitPrice, 'cost')}</td><td>${fmtAmt(l.revenue)}</td><td>${fmtAmt(l.cost)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtAmt(l.gp)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtPct(l.marginPct)}</td></tr>`).join('')}
     ${lines.length > 300 ? `<tr><td class="l" colspan="10">… ${fmtInt(lines.length - 300)} more lines</td></tr>` : ''}</tbody></table>`;
 }
@@ -846,13 +903,16 @@ fCode.addEventListener('input', () => {
 
 (async function init() {
   const t = new Date();
-  fFrom.value = iso(new Date(t.getFullYear(), 0, 1)); fTo.value = iso(t);
+  [fFrom, fTo].forEach(wireDate);
+  setDate(fFrom, iso(new Date(t.getFullYear(), 0, 1))); setDate(fTo, iso(t));
   try { const saved = localStorage.getItem('invdash_tab'); if (saved && TABS.some(x => x.key === saved)) S.tab = saved; } catch {}
   paintTabs();
   busy(true, 'Loading warehouses and item groups…');
   try {
     const m = await api('/filters');
     S.master = m;
+    setCurrency(m.currency);   // company currency → number / date style, before the first report renders
+    [fFrom, fTo].forEach(el => { setDate(el, el.dataset.iso); el.placeholder = LOCALE === 'en-IN' ? 'DD/MM/YYYY' : 'MM/DD/YYYY'; });
     MS.whs = multiSelect('msWhs', 'Warehouse', m.warehouses.map(w => ({ value:w.whsCode, text:w.whsCode, sub:w.whsName + (w.branch ? ` · ${w.branch}` : '') })));
     MS.grp = multiSelect('msGrp', 'Item group', m.itemGroups.map(g => ({ value:g.code, text:g.name })));
     if (m.branchEnabled && m.branches.length) {
