@@ -1,5 +1,21 @@
 import { Router } from 'express';
 
+// Active employees with the SAP "Technician" role (HEM6 RoleID -2).
+// SL may cap pages below $top (default 20), so advance by rows actually returned.
+async function fetchTechnicians(sap) {
+  const all = [];
+  for (let skip = 0; skip < 2000; ) {
+    const data = await sap.get(
+      `/EmployeesInfo?$select=EmployeeID,FirstName,LastName,EmployeeRolesInfoLines&$filter=${encodeURIComponent("Active eq 'tYES'")}&$orderby=EmployeeID&$top=100&$skip=${skip}`
+    ).catch(() => ({ value: [] }));
+    const rows = data.value || [];
+    if (!rows.length) break;
+    all.push(...rows);
+    skip += rows.length;
+  }
+  return all.filter(e => (e.EmployeeRolesInfoLines || []).some(r => Number(r.RoleID) === -2));
+}
+
 export function createScWizardRouter({ requireAuth, getActiveSap }) {
   const router = Router();
 
@@ -47,10 +63,7 @@ export function createScWizardRouter({ requireAuth, getActiveSap }) {
     const sap = getActiveSap();
     if (!sap) return res.json({ ok: false, error: 'No active SAP connection' });
     try {
-      const data = await sap.get(
-        '/EmployeesInfo?$select=EmployeeID,FirstName,LastName&$top=200'
-      ).catch(() => ({ value: [] }));
-      const employees = (data.value || []).map(t => ({
+      const employees = (await fetchTechnicians(sap)).map(t => ({
         id:   t.EmployeeID,
         name: [t.FirstName, t.LastName].filter(Boolean).join(' ') || `ID ${t.EmployeeID}`,
       }));
@@ -73,6 +86,7 @@ export function createScWizardRouter({ requireAuth, getActiveSap }) {
       Subject:      subject.trim(),
       Description:  (description || '').trim(),
     };
+    if (priority)          payload.Priority      = priority;
     if (remarks?.trim())   payload.Resolution    = remarks.trim();
     if (technicianId)      payload.TechnicianCode = Number(technicianId);
     if (itemCode)          payload.ItemCode       = itemCode;

@@ -64,6 +64,92 @@ function calcEOQ(annualDemand, orderingCost = 50, holdingRate = 0.25, unitCost =
   return Math.ceil(Math.sqrt((2 * annualDemand * orderingCost) / (holdingRate * unitCost)));
 }
 
+// ── "How is this calculated?" popups ─────────────────────────────────────────
+// Built from the same variables used to compute each value, so they cannot drift.
+const _xf = n => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 2 });
+
+function puReorderExplain({ onHand, minInv, onOrder, shortfall, annualDemand, eoq, suggestedQty, urgency }) {
+  const eoqSteps = [
+    { label: 'Yearly demand (estimate)', formula: `Minimum stock ${_xf(minInv)} × 12 months`, value: annualDemand },
+    { label: 'EOQ', formula: `√(2 × yearly demand ${_xf(annualDemand)} × order cost 50 ÷ (holding rate 25% × unit cost 1)), rounded up`, value: eoq },
+  ];
+  const half = minInv * 0.5;
+  return {
+    eoq: {
+      title: 'How EOQ (economic order quantity) is calculated',
+      steps: eoqSteps,
+      note: 'EOQ balances ordering cost against holding cost. Minimum stock is used as a stand-in for monthly demand; order cost 50 and holding rate 25% are fixed assumptions.',
+    },
+    suggestedQty: {
+      title: 'How the suggested quantity is calculated',
+      steps: [
+        { label: 'Shortfall', formula: `Minimum ${_xf(minInv)} − in stock ${_xf(onHand)} − on order ${_xf(onOrder)} (not below 0)`, value: shortfall },
+        ...eoqSteps,
+        { label: 'EOQ less on order', formula: `EOQ ${_xf(eoq)} − on order ${_xf(onOrder)}`, value: eoq - onOrder },
+      ],
+      result: { label: 'Suggested qty = largest of shortfall, EOQ − on order, 1', value: Math.max(0, Math.round(suggestedQty)) },
+      rules: [
+        { rule: 'Shortfall is the largest', result: 'Order the shortfall', hit: suggestedQty === shortfall && shortfall >= 1 },
+        { rule: 'EOQ − on order is the largest', result: 'Order an economic batch', hit: suggestedQty === eoq - onOrder && suggestedQty !== shortfall && suggestedQty >= 1 },
+        { rule: 'Both are below 1', result: 'Order the minimum of 1', hit: suggestedQty === 1 && shortfall < 1 && eoq - onOrder < 1 },
+      ],
+    },
+    urgency: {
+      title: `Why urgency is ${urgency}`,
+      steps: [
+        { label: 'In stock', formula: 'Quantity on hand in SAP', value: onHand },
+        { label: 'In stock + on order', formula: `${_xf(onHand)} + ${_xf(onOrder)}`, value: onHand + onOrder },
+        { label: 'Half of minimum stock', formula: `Minimum ${_xf(minInv)} × 50%`, value: half },
+      ],
+      rules: [
+        { rule: 'Nothing in stock (0 or less)', result: 'CRITICAL', hit: urgency === 'CRITICAL' },
+        { rule: 'In stock + on order is below half of the minimum', result: 'HIGH', hit: urgency === 'HIGH' },
+        { rule: 'Otherwise (in stock below minimum)', result: 'MEDIUM', hit: urgency === 'MEDIUM' },
+      ],
+    },
+  };
+}
+
+function puSupplierExplain(v) {
+  const r1 = v.overdueOrders > 0 && v.overdueRate > 50;
+  const r2 = !r1 && (v.overdueRate > 20 || v.spendShare > 40);
+  return {
+    riskLevel: {
+      title: `Why supplier risk is ${v.riskLevel}`,
+      steps: [
+        { label: 'Open POs', formula: 'Purchase orders still open (last 6 months)', value: v.openOrders },
+        { label: 'Overdue POs', formula: 'Open POs past their due date', value: v.overdueOrders },
+        { label: 'Overdue rate', formula: `Overdue ${v.overdueOrders} ÷ open ${v.openOrders} × 100`, value: `${v.overdueRate}%` },
+        { label: 'Spend share', formula: `Vendor spend ${_xf(v.totalSpend)} ÷ total PO spend × 100`, value: `${v.spendShare}%` },
+      ],
+      rules: [
+        { rule: 'Has overdue POs and overdue rate above 50%', result: 'HIGH', hit: r1 },
+        { rule: 'Overdue rate above 20% or spend share above 40%', result: 'MEDIUM', hit: r2 },
+        { rule: 'Otherwise', result: 'LOW', hit: !r1 && !r2 },
+      ],
+    },
+  };
+}
+
+function puImpactExplain(dueDate, daysLeft, severity, affectedItems = []) {
+  return {
+    severity: {
+      title: `Why severity is ${severity}`,
+      steps: [
+        { label: 'Due date', formula: 'Sales order delivery date', value: String(dueDate || '').slice(0, 10) },
+        { label: 'Days left', formula: 'Due date − today', value: daysLeft },
+        { label: 'Short items on the order', formula: affectedItems.slice(0, 5).map(i => `${i.itemCode} ×${_xf(i.openQty)}`).join(', ') || '—', value: affectedItems.length },
+      ],
+      rules: [
+        { rule: 'Due in 3 days or less', result: 'CRITICAL', hit: severity === 'CRITICAL' },
+        { rule: 'Due in 4–7 days', result: 'HIGH', hit: severity === 'HIGH' },
+        { rule: 'Due in more than 7 days (up to 45)', result: 'MEDIUM', hit: severity === 'MEDIUM' },
+      ],
+      note: 'An order is listed when it contains an item that is out of stock, critical, or has less stock than is committed.',
+    },
+  };
+}
+
 // ── DB Direct (ODBC/HANA) reads, Service Layer fallback ────────────────────
 // Same pattern as the MRP agent: resolve every logical field against the LIVE
 // column list before building SQL (never guess a column name), and fall back
@@ -98,18 +184,24 @@ async function scanReorderItemsViaDB(dbDeps) {
   const cols   = await getTableColumns('OITM');
   const { resolved, missing } = resolveFieldMap(cols, OITM_REORDER_CANDIDATES);
   if (missing.length) throw new Error(`OITM field mapping incomplete: ${missing.join(', ')}`);
-  const sql = `SELECT ${q(resolved.itemCode)} AS ${q('ItemCode')}, ${q(resolved.itemName)} AS ${q('ItemName')}, ` +
-    `${q(resolved.onHand)} AS ${q('OnHand')}, ${q(resolved.minInventory)} AS ${q('MinInventory')}, ` +
-    `${q(resolved.onOrder)} AS ${q('OnOrder')}, ${q(resolved.committed)} AS ${q('Committed')}, ` +
-    `${q(resolved.leadTime)} AS ${q('LeadTime')} ` +
-    `FROM ${tableRef('OITM', cfg)} WHERE ${q(resolved.invntItem)} = 'Y' AND ${q(resolved.minInventory)} > 0`;
+  // Preferred vendor = OITM.CardCode, its name from OCRD (optional: older schemas may lack it).
+  const { resolved: optV } = resolveFieldMap(cols, { cardCode: ['CardCode'] });
+  const t0 = n => `T0.${q(n)}`;
+  const sql = `SELECT ${t0(resolved.itemCode)} AS ${q('ItemCode')}, ${t0(resolved.itemName)} AS ${q('ItemName')}, ` +
+    `${t0(resolved.onHand)} AS ${q('OnHand')}, ${t0(resolved.minInventory)} AS ${q('MinInventory')}, ` +
+    `${t0(resolved.onOrder)} AS ${q('OnOrder')}, ${t0(resolved.committed)} AS ${q('Committed')}, ` +
+    `${t0(resolved.leadTime)} AS ${q('LeadTime')}` +
+    (optV.cardCode ? `, ${t0(optV.cardCode)} AS ${q('Vendor')}, V.${q('CardName')} AS ${q('VendorName')} ` : ' ') +
+    `FROM ${tableRef('OITM', cfg)} T0` +
+    (optV.cardCode ? ` LEFT JOIN ${tableRef('OCRD', cfg)} V ON V.${q('CardCode')} = ${t0(optV.cardCode)}` : '') +
+    ` WHERE ${t0(resolved.invntItem)} = 'Y' AND ${t0(resolved.minInventory)} > 0`;
   const rows = await executeSQL(sql);
   // Normalized to the same shape scanReorderItems() expects from the Service Layer.
   return rows.map(r => ({
     ItemCode: r.ItemCode, ItemName: r.ItemName,
     QuantityOnStock: r.OnHand, MinInventory: r.MinInventory,
     QuantityOrderedFromVendors: r.OnOrder, QuantityOrderedByCustomers: r.Committed,
-    LeadTime: r.LeadTime,
+    LeadTime: r.LeadTime, Mainsupplier: r.Vendor || '', MainsupplierName: r.VendorName || '',
   }));
 }
 
@@ -189,7 +281,8 @@ async function analyzeImpactViaDB(dbDeps, reorderItems) {
 
   const impacted = [...byOrder.values()].map(o => {
     const daysLeft = Math.ceil((new Date(o.docDueDate) - today) / 86400000);
-    return { ...o, daysLeft, severity: daysLeft <= 3 ? 'CRITICAL' : daysLeft <= 7 ? 'HIGH' : 'MEDIUM' };
+    const severity = daysLeft <= 3 ? 'CRITICAL' : daysLeft <= 7 ? 'HIGH' : 'MEDIUM';
+    return { ...o, daysLeft, severity, explain: puImpactExplain(o.docDueDate, daysLeft, severity, o.affectedItems) };
   }).sort((a, b) => a.daysLeft - b.daysLeft);
 
   return {
@@ -225,8 +318,10 @@ function transformReorderItems(items) {
       : (onHand + onOrder) < minInv * 0.5
         ? 'HIGH'
         : 'MEDIUM';
+    const explain = puReorderExplain({ onHand, minInv, onOrder, shortfall, annualDemand, eoq, suggestedQty, urgency });
 
     return {
+      explain,
       itemCode:     i.ItemCode,
       itemName:     i.ItemName,
       onHand,
@@ -238,7 +333,9 @@ function transformReorderItems(items) {
       eoq:          Math.max(0, eoq),
       urgency,
       leadTimeDays: Number(i.LeadTime || 14),
-      defaultVendor: '',
+      // Preferred vendor from the item master ("Name (Code)" when the name is known).
+      defaultVendor: i.Mainsupplier ? (i.MainsupplierName ? `${i.MainsupplierName} (${i.Mainsupplier})` : i.Mainsupplier) : '',
+      vendorCode:   i.Mainsupplier || '',
     };
   }).sort((a, b) => {
     const u = { CRITICAL: 0, HIGH: 1, MEDIUM: 2 };
@@ -249,7 +346,7 @@ function transformReorderItems(items) {
 async function scanReorderItems(sap) {
   const items = await fetchAllPaginated(sap, '/Items', {
     $filter: "ItemType eq 'itItems' and InventoryItem eq 'tYES' and Frozen eq 'tNO'",
-    $select: 'ItemCode,ItemName,QuantityOnStock,MinInventory,QuantityOrderedFromVendors,QuantityOrderedByCustomers,LeadTime',
+    $select: 'ItemCode,ItemName,QuantityOnStock,MinInventory,QuantityOrderedFromVendors,QuantityOrderedByCustomers,LeadTime,Mainsupplier',
     $orderby: 'QuantityOnStock asc',
   }, { pageSize: 100, maxItems: 3000 });
   return transformReorderItems(items);
@@ -300,6 +397,7 @@ function transformSupplierRisks(pos) {
       : (v.overdueRate > 20 || v.spendShare > 40)
         ? 'MEDIUM'
         : 'LOW';
+    v.explain = puSupplierExplain(v);
   });
 
   vendors.sort((a, b) => {
@@ -382,7 +480,10 @@ async function analyzeImpactViaServiceLayer(sap, reorderItems) {
         );
         if (affected.length > 0) {
           const daysLeft = Math.ceil((new Date(so.DocDueDate) - today) / 86400000);
+          const severity = daysLeft <= 3 ? 'CRITICAL' : daysLeft <= 7 ? 'HIGH' : 'MEDIUM';
           impacted.push({
+            explain:      puImpactExplain(so.DocDueDate, daysLeft, severity,
+              affected.map(l => ({ itemCode: l.ItemCode, openQty: Number(l.OpenQty ?? l.Quantity ?? 0) }))),
             docNum:       so.DocNum,
             docEntry:     so.DocEntry,
             cardCode:     so.CardCode,
@@ -395,7 +496,7 @@ async function analyzeImpactViaServiceLayer(sap, reorderItems) {
               description: (l.ItemDescription || '').slice(0, 45),
               openQty:     Number(l.OpenQty ?? l.Quantity ?? 0),
             })),
-            severity: daysLeft <= 3 ? 'CRITICAL' : daysLeft <= 7 ? 'HIGH' : 'MEDIUM',
+            severity,
           });
         }
       } catch (e) {
@@ -490,6 +591,13 @@ export async function runPurchasingScan(sap, { aiDeps = null, dbDeps = null } = 
     getReorderItems(sap, dbDeps),
     getSupplierRisks(sap, dbDeps),
   ]);
+  // Service Layer items carry only the preferred-vendor code: add the name from the PO history.
+  const vendorNames = new Map((supplierRisks.vendors || []).map(v => [v.cardCode, v.cardName]));
+  for (const i of reorderItems) {
+    if (i.vendorCode && i.defaultVendor === i.vendorCode && vendorNames.get(i.vendorCode)) {
+      i.defaultVendor = `${vendorNames.get(i.vendorCode)} (${i.vendorCode})`;
+    }
+  }
 
   const impactData = await getImpactAnalysis(sap, dbDeps, reorderItems);
 

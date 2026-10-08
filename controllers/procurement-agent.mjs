@@ -261,9 +261,10 @@ export function createProcurementAgentRouter(deps) {
         const gap        = minStock - available;
         const reorderQty = Math.max(1, maxStock > 0 ? maxStock - available - onOrder : gap * 2);
         const urgency    = available <= 0 ? 'critical' : gap / minStock >= 0.7 ? 'high' : 'medium';
+        const explain    = procReorderExplain({ onHand, committed, available, onOrder, minStock, maxStock, gap, reorderQty, urgency });
         belowMin.push({
           itemCode: it.ItemCode, itemName: it.ItemName,
-          onHand, committed, available, onOrder, minStock, maxStock, reorderQty, gap, urgency,
+          onHand, committed, available, onOrder, minStock, maxStock, reorderQty, gap, urgency, explain,
           leadTime: it.LeadTime || null, uom: it.InventoryUOM || it.InventoryUoM || 'EA',
           preferredVendor: it.Mainsupplier || it.PrfldVendor || null,
           vendorOpenPOAmt: (it.Mainsupplier||it.PrfldVendor) ? (vendorPOAmt.get(it.Mainsupplier||it.PrfldVendor)||0) : 0,
@@ -464,6 +465,82 @@ Be concise, data-driven, and use plain text with simple formatting.`;
   return router;
 }
 
+// ── "How is this calculated?" popups ─────────────────────────────────────────
+// Built from the same variables used to compute the values, so they cannot drift.
+const _xf = n => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 2 });
+
+function procReorderExplain({ onHand, committed, available, onOrder, minStock, maxStock, gap, reorderQty, urgency }) {
+  const gapPct = minStock > 0 ? Math.round(gap / minStock * 100) : 0;
+  const base = [
+    { label: 'Available stock', formula: `In stock ${_xf(onHand)} − committed to sales orders ${_xf(committed)}`, value: available },
+    { label: 'Gap to minimum', formula: `Minimum stock ${_xf(minStock)} − available ${_xf(available)}`, value: gap },
+  ];
+  return {
+    urgency: {
+      title: `Why urgency is ${String(urgency).toUpperCase()}`,
+      steps: [...base, { label: 'Gap as % of minimum', formula: `Gap ${_xf(gap)} ÷ minimum ${_xf(minStock)}`, value: `${gapPct}%` }],
+      rules: [
+        { rule: 'Available stock is 0 or less', result: 'CRITICAL', hit: urgency === 'critical' },
+        { rule: 'Gap is 70% or more of the minimum stock', result: 'HIGH', hit: urgency === 'high' },
+        { rule: 'Otherwise (available below minimum)', result: 'MEDIUM', hit: urgency === 'medium' },
+      ],
+      note: 'Items are listed when available stock is below the minimum stock set on the item.',
+    },
+    gap: { title: 'How the gap is calculated', steps: base, result: { label: 'Gap', value: gap } },
+    reorderQty: {
+      title: 'How the reorder quantity is calculated',
+      steps: [
+        ...base,
+        maxStock > 0
+          ? { label: 'Fill up to maximum', formula: `Maximum ${_xf(maxStock)} − available ${_xf(available)} − on order ${_xf(onOrder)}`, value: maxStock - available - onOrder }
+          : { label: 'Twice the gap', formula: `Gap ${_xf(gap)} × 2 (no maximum stock set)`, value: gap * 2 },
+      ],
+      result: { label: 'Reorder quantity (at least 1)', value: reorderQty },
+      rules: [
+        { rule: 'Maximum stock is set on the item', result: 'Maximum − available − on order', hit: maxStock > 0 },
+        { rule: 'No maximum stock set', result: 'Gap × 2', hit: !(maxStock > 0) },
+      ],
+    },
+  };
+}
+
+function ptwmExplain({ poAmt, grpoAmt, invAmt, variance, matchPct, poOpen, poCount, grpoCount, invCount, status }) {
+  const varPct = Math.abs(variance / Math.max(poAmt, 1)) * 100;
+  // Same order as the status expression in /scan — the first rule that is true wins.
+  const r1 = Math.abs(variance) < 1;
+  const r2 = !r1 && poOpen > 0 && grpoAmt < poAmt;
+  const r3 = !r1 && !r2 && grpoAmt > invAmt;
+  const r4 = !r1 && !r2 && !r3 && varPct > 5;
+  const r5 = !r1 && !r2 && !r3 && !r4;
+  const steps = [
+    { label: 'PO amount', formula: `Sum of ${poCount} purchase order(s) in the year`, value: poAmt },
+    { label: 'GRPO amount', formula: `Sum of ${grpoCount} goods receipt(s)`, value: grpoAmt },
+    { label: 'Invoice amount', formula: `Sum of ${invCount} A/P invoice(s)`, value: invAmt },
+    { label: 'Variance', formula: `Invoiced ${_xf(invAmt)} − ordered ${_xf(poAmt)}`, value: variance },
+  ];
+  return {
+    variance: { title: 'How the variance is calculated', steps, note: 'Positive = invoiced more than ordered; negative = invoiced less than ordered.' },
+    matchPct: {
+      title: 'How match % is calculated',
+      steps: [...steps.slice(0, 3), { label: 'Match %', formula: poAmt > 0 ? `Invoiced ${_xf(invAmt)} ÷ ordered ${_xf(poAmt)} × 100` : 'No PO amount — shown as 0%', value: `${matchPct}%` }],
+      note: '100% means everything ordered has been invoiced.',
+    },
+    status: {
+      title: `Why status is ${String(status).toUpperCase()}`,
+      steps: [...steps, { label: 'Variance as % of PO', formula: `|Variance| ÷ PO amount × 100`, value: `${varPct.toFixed(1)}%` },
+        { label: 'Open POs', formula: 'Purchase orders still open', value: poOpen }],
+      rules: [
+        { rule: 'Variance is less than 1 (amounts agree)', result: 'MATCHED', hit: r1 },
+        { rule: 'Some POs still open and goods received < PO amount', result: 'GRPO PENDING', hit: r2 },
+        { rule: 'Goods received > invoiced', result: 'INVOICE PENDING', hit: r3 },
+        { rule: 'Variance is more than 5% of the PO amount', result: 'VARIANCE', hit: r4 },
+        { rule: 'Otherwise (variance within 5%)', result: 'MATCHED', hit: r5 },
+      ],
+      note: 'Rules are checked top to bottom; the first one that is true decides the status.',
+    },
+  };
+}
+
 // ── Purchase Three-Way Match Agent: PO ↔ GRPO ↔ AP Invoice by vendor ─────────
 // A separate route (mounted at its own top-level path by chat-server.mjs,
 // not under /api/procurement) but kept in this file since it shares
@@ -536,7 +613,8 @@ export function createPurchaseThreeWayMatchRouter(deps) {
           : poOpen > 0 && grpoAmt < poAmt ? 'grpo-pending'
           : grpoAmt > invAmt ? 'invoice-pending'
           : Math.abs(variance/Math.max(poAmt,1)) > 0.05 ? 'variance' : 'matched';
-        return { ...v, poAmt, grpoAmt, invAmt, variance, matchPct, poOpen, status };
+        const explain = ptwmExplain({ poAmt, grpoAmt, invAmt, variance, matchPct, poOpen, poCount: v.pos.length, grpoCount: v.grpos.length, invCount: v.invoices.length, status });
+        return { ...v, poAmt, grpoAmt, invAmt, variance, matchPct, poOpen, status, explain };
       }).sort((a,b) => b.poAmt - a.poAmt);
 
       res.json({ ok:true, vendors:result,

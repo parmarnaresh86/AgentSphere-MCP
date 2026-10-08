@@ -439,7 +439,10 @@ function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&l
 function fmtN(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 function fmtPct(n){ return n==null?'—':Number(n).toFixed(1)+'%'; }
 function isPct(m){ return m.toLowerCase().includes('percent')||m.toLowerCase().includes('margin')||m.toLowerCase().includes('rate'); }
-function fmtVal(m,v){ return isPct(m)?fmtPct(v):fmtN(v); }
+// Money measures (amounts, prices, balances, profit, cost) carry the USD sign
+function isAmt(m){ return !isPct(m) && !/^EUR/i.test(m) && /amount|price|balance|profit|cost|creditlimit|value/i.test(m); }
+function fmtUSD(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return (Number(n)<0?'-$':'$')+fmtN(Math.abs(Number(n)),d); }
+function fmtVal(m,v){ return isPct(m)?fmtPct(v):isAmt(m)?fmtUSD(v):fmtN(v); }
 
 // ── View switching ─────────────────────────────────────────────────────────────
 function switchView(view, el) {
@@ -613,7 +616,7 @@ function buildChart1(data) {
       labels:rows.map(r=>String(r._label||r._key||'').substring(0,22)),
       datasets:[{label, data:rows.map(r=>Number(r[m]||0)), backgroundColor:CHART_COLORS.map(c=>c+'BB'), borderColor:CHART_COLORS, borderWidth:1, borderRadius:4}],
     },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>isPct(m)?v.toFixed(1)+'%':abbreviate(v)}}}},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtVal(m,c.raw)}}},scales:{y:{ticks:{callback:v=>isPct(m)?v.toFixed(1)+'%':isAmt(m)?(v<0?'-$':'$')+abbreviate(Math.abs(v)):abbreviate(v)}}}},
   });
   document.getElementById('chart1-title').textContent = `Top 10 by ${label}`;
 }
@@ -632,7 +635,7 @@ function buildChart2(data) {
   chart2 = new Chart(ctx, {
     type:'doughnut',
     data:{labels:rows.map(r=>String(r._label||r._key||'').substring(0,20)),datasets:[{data:rows.map(r=>Math.abs(Number(r[m]||0))),backgroundColor:CHART_COLORS,borderWidth:2}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:12}}}},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:12}},tooltip:{callbacks:{label:c=>' '+c.label+': '+fmtVal(m,c.raw)}}}},
   });
 }
 
@@ -715,8 +718,8 @@ function sortBy(col) {
   const asc  = sortCol===col ? sortDir==='asc' ? false : true : true;
   sortCol = col; sortDir = asc ? 'asc' : 'desc';
   rows.sort((a,b) => {
-    const av = a.cells[col]?.textContent.replace(/[,%\s—]/g,'') || '';
-    const bv = b.cells[col]?.textContent.replace(/[,%\s—]/g,'') || '';
+    const av = a.cells[col]?.textContent.replace(/[,%\s—$]/g,'') || '';
+    const bv = b.cells[col]?.textContent.replace(/[,%\s—$]/g,'') || '';
     const an = parseFloat(av), bn = parseFloat(bv);
     if (!isNaN(an)&&!isNaN(bn)) return asc ? an-bn : bn-an;
     return asc ? av.localeCompare(bv) : bv.localeCompare(av);

@@ -5,6 +5,7 @@
  * Flow: INIT → SELECT_PRS → CONFIRM_VENDOR? → CONFIRM_DATE → CONFIRM_COMMENTS → REVIEW → POSTING → DONE
  */
 import { Router } from 'express';
+import { getTaxCodes } from '../lib/copy-doc-flow.mjs';
 
 const _sessions = new Map();
 
@@ -20,6 +21,7 @@ function initSession() {
     comments:        null,
     result:          null,
     _vendorResults:  null,
+    taxCodes:        [],   // [{ Code, Name, Rate }] for the per-line Tax Code dropdown
   };
 }
 
@@ -172,6 +174,17 @@ function buildPRAnalysis(prs) {
   return text;
 }
 
+// Tax Code <select> for a PO line — same ptpoEditLine() wiring as the price/whs inputs.
+// A code carried over from the PR that isn't in the master list is still kept as an option.
+function taxSelectHtml(idx, sel, taxCodes) {
+  const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const codes = [...taxCodes];
+  if (sel && !codes.some(t => t.Code === sel)) codes.unshift({ Code: sel, Name: '', Rate: 0 });
+  const opts = '<option value="">— None —</option>' + codes.map(t =>
+    `<option value="${esc(t.Code)}"${t.Code === sel ? ' selected' : ''}>${esc(t.Code)}${Number(t.Rate) ? ` (${Number(t.Rate)}%)` : ''}</option>`).join('');
+  return `<select class="ptpo-tax-select" data-idx="${idx}" onchange="ptpoEditLine(${idx},'taxCode',this.value,true)" style="width:110px;padding:2px 4px;font-size:12px;border:1px solid #ccc;border-radius:4px;background:#fff">${opts}</select>`;
+}
+
 // ── PO summary ─────────────────────────────────────────────────────────────────
 function buildPOSummary(session) {
   const { mergedLines, vendor, dueDate, comments, selectedEntries, openPRs } = session;
@@ -186,8 +199,9 @@ function buildPOSummary(session) {
   out += `| **Comments** | ${comments || '_(None)_'} |\n\n`;
 
   out += `#### Lines (${mergedLines.length})\n\n`;
-  out += `| # | Item Code | Description | Qty | Unit | Unit Price | Total | Whs |\n`;
-  out += `|---|---|---|---|---|---|---|---|\n`;
+  out += `| # | Item Code | Description | Qty | Unit | Unit Price | Total | Whs | Tax Code |\n`;
+  out += `|---|---|---|---|---|---|---|---|---|\n`;
+  const taxCodes = session.taxCodes || [];
   let grand = 0;
   mergedLines.forEach((l, i) => {
     const lt = (l.qty || 0) * (l.unitPrice || 0);
@@ -197,7 +211,7 @@ function buildPOSummary(session) {
     // ptpoSyncLine() the PO Builder sidebar cards use (shared by index via data-idx).
     const priceInput = `<input type="number" class="ptpo-price-input" data-idx="${i}" min="0" step="0.01" value="${l.unitPrice || ''}" placeholder="0.00" oninput="ptpoEditLine(${i},'unitPrice',this.value,false)" onchange="ptpoEditLine(${i},'unitPrice',this.value,true)" style="width:70px;padding:2px 5px;font-size:12px;border:1px solid ${l.unitPrice > 0 ? '#ccc' : '#f59e0b'};border-radius:4px;text-align:right">`;
     const whInput    = `<input type="text" class="ptpo-wh-input" data-idx="${i}" value="${String(l.warehouseCode || '').replace(/"/g, '&quot;')}" placeholder="Whs" onchange="ptpoEditLine(${i},'warehouseCode',this.value,true)" style="width:50px;padding:2px 5px;font-size:12px;border:1px solid #ccc;border-radius:4px">`;
-    out += `| ${i+1} | **${l.itemCode}** | ${l.itemName || '—'} | ${fmtN(l.qty,0)} | ${l.unit||'EA'} | ${priceInput} | <span data-lt="${i}">${lt > 0 ? fmtN(lt) : '—'}</span> | ${whInput} |\n`;
+    out += `| ${i+1} | **${l.itemCode}** | ${l.itemName || '—'} | ${fmtN(l.qty,0)} | ${l.unit||'EA'} | ${priceInput} | <span data-lt="${i}">${lt > 0 ? fmtN(lt) : '—'}</span> | ${whInput} | ${taxSelectHtml(i, l.taxCode, taxCodes)} |\n`;
   });
   out += `\n**Estimated Total: <span data-grand-total>${fmtN(grand)}</span>**`;
   const missing = mergedLines.filter(l => !(l.unitPrice > 0)).length;
@@ -236,8 +250,8 @@ export function createPRtoPOAgentRouter(deps) {
         try { action = JSON.parse(msg); } catch {}
         if (action?.action === 'update_line') {
           const { idx, field } = action;
-          if (Number.isInteger(idx) && session.mergedLines[idx] && ['unitPrice', 'warehouseCode', 'qty'].includes(field)) {
-            session.mergedLines[idx][field] = field === 'warehouseCode'
+          if (Number.isInteger(idx) && session.mergedLines[idx] && ['unitPrice', 'warehouseCode', 'qty', 'taxCode'].includes(field)) {
+            session.mergedLines[idx][field] = (field === 'warehouseCode' || field === 'taxCode')
               ? String(action.value ?? '')
               : (Number(action.value) || 0);
           }
@@ -336,6 +350,7 @@ export function createPRtoPOAgentRouter(deps) {
                     uomCode:       line.UoMCode || line.MeasureUnit || '',
                     unitPrice:     Number(line.UnitPrice || line.Price || 0),
                     warehouseCode: line.WarehouseCode || '',
+                    taxCode:       line.TaxCode || line.VatGroup || '',
                     sourcePR:      full.DocNum,
                     // Needed to "Copy From" link the PO line back to its PR line — without this,
                     // SAP never marks the PR line as drawn, so the PR stays open and reappears
@@ -353,6 +368,9 @@ export function createPRtoPOAgentRouter(deps) {
             }
 
             session.mergedLines = merged;
+            if (!session.taxCodes.length) {
+              try { session.taxCodes = await getTaxCodes(sap); } catch { session.taxCodes = []; }
+            }
             const selNums = session.openPRs.filter(p => session.selectedEntries.includes(p.docEntry)).map(p => `PR#${p.docNum}`).join(', ');
 
             if (merged.length === 0) {
@@ -473,6 +491,7 @@ export function createPRtoPOAgentRouter(deps) {
                 ShipDate:  sapDate(session.dueDate || today()),
                 ...(l.unitPrice > 0 ? { UnitPrice:     l.unitPrice     } : {}),
                 ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
+                ...(l.taxCode       ? { TaxCode:       l.taxCode       } : {}),
                 ...(uomCodes[i]     ? { UoMCode:        uomCodes[i]     } : {}),
                 // "Copy From" link back to the source PR line — this is what makes SAP mark
                 // the PR line as drawn/closed once the PO posts, instead of leaving the PR open.
@@ -573,6 +592,7 @@ export function createPRtoPOAgentRouter(deps) {
         mergedLines:   currentSession.mergedLines || [],
         vendor:        currentSession.vendor,
         dueDate:       currentSession.dueDate,
+        taxCodes:      (currentSession.taxCodes || []).map(t => ({ code: t.Code, rate: Number(t.Rate) || 0 })),
         meta, prList, vendorList,
       });
 

@@ -337,6 +337,49 @@ async function executeMrpTool(name, args, sap) {
   return { error: `Unknown tool: ${name}` };
 }
 
+// "How is this calculated?" popups — built from the same variables used above so the
+// explanation can never drift from the value shown in the table.
+function mrpExplain({ onHand, committed, available, onOrder, minStock, maxStock, projected, gap, reorderQty, urgency }) {
+  const f = n => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 2 });
+  const gapPct = minStock > 0 ? Math.round(gap / minStock * 100) : 0;
+  const base = [
+    { label: 'Available stock', formula: `In stock ${f(onHand)} − committed to sales orders ${f(committed)}`, value: available },
+    { label: 'Projected stock', formula: `Available ${f(available)} + already on order from vendors ${f(onOrder)}`, value: projected },
+    { label: 'Gap to minimum', formula: `Minimum stock ${f(minStock)} − projected ${f(projected)}`, value: gap },
+  ];
+  return {
+    urgency: {
+      title: `Why urgency is ${urgency.toUpperCase()}`,
+      steps: [...base, { label: 'Gap as % of minimum', formula: `Gap ${f(gap)} ÷ minimum ${f(minStock)}`, value: `${gapPct}%` }],
+      rules: [
+        { rule: 'Available stock is 0 or less', result: 'CRITICAL', hit: urgency === 'critical' },
+        { rule: 'Gap is 70% or more of the minimum stock', result: 'HIGH', hit: urgency === 'high' },
+        { rule: 'Otherwise (projected stock below minimum)', result: 'MEDIUM', hit: urgency === 'medium' },
+      ],
+      note: 'Only items whose projected stock (available + on order) is below the minimum are listed.',
+    },
+    gap: {
+      title: 'How the gap is calculated',
+      steps: base,
+      result: { label: 'Gap', value: gap },
+    },
+    reorderQty: {
+      title: 'How the reorder quantity is calculated',
+      steps: [
+        ...base,
+        maxStock > 0
+          ? { label: 'Fill up to maximum', formula: `Maximum stock ${f(maxStock)} − projected ${f(projected)}`, value: maxStock - projected }
+          : { label: 'Twice the gap', formula: `Gap ${f(gap)} × 2 (no maximum stock set)`, value: gap * 2 },
+      ],
+      result: { label: 'Reorder quantity (at least 1)', value: reorderQty },
+      rules: [
+        { rule: 'Maximum stock is set on the item', result: 'Maximum − projected stock', hit: maxStock > 0 },
+        { rule: 'No maximum stock set', result: 'Gap × 2', hit: !(maxStock > 0) },
+      ],
+    },
+  };
+}
+
 export function createMrpAgentRouter(deps) {
   const { requireAuth, getActiveSap, gptChatComplete } = deps;
   const router = Router();
@@ -373,9 +416,10 @@ export function createMrpAgentRouter(deps) {
         const gap        = minStock - projected;
         const reorderQty = Math.max(1, maxStock > 0 ? maxStock - projected : gap * 2);
         const urgency    = available <= 0 ? 'critical' : gap / minStock >= 0.7 ? 'high' : 'medium';
+        const explain    = mrpExplain({ onHand, committed, available, onOrder, minStock, maxStock, projected, gap, reorderQty, urgency });
         return {
           itemCode: it.ItemCode, itemName: it.ItemName,
-          onHand, committed, available, onOrder, minStock, maxStock, gap, reorderQty, urgency,
+          onHand, committed, available, onOrder, minStock, maxStock, gap, reorderQty, urgency, explain,
           leadTime: Number(it.LeadTime || 7),
           uom: it.InventoryUOM || it.InventoryUoM || 'EA',
           preferredVendor: it.Mainsupplier || null,

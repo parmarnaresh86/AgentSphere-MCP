@@ -79,7 +79,11 @@ const ORDR_FIELD_CANDIDATES = {
   docDate: ['DocDate'], docDueDate: ['DocDueDate'], docStatus: ['DocStatus'],
   docTotal: ['DocTotal'], shipToCode: ['ShipToCode'],
 };
-const ORDR_OPTIONAL_CANDIDATES = { canceled: ['CANCELED', 'Canceled'] };
+const ORDR_OPTIONAL_CANDIDATES = {
+  canceled: ['CANCELED', 'Canceled'],
+  // SAP B1 sales orders have no standard priority field; companies usually add a UDF.
+  priority: ['U_Priority', 'U_OrderPriority', 'U_OrdPriority', 'U_Prio', 'U_PRIORITY', 'U_SOPriority'],
+};
 const RDR1_FIELD_CANDIDATES = {
   docEntry: ['DocEntry'], itemCode: ['ItemCode'], itemName: ['Dscription'],
   openQty: ['OpenQty'], price: ['Price'],
@@ -87,7 +91,8 @@ const RDR1_FIELD_CANDIDATES = {
 const RUSH_STOCK_FIELD_CANDIDATES = {
   itemCode: ['ItemCode'], onHand: ['OnHand'], committed: ['IsCommited'], minInventory: ['MinLevel', 'MinInvntry'],
 };
-const OCRD_GROUP_CANDIDATES = { cardCode: ['CardCode'], groupNum: ['GroupNum'] };
+// Customer group (OCRD.GroupCode → OCRG). Note: OCRD.GroupNum is the payment-terms code, not the group.
+const OCRD_GROUP_CANDIDATES = { cardCode: ['CardCode'], groupNum: ['GroupCode'] };
 
 function dbCtx(dbDeps) {
   const { getActiveConfig, getActiveType, tableRef } = dbDeps;
@@ -120,17 +125,20 @@ async function fetchOpenOrdersViaDB(dbDeps, { futureCut, warehouse }) {
   const sql = `SELECT T0.${q(h.docEntry)} AS ${q('DocEntry')}, T0.${q(h.docNum)} AS ${q('DocNum')}, ` +
     `T0.${q(h.cardCode)} AS ${q('CardCode')}, T0.${q(h.cardName)} AS ${q('CardName')}, ` +
     `T0.${q(h.docDate)} AS ${q('DocDate')}, T0.${q(h.docDueDate)} AS ${q('DocDueDate')}, ` +
-    `T0.${q(h.docTotal)} AS ${q('DocTotal')}, T1.${q(c.groupNum)} AS ${q('GroupNum')} ` +
+    `T0.${q(h.docTotal)} AS ${q('DocTotal')}, T1.${q(c.groupNum)} AS ${q('GroupNum')}` +
+    (opt.priority ? `, T0.${q(opt.priority)} AS ${q('Priority')} ` : ' ') +
     `FROM ${t('ORDR')} T0 LEFT JOIN ${t('OCRD')} T1 ON T1.${q(c.cardCode)} = T0.${q(h.cardCode)} ` +
     `WHERE ${conds.join(' AND ')}`;
   const rows = await dbDeps.executeSQL(sql);
 
   // Normalized to the same shape the Service Layer /Orders response provides.
-  return rows.map(r => ({
+  const orders = rows.map(r => ({
     DocEntry: r.DocEntry, DocNum: r.DocNum, CardCode: r.CardCode, CardName: r.CardName,
     DocDate: r.DocDate, DocDueDate: r.DocDueDate, DocTotal: r.DocTotal,
-    DocumentStatus: 'bost_Open', Priority: '', GroupNum: r.GroupNum ?? '',
+    DocumentStatus: 'bost_Open', Priority: r.Priority ?? '', GroupNum: r.GroupNum ?? '',
   }));
+  orders.priorityField = opt.priority || null;   // which UDF fed "Order priority" (null = none)
+  return orders;
 }
 
 // One query per 500 orders: open RDR1 lines + OITM stock via LEFT JOIN.
@@ -210,7 +218,9 @@ function scoreOrder(order, cfg, today = new Date()) {
   else if (/high/.test(pRaw)  || pRaw === '3') { pPts = 15; pRule = 'High'; }
   else if (/med/.test(pRaw)   || pRaw === '2') { pPts = 10; pRule = 'Medium'; }
   else                                         { pPts = 0;  pRule = 'Normal / Low / not set'; }
-  breakdown.push({ factor: 'Order priority', source: 'Order Priority field', value: order.Priority || '(not set)', rule: pRule, points: pPts, max: W_PRIORITY });
+  if (cfg.priorityField) {
+    breakdown.push({ factor: 'Order priority', source: `ORDR.${cfg.priorityField}`, value: order.Priority || '(not set)', rule: pRule, points: pPts, max: W_PRIORITY });
+  }
 
   // Order value (20 pts)
   const val = Number(order.DocTotal || 0);
@@ -224,17 +234,29 @@ function scoreOrder(order, cfg, today = new Date()) {
   breakdown.push({ factor: 'Order value', source: 'ORDR.DocTotal', value: val.toLocaleString(), rule: vRule, points: vPts, max: W_VALUE });
 
   // Customer tier (20 pts)
-  const isVip  = cfg.vipCustomers.includes(order.CardCode);
+  const isVip  = cfg.vipCustomers.includes(String(order.CardCode || '').trim().toUpperCase());
   const isHigh = cfg.highTierGroups.includes(String(order.GroupNum));
   let tPts, tRule;
   if      (isVip)  { tPts = 20; tRule = 'VIP customer (configured list)'; }
   else if (isHigh) { tPts = 15; tRule = 'High-tier customer group'; }
   else             { tPts =  5; tRule = 'Standard customer'; }
-  breakdown.push({ factor: 'Customer tier', source: 'ORDR.CardCode + OCRD.GroupNum', value: `${order.CardCode || '—'} · group ${order.GroupNum ?? '—'}`, rule: tRule, points: tPts, max: W_TIER });
+  breakdown.push({ factor: 'Customer tier', source: 'ORDR.CardCode + OCRD.GroupCode (customer group)', value: `${order.CardCode || '—'} · group ${order.GroupNum ?? '—'}`, rule: tRule, points: tPts, max: W_TIER });
 
+  // No priority field on this company's sales orders: its 20 points are spread over
+  // the other factors (× 100/80) so a score can still reach 100 and every tag is reachable.
+  if (!cfg.priorityField) {
+    const k = 100 / (W_DAYS + W_VALUE + W_TIER);
+    for (const b of breakdown) {
+      b.rule += ` (×${round1(k)}: no priority field)`;
+      b.points = round1(b.points * k); b.max = round1(b.max * k);
+    }
+    breakdown.splice(1, 0, { factor: 'Order priority', source: 'not available', value: 'No priority field (e.g. U_Priority) on sales orders', rule: 'Weight moved to the other factors', points: 0, max: 0 });
+  }
   const total = breakdown.reduce((s, b) => s + b.points, 0);
-  return { score: Math.min(100, total), daysLeft, breakdown };
+  return { score: Math.min(100, Math.round(total)), daysLeft, breakdown };
 }
+
+const round1 = n => Math.round(n * 10) / 10;
 
 function tagOrder(score) {
   if (score >= 75) return 'CRITICAL';
@@ -432,6 +454,9 @@ function saveReport(orders, cfg, dryRun = false) {
       requireReview:    review.length,
       totalExpediteCost: Math.round(totalXCost),
       revenueProtected: Math.round(revProtect),
+      priorityField:    cfg.priorityField || null,
+      vipCustomers:     cfg.vipCustomers.length,
+      highTierGroups:   cfg.highTierGroups.length,
     },
     orders: orders.map(o => ({
       docNum: o.DocNum, docEntry: o.DocEntry,
@@ -468,7 +493,9 @@ export async function runRushOrderScan(sap, {
   aiDeps             = null,
   dbDeps             = null,
 } = {}) {
-  const cfg = { urgentWithinDays, autoApproveMaxCost, maxExpediteCost, vipCustomers, highTierGroups };
+  const list = v => (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map(x => String(x).trim()).filter(Boolean);
+  const cfg = { urgentWithinDays, autoApproveMaxCost, maxExpediteCost,
+    vipCustomers: list(vipCustomers).map(x => x.toUpperCase()), highTierGroups: list(highTierGroups) };
   const today    = new Date();
   const futureCut = new Date(today.getTime() + urgentWithinDays * 86_400_000).toISOString().slice(0, 10);
 
@@ -498,6 +525,7 @@ export async function runRushOrderScan(sap, {
     }, { pageSize: 100, maxItems: 500 });
     source = 'service-layer';
   }
+  cfg.priorityField = rawOrders.priorityField || null;
 
   if (rawOrders.length === 0) {
     return {
@@ -630,6 +658,25 @@ export function createRushOrderRouter(deps) {
   // GET /api/rush-orders/config
   router.get('/config', requireAuth, (_req, res) => {
     res.json({ ok: true, config: DEFAULT_CFG });
+  });
+
+  // GET /api/rush-orders/customer-groups — customer groups for the "Customer tiers" setting.
+  router.get('/customer-groups', requireAuth, async (_req, res) => {
+    try {
+      let groups = null;
+      if (_dbDeps?.isConnected?.()) {
+        try {
+          const { q, t } = dbCtx(_dbDeps);
+          const rows = await _dbDeps.executeSQL(`SELECT ${q('GroupCode')} AS ${q('code')}, ${q('GroupName')} AS ${q('name')} FROM ${t('OCRG')} WHERE ${q('GroupType')} = 'C' ORDER BY ${q('GroupName')}`);
+          groups = rows.map(r => ({ code: String(r.code), name: r.name }));
+        } catch (e) { console.warn('[RushOrders] OCRG via DB failed:', e.message); }
+      }
+      if (!groups) {
+        const rows = await fetchAllPaginated(getActiveSap(), '/BusinessPartnerGroups', { $filter: "Type eq 'bbpgt_CustomerGroup'", $select: 'Code,Name' }, { pageSize: 100, maxItems: 1000 });
+        groups = rows.map(r => ({ code: String(r.Code), name: r.Name }));
+      }
+      res.json({ ok: true, groups });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
   // POST /api/rush-orders/scan

@@ -175,6 +175,83 @@ async function fetchAllPaginated(sap, endpoint, params, { pageSize = 50, maxItem
 
 // ── Step 1: build vendor delay history from recent POs ────────────────────────
 // DB Direct (ODBC/HANA) preferred, Service Layer fallback.
+// ── "How is this calculated?" popups ─────────────────────────────────────────
+// Built from the same variables used to compute each value, so they cannot drift.
+function sdVendorSteps(v) {
+  return [
+    { label: 'Open POs', formula: `Purchase orders still open (last ${HISTORY_MONTHS} months)`, value: v.openPOs },
+    { label: 'Overdue POs', formula: 'Open POs past their due date', value: v.overduePOs },
+    { label: 'Overdue rate', formula: `Overdue ${v.overduePOs} ÷ open ${v.openPOs} × 100`, value: `${v.overdueRate}%` },
+  ];
+}
+
+function sdVendorExplain(v) {
+  const r = v.overdueRate;
+  return {
+    reliability: {
+      title: `Why the vendor is "${v.reliability}"`,
+      steps: sdVendorSteps(v),
+      rules: [
+        { rule: 'Overdue rate is 0%', result: 'Reliable', hit: r === 0 },
+        { rule: 'Overdue rate up to 15%', result: 'Generally On-Time', hit: r > 0 && r <= 15 },
+        { rule: 'Overdue rate 16–40%', result: 'Occasionally Late', hit: r > 15 && r <= 40 },
+        { rule: 'Overdue rate 41–70%', result: 'Frequently Delayed', hit: r > 40 && r <= 70 },
+        { rule: 'Overdue rate above 70%', result: 'Unreliable', hit: r > 70 },
+      ],
+    },
+    riskLevel: {
+      title: `Why vendor risk is ${v.riskLevel}`,
+      steps: sdVendorSteps(v),
+      rules: [
+        { rule: 'Overdue rate 50% or more', result: 'HIGH', hit: r >= 50 },
+        { rule: 'Overdue rate 20–49%', result: 'MEDIUM', hit: r >= 20 && r < 50 },
+        { rule: 'Overdue rate below 20%', result: 'LOW', hit: r < 20 },
+      ],
+    },
+  };
+}
+
+function sdPoExplain({ vs, known, dueDate, daysUntilDue, isOverdue, daysOverdue, urgencyMult, delayProb, risk }) {
+  const rateNote = known ? `Vendor's overdue rate (open POs past due ÷ open POs)` : 'No history for this vendor — default 10% used';
+  let steps;
+  if (isOverdue) {
+    steps = [
+      { label: 'Days overdue', formula: `Due ${String(dueDate || '').slice(0, 10)} — already past due`, value: daysOverdue },
+      { label: 'Delay probability', formula: `90% + ${Math.min(daysOverdue, 30)} day(s) × 0.3% (days capped at 30), max 99%`, value: `${delayProb}%` },
+    ];
+  } else if (daysUntilDue === null) {
+    steps = [
+      { label: 'Vendor overdue rate', formula: rateNote, value: `${vs.overdueRate}%` },
+      { label: 'Delay probability', formula: `No due date — overdue rate ${vs.overdueRate}% × 0.5`, value: `${delayProb}%` },
+    ];
+  } else {
+    steps = [
+      { label: 'Vendor overdue rate', formula: rateNote, value: `${vs.overdueRate}%` },
+      { label: 'Days until due', formula: `Due ${String(dueDate || '').slice(0, 10)} − today`, value: daysUntilDue },
+      { label: 'Urgency multiplier', formula: '≤2 days ×2.2 · ≤5 ×1.6 · ≤10 ×1.1 · ≤21 ×0.7 · later ×0.4', value: `×${urgencyMult}` },
+      { label: 'Delay probability', formula: `${vs.overdueRate}% × ${urgencyMult} + 5% base, max 95%`, value: `${delayProb}%` },
+    ];
+  }
+  const probRules = [
+    { rule: 'PO is already overdue', result: '90% + 0.3% per day overdue (max 99%)', hit: isOverdue },
+    { rule: 'PO has no due date', result: 'Vendor overdue rate × 0.5', hit: !isOverdue && daysUntilDue === null },
+    { rule: 'PO not yet due', result: 'Vendor overdue rate × urgency multiplier + 5% (max 95%)', hit: !isOverdue && daysUntilDue !== null },
+  ];
+  return {
+    delayProb: { title: `How delay probability ${delayProb}% is calculated`, steps, rules: probRules },
+    risk: {
+      title: `Why PO risk is ${risk}`,
+      steps,
+      rules: [
+        { rule: 'Delay probability 80% or more, or PO already overdue', result: 'CRITICAL', hit: risk === 'CRITICAL' },
+        { rule: 'Delay probability 50–79%', result: 'HIGH', hit: risk === 'HIGH' },
+        { rule: 'Delay probability 25–49%', result: 'MEDIUM', hit: risk === 'MEDIUM' },
+        { rule: 'Delay probability below 25%', result: 'LOW', hit: risk === 'LOW' },
+      ],
+    },
+  };
+}
+
 async function buildVendorHistory(sap, dbDeps) {
   const today    = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -228,7 +305,10 @@ async function buildVendorHistory(sap, dbDeps) {
   }
 
   const list = Object.values(vendorMap);
+  const grandSpend = list.reduce((t, v) => t + v.totalSpend, 0);
   list.forEach(v => {
+    // Share of all PO value in the look-back window placed with this vendor (%).
+    v.spendShare    = grandSpend > 0 ? Math.round(v.totalSpend / grandSpend * 1000) / 10 : 0;
     v.overdueRate   = v.openPOs > 0 ? Math.round(v.overduePOs / v.openPOs * 100) : 0;
     v.avgDelayDays  = v.overduePOs > 0 ? Math.round(v.totalDelayDays / v.overduePOs) : 0;
     v.reliability   = v.overdueRate === 0 ? 'Reliable'
@@ -239,6 +319,7 @@ async function buildVendorHistory(sap, dbDeps) {
     v.riskLevel     = v.overdueRate >= 50  ? 'HIGH'
                     : v.overdueRate >= 20  ? 'MEDIUM'
                     : 'LOW';
+    v.explain       = sdVendorExplain(v);
   });
 
   // Return as map (keyed by CardCode) and list
@@ -274,7 +355,7 @@ async function scoreOpenPOs(sap, vendorMap, dbDeps) {
     const daysOverdue = isOverdue ? Math.abs(daysUntilDue) : 0;
 
     // Delay probability: vendor base rate amplified by urgency
-    let prob;
+    let prob, urgencyMult = null;
     if (isOverdue) {
       prob = Math.min(0.90 + Math.min(daysOverdue, 30) * 0.003, 0.99);
     } else if (daysUntilDue === null) {
@@ -285,6 +366,7 @@ async function scoreOpenPOs(sap, vendorMap, dbDeps) {
                     : daysUntilDue <= 10 ? 1.1
                     : daysUntilDue <= 21 ? 0.7
                     : 0.4;
+      urgencyMult = urgency;
       prob = Math.min((vs.overdueRate / 100) * urgency + (isOverdue ? 0 : 0.05), 0.95);
     }
 
@@ -316,6 +398,7 @@ async function scoreOpenPOs(sap, vendorMap, dbDeps) {
       vendorOverdueRate: vs.overdueRate,
       vendorAvgDelay:    vs.avgDelayDays,
       vendorReliability: vs.reliability,
+      explain:           sdPoExplain({ vs, known: !!vendorMap[po.CardCode], dueDate: po.DocDueDate, daysUntilDue, isOverdue, daysOverdue, urgencyMult, delayProb, risk }),
     };
   });
 

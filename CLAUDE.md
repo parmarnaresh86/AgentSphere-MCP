@@ -59,6 +59,7 @@ Each controller exports a `create*Router(deps)` factory that receives injected d
 | `po-to-grpo-agent.mjs` | `/api/po-to-grpo` | Receive an open PO as a GRPO (shared `lib/copy-doc-flow.mjs`, `receive` mode): vendor → PO → lines (qty, price, disc, tax, warehouse), create batches/serials, receiving bins, "+ Add Line" for substitute items |
 | `grpo-to-apinv-agent.mjs` | `/api/grpo-apinv` | Copy an open GRPO into an A/P Invoice (shared `lib/copy-doc-flow.mjs`) |
 | `scan-apinv-agent.mjs` | `/api/scan-apinv` | Scan A/P Invoice: OCR a supplier invoice and three-way match it to a GRPO |
+| `order-confirmation-agent.mjs` | `/api/order-confirmation` | Sales Order Confirmation: list open SOs (pending/confirmed), detail drawer with lines + customer credit, confirm one or many by PATCHing `Confirmed: 'tYES'` (UI: `#soc-panel` in `public/index.html`) |
 | `forecasting.mjs` | `/api/forecasting` | Product demand forecasting agent |
 | `rush-orders.mjs` | `/api/rush-orders` | Rush order prioritisation agent |
 

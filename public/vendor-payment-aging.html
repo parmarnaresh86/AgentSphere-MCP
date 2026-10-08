@@ -687,6 +687,12 @@ function fmtN(n, d = 0) {
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+// Amounts always carry the USD sign: -$1,234 / $1,234
+function fmtUSD(n, d = 0) {
+  if (n == null || isNaN(Number(n))) return '—';
+  return (Number(n) < 0 ? '-$' : '$') + fmtN(Math.abs(Number(n)), d);
+}
+
 // ── Chat helpers ─────────────────────────────────────────────────────────────
 function appendMessage(role, content, quickReplies) {
   const msgs = document.getElementById('messages');
@@ -840,7 +846,7 @@ async function runAnalyze() {
     sessionId = null; // reset so next chat uses fresh context
 
     setStatus('ready', 'READY');
-    appendMessage('bot', `✅ Loaded aging as of **${params.agingDate}** — **${data.totals.vendorCount}** vendors, balance due **${fmtN(data.totals.balanceDue)}**.${data.totals.overdue > 0 ? ` ⚠️ Overdue: **${fmtN(data.totals.overdue)}**` : ''}\n\nAsk me anything about this data.`,
+    appendMessage('bot', `✅ Loaded aging as of **${params.agingDate}** — **${data.totals.vendorCount}** vendors, balance due **${fmtUSD(data.totals.balanceDue)}**.${data.totals.overdue > 0 ? ` ⚠️ Overdue: **${fmtUSD(data.totals.overdue)}**` : ''}\n\nAsk me anything about this data.`,
       ['Show top overdue vendors', 'Aging bucket summary', 'Vendors over 90 days', 'Cash flow risk']);
   } catch (e) {
     setStatus('error', 'ERROR');
@@ -854,20 +860,20 @@ async function runAnalyze() {
 function buildContextString(data) {
   const { vendors, totals, buckets, params } = data;
   const top = (vendors || []).slice(0, 15);
-  const buckStr = (buckets || []).map(b => `  ${b.bucket}: ${fmtN(b.balanceDue)} (${b.vendorCount} vendors)`).join('\n');
-  const topStr  = top.map((v, i) => `  ${i+1}. ${v.name} (${v.code}): Balance ${fmtN(v.balanceDue)}, Overdue ${fmtN(v.overdue)}, ${v.maxDaysOutstanding} days max`).join('\n');
+  const buckStr = (buckets || []).map(b => `  ${b.bucket}: ${fmtUSD(b.balanceDue)} (${b.vendorCount} vendors)`).join('\n');
+  const topStr  = top.map((v, i) => `  ${i+1}. ${v.name} (${v.code}): Balance ${fmtUSD(v.balanceDue)}, Overdue ${fmtUSD(v.overdue)}, ${v.maxDaysOutstanding} days max`).join('\n');
 
   return `VENDOR PAYMENT AGING — As of: ${params?.agingDate} | Bucket: ${params?.bucketSize} days
-TOTALS: Balance Due ${fmtN(totals.balanceDue)}, Overdue ${fmtN(totals.overdue)}, Future ${fmtN(totals.futureRemit)}, Vendors: ${totals.vendorCount}
+TOTALS: Balance Due ${fmtUSD(totals.balanceDue)}, Overdue ${fmtUSD(totals.overdue)}, Future ${fmtUSD(totals.futureRemit)}, Vendors: ${totals.vendorCount}
 AGING BUCKETS:\n${buckStr}
 TOP VENDORS:\n${topStr}`;
 }
 
 // ── KPI update ────────────────────────────────────────────────────────────────
 function updateKPIs(t, agingDate) {
-  document.getElementById('kpi-balance').textContent  = fmtN(t.balanceDue);
-  document.getElementById('kpi-overdue').textContent  = fmtN(t.overdue);
-  document.getElementById('kpi-future').textContent   = fmtN(t.futureRemit);
+  document.getElementById('kpi-balance').textContent  = fmtUSD(t.balanceDue);
+  document.getElementById('kpi-overdue').textContent  = fmtUSD(t.overdue);
+  document.getElementById('kpi-future').textContent   = fmtUSD(t.futureRemit);
   document.getElementById('kpi-vendors').textContent  = t.vendorCount;
   document.getElementById('kpi-docs').textContent     = `${t.docCount} documents`;
   document.getElementById('kpi-aging-date').textContent = `As of ${agingDate}`;
@@ -938,7 +944,7 @@ function renderAgingChart(buckets) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => ' ' + fmtN(ctx.raw),
+            label: ctx => ' ' + fmtUSD(ctx.raw),
           },
         },
       },
@@ -946,7 +952,7 @@ function renderAgingChart(buckets) {
         x: { grid: { display: false }, ticks: { font: { size: 10 } } },
         y: {
           grid: { color: '#F0F0F0' },
-          ticks: { font: { size: 10 }, callback: v => fmtN(v) },
+          ticks: { font: { size: 10 }, callback: v => fmtUSD(v) },
         },
       },
     },
@@ -992,10 +998,10 @@ function renderVendorChart(vendors) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: ctx => ' ' + fmtN(ctx.raw) } },
+        tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: ctx => ' ' + fmtUSD(ctx.raw) } },
       },
       scales: {
-        x: { grid: { color: '#F0F0F0' }, ticks: { font: { size: 10 }, callback: v => fmtN(v) } },
+        x: { grid: { color: '#F0F0F0' }, ticks: { font: { size: 10 }, callback: v => fmtUSD(v) } },
         y: { grid: { display: false }, ticks: { font: { size: 10.5 } } },
       },
     },
@@ -1029,10 +1035,10 @@ function renderTopOverdueChart(vendors) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: ctx => ' ' + fmtN(ctx.raw) } },
+        tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: ctx => ' ' + fmtUSD(ctx.raw) } },
       },
       scales: {
-        x: { grid: { color: '#F0F0F0' }, ticks: { font: { size: 10 }, callback: v => fmtN(v) } },
+        x: { grid: { color: '#F0F0F0' }, ticks: { font: { size: 10 }, callback: v => fmtUSD(v) } },
         y: { grid: { display: false }, ticks: { font: { size: 10.5 } } },
       },
     },
@@ -1065,14 +1071,14 @@ function renderTableFromVendors(vendors) {
     let bucketCells = '';
     if (showBuckets) {
       bucketCols.forEach(b => {
-        bucketCells += `<td class="amt">${fmtN(v.buckets?.[b] || 0)}</td>`;
+        bucketCells += `<td class="amt">${fmtUSD(v.buckets?.[b] || 0)}</td>`;
       });
     }
     return `<tr onclick="showVendorDetail('${escHtml(v.code)}')" title="Click for document-wise detail">
       <td><div style="font-weight:600;font-size:12px">${escHtml(v.name || v.code)}</div><div style="font-size:10.5px;color:var(--muted)">${escHtml(v.code)}</div></td>
-      <td class="amt">${fmtN(v.balanceDue)}</td>
-      <td class="amt overdue-cell">${v.overdue > 0 ? fmtN(v.overdue) : '<span style="color:var(--green)">Current</span>'}</td>
-      <td class="amt">${fmtN(v.futureRemit)}</td>
+      <td class="amt">${fmtUSD(v.balanceDue)}</td>
+      <td class="amt overdue-cell">${v.overdue > 0 ? fmtUSD(v.overdue) : '<span style="color:var(--green)">Current</span>'}</td>
+      <td class="amt">${fmtUSD(v.futureRemit)}</td>
       <td class="amt"><span class="days-pill ${daysClass}">${v.maxDaysOutstanding}</span></td>
       ${bucketCells}
     </tr>`;
@@ -1102,10 +1108,10 @@ function showVendorDetail(code) {
   }, { original: 0, balanceDue: 0, overdue: 0, futureRemit: 0 });
 
   document.getElementById('vd-kpis').innerHTML = `
-    <div class="vd-kpi"><div class="vd-kpi-label">Original</div><div class="vd-kpi-val">${fmtN(totals.original)}</div></div>
-    <div class="vd-kpi"><div class="vd-kpi-label">Balance Due</div><div class="vd-kpi-val">${fmtN(totals.balanceDue)}</div></div>
-    <div class="vd-kpi"><div class="vd-kpi-label">Overdue</div><div class="vd-kpi-val" style="color:var(--red)">${fmtN(totals.overdue)}</div></div>
-    <div class="vd-kpi"><div class="vd-kpi-label">Future Remit</div><div class="vd-kpi-val" style="color:var(--blue)">${fmtN(totals.futureRemit)}</div></div>`;
+    <div class="vd-kpi"><div class="vd-kpi-label">Original</div><div class="vd-kpi-val">${fmtUSD(totals.original)}</div></div>
+    <div class="vd-kpi"><div class="vd-kpi-label">Balance Due</div><div class="vd-kpi-val">${fmtUSD(totals.balanceDue)}</div></div>
+    <div class="vd-kpi"><div class="vd-kpi-label">Overdue</div><div class="vd-kpi-val" style="color:var(--red)">${fmtUSD(totals.overdue)}</div></div>
+    <div class="vd-kpi"><div class="vd-kpi-label">Future Remit</div><div class="vd-kpi-val" style="color:var(--blue)">${fmtUSD(totals.futureRemit)}</div></div>`;
 
   const tbody = document.getElementById('vd-tbody');
   tbody.innerHTML = docs.length ? docs.map(d => `
@@ -1116,9 +1122,9 @@ function showVendorDetail(code) {
       <td>${fmtDate(d.dueDate)}</td>
       <td class="amt">${d.daysOutstanding}</td>
       <td>${escHtml(d.bucket || '—')}</td>
-      <td class="amt">${fmtN(d.originalAmt)}</td>
-      <td class="amt">${fmtN(d.balanceDue)}</td>
-      <td class="amt" style="${d.overdue > 0 ? 'color:var(--red);font-weight:600' : ''}">${d.overdue > 0 ? fmtN(d.overdue) : '<span style="color:var(--green)">Current</span>'}</td>
+      <td class="amt">${fmtUSD(d.originalAmt)}</td>
+      <td class="amt">${fmtUSD(d.balanceDue)}</td>
+      <td class="amt" style="${d.overdue > 0 ? 'color:var(--red);font-weight:600' : ''}">${d.overdue > 0 ? fmtUSD(d.overdue) : '<span style="color:var(--green)">Current</span>'}</td>
     </tr>`).join('') : '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No documents found</td></tr>';
 
   document.getElementById('vendor-detail-overlay').classList.add('show');

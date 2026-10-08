@@ -10,19 +10,12 @@
   const PALETTE = ['#0070F3', '#00A28A', '#E9730C', '#8B37BF', '#CF4B00', '#0F5132', '#D63384', '#6F42C1', '#20C997', '#FFC107', '#6C757D', '#198754'];
   const POS = '#16A34A', NEG = '#DC2626', MUTED = '#9CA3AF';
 
-  // ── Formatting — follows the company currency (window.APP_CURRENCY):
-  // INR → Indian units K / L / Cr, anything else → international K / M / B.
-  const isInr = () => (window.APP_CURRENCY || {}).code === 'INR';
+  // ── Formatting — international units K / M / B (no INR Lakh / Crore).
   function fmtC(v) {
     const n = Number(v); if (!isFinite(n)) return '';
     const a = Math.abs(n), s = n < 0 ? '-' : '';
-    if (isInr()) {
-      if (a >= 1e7) return s + (a / 1e7).toFixed(a >= 1e9 ? 0 : 2).replace(/\.?0+$/, '') + ' Cr';
-      if (a >= 1e5) return s + (a / 1e5).toFixed(2).replace(/\.?0+$/, '') + ' L';
-    } else {
-      if (a >= 1e9) return s + (a / 1e9).toFixed(2).replace(/\.?0+$/, '') + ' B';
-      if (a >= 1e6) return s + (a / 1e6).toFixed(2).replace(/\.?0+$/, '') + ' M';
-    }
+    if (a >= 1e9) return s + (a / 1e9).toFixed(2).replace(/\.?0+$/, '') + ' B';
+    if (a >= 1e6) return s + (a / 1e6).toFixed(2).replace(/\.?0+$/, '') + ' M';
     if (a >= 1e3) return s + (a / 1e3).toFixed(1).replace(/\.0$/, '') + ' K';
     return s + (Number.isInteger(a) ? a : a.toFixed(2));
   }

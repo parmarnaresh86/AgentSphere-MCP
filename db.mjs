@@ -578,6 +578,7 @@ export const ALL_PERMISSIONS = [
   { key: 'sales.workflow.quotation',         label: 'Sales Quotation',    section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.quote_compare',     label: 'Quotation Compare',  section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.quote_to_order',    label: 'Quot → Order',       section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.order_confirmation', label: 'Order Confirmation', section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.order_to_delivery', label: 'Order → Delivery',   section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.delivery_to_arinv', label: 'Delivery → AR Inv',  section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.arinv_to_arcm',     label: 'AR Inv → Credit',    section: 'Sales — O2C', group: 'AI Workflow' },
@@ -967,6 +968,10 @@ const ONE_TIME_GRANTS = [
   // vanish for existing admins/users.
   { name: 'ai.supply.sc_forecast.v1', trigger: ['ai.supply.inv_opt'],
     keys: ['ai.supply.sc_forecast'] },
+  // Sales Order Confirmation → whoever could already use the Sales Order
+  // agent, since confirming is the next step on the same documents.
+  { name: 'sales.workflow.order_confirmation.v1', trigger: ['sales.workflow.sales_order'],
+    keys: ['sales.workflow.order_confirmation'] },
   // Inventory Dashboard & Reports (read-only) → whoever can already see Stock Levels.
   { name: 'inventory.dashboard.v1', trigger: ['inventory.stock_levels'],
     keys: ['inventory.dashboard'] },

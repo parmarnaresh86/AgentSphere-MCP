@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import axios from 'axios';
 import db from '../db.mjs';
+import { executeSQL, tableRef, isConnected, getActiveType, getActiveConfig } from '../db-connector.mjs';
 
 // ── GSTIN Check (gstinapi.in) ──────────────────────────────────────────────────
 const GSTIN_API_BASE = 'https://www.gstinapi.in';
@@ -436,6 +437,49 @@ function bpSummaryHtml(sess) {
   </div>`;
 }
 
+const isManualSeries = s => /^manual$/i.test(String(s?.Name||'').trim());
+
+// BP numbering series are per sub-type (C = Customer, S = Supplier); without the
+// sub-type SAP returns nothing/errors, so ask with it first and fall back without.
+async function loadBpSeries(sess, sap) {
+  sess.seriesList = []; sess.seriesError = null;
+  const subType = sess.bpType==='customer' ? 'C' : 'S';
+  const attempts = [{ Document:'2', DocumentSubType:subType }, { Document:'2' }];
+  for (const params of attempts) {
+    try {
+      const list = arr(await sap.post('/SeriesService_GetDocumentSeries', { DocumentTypeParams: params }));
+      if (list.length) { sess.seriesList = list; sess.seriesError = null; return; }
+    } catch(e) { sess.seriesError = e.message; }
+  }
+  // Service Layer found nothing → read NNM1 directly when DB Direct is connected
+  if (isConnected()) {
+    try {
+      const h = getActiveType()==='hana';
+      const q = c => h ? `"${c}"` : c;
+      const rows = await executeSQL(
+        `SELECT ${q('Series')} AS "Series", ${q('SeriesName')} AS "Name", ${q('Locked')} AS "Locked"
+         FROM ${tableRef('NNM1', getActiveConfig())}
+         WHERE ${q('ObjectCode')}='2' AND ${q('DocSubType')}='${subType}'
+         ORDER BY ${q('Series')}`);
+      const list = (rows||[]).map(r => ({ Series:Number(r.Series), Name:r.Name, Locked:r.Locked==='Y'?'tYES':'tNO' }));
+      if (list.length) { sess.seriesList = list; sess.seriesError = null; }
+    } catch(e) { sess.seriesError = sess.seriesError || e.message; }
+  }
+}
+
+async function bpGroupReply(sess, sap, res, prefixHtml) {
+  sess.step = 'ASK_GROUP';
+  let groupError = null;
+  try {
+    const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
+    sess.groupList = arr(gRes);
+  } catch(e) { sess.groupList = []; groupError = e.message; }
+  const groupContent = sess.groupList.length
+    ? bpGroupChips(sess.groupList)
+    : `<div style="font-size:12.5px;color:#b91c1c">⚠️ Could not load BP groups from SAP${groupError ? `: ${esc(groupError)}` : ' (none configured)'}.</div>`;
+  return res.json({ ok:true, reply:`${prefixHtml}<div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${groupContent}</div>`, step:sess.step, sessionId:sess.sid });
+}
+
 async function handleBPChat(sess, msg, sap, res, user) {
   const sid = sess.sid; const step = sess.step; const bpType = sess.bpType;
 
@@ -445,19 +489,10 @@ async function handleBPChat(sess, msg, sap, res, user) {
   }
 
   if (msg.startsWith('select_bp_series:')) {
-    const [,num,name] = msg.split(':');
+    const [,num,...rest] = msg.split(':');
     sess.series = (num==='skip'||!num) ? null : Number(num);
-    sess.step = 'ASK_GROUP';
-    let groupError = null;
-    try {
-      const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
-      sess.groupList = arr(gRes);
-    } catch(e) { sess.groupList = []; groupError = e.message; }
-    const serLabel = sess.series != null ? esc(name) : 'Default';
-    const groupContent = sess.groupList.length
-      ? bpGroupChips(sess.groupList)
-      : `<div style="font-size:12.5px;color:#b91c1c">⚠️ Could not load BP groups from SAP${groupError ? `: ${esc(groupError)}` : ' (none configured)'}.</div>`;
-    return res.json({ ok:true, reply:`<div>Series: <strong>${serLabel}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${groupContent}</div>`, step:sess.step, sessionId:sid });
+    const serLabel = sess.series != null ? esc(rest.join(':')) : 'Default';
+    return bpGroupReply(sess, sap, res, `<div>Series: <strong>${serLabel}</strong> ✓</div>`);
   }
   if (msg.startsWith('select_bp_group:')) {
     const parts = msg.split(':'); sess.groupCode = Number(parts[1]); sess.groupName = parts.slice(2).join(':');
@@ -535,41 +570,45 @@ async function handleBPChat(sess, msg, sap, res, user) {
     return res.json({ ok:true, reply:`<div>Name: <strong>${esc(sess.cardName)}</strong> ✓</div>${dupWarningHtml(dup)}<div style="margin-top:8px">Enter a <strong>BP Code</strong>, or type <em>auto</em> to let SAP assign one:</div>`, step:sess.step, sessionId:sid });
   }
   if (step==='ASK_CODE') {
-    const code = msg.trim(); sess.cardCode = (!code||code.toLowerCase()==='auto') ? null : code.toUpperCase();
-    sess.step = 'ASK_SERIES';
-    sess.seriesError = null;
-    try {
-      const serRes = await sap.post('/SeriesService_GetDocumentSeries', { DocumentTypeParams:{ Document:'2' } });
-      sess.seriesList = arr(serRes);
-    } catch(e) { sess.seriesList = []; sess.seriesError = e.message; }
-    let seriesContent;
-    if (sess.seriesList.length) {
-      seriesContent = seriesChips(sess.seriesList).replace(/select_series:/g,'select_bp_series:');
-    } else if (sess.seriesError) {
-      seriesContent = `<div class="imf-error" style="margin-bottom:8px">⚠️ Could not load series from SAP: ${esc(sess.seriesError)}</div>
-        <div class="imf-chips"><button class="imf-chip" onclick="masterSend('select_bp_series:skip:Default')">Skip (use SAP default)</button></div>
-        <div class="imf-hint" style="margin-top:10px">If SAP requires a series for this card type, enter a specific <strong>BP Code</strong> above instead of "auto" next time, or type a series number and press Enter.</div>`;
-    } else {
-      seriesContent = `<div class="imf-hint" style="margin:0 0 8px">No series configured in SAP.</div>
-        <div class="imf-chips"><button class="imf-chip" onclick="masterSend('select_bp_series:skip:Default')">Skip (use SAP default)</button></div>
-        <div class="imf-hint" style="margin-top:10px">Or type a series number and press Enter.</div>`;
+    const code = msg.trim();
+    const isAuto = !code || code.toLowerCase()==='auto';
+    sess.cardCode = isAuto ? null : code.toUpperCase();
+    await loadBpSeries(sess, sap);
+
+    // Manual BP Code → no series picker; use SAP's "Manual" series (or default if none)
+    if (!isAuto) {
+      const manual = sess.seriesList.find(isManualSeries);
+      sess.series = manual ? manual.Series : null;
+      return bpGroupReply(sess, sap, res, `<div>Code: <strong>${esc(sess.cardCode)}</strong> ✓ <span class="imf-hint">(Series: Manual)</span></div>`);
     }
-    return res.json({ ok:true, reply:`<div>Code: <strong>${sess.cardCode||'Auto-generate'}</strong> ✓</div><div style="margin-top:8px">Select the <strong>Number Series</strong>:</div><div style="margin-top:8px">${seriesContent}</div>`, step:sess.step, sessionId:sid });
+
+    // Auto → user must pick a numbering series (Manual series can't auto-assign a code)
+    sess.step = 'ASK_SERIES';
+    const autoSeries = sess.seriesList.filter(s => !isManualSeries(s) && s.Locked !== 'tYES');
+    let seriesContent;
+    if (autoSeries.length) {
+      seriesContent = seriesChips(autoSeries).replace(/select_series:/g,'select_bp_series:');
+    } else {
+      const why = sess.seriesError
+        ? `⚠️ Could not load series from SAP: ${esc(sess.seriesError)}`
+        : `⚠️ No auto-numbering series is configured for ${bpType==='customer'?'Customers':'Suppliers'} in SAP.`;
+      seriesContent = `<div class="imf-error" style="margin-bottom:8px">${why}</div>
+        <div class="imf-hint">Type a <strong>BP Code</strong> to create it manually, or type a series number and press Enter.</div>`;
+    }
+    return res.json({ ok:true, reply:`<div>Code: <strong>Auto-generate</strong> ✓</div><div style="margin-top:8px">Select the <strong>Number Series</strong>:</div><div style="margin-top:8px">${seriesContent}</div>`, step:sess.step, sessionId:sid });
   }
   if (step==='ASK_SERIES') {
     const input = msg.trim();
-    sess.series = (!input || input.toLowerCase()==='skip') ? null : (isNaN(input) ? null : Number(input));
-    sess.step = 'ASK_GROUP';
-    let groupError = null;
-    try {
-      const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
-      sess.groupList = arr(gRes);
-    } catch(e) { sess.groupList = []; groupError = e.message; }
-    const serLabel = sess.series != null ? String(sess.series) : 'Default';
-    const groupContent = sess.groupList.length
-      ? bpGroupChips(sess.groupList)
-      : `<div style="font-size:12.5px;color:#b91c1c">⚠️ Could not load BP groups from SAP${groupError ? `: ${esc(groupError)}` : ' (none configured)'}.</div>`;
-    return res.json({ ok:true, reply:`<div>Series: <strong>${esc(serLabel)}</strong> ✓</div><div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${groupContent}</div>`, step:sess.step, sessionId:sid });
+    if (input && isNaN(input) && input.toLowerCase()!=='skip') {
+      // User typed a BP Code instead of a series number → switch to manual code
+      sess.cardCode = input.toUpperCase();
+      const manual = sess.seriesList.find(isManualSeries);
+      sess.series = manual ? manual.Series : null;
+      return bpGroupReply(sess, sap, res, `<div>Code: <strong>${esc(sess.cardCode)}</strong> ✓ <span class="imf-hint">(Series: Manual)</span></div>`);
+    }
+    sess.series = (!input || input.toLowerCase()==='skip') ? null : Number(input);
+    const serLabel = sess.series != null ? (sess.seriesList.find(s=>s.Series===sess.series)?.Name ?? String(sess.series)) : 'Default';
+    return bpGroupReply(sess, sap, res, `<div>Series: <strong>${esc(serLabel)}</strong> ✓</div>`);
   }
   if (step==='ASK_PHONE') {
     sess.phone = (msg.toLowerCase()==='skip') ? null : msg.trim();
@@ -826,7 +865,6 @@ function scStepBar(step, mode) {
 function scModeButtons() {
   return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
     <button onclick="masterSend('sc_mode:create')" style="padding:10px 22px;background:linear-gradient(135deg,#0e7490,#155e75);color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(14,116,144,0.3)">✨ Create New Service Call</button>
-    <button onclick="masterSend('sc_mode:update')" style="padding:10px 22px;background:linear-gradient(135deg,#d97706,#92400e);color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(217,119,6,0.3)">🔄 Update Existing Call</button>
   </div>`;
 }
 function priorityChips() {
@@ -1016,6 +1054,7 @@ async function handleSCChat(sess, msg, sap, res, user) {
     const payload = {
       CustomerCode: sess.customerCode,
       Subject: sess.subject,
+      ...(sess.priority        ? { Priority: sess.priority }             : {}),
       ...(sess.itemCode        ? { ItemCode: sess.itemCode }             : {}),
       ...(sess.serialNum       ? { InternalSerialNum: sess.serialNum }   : {}),
       ...(sess.description     ? { Description: sess.description }       : {}),
@@ -1028,7 +1067,7 @@ async function handleSCChat(sess, msg, sap, res, user) {
       sess.step = 'DONE';
       const callId = result.ServiceCallID ?? result.CallID ?? '—';
       logEntry('service_call', String(callId), sess.subject, payload, result, 'success', user);
-      return res.json({ ok:true, reply:`<div style="background:#ecfdf5;border:1px solid #0e7490;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#0e7490;margin-bottom:6px">✅ Service Call Created!</div><div style="font-size:12.5px;color:#065f46">ID: <strong>${esc(String(callId))}</strong> &nbsp;|&nbsp; Subject: <strong>${esc(sess.subject)}</strong></div><div style="font-size:12px;color:#6b7280;margin-top:4px">Customer: ${esc(sess.customerName||'')} &nbsp;|&nbsp; Priority: ${{scp_Low:'Low',scp_Medium:'Medium',scp_High:'High'}[sess.priority]||'—'}</div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another','Update Existing'] });
+      return res.json({ ok:true, reply:`<div style="background:#ecfdf5;border:1px solid #0e7490;border-radius:8px;padding:14px"><div style="font-size:14px;font-weight:700;color:#0e7490;margin-bottom:6px">✅ Service Call Created!</div><div style="font-size:12.5px;color:#065f46">ID: <strong>${esc(String(callId))}</strong> &nbsp;|&nbsp; Subject: <strong>${esc(sess.subject)}</strong></div><div style="font-size:12px;color:#6b7280;margin-top:4px">Customer: ${esc(sess.customerName||'')} &nbsp;|&nbsp; Priority: ${{scp_Low:'Low',scp_Medium:'Medium',scp_High:'High'}[sess.priority]||'—'}</div></div>`, step:sess.step, sessionId:sid, quickReplies:['Create Another'] });
     } catch(e) {
       logEntry('service_call','',sess.subject,payload,{error:e.message},'error',user);
       return res.json({ ok:true, reply:`<div style="color:#b91c1c">❌ Failed: ${esc(e.message)}</div>`, step:sess.step, sessionId:sid, quickReplies:['Try Again','Start Over'] });
@@ -1143,7 +1182,18 @@ async function _scAskProblem(sess, sap, res, sid) {
 }
 async function _scAskTechnician(sess, sap, res, sid) {
   sess.step = 'ASK_TECHNICIAN';
-  try { const r2 = await sap.get('/EmployeesInfo', { $select:'EmployeeID,FirstName,LastName', $filter:"Active eq 'tYES'", $top:100 }); sess.technicianList = arr(r2); } catch(_) { sess.technicianList = []; }
+  // Only employees with the SAP "Technician" role (HEM6 RoleID -2) — page through all active employees
+  try {
+    const all = [];
+    // SL may cap pages below $top (default 20), so advance by rows actually returned
+    for (let skip = 0; skip < 2000; ) {
+      const rows = arr(await sap.get('/EmployeesInfo', { $select:'EmployeeID,FirstName,LastName,EmployeeRolesInfoLines', $filter:"Active eq 'tYES'", $orderby:'EmployeeID', $top:100, $skip:skip }));
+      if (!rows.length) break;
+      all.push(...rows);
+      skip += rows.length;
+    }
+    sess.technicianList = all.filter(e => (e.EmployeeRolesInfoLines||[]).some(r => Number(r.RoleID) === -2));
+  } catch(_) { sess.technicianList = []; }
   return res.json({ ok:true, reply:`<div>Problem Type: <strong>${esc(sess.problemTypeName||'—')}</strong> ✓</div><div style="margin-top:8px">Select a <strong>Technician</strong>:</div><div style="margin-top:8px">${scTechChips(sess.technicianList)}</div>`, step:sess.step, sessionId:sid });
 }
 
@@ -1346,7 +1396,7 @@ export function createMenuMasterRouter({ requireAuth, getActiveSap }) {
       let sess = sessionId && _scSess.get(sessionId);
       if (!sess) {
         sess = scInit(); _scSess.set(sess.sid, sess);
-        return res.json({ ok:true, reply:`<div>👋 Welcome to <strong>Service Call Agent</strong>!</div><div style="margin-top:6px;font-size:12.5px;color:#6b7280">Define your requirements — the Agent manages the entire process.<br>Supports serialized, batched &amp; non-serialized items. Creates or updates Service Calls in seconds.</div><div style="margin-top:10px">What would you like to do?</div>${scModeButtons()}`, step:sess.step, sessionId:sess.sid });
+        return res.json({ ok:true, reply:`<div>👋 Welcome to <strong>Service Call Agent</strong>!</div><div style="margin-top:6px;font-size:12.5px;color:#6b7280">Define your requirements — the Agent manages the entire process.<br>Supports serialized, batched &amp; non-serialized items. Creates Service Calls in seconds.</div><div style="margin-top:10px">What would you like to do?</div>${scModeButtons()}`, step:sess.step, sessionId:sess.sid });
       }
       await handleSCChat(sess, message, sap, res, user);
     } catch(e) { res.json({ ok:false, error:e.message }); }

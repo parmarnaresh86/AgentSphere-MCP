@@ -75,8 +75,10 @@ async function fetchOpenGRPOs(sap) {
 
 async function fetchGRPOByNum(sap, docNum) {
   try {
+    // DocNum is not unique across numbering series — prefer the latest open GRPO
     const r = await sap.get('/PurchaseDeliveryNotes', {
-      $filter: `DocNum eq ${parseInt(docNum, 10)}`,
+      $filter: `DocNum eq ${parseInt(docNum, 10)} and DocumentStatus eq 'bost_Open'`,
+      $orderby: 'DocEntry desc',
       $top: 1,
     });
     const entry = r.value?.[0];
@@ -102,20 +104,22 @@ function buildGRPODetail(doc) {
     numAtCard: doc.NumAtCard || null,
     comments: doc.Comments   || null,
     docTotal: Number(doc.DocTotal || 0),
+    // Only open lines with quantity still left to invoice
     lines: (doc.DocumentLines || [])
-      .filter(l => l.ItemCode)
+      .filter(l => l.ItemCode && l.LineStatus !== 'bost_Close')
       .map(l => ({
         lineNum:   l.LineNum,
         baseLine:  l.LineNum,
         itemCode:  l.ItemCode,
         itemName:  l.ItemDescription || l.ItemCode,
-        qty:       Number(l.Quantity    || 0),
+        qty:       Number(l.RemainingOpenQuantity ?? l.Quantity ?? 0),
         unitPrice: Number(l.UnitPrice   || l.Price || 0),
         lineTotal: Number(l.LineTotal   || 0),
         unit:      l.UoMCode || l.MeasureUnit || 'EA',
         warehouse: l.WarehouseCode || '',
         taxCode:   l.TaxCode || null,
-      })),
+      }))
+      .filter(l => l.qty > 0),
   };
 }
 
@@ -145,7 +149,10 @@ Return ONLY valid JSON (no markdown, no explanation) with this structure:
     }
   ]
 }
-Use null for strings that cannot be determined. Use 0 for numeric fields that cannot be determined.`;
+Use null for strings that cannot be determined. Use 0 for numeric fields that cannot be determined.
+"lines" must contain ONLY the item rows actually printed in the invoice's line-item table, once each, in printed order.
+Never invent, guess or repeat lines. Do not include subtotal, tax, VAT, freight, discount, total, bank or address rows as lines.
+If no invoice content is provided, return "lines": [].`;
 
 async function extractInvoiceOCR(fileBuffer, mimeType, extractedText, aiDeps) {
   const { AI_PROVIDER, gptChatComplete, azureMessagesCreate, USE_AI } = aiDeps || {};
@@ -168,16 +175,32 @@ async function extractInvoiceOCR(fileBuffer, mimeType, extractedText, aiDeps) {
       } else if (fileBuffer && mimeType === 'application/pdf') {
         parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileBuffer.toString('base64') } });
       }
-      if (extractedText && !fileBuffer) parts.push({ type: 'text', text: `Invoice text:\n${extractedText}` });
+      if (extractedText) parts.push({ type: 'text', text: `Invoice text:\n${extractedText}` });
       parts.push({ type: 'text', text: 'Extract invoice data as JSON per instructions.' });
       return parts;
     }
   };
 
+  // GPT path can only read images or extracted text. A scanned PDF with no text
+  // layer gives it nothing, and the model then invents lines — skip it.
+  const gptHasInput = !!extractedText || !!mimeType?.startsWith('image/');
+
   let rawText = null;
 
   try {
-    if (AI_PROVIDER === 'gpt' && USE_AI) {
+    if (AI_PROVIDER === 'gpt' && USE_AI && !gptHasInput) {
+      console.warn('[SCAN-APINV] GPT OCR skipped: scanned PDF has no text layer');
+      if (process.env.ANTHROPIC_API_KEY) {
+        const { default: Anthropic } = await import('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const resp = await client.messages.create({
+          model: 'claude-sonnet-4-6', max_tokens: 2000,
+          system: OCR_SYSTEM,
+          messages: [{ role: 'user', content: buildUserContent(false) }],
+        });
+        rawText = resp.content?.[0]?.text || null;
+      }
+    } else if (AI_PROVIDER === 'gpt' && USE_AI) {
       const r = await gptChatComplete({
         messages: [
           { role: 'system', content: OCR_SYSTEM },
@@ -211,24 +234,54 @@ async function extractInvoiceOCR(fileBuffer, mimeType, extractedText, aiDeps) {
   if (rawText) {
     try {
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      if (jsonMatch) return normalizeOCR(JSON.parse(jsonMatch[0]));
     } catch (e) { console.error('[SCAN-APINV] OCR JSON parse error:', e.message); }
   }
 
   // Fallback: basic regex extraction from text
-  if (extractedText) return fallbackExtract(extractedText);
+  if (extractedText) return normalizeOCR(fallbackExtract(extractedText));
   return null;
+}
+
+// Drop non-item rows, zero-qty rows and exact duplicates the OCR may return
+const NON_ITEM_RE = /\b(sub\s*-?total|total|vat|gst|tax|freight|shipping|carriage|discount|rounding|balance|amount due)\b/i;
+function normalizeOCR(ocr) {
+  if (!ocr || typeof ocr !== 'object') return ocr;
+  const seen = new Set();
+  const lines = (Array.isArray(ocr.lines) ? ocr.lines : [])
+    .map(l => ({
+      ...l,
+      itemCode:    l.itemCode ? String(l.itemCode).trim() : null,
+      description: String(l.description || '').trim(),
+      qty:         Number(l.qty) || 0,
+      unitPrice:   Number(l.unitPrice) || 0,
+      lineTotal:   Number(l.lineTotal) || 0,
+    }))
+    .filter(l => l.qty > 0 && (l.itemCode || l.description))
+    .filter(l => l.itemCode || !NON_ITEM_RE.test(l.description))
+    .filter(l => {
+      const key = [l.itemCode, l.description.toLowerCase(), l.qty, l.unitPrice, l.lineNum].join('|');
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    })
+    .map((l, i) => ({ ...l, lineNum: i + 1 }));
+  return { ...ocr, lines };
 }
 
 function fallbackExtract(text) {
   const invNum = text.match(/(?:invoice|inv)[\s#:]*([A-Z0-9\-\/]+)/i)?.[1] || null;
   const total  = text.match(/(?:total|amount due|grand total)[\s:]*\$?([\d,]+\.?\d*)/i)?.[1];
   const lines  = [];
-  // Attempt to extract tabular lines: number + description + qty + price
-  const lineRe = /([A-Z0-9\-]+)\s+(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g;
+  // One table row per text line: code + description + qty + price + total.
+  // [ \t] (not \s) so a match can't span lines and glue addresses/dates together.
+  const lineRe = /^[ \t]*([A-Z0-9][A-Z0-9\-]*)[ \t]+(.+?)[ \t]+(\d+(?:\.\d+)?)[ \t]+(\d+(?:[.,]\d+)*)[ \t]+(\d+(?:[.,]\d+)*)[ \t]*$/gm;
+  const num = s => parseFloat(String(s).replace(/,/g, ''));
   let m;
   while ((m = lineRe.exec(text)) !== null) {
-    lines.push({ lineNum: lines.length + 1, itemCode: m[1], description: m[2].trim(), qty: parseFloat(m[3]), unit: 'EA', unitPrice: parseFloat(m[4]), lineTotal: parseFloat(m[5]), taxRate: 0 });
+    const qty = num(m[3]), unitPrice = num(m[4]), lineTotal = num(m[5]);
+    // Keep only rows whose numbers are consistent (qty × price ≈ total)
+    if (!(qty > 0) || Math.abs(qty * unitPrice - lineTotal) > Math.max(0.05, lineTotal * 0.02)) continue;
+    lines.push({ lineNum: lines.length + 1, itemCode: m[1], description: m[2].trim(), qty, unit: 'EA', unitPrice, lineTotal, taxRate: 0 });
   }
   return {
     invoiceNumber: invNum,
@@ -251,23 +304,35 @@ function threeWayMatch(grpoDetail, ocrData) {
   const results = [];
   const ocrLines   = ocrData?.lines || [];
   const usedOCRIdx = new Set();
+  const grpoLines  = grpoDetail.lines || [];
 
-  for (const gl of grpoDetail.lines) {
-    // Find best matching OCR line
-    let bestIdx = -1; let bestScore = 0;
-    ocrLines.forEach((ol, idx) => {
-      if (usedOCRIdx.has(idx)) return;
-      let score = 0;
-      if (ol.itemCode && gl.itemCode && ol.itemCode.toUpperCase() === gl.itemCode.toUpperCase()) score = 1;
-      else score = similarity(ol.description, gl.itemName);
-      if (score > bestScore) { bestScore = score; bestIdx = idx; }
+  // Score every GRPO×OCR pair, then assign best pairs first (global, not
+  // first-come), so an early GRPO line can't steal another line's OCR row.
+  const MIN_SCORE = 0.5;
+  const pairs = [];
+  grpoLines.forEach((gl, gi) => {
+    ocrLines.forEach((ol, oi) => {
+      const codeHit = ol.itemCode && gl.itemCode &&
+        String(ol.itemCode).trim().toUpperCase() === String(gl.itemCode).trim().toUpperCase();
+      let score = codeHit ? 2 : similarity(ol.description, gl.itemName);
+      if (score < MIN_SCORE) return;
+      if (Math.abs((Number(ol.qty) || 0) - gl.qty) < 0.001) score += 0.05; // tie-break on qty
+      pairs.push({ gi, oi, score });
     });
+  });
+  pairs.sort((a, b) => b.score - a.score || a.gi - b.gi || a.oi - b.oi);
+  const grpoToOcr = new Map();
+  for (const p of pairs) {
+    if (grpoToOcr.has(p.gi) || usedOCRIdx.has(p.oi)) continue;
+    grpoToOcr.set(p.gi, p.oi);
+    usedOCRIdx.add(p.oi);
+  }
 
-    if (bestIdx === -1 || bestScore < 0.4) {
+  for (const [gi, gl] of grpoLines.entries()) {
+    if (!grpoToOcr.has(gi)) {
       results.push({ grpoLine: gl, ocrLine: null, status: 'not_invoiced', priceVariance: 0, qtyVariance: 0 });
     } else {
-      const ol = ocrLines[bestIdx];
-      usedOCRIdx.add(bestIdx);
+      const ol = ocrLines[grpoToOcr.get(gi)];
       const qtyVar      = Math.abs(ol.qty - gl.qty);
       const priceVar    = gl.unitPrice > 0 ? Math.abs((ol.unitPrice - gl.unitPrice) / gl.unitPrice) * 100 : 0;
       const qtyMatch    = qtyVar < 0.001;
@@ -288,6 +353,41 @@ function threeWayMatch(grpoDetail, ocrData) {
   });
 
   return results;
+}
+
+// AP Invoice form: only GRPO lines that were matched to a line on the scanned
+// invoice. GRPO lines not on the invoice stay visible in the match table only.
+function buildFormData(session) {
+  const od = session.ocrData;
+  return {
+    grpoDocEntry:  session.grpoDetail.docEntry,
+    grpoDocNum:    session.grpoDetail.docNum,
+    cardCode:      session.grpoDetail.cardCode,
+    cardName:      session.grpoDetail.cardName,
+    invoiceNumber: od?.invoiceNumber || '',
+    invoiceDate:   od?.invoiceDate   || today(),
+    dueDate:       od?.dueDate       || datePlusDays(30),
+    currency:      od?.currency      || 'GBP',
+    grandTotal:    od?.grandTotal    || 0,
+    matchResult:   session.matchResult,
+    lines: (session.matchResult || [])
+      .filter(r => r.grpoLine && r.ocrLine)
+      .map(r => ({
+        baseLine:  r.grpoLine.baseLine,
+        itemCode:  r.grpoLine.itemCode,
+        itemName:  r.grpoLine.itemName,
+        grpoQty:   r.grpoLine.qty,
+        grpoPrice: r.grpoLine.unitPrice,
+        recvQty:   r.grpoLine.qty,
+        invQty:    r.ocrLine.qty,
+        invPrice:  r.ocrLine.unitPrice,
+        unit:      r.grpoLine.unit,
+        warehouse: r.grpoLine.warehouse,
+        taxCode:   r.grpoLine.taxCode,
+        status:    r.status,
+        priceVar:  r.priceVariance,
+      })),
+  };
 }
 
 // Build HTML reconciliation table (rendered in chat bubble)
@@ -451,36 +551,10 @@ export function createScanAPInvAgentRouter(deps) {
               : `### ✅ Three-Way Match Complete (${matched}/${total} matched)\n\nAll checks passed. Open the AP Invoice form to review and post.`;
 
             // Build form data for the modal
-            const od = session.ocrData;
-            formData = {
-              grpoDocEntry:  session.grpoDetail.docEntry,
-              grpoDocNum:    session.grpoDetail.docNum,
-              cardCode:      session.grpoDetail.cardCode,
-              cardName:      session.grpoDetail.cardName,
-              invoiceNumber: od?.invoiceNumber || '',
-              invoiceDate:   od?.invoiceDate   || today(),
-              dueDate:       od?.dueDate       || datePlusDays(30),
-              currency:      od?.currency      || 'GBP',
-              grandTotal:    od?.grandTotal    || 0,
-              matchResult:   session.matchResult,
-              lines: session.matchResult
-                .filter(r => r.grpoLine)
-                .map(r => ({
-                  baseLine:    r.grpoLine.baseLine,
-                  itemCode:    r.grpoLine.itemCode,
-                  itemName:    r.grpoLine.itemName,
-                  grpoQty:     r.grpoLine.qty,
-                  grpoPrice:   r.grpoLine.unitPrice,
-                  recvQty:     r.grpoLine.qty,
-                  invQty:      r.ocrLine?.qty  ?? r.grpoLine.qty,
-                  invPrice:    r.ocrLine?.unitPrice ?? r.grpoLine.unitPrice,
-                  unit:        r.grpoLine.unit,
-                  warehouse:   r.grpoLine.warehouse,
-                  taxCode:     r.grpoLine.taxCode,
-                  status:      r.status,
-                  priceVar:    r.priceVariance,
-                })),
-            };
+            formData = buildFormData(session);
+            if (!formData.lines.length) {
+              reply += `\n\n> ⚠️ No invoice line could be matched to GRPO #${session.grpoDetail.docNum}. Check that you selected the right GRPO, or re-upload a clearer invoice.`;
+            }
             quickReplies = ['Open AP Invoice Form', 'Re-upload Invoice'];
             session.step = 'REVIEW_FORM';
           }
@@ -662,36 +736,7 @@ export function createScanAPInvAgentRouter(deps) {
           reply = 'Ready for a new upload. Please upload the corrected supplier invoice:';
           uploadReady = true;
         } else if (/open|form|review|post|invoice/i.test(msgL)) {
-          const od = session.ocrData;
-          formData = {
-            grpoDocEntry:  session.grpoDetail.docEntry,
-            grpoDocNum:    session.grpoDetail.docNum,
-            cardCode:      session.grpoDetail.cardCode,
-            cardName:      session.grpoDetail.cardName,
-            invoiceNumber: od?.invoiceNumber || '',
-            invoiceDate:   od?.invoiceDate   || today(),
-            dueDate:       od?.dueDate       || datePlusDays(30),
-            currency:      od?.currency      || 'GBP',
-            grandTotal:    od?.grandTotal    || 0,
-            matchResult:   session.matchResult,
-            lines: session.matchResult
-              .filter(r => r.grpoLine)
-              .map(r => ({
-                baseLine:  r.grpoLine.baseLine,
-                itemCode:  r.grpoLine.itemCode,
-                itemName:  r.grpoLine.itemName,
-                grpoQty:   r.grpoLine.qty,
-                grpoPrice: r.grpoLine.unitPrice,
-                recvQty:   r.grpoLine.qty,
-                invQty:    r.ocrLine?.qty  ?? r.grpoLine.qty,
-                invPrice:  r.ocrLine?.unitPrice ?? r.grpoLine.unitPrice,
-                unit:      r.grpoLine.unit,
-                warehouse: r.grpoLine.warehouse,
-                taxCode:   r.grpoLine.taxCode,
-                status:    r.status,
-                priceVar:  r.priceVariance,
-              })),
-          };
+          formData = buildFormData(session);
           reply = 'Opening AP Invoice form…';
         } else if (/cancel|start over/i.test(msgL)) {
           Object.assign(session, initSession());

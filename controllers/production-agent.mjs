@@ -149,6 +149,34 @@ async function fetchStockMapViaDB(itemCodes) {
   return stockMap;
 }
 
+// "How is this calculated?" popup for the Risk badge — built from the same
+// component figures used to set the risk, so it cannot drift.
+function prodRiskExplain(components, shortages, criticals, risk) {
+  const f = n => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 2 });
+  const lowCover = shortages.filter(s => s.pctCovered < 50);
+  const shown = [...shortages].sort((a, b) => a.pctCovered - b.pctCovered).slice(0, 8);
+  const steps = shown.map(c => ({
+    label: c.itemCode,
+    detail: c.itemName || '',
+    formula: `Still needed ${f(c.needed)} (planned ${f(c.plannedQty)} − issued ${f(c.issuedQty)}) − available ${f(c.available)} · covers ${c.pctCovered}%`,
+    value: `short ${f(c.shortage)}`,
+  }));
+  if (shortages.length > shown.length) steps.push({ label: `+${shortages.length - shown.length} more`, formula: 'Other short components (see Components tab)', value: '' });
+  return {
+    risk: {
+      title: `Why risk is ${risk.toUpperCase()}`,
+      steps: steps.length ? steps : [{ label: 'Components checked', formula: 'Every component has enough available stock for what is still needed', value: components.length }],
+      rules: [
+        { rule: `A needed component has no available stock (${criticals.length} found)`, result: 'CRITICAL', hit: risk === 'critical' },
+        { rule: `A short component is covered less than 50% (${lowCover.length} found)`, result: 'HIGH', hit: risk === 'high' },
+        { rule: `Any component is short (${shortages.length} found)`, result: 'MEDIUM', hit: risk === 'medium' },
+        { rule: 'No component is short', result: 'OK', hit: risk === 'ok' },
+      ],
+      note: 'Shortage = still needed (planned − issued) − available stock (on hand − committed). Covered % = available ÷ still needed.',
+    },
+  };
+}
+
 async function getProductionOrdersWithRisk(sap) {
   let prodOrders = [];
   let stockMap;
@@ -293,6 +321,7 @@ async function getProductionOrdersWithRisk(sap) {
                : shortages.some(s => s.pctCovered < 50) ? 'high'
                : shortages.length > 0 ? 'medium'
                : 'ok';
+    const explain = prodRiskExplain(components, shortages, criticals, risk);
 
     const dueDate = dueRaw ? new Date(dueRaw) : null;
     const daysUntilDue = dueDate && !isNaN(dueDate) ? Math.ceil((dueDate - today) / 86400000) : null;
@@ -313,6 +342,7 @@ async function getProductionOrdersWithRisk(sap) {
       shortageCount: shortages.length,
       componentCount: lines.length,
       components,
+      explain,
     };
   });
 

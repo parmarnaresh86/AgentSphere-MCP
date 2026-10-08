@@ -398,6 +398,10 @@ function setupMarked(){ if(typeof marked!=='undefined') marked.setOptions({break
 function renderMd(t){ if(typeof marked==='undefined') return escHtml(t).replace(/\n/g,'<br>'); try{return marked.parse(t);}catch{return escHtml(t);} }
 function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtN(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+// Money measures (amounts, prices, balances) carry the USD sign; qty/days/counts/rates don't
+function isAmt(m){ return /amount|price|balance/i.test(m||'') && !/rate/i.test(m||''); }
+function fmtUSD(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return (Number(n)<0?'-$':'$')+fmtN(Math.abs(Number(n)),d); }
+function fmtM(m,v){ return isAmt(m)?fmtUSD(v):fmtN(v); }
 function fmtPct(n){ return n==null?'—':Number(n).toFixed(1)+'%'; }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -479,7 +483,7 @@ function updateKPIs(data) {
   [[k1,'kpi1'],[k2,'kpi2'],[k3,'kpi3'],[k4,'kpi4']].forEach(([key,id],i) => {
     document.getElementById(`${id}-label`).textContent = KPI_LABELS[key]||key;
     const v = key==='vendors'?vendors:key==='rowCount'?data.rowCount:t[key];
-    document.getElementById(`${id}-val`).textContent = (key.includes('Rate')||key.includes('Pct')) ? fmtPct(v) : fmtN(v);
+    document.getElementById(`${id}-val`).textContent = (key.includes('Rate')||key.includes('Pct')) ? fmtPct(v) : fmtM(key,v);
     document.getElementById(`${id}-sub`).textContent = `${data.params?.fromDate} – ${data.params?.toDate}`;
   });
 }
@@ -514,13 +518,13 @@ function getChartData(data) {
   const src = maps[chartGroup] || data.byVendor || [];
   const labels = src.slice(0,15).map(r => r.vendorName || r.itemName || r._label || r._key || '?');
   const vals   = src.slice(0,15).map(r => r[m0]||0);
-  return { labels, vals, measure: KPI_LABELS[m0]||m0 };
+  return { labels, vals, measure: KPI_LABELS[m0]||m0, key: m0 };
 }
 
 function renderChart1(data) {
   const ctx = document.getElementById('chart1').getContext('2d');
   if(chart1) chart1.destroy();
-  const { labels, vals, measure } = getChartData(data);
+  const { labels, vals, measure, key } = getChartData(data);
   const isPeriod = chartGroup === 'period';
 
   document.getElementById('chart1-title').textContent = `Top by ${KPI_LABELS[data.measures?.[0]]||'Amount'} — ${chartGroup[0].toUpperCase()+chartGroup.slice(1)}`;
@@ -543,10 +547,10 @@ function renderChart1(data) {
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtN(c.raw)}} },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtM(key,c.raw)}} },
       scales:{
         x:{ grid:{display:false}, ticks:{font:{size:9}, maxRotation:30} },
-        y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:9},callback:v=>fmtN(v)} }
+        y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:9},callback:v=>fmtM(key,v)} }
       }
     }
   });
@@ -571,10 +575,10 @@ function renderChart2(data) {
     }] },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtN(c.raw)}} },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtM(m0,c.raw)}} },
       scales:{
         x:{ grid:{display:false}, ticks:{font:{size:9}, maxRotation:30} },
-        y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:9},callback:v=>fmtN(v)} }
+        y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:9},callback:v=>fmtM(m0,v)} }
       }
     }
   });
@@ -640,7 +644,7 @@ function renderTable() {
       if(k==='_key') return `<td style="font-weight:600;font-size:11.5px">${escHtml(String(v))}</td>`;
       return `<td>${escHtml(String(v))}</td>`;
     });
-    const mCells = mCols.map(([k])=>`<td class="amt">${fmtN(r[k])}</td>`);
+    const mCells = mCols.map(([k])=>`<td class="amt">${fmtM(k,r[k])}</td>`);
     return `<tr>${[...mainCells,...mCells].join('')}</tr>`;
   }).join('');
 }
@@ -671,10 +675,10 @@ function exportCsv() {
 function buildContextStr(data) {
   const measures = data.measures||[];
   const m0 = measures[0]||'';
-  const topV = (data.byVendor||[]).slice(0,10).map((v,i)=>`  ${i+1}. ${v.vendorName||v._key}: ${measures.map(m=>KPI_LABELS[m]+' '+fmtN(v[m])).join(', ')}`).join('\n');
-  const periods = (data.byPeriod||[]).slice(-6).map(p=>`  ${p._key}: ${fmtN(p[m0])}`).join('\n');
+  const topV = (data.byVendor||[]).slice(0,10).map((v,i)=>`  ${i+1}. ${v.vendorName||v._key}: ${measures.map(m=>KPI_LABELS[m]+' '+fmtM(m,v[m])).join(', ')}`).join('\n');
+  const periods = (data.byPeriod||[]).slice(-6).map(p=>`  ${p._key}: ${fmtM(m0,p[m0])}`).join('\n');
   return `VIEW: ${VIEW_META[activeView]?.label||activeView} | Period: ${data.params?.fromDate} to ${data.params?.toDate}
-TOTALS: ${measures.map(m=>`${KPI_LABELS[m]}: ${fmtN(data.totals?.[m])}`).join(', ')}
+TOTALS: ${measures.map(m=>`${KPI_LABELS[m]}: ${fmtM(m,data.totals?.[m])}`).join(', ')}
 TOP VENDORS:\n${topV}
 RECENT MONTHLY TREND:\n${periods}`;
 }

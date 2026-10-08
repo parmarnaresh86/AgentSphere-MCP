@@ -400,6 +400,51 @@ function projectFuture(history, n, slope, seasonal) {
 // ══════════════════════════════════════════════════════════════════════════════
 // EXPORTED CORE FUNCTION — called by main chat handler & router /analyze route
 // ══════════════════════════════════════════════════════════════════════════════
+// "How is this calculated?" popups for Product Forecasting — built from the same
+// variables used to compute trend, stock-out risk and confidence, so they cannot drift.
+function pfExplain(x) {
+  const f = (n, d = 1) => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: d });
+  const tp = x.trendPct;
+  return {
+    trend: {
+      title: `Why the trend is ${x.trendLabel}`,
+      steps: [
+        { label: 'Average monthly qty', formula: `Last ${x.months12} month(s) sold ${f(x.t12qty, 0)} ÷ ${x.months12 || 1}`, value: x.avgMonthly },
+        { label: 'Monthly trend (slope)', formula: 'Best-fit line through monthly sales history — change in units per month', value: f(x.slope, 2) },
+        { label: 'Trend %', formula: `Slope ${f(x.slope, 2)} ÷ average ${f(x.avgMonthly, 0)} × 100`, value: `${tp > 0 ? '+' : ''}${tp}%` },
+      ],
+      rules: [
+        { rule: 'Trend above +8% per month', result: 'Growing', hit: x.trendLabel === 'Growing' },
+        { rule: 'Trend below −8% per month', result: 'Declining', hit: x.trendLabel === 'Declining' },
+        { rule: 'Between −8% and +8%', result: 'Stable', hit: x.trendLabel === 'Stable' },
+      ],
+    },
+    stockoutRisk: {
+      title: `Why stock-out risk is ${x.stockoutRisk}`,
+      steps: [
+        { label: 'Stock on hand', formula: 'Quantity in stock in SAP', value: x.stockOnHand },
+        { label: 'Monthly usage rate', formula: x.nextMonthFc ? 'Forecast for next month' : 'Average monthly qty (no forecast)', value: f(x.monthlyRate, 0) },
+        { label: 'Weeks of cover', formula: x.stockOnHand > 0 ? `Stock ${f(x.stockOnHand, 0)} ÷ monthly rate ${f(x.monthlyRate, 0)} × 4.33 weeks` : 'No stock — 0 weeks', value: Math.round(x.woc) },
+      ],
+      rules: [
+        { rule: 'No stock, or less than 4 weeks of cover', result: 'HIGH', hit: x.stockoutRisk === 'HIGH' },
+        { rule: '4 to under 10 weeks of cover', result: 'MEDIUM', hit: x.stockoutRisk === 'MEDIUM' },
+        { rule: '10 weeks of cover or more', result: 'LOW', hit: x.stockoutRisk === 'LOW' },
+      ],
+    },
+    confidence: {
+      title: `How confidence ${x.confidence}% is calculated`,
+      parts: [
+        { label: 'History length', max: 50, points: Math.round(x.dataScore * 10) / 10, detail: `${x.dataMonths} month(s) with sales`,
+          formula: `${x.dataMonths} ÷ ${x.historyYears * 12} months requested (max 1) × 50` },
+        { label: 'Trend stability', max: 50, points: Math.round(x.stabScore * 10) / 10, detail: `Trend ${tp > 0 ? '+' : ''}${tp}%/month`,
+          formula: `50 − |trend ${tp}%| × 0.5 (not below 0)` },
+      ],
+      note: 'More sales history and a steadier trend give a more reliable forecast.',
+    },
+  };
+}
+
 export async function runForecastCore(sap, {
   years           = 2,
   forecastHorizon = 12,
@@ -506,6 +551,9 @@ export async function runForecastCore(sap, {
       forecastQty3m: fc3m, forecastQty6m: fc6m, forecastQty12m: fc12m,
       stockoutRisk, weeksOfCover: Math.round(woc), confidence,
       monthlyHistory: history.slice(-12), forecastMonthly: projected, dataMonths: sortedMonths.length,
+      explain: pfExplain({ slope, avgMonthly, t12qty, months12: trail12.length, trendPct, trendLabel, stockOnHand,
+        monthlyRate, nextMonthFc: projected[0]?.qty, woc, stockoutRisk, dataMonths: sortedMonths.length,
+        historyYears, dataScore, stabScore, confidence }),
     });
   }
 
@@ -519,7 +567,9 @@ export async function runForecastCore(sap, {
     declining:    results.filter(r => r.trendLabel === 'Declining').length,
     highStockout: results.filter(r => r.stockoutRisk === 'HIGH').length,
     medStockout:  results.filter(r => r.stockoutRisk === 'MEDIUM').length,
+    // Note: forecastQty12m / totalFc12m are totals over the chosen horizon (3, 6 or 12 months).
     totalFc12m:   results.reduce((s, r) => s + r.forecastQty12m, 0),
+    horizonMonths: forecastHorizon,
     historyYears, rowCount, dataSource: source, periodFrom: fromDate, periodTo: toDate,
   };
 
@@ -719,6 +769,7 @@ export async function runPurchaseForecastCore(sap, {
     highReorder:   results.filter(r => r.reorderRisk === 'HIGH').length,
     medReorder:    results.filter(r => r.reorderRisk === 'MEDIUM').length,
     totalFc12m:    results.reduce((s, r) => s + r.forecastQty12m, 0),
+    horizonMonths: forecastHorizon,
     totalSuggestedQty: results.reduce((s, r) => s + r.suggestedOrderQty, 0),
     historyYears, rowCount, dataSource: source, periodFrom: fromDate, periodTo: toDate,
   };

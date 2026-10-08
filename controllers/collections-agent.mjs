@@ -16,6 +16,22 @@ import {
 import { ptpRepo } from '../lib/insight-store.mjs';
 
 const PTP_GRACE_DAYS = 3;
+
+// KPI drill-through (calc blocks → lib/insight-kit.mjs withKpiDetails).
+const SRC = {
+  oinv: 'OINV — open A/R invoices (DocStatus O, not cancelled): DocTotal − PaidToDate = balance, DocDueDate',
+  sales: 'OINV − ORIN — invoiced sales net of credit memos, last 90 days',
+  hist: 'ORCT + RCT2 + OINV — invoices fully paid in the look-back period (days late = pay date − due date)',
+  ocrd: 'OCRD — customer master: credit limit, open orders and deliveries balance',
+  orct: 'ORCT — incoming payments of the last 180 days',
+  ptp: 'Local promise-to-pay log (recorded from the worklist)',
+};
+const COL = { cust: { key: 'cardName', label: 'Customer', sub: 'cardCode', hint: 'Customer name and SAP business partner code' } };
+const PTP_COLS = [COL.cust, { key: 'amount', label: 'Promised', fmt: 'amt', hint: 'Amount the customer promised to pay' },
+  { key: 'promiseDate', label: 'Promise date', fmt: 'date', hint: 'Date by which the customer promised to pay' },
+  { key: 'paidSince', label: 'Paid since', fmt: 'amt', hint: 'Incoming payments from this customer since the promise was logged (incl. grace days)' },
+  { key: 'status', label: 'Status', fmt: 'badge', hint: 'OPEN, KEPT (≥ 98% paid in time) or BROKEN (not paid by promise date + grace)' },
+  { key: 'note', label: 'Note', hint: 'Collector’s note recorded with the promise' }];
 const OVERDUE_BUCKETS = AGING_BUCKETS.filter(b => b !== 'Current');
 const bucketKey = b => `b_${b.replace(/\W/g, '_')}`;
 
@@ -40,18 +56,39 @@ function evaluatePromises(company, promises, payments, asOf) {
   });
 }
 
+// Collection-action rules, checked top to bottom; the first match wins. Kept as a
+// table so the UI can show every rule with the one that applied (click the action).
+const ACTION_RULES = [
+  { rule: 'Nothing overdue', test: c => c.overdue <= 0,
+    out: () => ({ priority: 'NONE', action: 'Not yet due — no action', channel: '—', reason: 'Nothing is overdue' }) },
+  { rule: 'A promise-to-pay was broken in the last 90 days', test: c => c.brokenPromises > 0,
+    out: () => ({ priority: 'HIGH', action: 'Broken promise: escalate to manager and place account on credit hold', channel: 'Manager call', reason: 'A promise-to-pay was broken in the last 90 days' }) },
+  { rule: 'An open promise-to-pay has not reached its date', test: c => c.openPromise && c.openPromise.daysToPromise >= 0, label: 'Wait for the promised payment, then verify receipt',
+    out: c => ({ priority: 'LOW', action: `Promise of ${fmtAmt(c.openPromise.amount)} due ${c.openPromise.promiseDate}: wait, then verify receipt`, channel: 'Monitor', reason: 'An open promise-to-pay has not reached its date yet' }) },
+  { rule: 'Oldest invoice more than 90 days overdue', test: c => c.maxDaysOverdue > 90,
+    out: () => ({ priority: 'HIGH', action: 'Final notice + credit hold; review for legal / collection agency', channel: 'Letter + call', reason: 'Oldest invoice is more than 90 days overdue' }) },
+  { rule: 'Oldest invoice more than 60 days overdue', test: c => c.maxDaysOverdue > 60,
+    out: () => ({ priority: 'HIGH', action: 'Manager call and formal reminder letter; stop new orders until paid', channel: 'Manager call', reason: 'Oldest invoice is more than 60 days overdue' }) },
+  { rule: 'Oldest invoice more than 30 days overdue', test: c => c.maxDaysOverdue > 30,
+    out: () => ({ priority: 'MEDIUM', action: 'Phone the customer and obtain a dated promise-to-pay', channel: 'Phone', reason: 'Oldest invoice is more than 30 days overdue' }) },
+  { rule: 'Overdue up to 30 days and usually pays more than 15 days late', test: c => c.avgDaysLate > 15,
+    out: () => ({ priority: 'MEDIUM', action: 'Send a friendly reminder email with statement', channel: 'Email', reason: 'Overdue up to 30 days, and usually pays more than 15 days late' }) },
+  { rule: 'Overdue up to 30 days and usually pays on time', test: () => true,
+    out: () => ({ priority: 'LOW', action: 'Send a friendly reminder email with statement', channel: 'Email', reason: 'Overdue up to 30 days, and usually pays on time' }) },
+];
+
 function recommend(c) {
-  if (c.overdue <= 0) return { priority: 'NONE', action: 'Not yet due — no action', channel: '—', reason: 'Nothing is overdue' };
-  if (c.brokenPromises > 0) return { priority: 'HIGH', action: 'Broken promise: escalate to manager and place account on credit hold', channel: 'Manager call', reason: 'A promise-to-pay was broken in the last 90 days' };
-  if (c.openPromise && c.openPromise.daysToPromise >= 0) {
-    return { priority: 'LOW', action: `Promise of ${fmtAmt(c.openPromise.amount)} due ${c.openPromise.promiseDate}: wait, then verify receipt`, channel: 'Monitor', reason: 'An open promise-to-pay has not reached its date yet' };
-  }
-  if (c.maxDaysOverdue > 90) return { priority: 'HIGH', action: 'Final notice + credit hold; review for legal / collection agency', channel: 'Letter + call', reason: 'Oldest invoice is more than 90 days overdue' };
-  if (c.maxDaysOverdue > 60) return { priority: 'HIGH', action: 'Manager call and formal reminder letter; stop new orders until paid', channel: 'Manager call', reason: 'Oldest invoice is more than 60 days overdue' };
-  if (c.maxDaysOverdue > 30) return { priority: 'MEDIUM', action: 'Phone the customer and obtain a dated promise-to-pay', channel: 'Phone', reason: 'Oldest invoice is more than 30 days overdue' };
-  return c.avgDaysLate > 15
-    ? { priority: 'MEDIUM', action: 'Send a friendly reminder email with statement', channel: 'Email', reason: 'Overdue up to 30 days, and usually pays more than 15 days late' }
-    : { priority: 'LOW', action: 'Send a friendly reminder email with statement', channel: 'Email', reason: 'Overdue up to 30 days, and usually pays on time' };
+  const hit = ACTION_RULES.findIndex(r => r.test(c));
+  const rec = ACTION_RULES[hit].out(c);
+  const why = {
+    title: `Recommended action (${rec.priority})`,
+    rules: ACTION_RULES.map((r, i) => {
+      const o = i === hit ? rec : r.out({ openPromise: { amount: 0, promiseDate: '' } });
+      return { rule: r.rule, result: `${o.priority} — ${r.label || o.action}`, hit: i === hit };
+    }),
+    note: 'Rules are checked from top to bottom; the first one that matches decides the action and priority.',
+  };
+  return { ...rec, explain: { action: why, priority: why } };
 }
 
 async function run(k, p) {
@@ -190,18 +227,53 @@ PROMISES: ${promises.slice(0, 15).map(x => `${x.cardName} ${fmtAmt(x.amount)} by
 
   return {
     kpis: [
-      { label: 'Total receivables', value: totalOut, fmt: 'amt' },
-      { label: 'Overdue', value: totalOverdue, fmt: 'amt', tone: totalOverdue > 0 ? 'bad' : 'good' },
-      { label: 'Overdue %', value: totalOut ? (totalOverdue / totalOut) * 100 : 0, fmt: 'pct', tone: totalOverdue / (totalOut || 1) > 0.3 ? 'bad' : 'warn' },
-      { label: 'Over 90 days', value: over90, fmt: 'amt', tone: over90 > 0 ? 'bad' : 'good' },
-      { label: 'DSO (days)', value: dso, fmt: 'int', hint: 'Receivables ÷ average daily invoicing over the last 90 days' },
-      { label: 'Customers overdue', value: overdueCustomers.length, fmt: 'int' },
-      { label: 'Promises due ≤7d', value: promisesDue.length, fmt: 'int' },
-      { label: 'Broken promises', value: broken.length, fmt: 'int', tone: broken.length ? 'bad' : 'good' },
+      { label: 'Total receivables', value: totalOut, fmt: 'amt', hint: 'Balance of all open A/R invoices',
+        calc: { formula: 'Σ (DocTotal − PaidToDate) over every open, non-cancelled A/R invoice in the filter.',
+          steps: ['Read open A/R invoices (DocStatus O, CANCELED N).', 'Balance per invoice = DocTotal − PaidToDate.', 'Apply the customer / posting-date filters, then sum.'],
+          sources: [SRC.oinv], rows: [...byCard.values()].map(c => ({ ...c, notDue: round(c.outstanding - c.overdue) })), sortBy: 'outstanding',
+          columns: [COL.cust, { key: 'outstanding', label: 'Outstanding', fmt: 'amt', hint: 'Open A/R balance of the customer' },
+            { key: 'overdue', label: 'Overdue', fmt: 'amt', hint: 'Part of the balance past its due date' }, { key: 'notDue', label: 'Not yet due', fmt: 'amt', hint: 'Outstanding − overdue' },
+            { key: 'maxDaysOverdue', label: 'Oldest (days)', fmt: 'int', hint: 'Days past due of the oldest overdue invoice' }],
+          stats: [{ label: 'Open invoices', value: invRows.length, fmt: 'int' }, { label: 'Customers', value: byCard.size, fmt: 'int' },
+            { label: 'Not yet due', value: round(totalOut - totalOverdue), fmt: 'amt' }, { label: 'Overdue', value: round(totalOverdue), fmt: 'amt' }] } },
+      { label: 'Overdue', value: totalOverdue, fmt: 'amt', tone: totalOverdue > 0 ? 'bad' : 'good', hint: 'Open balance past its due date',
+        calc: { formula: 'Σ open balance of A/R invoices where DocDueDate < as-of date.',
+          steps: ['Days overdue = as-of date − DocDueDate.', 'Invoices with days overdue > 0 are summed.'], sources: [SRC.oinv], tab: 'invoices', sortBy: 'balance',
+          stats: [{ label: 'Overdue invoices', value: overdueInv.length, fmt: 'int' }, { label: 'Customers', value: overdueCustomers.length, fmt: 'int' },
+            ...bucketRows.filter(b => b.bucket !== 'Current').map(b => ({ label: `${b.bucket} days`, value: b.amount, fmt: 'amt' }))] } },
+      { label: 'Overdue %', value: totalOut ? (totalOverdue / totalOut) * 100 : 0, fmt: 'pct', tone: totalOverdue / (totalOut || 1) > 0.3 ? 'bad' : 'warn', hint: 'Overdue ÷ total receivables',
+        calc: { formula: 'Overdue balance ÷ total open receivables × 100. Above 30% is shown red.', sources: [SRC.oinv], tab: 'aging', sortBy: 'amount',
+          stats: [{ label: 'Overdue', value: round(totalOverdue), fmt: 'amt' }, { label: 'Total receivables', value: round(totalOut), fmt: 'amt' }, { label: 'Current share', value: bucketRows[0]?.share || 0, fmt: 'pct' }] } },
+      { label: 'Over 90 days', value: over90, fmt: 'amt', tone: over90 > 0 ? 'bad' : 'good', hint: 'Balance more than 90 days past due',
+        calc: { formula: 'Σ open balance of A/R invoices more than 90 days past DocDueDate (buckets 91-180 and 180+).', sources: [SRC.oinv], tab: 'invoices', sortBy: 'balance', filter: r => r.daysOverdue > 90,
+          stats: [{ label: 'Invoices', value: overdueInv.filter(r => r.daysOverdue > 90).length, fmt: 'int' }, { label: '% of overdue', value: totalOverdue ? round((over90 / totalOverdue) * 100, 1) : 0, fmt: 'pct' },
+            { label: '91-180 days', value: bucketRows.find(b => b.bucket === '91-180')?.amount || 0, fmt: 'amt' }, { label: '180+ days', value: bucketRows.find(b => b.bucket === '180+')?.amount || 0, fmt: 'amt' }] } },
+      { label: 'DSO (days)', value: dso, fmt: 'int', hint: 'Receivables ÷ average daily invoicing over the last 90 days',
+        calc: { formula: 'DSO = total receivables ÷ (net invoiced sales of the last 90 days ÷ 90).',
+          steps: ['Net sales = A/R invoices − A/R credit memos posted in the last 90 days.', 'Average daily sales = net sales ÷ 90.', 'Shown as “—” when there were no sales in the period.'],
+          sources: [SRC.oinv, SRC.sales], tab: 'aging',
+          stats: [{ label: 'Total receivables', value: round(totalOut), fmt: 'amt' }, { label: 'Net sales (90 days)', value: round(sales90Total), fmt: 'amt' }, { label: 'Avg daily sales', value: round(sales90Total / 90), fmt: 'amt' }] } },
+      { label: 'Customers overdue', value: overdueCustomers.length, fmt: 'int', hint: 'Customers with at least one overdue invoice',
+        calc: { formula: 'Count of customers with at least one overdue open invoice (after the minimum-days filter).',
+          steps: ['Group overdue invoices by customer.', 'Each customer gets a priority score (overdue amount 40, oldest age 25, history 15, broken promise 10, over limit 10) and a recommended action.'],
+          sources: [SRC.oinv, SRC.hist, SRC.ocrd, SRC.ptp], tab: 'worklist', sortBy: 'overdue',
+          stats: ['HIGH', 'MEDIUM', 'LOW'].map(pr => ({ label: `${pr} priority`, value: overdueCustomers.filter(c => c.priority === pr).length, fmt: 'int' })) } },
+      { label: 'Promises due ≤7d', value: promisesDue.length, fmt: 'int', hint: 'Open promises-to-pay due within 7 days',
+        calc: { formula: 'Count of open promises-to-pay whose promise date ≤ as-of date + 7 days.',
+          steps: ['Promises are logged by collectors from the worklist.', `A promise is KEPT when incoming payments since it was logged reach 98% of the amount by promise date + ${PTP_GRACE_DAYS} days.`],
+          sources: [SRC.ptp, SRC.orct], rows: promisesDue, sortBy: 'amount', columns: PTP_COLS, chart: null,
+          stats: [{ label: 'Amount promised', value: round(promisesDue.reduce((s, x) => s + x.amount, 0)), fmt: 'amt' }, { label: 'Paid so far', value: round(promisesDue.reduce((s, x) => s + x.paidSince, 0)), fmt: 'amt' }] } },
+      { label: 'Broken promises', value: broken.length, fmt: 'int', tone: broken.length ? 'bad' : 'good', hint: 'Promises not paid by their date',
+        calc: { formula: `Count of promises-to-pay not paid (≥ 98% of amount) by promise date + ${PTP_GRACE_DAYS} days grace.`,
+          steps: ['Checked on every run against incoming payments of the last 180 days.', 'A broken promise in the last 90 days adds 10 points to the customer’s score and escalates the action.'],
+          sources: [SRC.ptp, SRC.orct], rows: broken, sortBy: 'amount', columns: PTP_COLS, chart: null,
+          stats: [{ label: 'Amount promised', value: round(broken.reduce((s, x) => s + x.amount, 0)), fmt: 'amt' }, { label: 'Paid against them', value: round(broken.reduce((s, x) => s + x.paidSince, 0)), fmt: 'amt' }, { label: 'Kept promises', value: promises.filter(x => x.status === 'KEPT').length, fmt: 'int' }] } },
     ],
     charts: [
-      { title: 'Receivables aging', type: 'bar', labels: bucketRows.map(b => b.bucket), series: [{ name: 'Balance', values: bucketRows.map(b => b.amount) }] },
+      { title: 'Receivables aging', type: 'bar', labels: bucketRows.map(b => b.bucket), series: [{ name: 'Balance', values: bucketRows.map(b => b.amount) }],
+        desc: 'Open receivables by days past due; the further right the money sits, the harder it is to collect.' },
       { title: 'Top 10 outstanding by customer', type: 'bar', horizontal: true, stacked: true,
+        desc: 'The ten customers with the largest open balance; the red part of each bar is already overdue.',
         labels: topOut.map(c => c.cardName || c.cardCode),
         series: [{ name: 'Overdue', values: topOut.map(c => round(c.overdue)), color: '#DC2626' },
           { name: 'Not yet due', values: topOut.map(c => round(c.outstanding - c.overdue)), color: '#94A3B8' }] },
@@ -209,29 +281,44 @@ PROMISES: ${promises.slice(0, 15).map(x => `${x.cardName} ${fmtAmt(x.amount)} by
     tabs: [
       { key: 'worklist', label: `Collection worklist (${overdueCustomers.length})`, rowKey: 'cardCode', actions, totals: true,
         rows: overdueCustomers,
+        desc: 'Customers with overdue invoices, highest score first; work down the list, record promises-to-pay and send reminders from each row.',
         columns: [
-          { key: 'priority', label: 'Priority', fmt: 'badge' }, { key: 'cardName', label: 'Customer', sub: 'cardCode' },
-          { key: 'overdue', label: 'Overdue', fmt: 'amt' }, { key: 'outstanding', label: 'Outstanding', fmt: 'amt' },
-          { key: 'maxDaysOverdue', label: 'Oldest (days)', fmt: 'int' }, { key: 'avgDaysLate', label: 'Avg days late', fmt: 'int' },
-          { key: 'onTimeRate', label: 'On-time %', fmt: 'pct' }, { key: 'ptp', label: 'Promise' },
-          { key: 'score', label: 'Score', fmt: 'score', invert: true }, { key: 'action', label: 'Recommended action', wrap: true },
+          { key: 'priority', label: 'Priority', fmt: 'badge', hint: 'HIGH / MEDIUM / LOW from the collection rules: broken promise, age of oldest overdue (30/60/90 days), payment habits, open promise' },
+          { key: 'cardName', label: 'Customer', sub: 'cardCode', hint: 'Customer name and SAP business partner code' },
+          { key: 'overdue', label: 'Overdue', fmt: 'amt', hint: 'Open invoice balance past its due date' },
+          { key: 'outstanding', label: 'Outstanding', fmt: 'amt', hint: 'Total open A/R balance (overdue + not yet due)' },
+          { key: 'maxDaysOverdue', label: 'Oldest (days)', fmt: 'int', hint: 'Days past due of the oldest overdue invoice' },
+          { key: 'avgDaysLate', label: 'Avg days late', fmt: 'int', hint: `Average days paid after due date over the last ${lookbackDays / 30} months` },
+          { key: 'onTimeRate', label: 'On-time %', fmt: 'pct', hint: `Share of invoices paid by their due date over the last ${lookbackDays / 30} months` },
+          { key: 'ptp', label: 'Promise', hint: 'Open promise-to-pay (amount and date) or number of broken promises' },
+          { key: 'score', label: 'Score', fmt: 'score', invert: true, hint: '0-100, higher = chase first: overdue amount 40 + oldest age 25 + payment history 15 + broken promise 10 + over credit limit 10' },
+          { key: 'action', label: 'Recommended action', wrap: true, hint: 'Next collection step from the first matching rule (click to see all rules)' },
         ] },
       { key: 'invoices', label: `Overdue invoices (${overdueInv.length})`, totals: true,
+        desc: 'Every overdue A/R invoice grouped by customer, with its balance placed in its aging bucket; use it to quote invoice numbers when chasing.',
         // Grouped by customer; each group row totals the balance per aging bucket.
         groupBy: { key: 'cardCode', label: 'cardName', unit: 'invoices', groupUnit: 'customers',
           sum: ['total', 'balance', ...OVERDUE_BUCKETS.map(bucketKey)], max: ['daysOverdue'], sortBy: 'balance' },
         rows: overdueInv,
         columns: [
-          { key: 'docNum', label: 'Invoice #' }, { key: 'cardName', label: 'Customer', sub: 'cardCode' },
-          { key: 'docDate', label: 'Posted', fmt: 'date' }, { key: 'dueDate', label: 'Due', fmt: 'date' },
-          { key: 'daysOverdue', label: 'Days overdue', fmt: 'int' }, { key: 'bucket', label: 'Bucket', fmt: 'badge' },
-          { key: 'total', label: 'Invoice total', fmt: 'amt' }, { key: 'balance', label: 'Balance', fmt: 'amt' },
-          ...OVERDUE_BUCKETS.map(b => ({ key: bucketKey(b), label: `${b} days`, fmt: 'amt' })),
+          { key: 'docNum', label: 'Invoice #', hint: 'SAP document number of the A/R invoice' },
+          { key: 'cardName', label: 'Customer', sub: 'cardCode', hint: 'Customer name and SAP business partner code' },
+          { key: 'docDate', label: 'Posted', fmt: 'date', hint: 'Posting date of the invoice' },
+          { key: 'dueDate', label: 'Due', fmt: 'date', hint: 'Payment due date of the invoice' },
+          { key: 'daysOverdue', label: 'Days overdue', fmt: 'int', hint: 'As-of date − due date' },
+          { key: 'bucket', label: 'Bucket', fmt: 'badge', hint: 'Aging bucket by days overdue' },
+          { key: 'total', label: 'Invoice total', fmt: 'amt', hint: 'Original document total of the invoice' },
+          { key: 'balance', label: 'Balance', fmt: 'amt', hint: 'Still unpaid: invoice total − paid to date' },
+          ...OVERDUE_BUCKETS.map(b => ({ key: bucketKey(b), label: `${b} days`, fmt: 'amt', hint: `Balance if the invoice is ${b} days overdue` })),
         ] },
       { key: 'aging', label: 'Aging summary', rows: bucketRows, totals: ['amount', 'invoices'],
+        desc: 'Open receivables per aging bucket with their share of the total; a growing share in the older buckets signals collection problems.',
         columns: [
-          { key: 'bucket', label: 'Bucket', fmt: 'badge' }, { key: 'amount', label: 'Balance', fmt: 'amt' },
-          { key: 'share', label: 'Share', fmt: 'pct' }, { key: 'customers', label: 'Customers', fmt: 'int' }, { key: 'invoices', label: 'Invoices', fmt: 'int' },
+          { key: 'bucket', label: 'Bucket', fmt: 'badge', hint: 'Aging bucket by days past due (Current = not yet due)' },
+          { key: 'amount', label: 'Balance', fmt: 'amt', hint: 'Open invoice balance in this bucket' },
+          { key: 'share', label: 'Share', fmt: 'pct', hint: 'Bucket balance ÷ total receivables' },
+          { key: 'customers', label: 'Customers', fmt: 'int', hint: 'Customers with an invoice in this bucket' },
+          { key: 'invoices', label: 'Invoices', fmt: 'int', hint: 'Open invoices in this bucket' },
         ] },
     ],
     notes: [
@@ -294,7 +381,8 @@ export function createCollectionsAgentRouter(deps) {
           const hit = lookupCache.get(k.company);
           if (hit && Date.now() - hit.at < 600_000) return res.json({ ok: true, ...hit.data });
           const customers = [...(await loadPartners(k, 'C')).values()]
-            .map(c => ({ code: c.cardCode, name: c.cardName })).sort((a, b) => a.code.localeCompare(b.code));
+            .map(c => ({ code: c.cardCode, name: c.cardName }))
+            .sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, undefined, { sensitivity: 'base', numeric: true }) || a.code.localeCompare(b.code));
           const data = { customers };
           lookupCache.set(k.company, { at: Date.now(), data });
           res.json({ ok: true, ...data });

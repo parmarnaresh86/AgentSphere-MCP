@@ -56,6 +56,7 @@ import { createSalesQuotationRouter }       from './controllers/sales-quotation-
 import { createQuotationComparisonRouter }  from './controllers/quotation-comparison-agent.mjs';
 import { createQuotationToOrderRouter }     from './controllers/quotation-to-order-agent.mjs';
 import { createOrderToDeliveryRouter }      from './controllers/order-to-delivery-agent.mjs';
+import { createOrderConfirmationRouter }   from './controllers/order-confirmation-agent.mjs';
 import { createDeliveryToARInvRouter }      from './controllers/delivery-to-arinv-agent.mjs';
 import { createARInvToARCMRouter }          from './controllers/arinv-to-arcm-agent.mjs';
 import { createIncomingPaymentRouter }      from './controllers/incoming-payment-agent.mjs';
@@ -6290,6 +6291,7 @@ app.use('/api/sales-quotation',    createSalesQuotationRouter({ requireAuth, pri
 app.use('/api/quotation-comparison', createQuotationComparisonRouter({ requireAuth, getActiveSap }));
 app.use('/api/quotation-order',    createQuotationToOrderRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/order-delivery',     createOrderToDeliveryRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
+app.use('/api/order-confirmation', createOrderConfirmationRouter({ requireAuth, getActiveSap }));
 app.use('/api/delivery-arinv',     createDeliveryToARInvRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/arinv-arcm',         createARInvToARCMRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/incoming-payment',   createIncomingPaymentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));

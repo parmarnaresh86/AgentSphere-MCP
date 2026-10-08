@@ -28,6 +28,16 @@ const STRATEGIES = {
   preserve:  { overdue: 40, discount: 20, due: 10, vendor: 30 },   // + only must-pay items are funded
 };
 
+// KPI drill-through (calc blocks → lib/insight-kit.mjs withKpiDetails).
+const SRC = {
+  oact: 'OACT — G/L cash & bank accounts (Finanse = Y): current balance',
+  opch: 'OPCH — open A/P invoices (not cancelled): balance, due date, payment block',
+  octg: 'OCTG — supplier payment terms and their cash-discount code',
+  cdc: 'OCDC + CDC1 — cash-discount tiers: % discount within N days of the invoice date',
+  opor: 'OPOR + POR1 — open purchase orders: open value per vendor (supply dependency)',
+  ocrd: 'OCRD — vendor master (CardType S): frozen flag, payment terms group',
+};
+
 // Best discount still available on payDate: the tier with the fewest days
 // whose deadline (doc date + days) has not passed yet.
 function discountFor(inv, tiers, payDate) {
@@ -37,6 +47,84 @@ function discountFor(inv, tiers, payDate) {
     if (deadline >= payDate) return { pct: t.pct, deadline, days: t.days };
   }
   return null;
+}
+
+// ── "How is this calculated?" popups — built from the same parts/inputs as the score ──
+function explainInvoice({ inv, W, strategyKey, parts, score, disc, discAmt, discApr, discWorth, earlyDays, hurdle, horizon, daysToDue, overdueDays, critical, poShare, maxPoShare, payDate, scheduled }) {
+  const pct = v => `${round(v * 100, 1)}%`;
+  const ex = {
+    score: {
+      title: `Priority score ${score}`,
+      parts: [
+        { label: 'Overdue', max: W.overdue, points: parts.overdue, formula: `${W.overdue} × (0.3 + 0.7 × min(1, days overdue ÷ 60)), only if overdue`,
+          detail: overdueDays > 0 ? `${overdueDays} days overdue` : 'Not overdue' },
+        { label: 'Early-pay discount', max: W.discount, points: parts.discount,
+          formula: `${W.discount} × (0.6 + 0.4 × min(1, annual return ÷ ${hurdle * 3 || 36}%)), only if it beats the ${hurdle}% hurdle`,
+          detail: disc ? `${disc.pct}% discount = ${round(discApr, 1)}% a year${discWorth ? '' : ' (below hurdle)'}` : 'No discount available' },
+        { label: 'Due soon', max: W.due, points: parts.due, formula: `${W.due} × (1 − days to due ÷ ${horizon + 1}), only if due within ${horizon} days`,
+          detail: daysToDue >= 0 ? `Due in ${daysToDue} days` : 'Already overdue' },
+        critical
+          ? { label: 'Priority vendor', max: W.vendor, points: parts.vendor, formula: `Flagged as priority vendor: full ${W.vendor}`, detail: 'In your priority vendor list' }
+          : { label: 'Supply dependency', max: W.vendor, points: parts.vendor, formula: `${W.vendor} × 0.8 × vendor’s open PO share ÷ largest vendor’s share`,
+            detail: `${pct(poShare)} of open PO value (largest vendor ${pct(maxPoShare)})` },
+      ].map(x => ({ ...x, points: round(x.points, 1) })),
+      note: `Weights come from the "${strategyKey}" strategy. Must-pay invoices are funded first, then the highest score.`,
+    },
+    scheduled: {
+      title: `Pay on ${scheduled}`,
+      steps: [
+        { label: 'Run date', value: payDate }, { label: 'Net due date', value: inv.dueDate },
+        ...(disc ? [{ label: 'Discount deadline', value: disc.deadline, detail: discWorth ? 'Discount worth taking' : 'Discount below hurdle — not taken' }] : []),
+      ],
+      rules: [
+        { rule: 'Invoice is overdue', result: 'Pay on the run date', hit: overdueDays > 0 },
+        { rule: 'Discount beats the hurdle', result: 'Pay on the discount deadline', hit: overdueDays <= 0 && !!discWorth },
+        { rule: 'Otherwise', result: 'Pay on the net due date (keeps cash longer)', hit: overdueDays <= 0 && !discWorth },
+      ],
+    },
+  };
+  if (disc) {
+    const apr = {
+      title: `Discount return ${round(discApr, 1)}% a year`,
+      steps: [
+        { label: 'Discount', formula: `${disc.pct}% of balance`, value: round(discAmt), detail: `Balance ${fmtAmt(inv.balance)}` },
+        { label: 'Days paid early', formula: 'Net due date − discount deadline (min 1)', value: earlyDays, detail: `${disc.deadline} → ${inv.dueDate}` },
+        { label: 'Annualised return', formula: `${disc.pct} ÷ (100 − ${disc.pct}) × 365 ÷ ${earlyDays}`, value: `${round(discApr, 1)}%` },
+        { label: 'Hurdle (cost of money)', value: `${hurdle}%` },
+      ],
+      rules: [
+        { rule: `Return ≥ ${hurdle}% hurdle`, result: 'Take the discount (YES)', hit: !!discWorth },
+        { rule: `Return < ${hurdle}% hurdle`, result: 'Pay on net due date instead (NO)', hit: !discWorth },
+      ],
+    };
+    ex.discountApr = apr;
+    ex.beatsHurdle = apr;
+  }
+  return ex;
+}
+
+function explainDecision(r, { budget, left, strategyKey, allowPartial, horizon }) {
+  const fits = left != null && r.payAmount <= left + 0.005;
+  return {
+    title: `Decision: ${r.decision}`,
+    steps: [
+      { label: 'Amount to pay', formula: r.takeDiscount ? 'Balance − discount' : 'Open balance', value: r.payAmount },
+      { label: 'Must pay', formula: 'Overdue, due within 3 days, discount worth taking, or priority vendor due in window', value: r.mustPay ? 'Yes' : 'No' },
+      { label: 'Priority score', value: r.score },
+      ...(left != null ? [{ label: 'Budget left at its turn', formula: `Of ${fmtAmt(budget)} budget; must-pay first, then highest score`, value: round(left) }] : []),
+    ],
+    rules: [
+      { rule: 'Payment block on invoice or vendor frozen', result: 'HOLD', hit: r.decision === 'HOLD' },
+      { rule: `Not overdue, not due within ${horizon} days, no discount deadline in window`, result: 'LATER', hit: r.decision === 'LATER' },
+      { rule: `Preserve-cash strategy and not must-pay${strategyKey === 'preserve' ? '' : ' (not active)'}`, result: 'DEFER', hit: r.decision === 'DEFER' },
+      { rule: 'Fits the budget and discount taken', result: 'TAKE DISCOUNT', hit: r.decision === 'TAKE DISCOUNT' },
+      { rule: 'Fits the budget, pay date is today', result: 'PAY NOW', hit: r.decision === 'PAY NOW' },
+      { rule: 'Fits the budget, pay date is later', result: 'PAY ON DUE DATE', hit: r.decision === 'PAY ON DUE DATE' },
+      { rule: `Does not fit, must-pay, no discount, part-payments allowed${allowPartial ? '' : ' (switched off)'}`, result: 'PART PAY', hit: r.decision === 'PART PAY' },
+      { rule: 'Does not fit the remaining budget', result: 'NO CASH', hit: r.decision === 'NO CASH' },
+    ],
+    note: left != null && !fits && r.decision === 'NO CASH' ? `Needed ${fmtAmt(r.payAmount)} but only ${fmtAmt(left)} was left.` : r.reason || '',
+  };
 }
 
 async function run(k, p) {
@@ -119,14 +207,17 @@ async function run(k, p) {
         : daysToDue <= horizon ? `Due in ${daysToDue}d`
         : `Due ${inv.dueDate}`,
       driver: { overdue: 'Overdue', discount: 'Discount', due: 'Due soon', vendor: critical ? 'Priority vendor' : 'Supply dependency' }[driver[0]],
+      explain: explainInvoice({ inv, W, strategyKey, parts, score, disc, discAmt, discApr, discWorth, earlyDays, hurdle, horizon, daysToDue, overdueDays, critical, poShare, maxPoShare, payDate, scheduled }),
     };
   });
 
   // ── Allocate cash ─────────────────────────────────────────────────────────
   let remaining = budget;
+  const budgetLeft = new Map();   // row → budget still unallocated when its turn came (for the Decision popup)
   const order = rows.filter(r => !r.blocked && r.inScope)
     .sort((a, z) => (z.mustPay - a.mustPay) || z.score - a.score || a.scheduled.localeCompare(z.scheduled));
   for (const r of order) {
+    budgetLeft.set(r, remaining);
     if (strategyKey === 'preserve' && !r.mustPay) {
       r.decision = 'DEFER'; r.reason = 'Preserve-cash strategy: not urgent, pay on a later run'; continue;
     }
@@ -151,6 +242,7 @@ async function run(k, p) {
     else { r.decision = 'LATER'; r.reason = `Due ${r.dueDate} — outside the ${horizon}-day window`; }
   }
   for (const r of rows) r.paid = round(r.paid || 0);
+  for (const r of rows) r.explain.decision = explainDecision(r, { budget, left: budgetLeft.get(r), strategyKey, allowPartial, horizon });
 
   const selected = rows.filter(r => r.paid > 0).sort((a, z) => a.scheduled.localeCompare(z.scheduled) || z.score - a.score);
   const unpaidInScope = rows.filter(r => ['NO CASH', 'DEFER', 'PART PAY'].includes(r.decision) || (r.decision === 'HOLD' && r.inScope));
@@ -214,28 +306,81 @@ BY VENDOR:
 ${ctxTable(vendorRows, [['cardName', 'Vendor'], ['open', 'Open'], ['overdue', 'Overdue'], ['pay', 'PayNow'], ['poShare', 'OpenPO%'], ['ourAvgDaysLate', 'WePayLateBy']], 15)}`;
 
   const invCols = [
-    { key: 'decision', label: 'Decision', fmt: 'badge', badge: { 'PAY NOW': 'green', 'TAKE DISCOUNT': 'purple', 'PAY ON DUE DATE': 'blue', 'PART PAY': 'amber', 'NO CASH': 'red', DEFER: 'amber', HOLD: 'grey', LATER: 'grey' } },
-    { key: 'scheduled', label: 'Pay on', fmt: 'date' }, { key: 'cardName', label: 'Vendor', sub: 'cardCode' },
-    { key: 'docNum', label: 'Invoice #' }, { key: 'dueDate', label: 'Due', fmt: 'date' },
-    { key: 'overdueDays', label: 'Overdue (d)', fmt: 'int' }, { key: 'balance', label: 'Balance', fmt: 'amt' },
-    { key: 'discountAmt', label: 'Discount', fmt: 'amt' }, { key: 'paid', label: 'Pay', fmt: 'amt', strong: true },
-    { key: 'score', label: 'Priority', fmt: 'score', invert: true }, { key: 'critical', label: 'Priority vendor', fmt: 'badge' },
-    { key: 'reason', label: 'Why', wrap: true },
+    { key: 'decision', label: 'Decision', fmt: 'badge', badge: { 'PAY NOW': 'green', 'TAKE DISCOUNT': 'purple', 'PAY ON DUE DATE': 'blue', 'PART PAY': 'amber', 'NO CASH': 'red', DEFER: 'amber', HOLD: 'grey', LATER: 'grey' },
+      hint: 'Recommended action: pay now, take the discount, pay on due date, part-pay, no cash left, defer, on hold (blocked) or later (outside the window)' },
+    { key: 'scheduled', label: 'Pay on', fmt: 'date', hint: 'Recommended payment date: today if overdue, the discount deadline if taking the discount, else the net due date' },
+    { key: 'cardName', label: 'Vendor', sub: 'cardCode', hint: 'Supplier name and SAP business partner code' },
+    { key: 'docNum', label: 'Invoice #', hint: 'SAP document number of the A/P invoice' },
+    { key: 'dueDate', label: 'Due', fmt: 'date', hint: 'Net due date of the A/P invoice' },
+    { key: 'overdueDays', label: 'Overdue (d)', fmt: 'int', hint: 'Days past the due date as of the run date (0 = not overdue)' },
+    { key: 'balance', label: 'Balance', fmt: 'amt', hint: 'Unpaid amount of the invoice (document total − paid to date)' },
+    { key: 'discountAmt', label: 'Discount', fmt: 'amt', hint: 'Early-payment discount available: balance × discount % of the payment terms' },
+    { key: 'paid', label: 'Pay', fmt: 'amt', strong: true, hint: 'Amount funded in this run: balance (less discount if taken), or the part that fits the budget' },
+    { key: 'score', label: 'Priority', fmt: 'score', invert: true, hint: `Priority score 0-100: overdue ${W.overdue} + discount ${W.discount} + due soon ${W.due} + vendor importance ${W.vendor} points ("${strategyKey}" strategy)` },
+    { key: 'critical', label: 'Priority vendor', fmt: 'badge', hint: 'YES when the vendor is in your priority vendor list' },
+    { key: 'reason', label: 'Why', wrap: true, hint: 'Main reason for the decision' },
   ];
 
   return {
     kpis: [
-      { label: 'Cash available', value: cash, fmt: 'amt', hint: cashSource },
-      { label: 'Payment budget', value: budget, fmt: 'amt', hint: `Cash less reserve of ${fmtAmt(reserve)}` },
-      { label: 'Recommended run', value: runTotal, fmt: 'amt', tone: 'good' },
-      { label: 'Invoices to pay', value: selected.length, fmt: 'int' },
-      { label: 'Discounts captured', value: captured, fmt: 'amt', tone: captured ? 'good' : undefined },
-      { label: 'Overdue left unpaid', value: overdueTotal - overduePaid, fmt: 'amt', tone: overdueTotal - overduePaid > 0 ? 'bad' : 'good' },
-      { label: 'Unfunded due / overdue', value: shortfall, fmt: 'amt', tone: shortfall ? 'bad' : 'good' },
-      { label: 'Cash after run', value: cash - runTotal, fmt: 'amt', tone: cash - runTotal >= reserve ? 'good' : 'bad' },
+      { label: 'Cash available', value: cash, fmt: 'amt', hint: cashSource,
+        calc: { formula: cashSource === 'entered' ? 'Cash available as entered in the options above (overrides the G/L balance).' : 'Σ current balance of the G/L cash & bank accounts (OACT.Finanse = Y).',
+          steps: ['Leave "Cash available" blank to read the G/L cash & bank balance automatically.', 'Enter a figure to plan with expected cash instead (e.g. after known receipts).', `Payment budget = this cash − reserve of ${fmtAmt(reserve)}.`],
+          sources: [SRC.oact], tab: 'schedule', chart: null,
+          stats: [{ label: 'Reserve kept back', value: reserve, fmt: 'amt' }, { label: 'Payment budget', value: budget, fmt: 'amt' },
+            { label: 'Total open A/P', value: round(totalOpen), fmt: 'amt' }, { label: 'Of which overdue', value: round(overdueTotal), fmt: 'amt' }] } },
+      { label: 'Payment budget', value: budget, fmt: 'amt', hint: `Cash less reserve of ${fmtAmt(reserve)}`,
+        calc: { formula: `Payment budget = cash available ${fmtAmt(cash)} − reserve ${fmtAmt(reserve)} (never below zero).`,
+          steps: ['Must-pay invoices (overdue, due within 3 days, discounts worth taking, priority vendors due in the window) are funded first.', 'Then the remaining budget goes to the highest priority scores until it runs out.'],
+          sources: [SRC.oact, SRC.opch], tab: 'run', sortBy: 'paid',
+          stats: [{ label: 'Allocated to the run', value: round(runTotal), fmt: 'amt' }, { label: 'Budget used', value: budget ? round((runTotal / budget) * 100, 1) : 0, fmt: 'pct' },
+            { label: 'Budget left', value: round(budget - runTotal), fmt: 'amt' }, { label: 'Unfunded due / overdue', value: round(shortfall), fmt: 'amt' }] } },
+      { label: 'Recommended run', value: runTotal, fmt: 'amt', tone: 'good', hint: 'Total to pay in this payment run',
+        calc: { formula: `Σ amount funded per invoice (balance, less discount where taken) for invoices due, overdue or with a discount deadline within ${horizon} days.`,
+          steps: ['Blocked invoices and frozen vendors are excluded (HOLD).', 'Invoices are funded in order: must-pay first, then by priority score, then by pay date.', allowPartial ? 'Part-payments are allowed for must-pay invoices that do not fully fit.' : 'Part-payments are switched off: an invoice is paid in full or not at all.'],
+          sources: [SRC.opch, SRC.octg, SRC.cdc, SRC.opor, SRC.ocrd, SRC.oact], tab: 'run', sortBy: 'paid',
+          stats: [{ label: 'Pay now', value: round(sum(selected.filter(r => r.decision === 'PAY NOW'), 'paid')), fmt: 'amt' },
+            { label: 'Take discount', value: round(sum(selected.filter(r => r.decision === 'TAKE DISCOUNT'), 'paid')), fmt: 'amt' },
+            { label: 'Pay on due date', value: round(sum(selected.filter(r => r.decision === 'PAY ON DUE DATE'), 'paid')), fmt: 'amt' },
+            { label: 'Part payments', value: round(sum(selected.filter(r => r.decision === 'PART PAY'), 'paid')), fmt: 'amt' },
+            { label: '% of budget', value: budget ? round((runTotal / budget) * 100, 1) : 0, fmt: 'pct' }] } },
+      { label: 'Invoices to pay', value: selected.length, fmt: 'int', hint: 'A/P invoices funded (fully or partly) in this run',
+        calc: { formula: 'Count of open A/P invoices that receive any amount in the recommended run.',
+          steps: [`In scope: overdue, due within ${horizon} days, or a worthwhile discount deadline within the window.`, 'Each in-scope invoice is funded only while budget remains.'],
+          sources: [SRC.opch], tab: 'run', sortBy: 'paid',
+          stats: [{ label: 'Vendors paid', value: new Set(selected.map(r => r.cardCode)).size, fmt: 'int' },
+            { label: 'Overdue invoices paid', value: selected.filter(r => r.overdueDays > 0).length, fmt: 'int' },
+            { label: 'With discount taken', value: selected.filter(r => r.decision === 'TAKE DISCOUNT').length, fmt: 'int' },
+            { label: 'Not funded (in scope)', value: unpaidInScope.length, fmt: 'int' }, { label: 'Open A/P invoices', value: rows.length, fmt: 'int' }] } },
+      { label: 'Discounts captured', value: captured, fmt: 'amt', tone: captured ? 'good' : undefined, hint: `Early-payment discounts taken (return ≥ ${hurdle}% a year)`,
+        calc: { formula: `Σ discount amount (balance × discount %) on invoices paid by their discount deadline, where the annualised return ≥ the ${hurdle}% hurdle.`,
+          steps: ['Annualised return = discount % ÷ (100 − discount %) × 365 ÷ days paid early.', 'Discounts below the hurdle are ignored: paying on the net due date keeps cash longer.', discountsConfigured ? 'Discount tiers come from the cash-discount codes on supplier payment terms.' : 'No cash-discount tiers are set up on supplier payment terms, so this is zero.'],
+          sources: [SRC.opch, SRC.octg, SRC.cdc], tab: 'discounts', filter: r => r.decision === 'TAKE DISCOUNT', sortBy: 'discountAmt',
+          stats: [{ label: 'Invoices with discount terms', value: discountRows.length, fmt: 'int' }, { label: 'Worth taking (beat hurdle)', value: rows.filter(r => r.takeDiscount).length, fmt: 'int' },
+            { label: 'Lost for lack of cash', value: round(lost), fmt: 'amt' }, { label: 'Hurdle rate', value: hurdle, fmt: 'pct' }] } },
+      { label: 'Overdue left unpaid', value: overdueTotal - overduePaid, fmt: 'amt', tone: overdueTotal - overduePaid > 0 ? 'bad' : 'good', hint: 'Overdue A/P balance this run does not clear',
+        calc: { formula: 'Σ balance of overdue A/P invoices − Σ amount paid on them in this run.',
+          steps: ['Overdue = net due date before the run date.', 'Overdue invoices are must-pay and funded first; what remains is due to blocks, frozen vendors or lack of cash.'],
+          sources: [SRC.opch], tab: 'overdue', filter: r => r.paid < r.balance, sortBy: 'balance',
+          stats: [{ label: 'Total overdue', value: round(overdueTotal), fmt: 'amt' }, { label: 'Paid in this run', value: round(overduePaid), fmt: 'amt' },
+            { label: 'Overdue invoices', value: overdueRows.length, fmt: 'int' }, { label: 'Oldest (days)', value: overdueRows[0]?.overdueDays || 0, fmt: 'int' },
+            { label: 'On hold (blocked)', value: overdueRows.filter(r => r.decision === 'HOLD').length, fmt: 'int' }] } },
+      { label: 'Unfunded due / overdue', value: shortfall, fmt: 'amt', tone: shortfall ? 'bad' : 'good', hint: 'Due or overdue amounts the budget cannot cover',
+        calc: { formula: 'Σ amount of invoices marked NO CASH + unpaid remainder of PART PAY invoices.',
+          steps: ['These invoices were in scope but the budget ran out before their turn.', 'Agree a payment date with these vendors or increase the cash available.'],
+          sources: [SRC.opch, SRC.oact], tab: 'unfunded', filter: r => r.decision === 'NO CASH' || r.decision === 'PART PAY', sortBy: 'payAmount',
+          stats: [{ label: 'NO CASH invoices', value: noCash.length, fmt: 'int' }, { label: 'PART PAY invoices', value: rows.filter(r => r.decision === 'PART PAY').length, fmt: 'int' },
+            { label: 'Deferred (preserve cash)', value: rows.filter(r => r.decision === 'DEFER').length, fmt: 'int' }, { label: 'Discounts lost', value: round(lost), fmt: 'amt' }] } },
+      { label: 'Cash after run', value: cash - runTotal, fmt: 'amt', tone: cash - runTotal >= reserve ? 'good' : 'bad', hint: 'Cash available − recommended run',
+        calc: { formula: `Cash after run = cash available ${fmtAmt(cash)} − recommended run ${fmtAmt(runTotal)}.`,
+          steps: [`Shown green when it stays at or above the reserve of ${fmtAmt(reserve)}.`, 'The weekly schedule shows how cash falls as each week’s payments go out.', 'Expected customer receipts are not included.'],
+          sources: [SRC.oact, SRC.opch], tab: 'schedule', sortBy: 'total',
+          stats: [{ label: 'Cash available', value: round(cash), fmt: 'amt' }, { label: 'Recommended run', value: round(runTotal), fmt: 'amt' },
+            { label: 'Reserve', value: reserve, fmt: 'amt' }, { label: 'Headroom over reserve', value: round(cash - runTotal - reserve), fmt: 'amt' }] } },
     ],
     chart: {
       title: 'Payment schedule by week', type: 'bar', labels: wk.map(w => `W${w.week} ${w.from.slice(5)}`),
+      desc: 'Bars show how much is paid each week, split into overdue, discount and on-due-date payments; the green line is cash left after each week.',
       series: [
         { name: 'Overdue', values: wk.map(w => w.overdue), color: '#DC2626' },
         { name: 'Discount', values: wk.map(w => w.discount), color: '#7C3AED' },
@@ -244,25 +389,45 @@ ${ctxTable(vendorRows, [['cardName', 'Vendor'], ['open', 'Open'], ['overdue', 'O
       ],
     },
     tabs: [
-      { key: 'run', label: `Payment run (${selected.length})`, rows: selected, columns: invCols },
-      { key: 'unfunded', label: `Not funded (${unpaidInScope.length})`, rows: unpaidInScope.sort((a, z) => z.score - a.score), columns: invCols },
-      { key: 'overdue', label: `Overdue (${overdueRows.length})`, rows: overdueRows, columns: invCols },
+      { key: 'run', label: `Payment run (${selected.length})`, rows: selected, columns: invCols,
+        desc: 'Invoices to pay in this run, in pay-date order; use it (or the CSV export) to prepare the outgoing payments in SAP.' },
+      { key: 'unfunded', label: `Not funded (${unpaidInScope.length})`, rows: unpaidInScope.sort((a, z) => z.score - a.score), columns: invCols,
+        desc: 'Due or overdue invoices that did not get (full) cash, highest priority first; agree payment dates with these vendors.' },
+      { key: 'overdue', label: `Overdue (${overdueRows.length})`, rows: overdueRows, columns: invCols,
+        desc: 'All overdue A/P invoices, oldest first, with what this run pays on each.' },
       { key: 'discounts', label: `Discounts (${discountRows.length})`, rows: discountRows,
-        columns: [invCols[0], { key: 'cardName', label: 'Vendor', sub: 'cardCode' }, { key: 'docNum', label: 'Invoice #' },
-          { key: 'balance', label: 'Balance', fmt: 'amt' }, { key: 'discountPct', label: 'Discount %', fmt: 'num' },
-          { key: 'discountDeadline', label: 'Pay by', fmt: 'date' }, { key: 'dueDate', label: 'Net due', fmt: 'date' },
-          { key: 'discountAmt', label: 'Saving', fmt: 'amt', strong: true }, { key: 'discountApr', label: 'Annualised', fmt: 'pct' },
-          { key: 'beatsHurdle', label: 'Beats hurdle', fmt: 'badge', badge: { YES: 'green', NO: 'grey' } }] },
+        desc: `Invoices with an early-payment discount, best annual return first; YES means the return beats the ${hurdle}% hurdle and is worth paying early for.`,
+        columns: [invCols[0], { key: 'cardName', label: 'Vendor', sub: 'cardCode', hint: 'Supplier name and SAP business partner code' },
+          { key: 'docNum', label: 'Invoice #', hint: 'SAP document number of the A/P invoice' },
+          { key: 'balance', label: 'Balance', fmt: 'amt', hint: 'Unpaid amount of the invoice' },
+          { key: 'discountPct', label: 'Discount %', fmt: 'num', hint: 'Discount % still available on the run date from the payment terms' },
+          { key: 'discountDeadline', label: 'Pay by', fmt: 'date', hint: 'Last date to pay and still get the discount (invoice date + discount days)' },
+          { key: 'dueDate', label: 'Net due', fmt: 'date', hint: 'Net due date if the discount is not taken' },
+          { key: 'discountAmt', label: 'Saving', fmt: 'amt', strong: true, hint: 'Balance × discount %' },
+          { key: 'discountApr', label: 'Annualised', fmt: 'pct', hint: 'Discount % ÷ (100 − discount %) × 365 ÷ days paid early' },
+          { key: 'beatsHurdle', label: 'Beats hurdle', fmt: 'badge', badge: { YES: 'green', NO: 'grey' }, hint: `YES when the annualised return is at least the ${hurdle}% cost-of-money hurdle` }] },
       { key: 'schedule', label: 'Weekly schedule', rows: wk,
-        columns: [{ key: 'week', label: 'Wk', fmt: 'int' }, { key: 'from', label: 'From', fmt: 'date' }, { key: 'to', label: 'To', fmt: 'date' },
-          { key: 'count', label: 'Invoices', fmt: 'int' }, { key: 'overdue', label: 'Overdue', fmt: 'amt' }, { key: 'discount', label: 'Discount', fmt: 'amt' },
-          { key: 'due', label: 'Due', fmt: 'amt' }, { key: 'total', label: 'Total', fmt: 'amt', strong: true }, { key: 'cashAfter', label: 'Cash after', fmt: 'amt' }] },
+        desc: 'Payments of the recommended run grouped by week, with the cash balance left after each week.',
+        columns: [{ key: 'week', label: 'Wk', fmt: 'int', hint: 'Week number from the run date' },
+          { key: 'from', label: 'From', fmt: 'date', hint: 'First day of the week' }, { key: 'to', label: 'To', fmt: 'date', hint: 'Last day of the week' },
+          { key: 'count', label: 'Invoices', fmt: 'int', hint: 'Invoices scheduled for payment this week' },
+          { key: 'overdue', label: 'Overdue', fmt: 'amt', hint: 'Payments clearing overdue invoices' },
+          { key: 'discount', label: 'Discount', fmt: 'amt', hint: 'Payments made early to capture a discount' },
+          { key: 'due', label: 'Due', fmt: 'amt', hint: 'Payments made on their net due date' },
+          { key: 'total', label: 'Total', fmt: 'amt', strong: true, hint: 'Overdue + discount + due payments this week' },
+          { key: 'cashAfter', label: 'Cash after', fmt: 'amt', hint: 'Cash available − all run payments up to the end of this week' }] },
       { key: 'vendors', label: `By vendor (${vendorRows.length})`, rows: vendorRows,
-        columns: [{ key: 'cardName', label: 'Vendor', sub: 'cardCode' }, { key: 'invoices', label: 'Invoices', fmt: 'int' },
-          { key: 'open', label: 'Open', fmt: 'amt' }, { key: 'overdue', label: 'Overdue', fmt: 'amt' }, { key: 'pay', label: 'Pay in run', fmt: 'amt', strong: true },
-          { key: 'discount', label: 'Discount', fmt: 'amt' }, { key: 'deferred', label: 'Not funded', fmt: 'amt' },
-          { key: 'poShare', label: 'Open PO share', fmt: 'pct' }, { key: 'ourAvgDaysLate', label: 'We pay late by (d)', fmt: 'int' },
-          { key: 'critical', label: 'Priority', fmt: 'badge' }] },
+        desc: 'Open A/P and this run’s payments per vendor; check vendors with large "Not funded" amounts or a high open PO share.',
+        columns: [{ key: 'cardName', label: 'Vendor', sub: 'cardCode', hint: 'Supplier name and SAP business partner code' },
+          { key: 'invoices', label: 'Invoices', fmt: 'int', hint: 'Open A/P invoices for this vendor' },
+          { key: 'open', label: 'Open', fmt: 'amt', hint: 'Total unpaid A/P balance with this vendor' },
+          { key: 'overdue', label: 'Overdue', fmt: 'amt', hint: 'Part of the open balance past its due date' },
+          { key: 'pay', label: 'Pay in run', fmt: 'amt', strong: true, hint: 'Amount paid to this vendor in the recommended run' },
+          { key: 'discount', label: 'Discount', fmt: 'amt', hint: 'Early-payment discounts captured from this vendor' },
+          { key: 'deferred', label: 'Not funded', fmt: 'amt', hint: 'Due/overdue amounts left unpaid for lack of cash or deferred' },
+          { key: 'poShare', label: 'Open PO share', fmt: 'pct', hint: 'Vendor’s share of all open purchase-order value — a measure of supply dependency' },
+          { key: 'ourAvgDaysLate', label: 'We pay late by (d)', fmt: 'int', hint: 'How many days after due date we paid this vendor on average over 12 months' },
+          { key: 'critical', label: 'Priority', fmt: 'badge', hint: 'YES when the vendor is in your priority vendor list' }] },
     ],
     notes: [
       `Strategy "${strategyKey}" weights: overdue ${W.overdue}, discount ${W.discount}, due-date ${W.due}, vendor ${W.vendor}. Must-pay items (overdue, due within 3 days, discounts worth taking, priority vendors due in the window) are funded first, then by score.`,

@@ -324,7 +324,7 @@ export function createPurchaseRequestAgentRouter(deps) {
 
       // ── INIT ──────────────────────────────────────────────────────────────────
       if (session.step === 'INIT' || !msg) {
-        reply = `## 🛒 Purchase Request Agent\n\nWelcome! I'll guide you through creating an SAP B1 **Purchase Requisition** step by step.\n\nIs this for a **new item** (not yet in SAP item master) or an **existing item** (already in SAP)?`;
+        reply = `Let's start with the item. Is this for a **new item** (not yet in SAP item master) or an **existing item** (already in SAP)?`;
         quickReplies = ['Existing Item', 'New Item'];
         session.step = 'ITEM_TYPE';
       }

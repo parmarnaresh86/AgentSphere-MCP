@@ -2326,6 +2326,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showSQPanel()" id="nav-sq" data-perm="sales.workflow.quotation" style="cursor:pointer"><span class="dot-icon" data-fi="sales-quote" style="background:#15803d"></span>Sales Quotation</div>
         <div class="nav-subitem" onclick="showQCompPanel()" id="nav-qcomp" data-perm="sales.workflow.quote_compare" style="cursor:pointer"><span class="dot-icon" data-fi="compare" style="background:#7c3aed"></span>Quotation Compare</div>
         <div class="nav-subitem" onclick="showQ2OPanel()" id="nav-q2o" data-perm="sales.workflow.quote_to_order" style="cursor:pointer"><span class="dot-icon" data-fi="customer-order-entry" style="background:#0e7490"></span>Quot → Order</div>
+        <div class="nav-subitem" onclick="showOrderConfirmationPanel()" id="nav-soc" data-perm="sales.workflow.order_confirmation" style="cursor:pointer"><span class="dot-icon" data-fi="validate" style="background:#107e3e"></span>Order Confirmation</div>
         <div class="nav-subitem" onclick="showO2DPanel()" id="nav-o2d" data-perm="sales.workflow.order_to_delivery" style="cursor:pointer"><span class="dot-icon" data-fi="shipping-status" style="background:#b45309"></span>Order → Delivery</div>
         <div class="nav-subitem" onclick="showD2ARInvPanel()" id="nav-d2arinv" data-perm="sales.workflow.delivery_to_arinv" style="cursor:pointer"><span class="dot-icon" data-fi="sales-document" style="background:#0369a1"></span>Delivery → AR Inv</div>
         <div class="nav-subitem" onclick="showARInv2ARCMPanel()" id="nav-arinv2arcm" data-perm="sales.workflow.arinv_to_arcm" style="cursor:pointer"><span class="dot-icon" data-fi="undo" style="background:#9f1239"></span>AR Inv → Credit</div>
@@ -5473,21 +5474,21 @@ function fmtKpiValue(v, unit) {
   // The AI sometimes tags money with the company's own code ("usd", "aed") —
   // pct/qty are handled above, so any other 3-letter tag is a currency.
   if (unit === 'inr' || unit === undefined || unit === 'money' || /^[a-z]{3}$/i.test(unit || '')) {
-    const cur = window.APP_CURRENCY || { code: 'USD', symbol: '$' };
-    if (cur.code === 'INR') {
-      if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} Cr`;
-      if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)} L`;
-      return `${sign}₹${Math.round(a).toLocaleString('en-IN')}`;
-    }
     if (a >= 1e4) return fmtMillions(n);
-    return `${sign}${cur.symbol}${Math.round(a).toLocaleString('en-US')}`;
+    return `${sign}$${Math.round(a).toLocaleString('en-US')}`;
   }
   return n.toLocaleString(window.APP_LOCALE, { maximumFractionDigits: 2 });
 }
-// Non-INR companies (USD, …): money KPIs and chart axes are shown in millions
-// ($12.35M). INR keeps its Indian units (L / Cr). Amounts under 10,000 stay in full.
-function appUsesMillions() { return ((window.APP_CURRENCY || {}).code || 'USD') !== 'INR'; }
-function fmtMillions(v, sym = (window.APP_CURRENCY || {}).symbol || '$', dp = 2) {
+// Money is always shown in USD ($): KPIs and chart axes in millions ($12.35M),
+// amounts under 10,000 in full. No INR / Lakh / Crore units.
+function appUsesMillions() { return true; }
+// Full USD amount: -$1,234 / $1,234
+function fmtUSD(v, dp = 0) {
+  if (v == null || v === '' || isNaN(Number(v))) return '—';
+  const n = Number(v);
+  return `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+}
+function fmtMillions(v, sym = '$', dp = 2) {
   const n = Number(v), a = Math.abs(n);
   return `${n < 0 ? '-' : ''}${sym}${(a / 1e6).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })}M`;
 }
@@ -5496,12 +5497,12 @@ function appMoneyTicks(fallback, sym) {
   return function (v) {
     const top = Math.max(Math.abs(this.max || 0), Math.abs(this.min || 0));
     if (!appUsesMillions() || top < 1e5) return fallback.call(this, v);
-    const a = Math.abs(v), s = sym ?? ((window.APP_CURRENCY || {}).symbol || '$');
+    const a = Math.abs(v), s = sym ?? '$';
     return `${v < 0 ? '-' : ''}${s}${(a / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}M`;
   };
 }
 // Bare big numbers inside a note ("GP 927737.5") → company-currency scale.
-const fmtKpiNote = s => String(s).replace(/(?<![\d₹.,%])\d{4,}(?:\.\d+)?(?![\d%])/g, m => fmtKpiValue(Number(m), 'inr'));
+const fmtKpiNote = s => String(s).replace(/(?<![\d$₹.,%])\d{4,}(?:\.\d+)?(?![\d%])/g, m => fmtKpiValue(Number(m), 'inr'));
 
 function renderKpiTiles(kpis) {
   const wrap = document.createElement('div');
@@ -5720,7 +5721,7 @@ function printAnswer(bubble, title) {
     .atbl-pane{display:none}.atbl-pane.active{display:block}.atbl-chart-canvas-wrap{height:auto}
     h1.print-title{font-size:18px;color:#0B5FD9;margin:0 0 4px}.print-meta{color:#6B7280;font-size:11px;margin-bottom:16px}
     @media print{.no-print{display:none}}</style></head><body>
-    <h1 class="print-title">${escHtml(title)}</h1><div class="print-meta">Generated ${new Date().toLocaleString('en-IN')}</div>
+    <h1 class="print-title">${escHtml(title)}</h1><div class="print-meta">Generated ${new Date().toLocaleString(window.APP_LOCALE || 'en-US')}</div>
     <div class="bubble bot">${clone.innerHTML}</div>
     <button class="no-print" onclick="window.print()" style="margin-top:16px;padding:8px 18px;background:#0070F3;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Print / Save as PDF</button>
     </body></html>`);
@@ -6128,6 +6129,113 @@ class AC {
     if(e.key==='Escape')this._close();
   }
 }
+
+// ════════════════════════════════════════════════════
+// Agent search-box suggestions
+// ════════════════════════════════════════════════════
+// The guided agents (Sales Order, Sales Quotation, Quotation Compare, Purchase
+// Order, Inventory, Incoming Payment and every copy-doc-flow agent) render a
+// "🔍 Search … by name or code" box whose inline oninput (xxFilterCustomers /
+// xxFilterVendors / xxFilterItems / cfFilter) narrows the <select> below it.
+// This delegated listener runs after that filter and shows the remaining
+// options as a suggestion list under the box; picking one selects it in the
+// <select> and fires its change handler, so each agent's own logic (price
+// load, tax default, Select → button) keeps working unchanged.
+(function() {
+  const FILTER_RE = /^\s*(?:\w+Filter(?:Customers|Vendors|Items)|cfFilter)\(this[,)]/;
+  const MAX_SHOWN = 50;
+  let drop = null, owner = null, opts = [], active = -1;
+
+  const escH = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const isSearchBox = el => el && el.tagName === 'INPUT' && FILTER_RE.test(el.getAttribute('oninput') || '');
+
+  // The <select> the box filters: the first one after it inside a nearby ancestor.
+  function selectFor(input) {
+    let n = input.parentElement;
+    for (let i = 0; i < 4 && n; i++, n = n.parentElement) {
+      const s = [...n.querySelectorAll('select')].find(s => input.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (s) return s;
+    }
+    return null;
+  }
+
+  function close() { drop?.remove(); drop = null; owner = null; opts = []; active = -1; }
+
+  function render(input) {
+    const sel = selectFor(input);
+    const q = input.value.trim();
+    if (!sel || !q) { close(); return; }
+    if (!drop || owner !== input) {
+      close();
+      owner = input;
+      drop = document.createElement('div');
+      drop.className = 'ac-dropdown agent-suggest';
+      const host = input.parentElement;
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+      host.appendChild(drop);
+    }
+    drop.style.top   = (input.offsetTop + input.offsetHeight + 2) + 'px';
+    drop.style.left  = input.offsetLeft + 'px';
+    drop.style.width = input.offsetWidth + 'px';
+    drop.style.right = 'auto';
+    opts = [...sel.options].filter(o => o.value);
+    active = -1;
+    if (!opts.length) {
+      drop.innerHTML = `<div class="ac-item" style="cursor:default;color:var(--muted)">No match for "${escH(q)}" — press Enter in the chat box below to search SAP live</div>`;
+      return;
+    }
+    // Bold the typed words — one pass over the raw text so a word like "b" can't match inside inserted tags.
+    const words = q.split(/\s+/).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const wordRe = new RegExp('(' + words.join('|') + ')', 'ig');
+    const mark = s => String(s).split(wordRe).map((p, j) => j % 2 ? '<b>' + escH(p) + '</b>' : escH(p)).join('');
+    drop.innerHTML = opts.slice(0, MAX_SHOWN).map((o, i) => {
+      const t = o.text, k = t.indexOf(' — ');
+      const code = k > 0 ? t.slice(0, k) : o.value, name = k > 0 ? t.slice(k + 3) : t;
+      return `<div class="ac-item" data-i="${i}"><div class="ac-code">${mark(code)}</div><div class="ac-name">${mark(name)}</div></div>`;
+    }).join('') + (opts.length > MAX_SHOWN
+      ? `<div class="ac-item" style="cursor:default;color:var(--muted);font-size:11px">+${opts.length - MAX_SHOWN} more — keep typing to narrow down</div>` : '');
+  }
+
+  function pick(i) {
+    const input = owner, o = opts[i];
+    if (!input || !o) return;
+    const sel = o.parentElement;
+    sel.value = o.value;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    input.value = o.text;
+    close();
+    // Move on to the next control (Select → button for parties, Qty for items) so Enter / typing continues naturally.
+    const box = sel.closest('[data-customers],[data-items],[data-cf-picker],[data-vendors]') || sel.parentElement.parentElement;
+    const next = [...box.querySelectorAll('button,input,select')].find(el => sel.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    (next || sel).focus();
+  }
+
+  function setActive(i) {
+    const rows = drop ? [...drop.querySelectorAll('.ac-item[data-i]')] : [];
+    if (!rows.length) return;
+    active = Math.max(0, Math.min(i, rows.length - 1));
+    rows.forEach((r, j) => r.classList.toggle('active', j === active));
+    rows[active].scrollIntoView({ block: 'nearest' });
+  }
+
+  // Bubble phase: the box's own inline oninput filter has already run.
+  document.addEventListener('input', e => { if (isSearchBox(e.target)) render(e.target); });
+  document.addEventListener('focusin', e => { if (isSearchBox(e.target) && e.target.value.trim()) render(e.target); });
+  document.addEventListener('keydown', e => {
+    if (!drop || e.target !== owner) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (opts.length) pick(active >= 0 ? active : 0); }
+    else if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    else if (e.key === 'Tab') close();
+  }, true);
+  document.addEventListener('mousedown', e => {
+    if (!drop) return;
+    const row = e.target.closest?.('.agent-suggest .ac-item[data-i]');
+    if (row && drop.contains(row)) { e.preventDefault(); pick(+row.dataset.i); }
+    else if (e.target !== owner && !drop.contains(e.target)) close();
+  });
+})();
 
 function acCustomer(input, onSel) {
   return new AC(input,
@@ -9703,7 +9811,7 @@ function showChatPanel() {
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','ai-credits-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
     'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel','fin-reports-panel',
-    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel'];
+    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel'];
   ALL_PANELS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('messages').style.display = 'flex';
   const bb = document.querySelector('.bottom-bar');
@@ -9732,7 +9840,7 @@ document.addEventListener('keydown', e => {
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','ai-credits-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
     'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel','fin-reports-panel',
-    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel']
+    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   if (anyOpen) showChatPanel();
 });
@@ -13062,7 +13170,7 @@ setInterval(() => {
         <td style="padding:9px 10px;text-align:right"><div>${(o.completedQty||0).toLocaleString()}</div><div style="font-size:10px;color:var(--muted)">${pct}%</div></td>
         <td style="padding:9px 10px;text-align:center;font-size:11px;color:var(--muted)">${o.docDueDate||'—'}</td>
         <td style="padding:9px 10px;text-align:center;font-size:11px">${daysHTML}</td>
-        <td style="padding:9px 10px;text-align:center"><span style="background:${rc.bg};color:${rc.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;white-space:nowrap">${rc.dot} ${rc.label}</span></td>
+        <td style="padding:9px 10px;text-align:center"><span${agxAttr('prod', o.docEntry+':r', o.explain?.risk, '#'+o.docNum)} style="background:${rc.bg};color:${rc.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;white-space:nowrap">${rc.dot} ${rc.label}</span></td>
         <td style="padding:9px 10px;text-align:center">${o.shortageCount>0?`<span style="color:#BB0000;font-weight:700">${o.shortageCount}</span>`:'<span style="color:#107E3E">—</span>'}</td>
         <td style="padding:9px 10px;text-align:center"><button onclick="event.stopPropagation();prodOpenDetail(${JSON.stringify(o).replace(/"/g,'&quot;')})" style="font-size:10px;padding:3px 10px;border:none;border-radius:4px;background:#2D6A4F;color:#fff;cursor:pointer;font-weight:600">Detail</button></td>
       </tr>`;
@@ -13108,6 +13216,30 @@ setInterval(() => {
   // ── Production Order Detail Modal ─────────────────────────────────────────
   let _prodModalOrder = null;
 
+  // "How is this calculated?" for a component's shortage — same formula as
+  // controllers/production-agent.mjs (needed = planned − issued; shortage = needed − available).
+  function prodShortExplain(c) {
+    const f = n => Number(n||0).toLocaleString(undefined,{maximumFractionDigits:2});
+    const planned = Number(c.plannedQty||0), issued = Number(c.issuedQty||0);
+    const needed = Number(c.needed ?? Math.max(0, planned - issued)), avail = Number(c.available||0);
+    return {
+      title: c.shortage > 0 ? 'How the shortage is calculated' : 'Why this component is OK',
+      steps: [
+        { label: 'Still needed', formula: `Planned ${f(planned)} − already issued ${f(issued)} (not below 0)`, value: needed },
+        { label: 'Available stock', formula: c.onHand != null ? `In stock ${f(c.onHand)} − committed to other orders` : 'In stock − committed to other orders', value: avail },
+        { label: 'Covered %', formula: needed > 0 ? `Available ${f(avail)} ÷ still needed ${f(needed)} × 100 (0–100%)` : 'Nothing still needed — 100%', value: (c.pctCovered ?? 100) + '%' },
+      ],
+      result: { label: 'Shortage = still needed − available (not below 0)', value: Number(c.shortage||0) },
+      rules: [
+        { rule: 'Available is 0 or less and still needed', result: 'Critical component — makes the order CRITICAL', hit: avail <= 0 && needed > 0 },
+        { rule: 'Short and covered below 50%', result: 'Makes the order at least HIGH', hit: c.shortage > 0 && avail > 0 && (c.pctCovered ?? 100) < 50 },
+        { rule: 'Short but covered 50% or more', result: 'Makes the order at least MEDIUM', hit: c.shortage > 0 && avail > 0 && (c.pctCovered ?? 100) >= 50 },
+        { rule: 'Not short', result: 'OK', hit: !(c.shortage > 0) && !(avail <= 0 && needed > 0) },
+      ],
+      note: c.onOrder ? `${f(c.onOrder)} on open purchase orders is not counted until received.` : '',
+    };
+  }
+
   window.prodOpenDetail = function(o) {
     if (typeof o === 'string') try { o = JSON.parse(o); } catch { return; }
     _prodModalOrder = o;
@@ -13137,6 +13269,7 @@ setInterval(() => {
     const badge = document.getElementById('prod-modal-badge');
     badge.textContent = `${rc.dot} ${rc.label}`;
     badge.style.background = rc.bg; badge.style.color = rc.color;
+    agxBind(badge, 'prod', o.docEntry+':rm', o.explain?.risk, '#'+o.docNum);
 
     // Tab button highlight
     ['overview','components','costing'].forEach(t => {
@@ -13233,7 +13366,7 @@ setInterval(() => {
           <td style="padding:6px 10px;text-align:right;font-weight:600;color:${c.needed>0?'#0070F2':'var(--muted)'}">${fmtQ(c.needed)}</td>
           <td style="padding:6px 10px;text-align:right;font-weight:600;color:${c.available<=0?'#BB0000':c.available<c.needed?'#E9730C':'#107E3E'}">${fmtQ(c.available)}</td>
           <td style="padding:6px 10px;text-align:right;color:var(--muted)">${fmtQ(c.onOrder)}</td>
-          <td style="padding:6px 10px;text-align:right;font-weight:700;color:${c.shortage>0?'#BB0000':'#107E3E'}">${c.shortage>0?'-'+fmtQ(c.shortage):'✓ OK'}</td>
+          <td style="padding:6px 10px;text-align:right;font-weight:700;color:${c.shortage>0?'#BB0000':'#107E3E'}"><span${agxAttr('prodc', o.docEntry+':'+c.itemCode, prodShortExplain(c), c.itemCode)}>${c.shortage>0?'-'+fmtQ(c.shortage):'✓ OK'}</span></td>
           <td style="padding:6px 10px;text-align:center">
             <div style="display:inline-flex;align-items:center;gap:4px">
               <div style="width:55px;height:5px;background:#E0E0E0;border-radius:3px;overflow:hidden">
@@ -14047,7 +14180,7 @@ setInterval(() => {
         <td style="padding:9px 10px;text-align:center">${daysHTML}</td>
         <td style="padding:9px 10px;text-align:right;font-weight:600">${o.docTotal.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
         <td style="padding:9px 10px;text-align:center">
-          <div style="display:flex;align-items:center;gap:5px;justify-content:center">
+          <div${agxAttr('oi', o.docEntry+':c', o.explain?.coverage, 'SO #'+o.docNum)} style="display:flex;align-items:center;gap:5px;justify-content:center">
             <div style="width:50px;height:6px;background:#E5E7EB;border-radius:3px;overflow:hidden">
               <div style="height:100%;width:${o.overallCovPct}%;background:${covColor};border-radius:3px"></div>
             </div>
@@ -14056,7 +14189,7 @@ setInterval(() => {
         </td>
         <td style="padding:9px 10px">${itemChips}${moreChip}</td>
         <td style="padding:9px 10px;text-align:center">
-          <span style="background:${s.bg};color:${s.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${s.dot} ${s.label}</span>
+          <span${agxAttr('oi', o.docEntry+':s', o.explain?.severity, 'SO #'+o.docNum)} style="background:${s.bg};color:${s.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${s.dot} ${s.label}</span>
         </td>
         <td style="padding:9px 10px;text-align:center">
           <button onclick="oiOpenDrawer(${o.docEntry})" style="font-size:10px;padding:3px 9px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;color:var(--muted)">Lines</button>
@@ -14089,7 +14222,7 @@ setInterval(() => {
           ${netAfterPO >= 0 && i.onOrder > 0 ? '<span style="font-size:9px;color:#107E3E;margin-left:3px">✓ covers</span>' : ''}
         </td>
         <td style="padding:9px 10px;text-align:center">
-          <div style="display:flex;align-items:center;gap:4px;justify-content:center">
+          <div${agxAttr('oii', i.itemCode, i.explain?.coveragePct, i.itemCode)} style="display:flex;align-items:center;gap:4px;justify-content:center">
             <div style="width:42px;height:5px;background:#E5E7EB;border-radius:3px;overflow:hidden">
               <div style="height:100%;width:${pct}%;background:${covColor};border-radius:3px"></div>
             </div>
@@ -14123,7 +14256,7 @@ setInterval(() => {
         <div><span style="color:var(--muted)">Customer:</span> <strong>${order.cardName}</strong></div>
         <div><span style="color:var(--muted)">Due:</span> <strong>${order.docDueDate}</strong> (${order.daysLeft}d left)</div>
         <div><span style="color:var(--muted)">Order Value:</span> <strong>${order.docTotal.toLocaleString()}</strong></div>
-        <div><span style="color:var(--muted)">Overall Coverage:</span> <strong style="color:${order.overallCovPct < 50 ? '#BB0000' : '#D97706'}">${order.overallCovPct}%</strong></div>
+        <div><span style="color:var(--muted)">Overall Coverage:</span> <strong${agxAttr('oi', order.docEntry+':cd', order.explain?.coverage, 'SO #'+order.docNum)} style="color:${order.overallCovPct < 50 ? '#BB0000' : '#D97706'}">${order.overallCovPct}%</strong></div>
       </div>
       <div style="font-size:12px;font-weight:700;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">Short Lines (${order.shortLines.length})</div>
       ${order.shortLines.map(l => {
@@ -14477,10 +14610,10 @@ setInterval(() => {
         <td style="padding:9px 10px;text-align:right;font-weight:700;color:${i.onHand <= 0 ? '#BB0000' : i.onHand < i.minInventory * 0.5 ? '#E9730C' : 'var(--text)'}">${i.onHand.toLocaleString()}</td>
         <td style="padding:9px 10px;text-align:right;color:var(--muted)">${i.minInventory.toLocaleString()}</td>
         <td style="padding:9px 10px;text-align:right;color:#107E3E">${i.onOrder.toLocaleString()}</td>
-        <td style="padding:9px 10px;text-align:right;font-weight:700;color:#2563EB">${i.suggestedQty.toLocaleString()}</td>
-        <td style="padding:9px 10px;text-align:right;color:#0070F2;font-size:11px">${i.eoq > 0 ? i.eoq.toLocaleString() : '—'}</td>
+        <td style="padding:9px 10px;text-align:right;font-weight:700;color:#2563EB"><span${agxAttr('pu', i.itemCode+':q', i.explain?.suggestedQty, i.itemCode)}>${i.suggestedQty.toLocaleString()}</span></td>
+        <td style="padding:9px 10px;text-align:right;color:#0070F2;font-size:11px"><span${agxAttr('pu', i.itemCode+':e', i.explain?.eoq, i.itemCode)}>${i.eoq > 0 ? i.eoq.toLocaleString() : '—'}</span></td>
         <td style="padding:9px 10px">${vendorName}</td>
-        <td style="padding:9px 10px;text-align:center"><span style="background:${u.bg};color:${u.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${u.dot} ${u.label}</span></td>
+        <td style="padding:9px 10px;text-align:center"><span${agxAttr('pu', i.itemCode+':u', i.explain?.urgency, i.itemCode)} style="background:${u.bg};color:${u.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${u.dot} ${u.label}</span></td>
       </tr>`;
     }).join('');
   }
@@ -14534,7 +14667,7 @@ setInterval(() => {
           <span style="color:${v.overdueRate > 50 ? '#BB0000' : v.overdueRate > 20 ? '#E9730C' : '#107E3E'};font-weight:600">${v.overdueRate.toFixed(0)}%</span>
         </td>
         <td style="padding:9px 10px;text-align:center">
-          <span style="background:${rc.bg};color:${rc.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${v.riskLevel}</span>
+          <span${agxAttr('pus', v.cardCode, v.explain?.riskLevel, v.cardName)} style="background:${rc.bg};color:${rc.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${v.riskLevel}</span>
         </td>
       </tr>`;
     }).join('');
@@ -14609,7 +14742,7 @@ setInterval(() => {
         <td style="padding:9px 10px;text-align:right;font-weight:600">${o.docTotal.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
         <td style="padding:9px 10px">${itemChips}${more}</td>
         <td style="padding:9px 10px;text-align:center">
-          <span style="background:${sev.bg};color:${sev.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${sev.dot} ${o.severity}</span>
+          <span${agxAttr('pui', o.docEntry ?? o.docNum, o.explain?.severity, '#'+o.docNum)} style="background:${sev.bg};color:${sev.color};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${sev.dot} ${o.severity}</span>
         </td>
       </tr>`;
     }).join('');
@@ -14667,8 +14800,8 @@ setInterval(() => {
         itemCode: i.itemCode, urgency: i.urgency, onHand: i.onHand, minInventory: i.minInventory,
         suggestedQty: i.suggestedQty, eoq: i.eoq, defaultVendor: i.defaultVendor,
       })),
-      highRiskVendors: (PU.data.supplierRisks?.vendors || []).filter(v => v.riskLevel === 'HIGH').slice(0, 5),
-      impactedOrders:  (PU.data.impactAnalysis?.impactedOrders || []).slice(0, 5),
+      highRiskVendors: (PU.data.supplierRisks?.vendors || []).filter(v => v.riskLevel === 'HIGH').slice(0, 5).map(({ explain, ...v }) => v),
+      impactedOrders:  (PU.data.impactAnalysis?.impactedOrders || []).slice(0, 5).map(({ explain, ...o }) => o),
     } : null;
 
     try {
@@ -14976,8 +15109,8 @@ setInterval(() => {
         <td style="padding:8px 10px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${po.vendorName||''}">${po.vendorName||po.vendorCode}</td>
         <td style="padding:8px 10px;text-align:center">${fmtDate(po.docDueDate)}</td>
         <td style="padding:8px 10px;text-align:center;${daysStyle}">${daysText}</td>
-        <td style="padding:8px 10px;text-align:center">${pctBar(po.delayProbPct)}</td>
-        <td style="padding:8px 10px;text-align:center"><span style="background:${rb};color:${rc};border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700">${po.riskTag}</span></td>
+        <td style="padding:8px 10px;text-align:center"><span${agxAttr('shp', po.docEntry+':p', po.explain?.delayProb, 'PO '+po.docNum)}>${pctBar(po.delayProbPct)}</span></td>
+        <td style="padding:8px 10px;text-align:center"><span${agxAttr('shp', po.docEntry+':r', po.explain?.risk, 'PO '+po.docNum)} style="background:${rb};color:${rc};border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700">${po.riskTag}</span></td>
         <td style="padding:8px 10px;text-align:right">${fmt(po.docTotal)}</td>
         <td style="padding:8px 10px;font-size:10px;color:#6B7280">${(po.tags||[]).join(', ')}</td>
       </tr>`;
@@ -14997,8 +15130,8 @@ setInterval(() => {
         <td style="padding:8px 10px;text-align:center">${pctBar(v.overdueRate)}</td>
         <td style="padding:8px 10px;text-align:center;${v.avgDelayDays>0?'color:#E9730C;font-weight:600':''}">${v.avgDelayDays>0?'+'+v.avgDelayDays+'d':'—'}</td>
         <td style="padding:8px 10px;text-align:center">${v.spendShare}%</td>
-        <td style="padding:8px 10px;text-align:center;color:${relC};font-weight:600;font-size:11px">${v.reliability}</td>
-        <td style="padding:8px 10px;text-align:center"><span style="background:${rb};color:${rc};border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700">${v.riskLevel}</span></td>
+        <td style="padding:8px 10px;text-align:center;color:${relC};font-weight:600;font-size:11px"><span${agxAttr('shpv', v.vendorCode+':rel', v.explain?.reliability, v.vendorName||v.vendorCode)}>${v.reliability}</span></td>
+        <td style="padding:8px 10px;text-align:center"><span${agxAttr('shpv', v.vendorCode+':risk', v.explain?.riskLevel, v.vendorName||v.vendorCode)} style="background:${rb};color:${rc};border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700">${v.riskLevel}</span></td>
       </tr>`;
     }).join('');
   }
@@ -15006,13 +15139,14 @@ setInterval(() => {
   function renderImpactTable(sos) {
     const tb = document.getElementById('shp-impact-tbody');
     if (!sos.length) { tb.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted)">No impacted sales orders found</td></tr>'; return; }
-    tb.innerHTML = sos.map(s => `<tr style="border-bottom:1px solid #F3F4F6">
+    const poExplain = new Map(((_scanData && _scanData.atRiskPOs) || []).map(p => [String(p.docNum), p.explain?.delayProb]));
+    tb.innerHTML = sos.map((s, i) => `<tr style="border-bottom:1px solid #F3F4F6">
       <td style="padding:8px 10px;font-weight:600;color:#5B21B6">${s.soNum}</td>
       <td style="padding:8px 10px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.customerName}</td>
       <td style="padding:8px 10px;text-align:center">${fmtDate(s.soDueDate)}</td>
       <td style="padding:8px 10px;font-size:11px">${s.itemCode}${s.itemDesc?' — '+(s.itemDesc).slice(0,28):''}</td>
       <td style="padding:8px 10px;font-weight:500;color:#7C3AED">${s.poNum}</td>
-      <td style="padding:8px 10px;text-align:center">${pctBar(s.delayProbPct)}</td>
+      <td style="padding:8px 10px;text-align:center"><span${agxAttr('shpi', i, poExplain.get(String(s.poNum)), 'PO '+s.poNum)}>${pctBar(s.delayProbPct)}</span></td>
     </tr>`).join('');
   }
 
@@ -15063,7 +15197,7 @@ setInterval(() => {
     addMsg(msg,'user');
     const typing = addMsg('…','ai');
     try {
-      const ctx = _scanData ? { summary:_scanData.summary, topPOs:(_scanData.atRiskPOs||[]).slice(0,5), aiAdvisory:_scanData.aiAdvisory } : null;
+      const ctx = _scanData ? { summary:_scanData.summary, topPOs:(_scanData.atRiskPOs||[]).slice(0,5).map(({explain, ...p}) => p), aiAdvisory:_scanData.aiAdvisory } : null;
       const r = await postJSON('/api/shipment-delays/chat', { message:msg, sessionId:_sessionId, context:ctx });
       _sessionId = r.sessionId;
       typing.textContent = r.reply || 'Unable to process.';
@@ -16206,12 +16340,12 @@ setInterval(() => {
       <td style="padding:8px 10px;text-align:center"><input type="checkbox" data-idx="${idx}" ${it.selected?'checked':''} onchange="window._procReorderData[${idx}].selected=this.checked"></td>
       <td style="padding:8px 12px;font-weight:700;color:#0070F2;white-space:nowrap;cursor:pointer" title="Click to look up this item" onclick="document.getElementById('proc-item-search').value='${it.itemCode}';procSearchItem()">${it.itemCode}</td>
       <td style="padding:8px 12px;color:var(--text);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.itemName||''}">${it.itemName||''}</td>
-      <td style="padding:8px 10px;text-align:center">${urgBadge(it.urgency)}</td>
+      <td style="padding:8px 10px;text-align:center"><span${agxAttr('proc', it.itemCode+':u', it.explain?.urgency, it.itemCode)}>${urgBadge(it.urgency)}</span></td>
       <td style="padding:8px 10px;text-align:right;${it.available<=0?'color:#BB0000;font-weight:700':''}" title="Physical: ${fmtN(it.onHand)} | Committed: ${fmtN(it.committed)}">${fmtN(it.available)} <small style="color:var(--muted)">${it.uom}</small></td>
       <td style="padding:8px 10px;text-align:right;color:#0070F2;font-weight:600">${fmtN(it.minStock)}</td>
-      <td style="padding:8px 10px;text-align:right;color:#BB0000;font-weight:700">-${fmtN(it.gap)}</td>
+      <td style="padding:8px 10px;text-align:right;color:#BB0000;font-weight:700"><span${agxAttr('proc', it.itemCode+':g', it.explain?.gap, it.itemCode)}>-${fmtN(it.gap)}</span></td>
       <td style="padding:8px 10px;text-align:right;color:#107E3E">${fmtN(it.onOrder)}</td>
-      <td style="padding:8px 10px;text-align:right;font-weight:700;color:#E9730C">${fmtN(it.reorderQty)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:700;color:#E9730C"><span${agxAttr('proc', it.itemCode+':q', it.explain?.reorderQty, it.itemCode)}>${fmtN(it.reorderQty)}</span></td>
       <td style="padding:8px 10px;text-align:center;color:var(--muted)">${it.leadTime!=null?it.leadTime+'d':'—'}</td>
       <td style="padding:8px 12px;font-size:11px;color:var(--muted)">${it.preferredVendor||'<span style="color:#BB0000">No vendor</span>'}</td>
       <td style="padding:6px 10px;text-align:right">
@@ -16763,9 +16897,9 @@ setInterval(() => {
       <td style="padding:8px 10px;text-align:right;color:#107E3E">${fA(v.grpoAmt)}</td>
       <td style="padding:8px 10px;text-align:center">${v.invoices.length}</td>
       <td style="padding:8px 10px;text-align:right;color:#8B5CF6">${fA(v.invAmt)}</td>
-      <td style="padding:8px 10px;text-align:right;font-weight:700;color:${Math.abs(v.variance)<1?'#107E3E':v.variance>0?'#BB0000':'#E9730C'}">${(v.variance>=0?'+':'')+fA(v.variance)}</td>
-      <td style="padding:8px 10px;text-align:center;font-weight:700;color:${v.matchPct>=95?'#107E3E':v.matchPct>=75?'#E9730C':'#BB0000'}">${v.matchPct}%</td>
-      <td style="padding:8px 10px;text-align:center">${statusBadge(v.status)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:700;color:${Math.abs(v.variance)<1?'#107E3E':v.variance>0?'#BB0000':'#E9730C'}"><span${agxAttr('twm', v.vendorCode+':v', v.explain?.variance, v.vendorName||v.vendorCode)}>${(v.variance>=0?'+':'')+fA(v.variance)}</span></td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:${v.matchPct>=95?'#107E3E':v.matchPct>=75?'#E9730C':'#BB0000'}"><span${agxAttr('twm', v.vendorCode+':m', v.explain?.matchPct, v.vendorName||v.vendorCode)}>${v.matchPct}%</span></td>
+      <td style="padding:8px 10px;text-align:center"><span${agxAttr('twm', v.vendorCode+':s', v.explain?.status, v.vendorName||v.vendorCode)}>${statusBadge(v.status)}</span></td>
     </tr>`).join('');
   }
 
@@ -17329,11 +17463,11 @@ setInterval(() => {
         <td style="padding:6px 8px;text-align:center"><input type="checkbox" class="mrp-item-chk" data-idx="${i}" checked></td>
         <td style="padding:6px 8px;font-weight:600;color:#1A2332;white-space:nowrap">${it.itemCode}</td>
         <td style="padding:6px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.itemName}">${it.itemName}</td>
-        <td style="padding:6px 8px;text-align:center"><span style="background:${u.bg};color:${u.color};padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700">${u.dot} ${u.label}</span></td>
+        <td style="padding:6px 8px;text-align:center"><span${agxAttr('mrp', it.itemCode+':u', it.explain?.urgency, it.itemCode)} style="background:${u.bg};color:${u.color};padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700">${u.dot} ${u.label}</span></td>
         <td style="padding:6px 8px;text-align:right;color:${it.available<=0?'#BB0000':'#374151'};font-weight:${it.available<=0?700:400}">${Number(it.available||0).toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right">${Number(it.minStock||0).toLocaleString()}</td>
-        <td style="padding:6px 8px;text-align:right;color:#E9730C;font-weight:600">${Number(it.gap||0).toLocaleString()}</td>
-        <td style="padding:6px 8px;text-align:right;font-weight:600;color:#107E3E">${Number(it.reorderQty||0).toLocaleString()}</td>
+        <td style="padding:6px 8px;text-align:right;color:#E9730C;font-weight:600"><span${agxAttr('mrp', it.itemCode+':g', it.explain?.gap, it.itemCode)}>${Number(it.gap||0).toLocaleString()}</span></td>
+        <td style="padding:6px 8px;text-align:right;font-weight:600;color:#107E3E"><span${agxAttr('mrp', it.itemCode+':q', it.explain?.reorderQty, it.itemCode)}>${Number(it.reorderQty||0).toLocaleString()}</span></td>
         <td style="padding:6px 8px;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.vendorName||'—'}">${it.vendorName||'<span style="color:#999">No vendor</span>'}</td>
         <td style="padding:6px 8px;text-align:right">${fmt(it.unitPrice)}</td>
         <td style="padding:6px 8px;text-align:right;font-weight:700;color:#107E3E">${fmt(it.lineTotal)}</td>
@@ -17779,6 +17913,475 @@ setInterval(() => {
 <!-- ══════════════════════════════════════════════════════════════════════════
      VENDOR PAYMENT AGING AGENT PANEL
 ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════ SALES ORDER CONFIRMATION AGENT (soc-*) ═══════════════ -->
+<div id="soc-panel" class="saf" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
+
+  <div class="saf-hdr">
+    <button class="saf-btn-outline" onclick="showChatPanel()" title="Back to Chat">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>Back
+    </button>
+    <div class="saf-divider"></div>
+    <div class="saf-hdr-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+    <div style="min-width:0">
+      <div class="saf-title">Sales Order Confirmation</div>
+      <div class="saf-subtitle">Review open sales orders and confirm them in SAP — one at a time or in bulk</div>
+    </div>
+    <span id="soc-status" class="saf-status"></span>
+  </div>
+
+  <div class="saf-filterbar">
+    <div class="soc-fg"><label>Status</label>
+      <select id="soc-f-status">
+        <option value="pending">Pending confirmation</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="all">All open</option>
+      </select>
+    </div>
+    <div class="soc-fg"><label>Search</label><input type="text" id="soc-f-search" placeholder="SO #, customer, PO ref…" style="width:210px"/></div>
+    <div class="soc-fg"><label>From</label><input type="date" id="soc-f-from"/></div>
+    <div class="soc-fg"><label>To</label><input type="date" id="soc-f-to"/></div>
+    <button onclick="socLoad()" id="soc-go-btn" class="saf-primary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>Go</button>
+    <button onclick="socClearFilters()" class="saf-transparent">Clear</button>
+  </div>
+
+  <div class="soc-kpi-band">
+    <div class="fd-kpi"><div class="fd-kpi-label">Awaiting Confirmation</div><div id="soc-kpi-pending" class="fd-kpi-val">—</div><div class="fd-kpi-sub">open orders</div></div>
+    <div class="fd-kpi"><div class="fd-kpi-label">Pending Value (LC)</div><div id="soc-kpi-value" class="fd-kpi-val">—</div><div class="fd-kpi-sub">document total, local currency</div></div>
+    <div class="fd-kpi"><div class="fd-kpi-label">Customers</div><div id="soc-kpi-cust" class="fd-kpi-val">—</div><div class="fd-kpi-sub">in this list</div></div>
+    <div class="fd-kpi"><div class="fd-kpi-label">Selected</div><div id="soc-kpi-sel" class="fd-kpi-val">0</div><div class="fd-kpi-sub" id="soc-kpi-sel-sub">no orders selected</div></div>
+  </div>
+
+  <div class="saf-content">
+    <div id="soc-loading" class="saf-loading"><div class="saf-loading-box"><span class="saf-spin"></span><span id="soc-loading-text">Loading sales orders…</span></div></div>
+
+    <div class="soc-card">
+      <div class="soc-toolbar">
+        <div class="soc-card-title">Sales Orders <span id="soc-count" class="soc-count"></span></div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <button class="saf-transparent" id="soc-clear-sel" onclick="socSelectNone()" style="display:none">Clear selection</button>
+          <button class="saf-primary soc-confirm-btn" id="soc-bulk-btn" onclick="socAskConfirm()" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            <span id="soc-bulk-label">Confirm Selected</span>
+          </button>
+        </div>
+      </div>
+      <div class="soc-table-wrap">
+        <table class="soc-table">
+          <thead><tr>
+            <th style="width:34px"><input type="checkbox" id="soc-all" onclick="socToggleAll(this.checked)" title="Select all pending orders"/></th>
+            <th>SO #</th><th>Customer</th><th>Customer Ref</th><th>Posting Date</th><th>Delivery Date</th>
+            <th>Sales Employee</th><th style="text-align:right">Total</th><th>Status</th>
+          </tr></thead>
+          <tbody id="soc-tbody"><tr><td colspan="9" class="soc-empty">Press <strong>Go</strong> to load open sales orders.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail drawer -->
+  <div id="soc-drawer-bg" class="soc-drawer-bg" onclick="socCloseDetail()"></div>
+  <aside id="soc-drawer" class="soc-drawer" aria-hidden="true">
+    <div class="soc-drawer-hdr">
+      <div style="min-width:0">
+        <div class="soc-drawer-title" id="soc-d-title">Sales Order</div>
+        <div class="saf-subtitle" id="soc-d-sub"></div>
+      </div>
+      <button class="saf-btn-outline" onclick="socCloseDetail()" title="Close" style="margin-left:auto">✕</button>
+    </div>
+    <div class="soc-drawer-body" id="soc-d-body"></div>
+    <div class="soc-drawer-ftr" id="soc-d-ftr"></div>
+  </aside>
+
+  <!-- Confirm / result dialog -->
+  <div id="soc-modal-bg" class="soc-modal-bg">
+    <div class="soc-modal">
+      <div class="soc-modal-title" id="soc-m-title"></div>
+      <div class="soc-modal-body" id="soc-m-body"></div>
+      <div class="soc-modal-ftr" id="soc-m-ftr"></div>
+    </div>
+  </div>
+</div><!-- /#soc-panel -->
+
+<style>
+#soc-panel.saf{
+  --saf-blue:#0a6ed1; --saf-blue-hover:#085caf; --saf-blue-light:#eef6fc; --saf-blue-border:#b0d5f5;
+  --saf-text:#1d2d3e; --saf-subtle:#556b82; --saf-bg:#f4f6f9; --saf-card:#fff; --saf-border:#e2e7ed;
+  --saf-pos:#107e3e; --saf-neg:#bb0000; --saf-crit:#e9730c;
+  background:var(--saf-bg)!important; color:var(--saf-text); font-family:var(--font);
+}
+#soc-panel button{font-family:inherit}
+#soc-panel .saf-hdr{background:var(--saf-card);border-bottom:1px solid var(--saf-border);padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+#soc-panel .saf-btn-outline{padding:4px 10px;font-size:12px;font-weight:500;border:1px solid var(--saf-border);border-radius:6px;background:#fff;color:var(--saf-text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+#soc-panel .saf-btn-outline:hover{background:var(--saf-bg);color:var(--saf-blue)}
+#soc-panel .saf-divider{width:1px;height:18px;background:var(--saf-border);flex-shrink:0}
+#soc-panel .saf-hdr-icon{width:32px;height:32px;border-radius:50%;background:var(--saf-blue-light);border:1px solid var(--saf-blue-border);color:var(--saf-blue);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#soc-panel .saf-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+#soc-panel .saf-subtitle{font-size:11.5px;color:var(--saf-subtle)}
+#soc-panel .saf-status{margin-left:auto;font-size:11.5px;color:var(--saf-subtle)}
+#soc-panel .saf-filterbar{background:#fff;border-bottom:1px solid var(--saf-border);padding:10px 16px 12px;display:flex;align-items:flex-end;gap:10px 12px;flex-wrap:wrap;flex-shrink:0}
+#soc-panel .soc-fg{display:flex;flex-direction:column;gap:4px}
+#soc-panel .soc-fg label{font-size:11.5px;color:var(--saf-subtle)}
+#soc-panel .soc-fg input,#soc-panel .soc-fg select{height:32px;padding:0 10px;border:1px solid #89919a;border-radius:6px;background:#fff;font-size:12.5px;color:var(--saf-text);font-family:inherit}
+#soc-panel .soc-fg input:focus,#soc-panel .soc-fg select:focus{border-color:var(--saf-blue);box-shadow:0 0 0 2px rgba(10,110,209,.15);outline:none}
+#soc-panel .saf-primary{height:32px;padding:0 16px;background:var(--saf-blue);color:#fff;border:none;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;align-self:flex-end}
+#soc-panel .saf-primary:hover{background:var(--saf-blue-hover)}
+#soc-panel .saf-primary:disabled{opacity:.45;cursor:not-allowed}
+#soc-panel .soc-confirm-btn{background:var(--saf-pos)}
+#soc-panel .soc-confirm-btn:hover:not(:disabled){background:#0b6a33}
+#soc-panel .saf-transparent{height:32px;padding:0 12px;background:transparent;color:var(--saf-blue);border:none;border-radius:8px;font-size:12.5px;font-weight:500;cursor:pointer;align-self:flex-end}
+#soc-panel .saf-transparent:hover{background:var(--saf-blue-light)}
+#soc-panel .soc-kpi-band{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:16px 20px 0;flex-shrink:0}
+#soc-panel .fd-kpi{background:#fff;border:1px solid var(--saf-border);border-radius:12px;padding:14px 16px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+#soc-panel .fd-kpi-label{font-size:12.5px;color:var(--saf-subtle);margin-bottom:6px}
+#soc-panel .fd-kpi-val{font-size:24px;font-weight:300;line-height:1.15}
+#soc-panel .fd-kpi-sub{font-size:11.5px;color:var(--saf-subtle);margin-top:4px}
+#soc-panel .saf-content{flex:1;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column;gap:16px;position:relative}
+#soc-panel .saf-loading{position:absolute;inset:0;z-index:20;background:rgba(244,246,249,.72);display:none;justify-content:center;align-items:flex-start;padding-top:120px}
+#soc-panel .saf-loading.show{display:flex}
+#soc-panel .saf-loading-box{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--saf-border);border-radius:12px;padding:12px 18px;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+#soc-panel .saf-spin{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--saf-blue-border);border-top-color:var(--saf-blue);animation:safSpin .7s linear infinite;display:inline-block}
+#soc-panel .soc-card{background:#fff;border:1px solid var(--saf-border);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.04);display:flex;flex-direction:column;min-height:0}
+#soc-panel .soc-toolbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--saf-border)}
+#soc-panel .soc-card-title{font-size:14px;font-weight:600}
+#soc-panel .soc-count{font-weight:400;color:var(--saf-subtle);font-size:12.5px}
+#soc-panel .soc-table-wrap{overflow:auto}
+#soc-panel .soc-table{width:100%;border-collapse:collapse;font-size:12.5px}
+#soc-panel .soc-table th{position:sticky;top:0;background:#f7f9fb;text-align:left;font-weight:600;color:var(--saf-subtle);font-size:11.5px;padding:8px 10px;border-bottom:1px solid var(--saf-border);white-space:nowrap;z-index:1}
+#soc-panel .soc-table td{padding:8px 10px;border-bottom:1px solid #eef1f4;white-space:nowrap}
+#soc-panel .soc-table tbody tr.soc-row{cursor:pointer}
+#soc-panel .soc-table tbody tr.soc-row:hover td{background:#f5f9fd}
+#soc-panel .soc-table tbody tr.soc-sel td{background:#eaf3fc}
+#soc-panel .soc-table input[type=checkbox]{width:15px;height:15px;accent-color:var(--saf-blue);cursor:pointer}
+#soc-panel .soc-link{color:var(--saf-blue);font-weight:600}
+#soc-panel .soc-num{text-align:right;font-variant-numeric:tabular-nums}
+#soc-panel .soc-empty{text-align:center;color:var(--saf-subtle);padding:36px 10px!important}
+#soc-panel .soc-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid}
+#soc-panel .soc-badge.pending{color:#a45a00;background:#fff4e5;border-color:#f6c98a}
+#soc-panel .soc-badge.confirmed{color:var(--saf-pos);background:#ebf5ee;border-color:#a9d8b8}
+#soc-panel .soc-badge.err{color:var(--saf-neg);background:#fdeeee;border-color:#f2b6b6}
+#soc-panel .soc-badge.warn{color:#a45a00;background:#fff4e5;border-color:#f6c98a}
+/* drawer */
+#soc-panel .soc-drawer-bg{position:absolute;inset:0;background:rgba(29,45,62,.25);z-index:40;display:none}
+#soc-panel .soc-drawer{position:absolute;top:0;right:0;bottom:0;width:min(760px,100%);background:#fff;z-index:41;box-shadow:-8px 0 30px rgba(0,0,0,.15);display:flex;flex-direction:column;transform:translateX(105%);transition:transform .2s ease}
+#soc-panel .soc-drawer.open{transform:none}
+#soc-panel .soc-drawer-hdr{display:flex;align-items:flex-start;gap:10px;padding:14px 18px;border-bottom:1px solid var(--saf-border)}
+#soc-panel .soc-drawer-title{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+#soc-panel .soc-drawer-body{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:16px}
+#soc-panel .soc-drawer-ftr{border-top:1px solid var(--saf-border);padding:12px 18px;display:flex;justify-content:flex-end;gap:8px;align-items:center}
+#soc-panel .soc-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}
+#soc-panel .soc-field-l{font-size:11px;color:var(--saf-subtle);margin-bottom:2px}
+#soc-panel .soc-field-v{font-size:13px;word-break:break-word}
+#soc-panel .soc-sec-title{font-size:13px;font-weight:600;margin-bottom:6px}
+#soc-panel .soc-box{border:1px solid var(--saf-border);border-radius:8px;padding:12px}
+#soc-panel .soc-totals{display:flex;justify-content:flex-end;gap:24px;font-size:12.5px;padding-top:8px}
+#soc-panel .soc-totals strong{font-size:15px}
+/* modal */
+#soc-panel .soc-modal-bg{position:absolute;inset:0;background:rgba(29,45,62,.35);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
+#soc-panel .soc-modal-bg.show{display:flex}
+#soc-panel .soc-modal{background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);width:min(520px,100%);max-height:80%;display:flex;flex-direction:column}
+#soc-panel .soc-modal-title{font-size:15px;font-weight:600;padding:16px 18px 8px}
+#soc-panel .soc-modal-body{padding:0 18px 12px;font-size:13px;overflow-y:auto;line-height:1.5}
+#soc-panel .soc-modal-ftr{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--saf-border)}
+#soc-panel .soc-res-list{margin-top:8px;border:1px solid var(--saf-border);border-radius:8px;max-height:240px;overflow-y:auto}
+#soc-panel .soc-res-list div{display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid #eef1f4;font-size:12.5px}
+#soc-panel .soc-res-list div:last-child{border-bottom:none}
+@media (max-width:900px){
+  #soc-panel .soc-kpi-band{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 12px 0}
+  #soc-panel .saf-content{padding:12px}
+  #soc-panel .soc-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+
+<script>
+(function(){
+  const SOC = { orders: [], selected: new Set(), detail: null, busy: false, inited: false };
+  const $ = id => document.getElementById(id);
+
+  function token() { return localStorage.getItem('hanny_token') || ''; }
+  function h(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function money(n, cur) {
+    const v = Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return cur ? `${v} ${h(cur)}` : v;
+  }
+  function fdate(s) {
+    if (!s) return '—';
+    const d = new Date(s + 'T00:00:00');
+    return isNaN(d) ? s : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  async function api(path, opts = {}) {
+    const r = await fetch('/api/order-confirmation' + path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token(), ...(opts.headers || {}) },
+    });
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      if (r.status === 401) throw new Error('Session expired — please refresh the page');
+      throw new Error(`Server error (${r.status})`);
+    }
+    const j = await r.json();
+    if (!r.ok && !j.results) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  }
+  function loading(on, text) {
+    $('soc-loading').classList.toggle('show', !!on);
+    if (text) $('soc-loading-text').textContent = text;
+  }
+
+  // ── Show panel ────────────────────────────────────────────────────────
+  window.showOrderConfirmationPanel = function() {
+    showChatPanel();
+    $('messages').style.display = 'none';
+    const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+    const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+    document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+    $('nav-soc')?.classList.add('active');
+    const main = document.querySelector('.main');
+    const panel = $('soc-panel');
+    if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+    if (panel) panel.style.display = 'flex';
+    if (!SOC.inited) {
+      SOC.inited = true;
+      $('soc-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') socLoad(); });
+      $('soc-f-status').addEventListener('change', () => socLoad());
+      socLoad();
+    }
+  };
+
+  // Some older panels hide only their own list, so leave when any other menu entry is clicked.
+  document.addEventListener('click', e => {
+    const n = e.target.closest && e.target.closest('.nav-item,.nav-subitem');
+    if (n && n.id !== 'nav-soc') { const p = $('soc-panel'); if (p) p.style.display = 'none'; }
+  }, true);
+
+  // ── List ──────────────────────────────────────────────────────────────
+  window.socClearFilters = function() {
+    $('soc-f-status').value = 'pending'; $('soc-f-search').value = ''; $('soc-f-from').value = ''; $('soc-f-to').value = '';
+    socLoad();
+  };
+
+  window.socLoad = async function() {
+    if (SOC.busy) return;
+    SOC.busy = true; $('soc-go-btn').disabled = true;
+    loading(true, 'Loading sales orders from SAP…');
+    const q = new URLSearchParams({
+      status: $('soc-f-status').value, search: $('soc-f-search').value.trim(),
+      from: $('soc-f-from').value, to: $('soc-f-to').value,
+    });
+    try {
+      const j = await api('/orders?' + q.toString());
+      SOC.orders = j.orders || [];
+      SOC.selected.clear();
+      const s = j.summary || {};
+      $('soc-kpi-pending').textContent = s.pendingCount ?? '—';
+      $('soc-kpi-value').textContent = money(s.pendingValueLC);
+      $('soc-kpi-cust').textContent = s.customers ?? '—';
+      $('soc-status').textContent = `Updated ${new Date().toLocaleTimeString()}` + (j.truncated ? ' · showing first 1,000 — narrow the filters' : '');
+      renderTable();
+    } catch (e) {
+      $('soc-tbody').innerHTML = `<tr><td colspan="9" class="soc-empty" style="color:var(--saf-neg)">${h(e.message)}</td></tr>`;
+      $('soc-status').textContent = '';
+    } finally {
+      SOC.busy = false; $('soc-go-btn').disabled = false; loading(false);
+    }
+  };
+
+  function renderTable() {
+    const rows = SOC.orders;
+    $('soc-count').textContent = `(${rows.length})`;
+    if (!rows.length) {
+      $('soc-tbody').innerHTML = `<tr><td colspan="9" class="soc-empty">No open sales orders match these filters.</td></tr>`;
+    } else {
+      $('soc-tbody').innerHTML = rows.map(o => {
+        const sel = SOC.selected.has(o.docEntry);
+        return `<tr class="soc-row${sel ? ' soc-sel' : ''}" data-de="${o.docEntry}">
+          <td onclick="event.stopPropagation()">${o.confirmed ? '' : `<input type="checkbox" ${sel ? 'checked' : ''} onclick="socToggle(${o.docEntry}, this.checked)" aria-label="Select SO ${o.docNum}"/>`}</td>
+          <td><span class="soc-link">${o.docNum}</span></td>
+          <td><div>${h(o.cardName)}</div><div style="font-size:11px;color:var(--saf-subtle)">${h(o.cardCode)}</div></td>
+          <td>${h(o.customerRef) || '—'}</td>
+          <td>${fdate(o.docDate)}</td>
+          <td>${fdate(o.dueDate)}</td>
+          <td>${h(o.salesPerson) || '—'}</td>
+          <td class="soc-num">${money(o.total, o.currency)}</td>
+          <td>${o.confirmed ? '<span class="soc-badge confirmed">Confirmed</span>' : '<span class="soc-badge pending">Pending</span>'}</td>
+        </tr>`;
+      }).join('');
+      $('soc-tbody').querySelectorAll('tr.soc-row').forEach(tr => tr.addEventListener('click', () => socOpenDetail(Number(tr.dataset.de))));
+    }
+    updateSelection();
+  }
+
+  // ── Selection ─────────────────────────────────────────────────────────
+  window.socToggle = function(docEntry, on) {
+    on ? SOC.selected.add(docEntry) : SOC.selected.delete(docEntry);
+    const tr = $('soc-tbody').querySelector(`tr[data-de="${docEntry}"]`);
+    if (tr) tr.classList.toggle('soc-sel', on);
+    updateSelection();
+  };
+  window.socToggleAll = function(on) {
+    SOC.selected.clear();
+    if (on) SOC.orders.filter(o => !o.confirmed).forEach(o => SOC.selected.add(o.docEntry));
+    renderTable();
+  };
+  window.socSelectNone = () => window.socToggleAll(false);
+
+  function selectedOrders() { return SOC.orders.filter(o => SOC.selected.has(o.docEntry)); }
+
+  function updateSelection() {
+    const sel = selectedOrders();
+    const pendingCount = SOC.orders.filter(o => !o.confirmed).length;
+    const valueLC = sel.reduce((s, o) => s + o.totalLC, 0);
+    $('soc-kpi-sel').textContent = sel.length;
+    $('soc-kpi-sel-sub').textContent = sel.length ? `${money(valueLC)} (LC)` : 'no orders selected';
+    $('soc-bulk-btn').disabled = !sel.length;
+    $('soc-bulk-label').textContent = sel.length ? `Confirm Selected (${sel.length})` : 'Confirm Selected';
+    $('soc-clear-sel').style.display = sel.length ? '' : 'none';
+    const all = $('soc-all');
+    all.checked = pendingCount > 0 && sel.length === pendingCount;
+    all.indeterminate = sel.length > 0 && sel.length < pendingCount;
+    all.disabled = pendingCount === 0;
+  }
+
+  // ── Detail drawer ─────────────────────────────────────────────────────
+  window.socOpenDetail = async function(docEntry) {
+    const row = SOC.orders.find(o => o.docEntry === docEntry);
+    $('soc-d-title').innerHTML = `Sales Order ${row ? row.docNum : ''}`;
+    $('soc-d-sub').textContent = row ? `${row.cardName} (${row.cardCode})` : '';
+    $('soc-d-body').innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:var(--saf-subtle)"><span class="saf-spin"></span>Loading order detail…</div>';
+    $('soc-d-ftr').innerHTML = '';
+    $('soc-drawer-bg').style.display = 'block';
+    $('soc-drawer').classList.add('open');
+    $('soc-drawer').setAttribute('aria-hidden', 'false');
+    try {
+      const j = await api('/orders/' + docEntry);
+      SOC.detail = j;
+      renderDetail(j);
+    } catch (e) {
+      $('soc-d-body').innerHTML = `<div style="color:var(--saf-neg)">${h(e.message)}</div>`;
+    }
+  };
+  window.socCloseDetail = function() {
+    $('soc-drawer').classList.remove('open');
+    $('soc-drawer').setAttribute('aria-hidden', 'true');
+    $('soc-drawer-bg').style.display = 'none';
+    SOC.detail = null;
+  };
+
+  function renderDetail({ order: o, credit: c }) {
+    $('soc-d-title').innerHTML = `Sales Order ${o.docNum} ${o.confirmed ? '<span class="soc-badge confirmed">Confirmed</span>' : '<span class="soc-badge pending">Pending</span>'}`;
+    $('soc-d-sub').textContent = `${o.cardName} (${o.cardCode})`;
+    const field = (l, v) => `<div><div class="soc-field-l">${l}</div><div class="soc-field-v">${v}</div></div>`;
+    const creditBadge = !c ? '' : {
+      ok: '<span class="soc-badge confirmed">Within limit</span>',
+      warning: '<span class="soc-badge warn">Above 80% of limit</span>',
+      exceeded: '<span class="soc-badge err">Credit limit exceeded</span>',
+      nolimit: '<span class="soc-badge pending" style="color:var(--saf-subtle);background:#f4f6f9;border-color:var(--saf-border)">No credit limit set</span>',
+    }[c.status];
+    const subtotal = o.lines.reduce((s, l) => s + l.lineTotal, 0);
+    $('soc-d-body').innerHTML = `
+      <div class="soc-fields">
+        ${field('Posting Date', fdate(o.docDate))}
+        ${field('Delivery Date', fdate(o.dueDate))}
+        ${field('Customer Ref', h(o.customerRef) || '—')}
+        ${field('Sales Employee', h(o.salesPerson) || '—')}
+        ${field('Currency', h(o.currency) || '—')}
+        ${field('Document Total', `<strong>${money(o.total, o.currency)}</strong>`)}
+        ${o.shipTo ? field('Ship To', h(o.shipTo).replace(/\r?\n/g, '<br>')) : ''}
+        ${o.address ? field('Bill To', h(o.address).replace(/\r?\n/g, '<br>')) : ''}
+      </div>
+      ${c ? `<div class="soc-box">
+        <div class="soc-sec-title" style="display:flex;align-items:center;gap:8px">Customer Credit ${creditBadge}</div>
+        <div class="soc-fields">
+          ${field('Credit Limit', c.limit > 0 ? money(c.limit) : '—')}
+          ${field('Account Balance', money(c.balance))}
+          ${field('Open Orders + Deliveries', money(c.openOrders + c.openDeliveries))}
+        </div>
+      </div>` : ''}
+      <div>
+        <div class="soc-sec-title">Lines (${o.lines.length})</div>
+        <div class="soc-box" style="padding:0;overflow:auto">
+          <table class="soc-table">
+            <thead><tr><th>#</th><th>Item</th><th>Description</th><th class="soc-num">Qty</th><th class="soc-num">Open</th><th>UoM</th><th class="soc-num">Price</th><th class="soc-num">Disc %</th><th>Whse</th><th class="soc-num">Total</th></tr></thead>
+            <tbody>${o.lines.map((l, i) => `<tr>
+              <td>${i + 1}</td><td><strong>${h(l.itemCode)}</strong></td><td style="white-space:normal;min-width:160px">${h(l.description)}</td>
+              <td class="soc-num">${l.quantity}</td><td class="soc-num">${l.openQty}</td><td>${h(l.uom)}</td>
+              <td class="soc-num">${money(l.unitPrice)}</td><td class="soc-num">${l.discount ? l.discount : ''}</td>
+              <td>${h(l.warehouse)}</td><td class="soc-num">${money(l.lineTotal)}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <div class="soc-totals">
+          <span>Before tax: ${money(subtotal)}</span>
+          ${o.taxTotal ? `<span>Tax: ${money(o.taxTotal)}</span>` : ''}
+          <span>Total: <strong>${money(o.total, o.currency)}</strong></span>
+        </div>
+      </div>
+      ${o.comments ? `<div class="soc-box"><div class="soc-sec-title">Remarks</div><div style="font-size:12.5px;white-space:pre-wrap">${h(o.comments)}</div></div>` : ''}`;
+    $('soc-d-ftr').innerHTML = o.confirmed
+      ? '<span style="color:var(--saf-pos);font-size:12.5px;font-weight:600;margin-right:auto">✓ This order is already confirmed in SAP</span><button class="saf-btn-outline" onclick="socCloseDetail()">Close</button>'
+      : !o.open
+        ? '<span style="color:var(--saf-neg);font-size:12.5px;margin-right:auto">This order is closed or cancelled</span><button class="saf-btn-outline" onclick="socCloseDetail()">Close</button>'
+        : `<button class="saf-btn-outline" onclick="socCloseDetail()">Cancel</button>
+           <button class="saf-primary soc-confirm-btn" onclick="socAskConfirm([${o.docEntry}])"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Confirm Order</button>`;
+  }
+
+  // ── Confirm (single or bulk) ──────────────────────────────────────────
+  function modal(title, body, ftr) {
+    $('soc-m-title').innerHTML = title; $('soc-m-body').innerHTML = body; $('soc-m-ftr').innerHTML = ftr;
+    $('soc-modal-bg').classList.add('show');
+  }
+  window.socCloseModal = () => $('soc-modal-bg').classList.remove('show');
+
+  window.socAskConfirm = function(ids) {
+    const list = ids
+      ? ids.map(id => SOC.orders.find(o => o.docEntry === id) || (SOC.detail && SOC.detail.order.docEntry === id ? SOC.detail.order : null)).filter(Boolean)
+      : selectedOrders();
+    if (!list.length) return;
+    SOC.pending = list.map(o => o.docEntry);
+    const valueLC = list.reduce((s, o) => s + (o.totalLC || 0), 0);
+    const names = list.slice(0, 8).map(o => `<div><strong>SO ${o.docNum}</strong><span style="flex:1;color:var(--saf-subtle);overflow:hidden;text-overflow:ellipsis">${h(o.cardName)}</span><span>${money(o.total, o.currency)}</span></div>`).join('')
+      + (list.length > 8 ? `<div style="color:var(--saf-subtle)">…and ${list.length - 8} more</div>` : '');
+    modal(
+      list.length === 1 ? `Confirm Sales Order ${list[0].docNum}?` : `Confirm ${list.length} sales orders?`,
+      `This sets the order${list.length > 1 ? 's' : ''} to <strong>Confirmed</strong> in SAP Business One. Total value ${money(valueLC)} (LC).<div class="soc-res-list">${names}</div>`,
+      `<button class="saf-btn-outline" onclick="socCloseModal()">Cancel</button>
+       <button class="saf-primary soc-confirm-btn" id="soc-m-go" onclick="socDoConfirm()">Confirm in SAP</button>`
+    );
+  };
+
+  window.socDoConfirm = async function() {
+    const ids = SOC.pending || [];
+    if (!ids.length) return;
+    $('soc-m-go').disabled = true;
+    $('soc-m-go').innerHTML = '<span class="saf-spin" style="width:12px;height:12px;border-width:2px"></span> Confirming…';
+    try {
+      const j = await api('/confirm', { method: 'POST', body: JSON.stringify({ docEntries: ids }) });
+      const okRows = j.results.filter(r => r.ok);
+      okRows.forEach(r => SOC.selected.delete(r.docEntry));
+      const lines = j.results.map(r => `<div>
+        ${r.ok ? '<span class="soc-badge confirmed">' + (r.already ? 'Already' : 'Confirmed') + '</span>' : '<span class="soc-badge err">Failed</span>'}
+        <strong>SO ${r.docNum ?? r.docEntry}</strong>
+        <span style="flex:1;color:${r.ok ? 'var(--saf-subtle)' : 'var(--saf-neg)'};white-space:normal">${h(r.ok ? (r.cardName || '') : r.error)}</span></div>`).join('');
+      modal(
+        j.failed ? `${j.confirmed} confirmed, ${j.failed} failed` : `${j.confirmed} order${j.confirmed === 1 ? '' : 's'} confirmed in SAP`,
+        `<div class="soc-res-list">${lines}</div>`,
+        `<button class="saf-primary" onclick="socCloseModal()">OK</button>`
+      );
+      if (SOC.detail && okRows.some(r => r.docEntry === SOC.detail.order.docEntry)) socCloseDetail();
+      SOC.pending = null;
+      await socLoad();
+    } catch (e) {
+      modal('Confirmation failed', `<div style="color:var(--saf-neg)">${h(e.message)}</div>`, `<button class="saf-primary" onclick="socCloseModal()">OK</button>`);
+    }
+  };
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || $('soc-panel')?.style.display === 'none') return;
+    if ($('soc-modal-bg').classList.contains('show')) { socCloseModal(); e.stopImmediatePropagation(); }
+    else if ($('soc-drawer').classList.contains('open')) { socCloseDetail(); e.stopImmediatePropagation(); }
+  }, true);
+})();
+</script>
+<!-- ═══════════════ /SALES ORDER CONFIRMATION AGENT ═══════════════ -->
+
 <div id="vendor-payment-aging-panel" class="saf" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);position:relative">
 
   <!-- Header (SAP Fiori dynamic page title) -->
@@ -18259,7 +18862,7 @@ setInterval(() => {
       VPA.sessionId = null;
 
       if (statusEl) statusEl.textContent = 'Ready';
-      vpaAppendMessage('bot', `✅ Loaded aging as of **${params.agingDate}** — **${data.totals.vendorCount}** vendors, balance due **${fmtN(data.totals.balanceDue)}**.${data.totals.overdue > 0 ? ` ⚠️ Overdue: **${fmtN(data.totals.overdue)}**` : ''}\n\nAsk me anything about this data.`,
+      vpaAppendMessage('bot', `✅ Loaded aging as of **${params.agingDate}** — **${data.totals.vendorCount}** vendors, balance due **${fmtUSD(data.totals.balanceDue)}**.${data.totals.overdue > 0 ? ` ⚠️ Overdue: **${fmtUSD(data.totals.overdue)}**` : ''}\n\nAsk me anything about this data.`,
         ['Show top overdue vendors', 'Aging bucket summary', 'Vendors over 90 days', 'Cash flow risk']);
     } catch (e) {
       if (statusEl) statusEl.textContent = 'Error';
@@ -18287,18 +18890,18 @@ setInterval(() => {
   function vpaBuildContextString(data) {
     const { vendors, totals, buckets, params } = data;
     const top = (vendors || []).slice(0, 15);
-    const buckStr = (buckets || []).map(b => `  ${b.bucket}: ${fmtN(b.balanceDue)} (${b.vendorCount} vendors)`).join('\n');
-    const topStr  = top.map((v, i) => `  ${i+1}. ${v.name} (${v.code}): Balance ${fmtN(v.balanceDue)}, Overdue ${fmtN(v.overdue)}, ${v.maxDaysOutstanding} days max`).join('\n');
+    const buckStr = (buckets || []).map(b => `  ${b.bucket}: ${fmtUSD(b.balanceDue)} (${b.vendorCount} vendors)`).join('\n');
+    const topStr  = top.map((v, i) => `  ${i+1}. ${v.name} (${v.code}): Balance ${fmtUSD(v.balanceDue)}, Overdue ${fmtUSD(v.overdue)}, ${v.maxDaysOutstanding} days max`).join('\n');
     return `VENDOR PAYMENT AGING — As of: ${params?.agingDate} | Bucket: ${params?.bucketSize} days
-TOTALS: Balance Due ${fmtN(totals.balanceDue)}, Overdue ${fmtN(totals.overdue)}, Future ${fmtN(totals.futureRemit)}, Vendors: ${totals.vendorCount}
+TOTALS: Balance Due ${fmtUSD(totals.balanceDue)}, Overdue ${fmtUSD(totals.overdue)}, Future ${fmtUSD(totals.futureRemit)}, Vendors: ${totals.vendorCount}
 AGING BUCKETS:\n${buckStr}
 TOP VENDORS:\n${topStr}`;
   }
 
   function vpaUpdateKPIs(t, agingDate) {
-    document.getElementById('vpa-kpi-balance').textContent = fmtN(t.balanceDue);
-    document.getElementById('vpa-kpi-overdue').textContent = fmtN(t.overdue);
-    document.getElementById('vpa-kpi-future').textContent  = fmtN(t.futureRemit);
+    document.getElementById('vpa-kpi-balance').textContent = fmtUSD(t.balanceDue);
+    document.getElementById('vpa-kpi-overdue').textContent = fmtUSD(t.overdue);
+    document.getElementById('vpa-kpi-future').textContent  = fmtUSD(t.futureRemit);
     document.getElementById('vpa-kpi-vendors').textContent = t.vendorCount;
     document.getElementById('vpa-kpi-docs').textContent    = `${t.docCount} documents`;
     document.getElementById('vpa-kpi-date').textContent    = `As of ${agingDate}`;
@@ -18344,8 +18947,8 @@ TOP VENDORS:\n${topStr}`;
           labels: buckets.map(b => b.bucket),
           datasets: [{ data: buckets.map(b => b[valKey] || 0), backgroundColor: buckets.map((b, i) => bucketColor(i)), borderWidth: 0, borderRadius: 4, maxBarThickness: 42 }],
         },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>' '+fmtN(c.raw) } } },
-          scales:{ x:{ ...VPA_AXIS, grid:{display:false} }, y:{ ...VPA_AXIS, ticks:{ ...VPA_AXIS.ticks, callback:v=>fmtN(v)} } } },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>' '+fmtUSD(c.raw) } } },
+          scales:{ x:{ ...VPA_AXIS, grid:{display:false} }, y:{ ...VPA_AXIS, ticks:{ ...VPA_AXIS.ticks, callback:v=>fmtUSD(v)} } } },
       });
     }
 
@@ -18372,8 +18975,8 @@ TOP VENDORS:\n${topStr}`;
         datasets: names.map((b, i) => ({ label: b, data: top.map(v => Number(v.buckets?.[b] || 0)), backgroundColor: bucketColor(i), borderWidth: 0, maxBarThickness: 18 })) },
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins: { legend:{ position:'bottom', labels:{ font:{ size:10.5 }, color:'#1d2d3e', boxWidth:10, boxHeight:10, usePointStyle:true, pointStyle:'rect' } },
-                   tooltip:{ callbacks:{ title: items => top[items[0].dataIndex]?.name || '', label: c => ' ' + c.dataset.label + ': ' + fmtN(c.raw) } } },
-        scales: { x:{ ...VPA_AXIS, stacked:true, ticks:{ ...VPA_AXIS.ticks, callback:v=>fmtN(v) } }, y:{ ...VPA_AXIS, stacked:true, grid:{ display:false } } } },
+                   tooltip:{ callbacks:{ title: items => top[items[0].dataIndex]?.name || '', label: c => ' ' + c.dataset.label + ': ' + fmtUSD(c.raw) } } },
+        scales: { x:{ ...VPA_AXIS, stacked:true, ticks:{ ...VPA_AXIS.ticks, callback:v=>fmtUSD(v) } }, y:{ ...VPA_AXIS, stacked:true, grid:{ display:false } } } },
     });
   }
 
@@ -18396,8 +18999,8 @@ TOP VENDORS:\n${topStr}`;
       },
       options: {
         indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: c => ' ' + fmtN(c.raw) } } },
-        scales: { x: { ...VPA_AXIS, ticks: { ...VPA_AXIS.ticks, callback: v => fmtN(v) } }, y: { ...VPA_AXIS, grid: { display: false } } },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: c => ' ' + fmtUSD(c.raw) } } },
+        scales: { x: { ...VPA_AXIS, ticks: { ...VPA_AXIS.ticks, callback: v => fmtUSD(v) } }, y: { ...VPA_AXIS, grid: { display: false } } },
       },
     });
   }
@@ -18416,8 +19019,8 @@ TOP VENDORS:\n${topStr}`;
       },
       options: {
         indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: c => ' ' + fmtN(c.raw) } } },
-        scales: { x: { ...VPA_AXIS, ticks: { ...VPA_AXIS.ticks, callback: v => fmtN(v) } }, y: { ...VPA_AXIS, grid: { display: false } } },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => top[items[0].dataIndex]?.name || '', label: c => ' ' + fmtUSD(c.raw) } } },
+        scales: { x: { ...VPA_AXIS, ticks: { ...VPA_AXIS.ticks, callback: v => fmtUSD(v) } }, y: { ...VPA_AXIS, grid: { display: false } } },
       },
     });
   }
@@ -18456,13 +19059,13 @@ TOP VENDORS:\n${topStr}`;
       const daysClass = v.maxDaysOutstanding > 90 ? 'vpa-days-90' : v.maxDaysOutstanding > 60 ? 'vpa-days-60' : v.maxDaysOutstanding > 30 ? 'vpa-days-30' : 'vpa-days-0';
       let bucketCells = '';
       if (VPA.showBuckets) {
-        VPA.bucketCols.forEach(b => { bucketCells += `<td class="vpa-amt">${fmtN(v.buckets?.[b] || 0)}</td>`; });
+        VPA.bucketCols.forEach(b => { bucketCells += `<td class="vpa-amt">${fmtUSD(v.buckets?.[b] || 0)}</td>`; });
       }
       return `<tr onclick="vpaShowVendorDetail('${escHtml(v.code)}')" title="Click for document-wise detail">
         <td><div style="font-weight:600;font-size:12px">${escHtml(v.name || v.code)}</div><div style="font-size:10.5px;color:var(--muted)">${escHtml(v.code)}</div></td>
-        <td class="vpa-amt">${fmtN(v.balanceDue)}</td>
-        <td class="vpa-amt vpa-overdue-cell">${v.overdue > 0 ? fmtN(v.overdue) : '<span style="color:#556b82">Current</span>'}</td>
-        <td class="vpa-amt">${fmtN(v.futureRemit)}</td>
+        <td class="vpa-amt">${fmtUSD(v.balanceDue)}</td>
+        <td class="vpa-amt vpa-overdue-cell">${v.overdue > 0 ? fmtUSD(v.overdue) : '<span style="color:#556b82">Current</span>'}</td>
+        <td class="vpa-amt">${fmtUSD(v.futureRemit)}</td>
         <td class="vpa-amt"><span class="vpa-days-pill ${daysClass}">${v.maxDaysOutstanding}</span></td>
         ${bucketCells}
       </tr>`;
@@ -18492,10 +19095,10 @@ TOP VENDORS:\n${topStr}`;
     }, { original: 0, balanceDue: 0, overdue: 0, futureRemit: 0 });
 
     document.getElementById('vpa-vd-kpis').innerHTML = `
-      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Original</div><div class="vpa-vd-kpi-val">${fmtN(totals.original)}</div></div>
-      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Balance Due</div><div class="vpa-vd-kpi-val">${fmtN(totals.balanceDue)}</div></div>
-      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Overdue</div><div class="vpa-vd-kpi-val" style="color:#BB0000">${fmtN(totals.overdue)}</div></div>
-      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Future Remit</div><div class="vpa-vd-kpi-val" style="color:#0070F2">${fmtN(totals.futureRemit)}</div></div>`;
+      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Original</div><div class="vpa-vd-kpi-val">${fmtUSD(totals.original)}</div></div>
+      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Balance Due</div><div class="vpa-vd-kpi-val">${fmtUSD(totals.balanceDue)}</div></div>
+      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Overdue</div><div class="vpa-vd-kpi-val" style="color:#BB0000">${fmtUSD(totals.overdue)}</div></div>
+      <div class="vpa-vd-kpi"><div class="vpa-vd-kpi-label">Future Remit</div><div class="vpa-vd-kpi-val" style="color:#0070F2">${fmtUSD(totals.futureRemit)}</div></div>`;
 
     const tbody = document.getElementById('vpa-vd-tbody');
     tbody.innerHTML = docs.length ? docs.map(d => `
@@ -18506,9 +19109,9 @@ TOP VENDORS:\n${topStr}`;
         <td>${vpaFmtDate(d.dueDate)}</td>
         <td class="vpa-amt">${d.daysOutstanding}</td>
         <td>${escHtml(d.bucket || '—')}</td>
-        <td class="vpa-amt">${fmtN(d.originalAmt)}</td>
-        <td class="vpa-amt">${fmtN(d.balanceDue)}</td>
-        <td class="vpa-amt" style="${d.overdue > 0 ? 'color:#BB0000;font-weight:600' : ''}">${d.overdue > 0 ? fmtN(d.overdue) : '<span style="color:#107E3E">Current</span>'}</td>
+        <td class="vpa-amt">${fmtUSD(d.originalAmt)}</td>
+        <td class="vpa-amt">${fmtUSD(d.balanceDue)}</td>
+        <td class="vpa-amt" style="${d.overdue > 0 ? 'color:#BB0000;font-weight:600' : ''}">${d.overdue > 0 ? fmtUSD(d.overdue) : '<span style="color:#107E3E">Current</span>'}</td>
       </tr>`).join('') : '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No documents found</td></tr>';
 
     document.getElementById('vpa-vd-overlay').classList.add('show');
@@ -19348,9 +19951,10 @@ TOP VENDORS:\n${topStr}`;
   function paLabel(k) { return PA_KPI_LABELS[k] || String(k).replace(/LC$/,' (LC)').replace(/([a-z])([A-Z])/g,'$1 $2'); }
   function paIsPct(k) { return /Rate|Pct|Percent|Margin/i.test(k); }
   function paIsMoney(k) { return !paIsPct(k) && /LC$|Amount|Balance|Price|Cost|Value/i.test(k); }
-  // KPI tiles: money in millions for non-INR companies
-  function paFmtKpi(k, v) { return paIsPct(k) ? paFmtPct(v) : (paIsMoney(k) && appUsesMillions() && Math.abs(Number(v)) >= 1e4) ? fmtMillions(v) : fmtN(v); }
-  function paTicks(k) { return paIsPct(k) ? (v => v + '%') : paIsMoney(k) ? appMoneyTicks(v => fmtN(v)) : (v => fmtN(v)); }
+  // KPI tiles: money in USD millions
+  function paFmtVal(k, v) { return paIsPct(k) ? paFmtPct(v) : paIsMoney(k) ? fmtUSD(v) : fmtN(v); }
+  function paFmtKpi(k, v) { return paIsPct(k) ? paFmtPct(v) : (paIsMoney(k) && appUsesMillions() && Math.abs(Number(v)) >= 1e4) ? fmtMillions(v) : paFmtVal(k, v); }
+  function paTicks(k) { return paIsPct(k) ? (v => v + '%') : paIsMoney(k) ? appMoneyTicks(v => fmtUSD(v)) : (v => fmtN(v)); }
   function paEmpty(n, show) { const e = document.getElementById('pa-chart' + n + '-empty'); if (e) e.style.display = show ? 'flex' : 'none'; }
   // purchase views carry no CogsOcr* brand fields (grouped as 'Unknown'), so Vendor is the default share view
   const PA_DIMS  = { vendor:['byVendor','Vendor'], item:['byItem','Item'], brand:['byBrand','Brand'], branch:['byBranch','Branch'] };
@@ -19373,7 +19977,7 @@ TOP VENDORS:\n${topStr}`;
         datasets:[{ data: rows.map(r => Math.abs(Number(r[m]||0))), backgroundColor: PA_CHART_COLORS, borderColor:'#fff', borderWidth:2 }] },
       options:{ responsive:true, maintainAspectRatio:false, cutout:'62%',
         plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 }, color:'#1d2d3e', boxWidth:10, boxHeight:10, usePointStyle:true, pointStyle:'circle' } },
-                  tooltip:{ callbacks:{ label: c => ' ' + fmtN(c.raw) } } } },
+                  tooltip:{ callbacks:{ label: c => ' ' + paFmtVal(m, c.raw) } } } },
     });
   }
 
@@ -19392,7 +19996,7 @@ TOP VENDORS:\n${topStr}`;
       type:'bar',
       data:{ labels: rows.map(r => String(r.vendorName || r.itemName || r._label || r._key || '—').substring(0,18)),
         datasets:[{ label: paLabel(m), data: rows.map(r => Number(r[m]||0)), backgroundColor:'#13A4B4', hoverBackgroundColor:'#0e7c88', borderWidth:0, borderRadius:4, maxBarThickness:18 }] },
-      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: c => ' ' + (paIsPct(m) ? paFmtPct(c.raw) : fmtN(c.raw)) } } },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: c => ' ' + paFmtVal(m, c.raw) } } },
         scales:{ x:{ ...PA_AXIS, ticks:{ ...PA_AXIS.ticks, callback: paTicks(m) } }, y:{ ...PA_AXIS, grid:{ display:false } } } },
     });
   }
@@ -19437,7 +20041,7 @@ TOP VENDORS:\n${topStr}`;
         fill: isPeriod, tension: 0.35, pointRadius: isPeriod ? 3 : 0,
       }] },
       options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtN(c.raw)}} },
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+paFmtVal(data.measures?.[0]||'NetPurchaseAmountLC', c.raw)}} },
         scales:{ x:{ ...PA_AXIS, grid:{display:false}, ticks:{ ...PA_AXIS.ticks, maxRotation:45, callback(v){ const l=this.getLabelForValue(v); return String(l).length>14?String(l).slice(0,13)+'…':l; } } },
                  y:{ ...PA_AXIS, ticks:{ ...PA_AXIS.ticks, callback:paTicks(data.measures?.[0]||'NetPurchaseAmountLC')} } } }
     });
@@ -19458,7 +20062,7 @@ TOP VENDORS:\n${topStr}`;
         backgroundColor:'rgba(88,153,218,.12)', borderColor:'#5899DA', borderWidth:2, pointBackgroundColor:'#5899DA',
         fill:true, tension:0.3, pointRadius:3, pointHoverRadius:5 }] },
       options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false },
-        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtN(c.raw)}} },
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>' '+paFmtVal(m0, c.raw)}} },
         scales:{ x:{ ...PA_AXIS, grid:{display:false} },
                  y:{ ...PA_AXIS, ticks:{ ...PA_AXIS.ticks, callback:paTicks(m0)} } } }
     });
@@ -19530,7 +20134,7 @@ TOP VENDORS:\n${topStr}`;
         if(k==='_key') return `<td style="font-weight:600;font-size:11.5px">${escHtml(String(v))}</td>`;
         return `<td>${escHtml(String(v))}</td>`;
       });
-      const mCells = mCols.map(([k])=>`<td class="pa-amt">${fmtN(r[k])}</td>`);
+      const mCells = mCols.map(([k])=>`<td class="pa-amt">${paFmtVal(k, r[k])}</td>`);
       return `<tr>${[...mainCells,...mCells].join('')}</tr>`;
     }).join('');
 
@@ -19577,10 +20181,10 @@ TOP VENDORS:\n${topStr}`;
   function paBuildContextStr(data) {
     const measures = data.measures||[];
     const m0 = measures[0]||'';
-    const topV = (data.byVendor||[]).slice(0,10).map((v,i)=>`  ${i+1}. ${v.vendorName||v._key}: ${measures.map(m=>PA_KPI_LABELS[m]+' '+fmtN(v[m])).join(', ')}`).join('\n');
-    const periods = (data.byPeriod||[]).slice(-6).map(p=>`  ${p._key}: ${fmtN(p[m0])}`).join('\n');
+    const topV = (data.byVendor||[]).slice(0,10).map((v,i)=>`  ${i+1}. ${v.vendorName||v._key}: ${measures.map(m=>PA_KPI_LABELS[m]+' '+paFmtVal(m, v[m])).join(', ')}`).join('\n');
+    const periods = (data.byPeriod||[]).slice(-6).map(p=>`  ${p._key}: ${paFmtVal(m0, p[m0])}`).join('\n');
     return `VIEW: ${PA_VIEW_META[PA.activeView]?.label||PA.activeView} | Period: ${data.params?.fromDate} to ${data.params?.toDate}
-TOTALS: ${measures.map(m=>`${PA_KPI_LABELS[m]}: ${fmtN(data.totals?.[m])}`).join(', ')}
+TOTALS: ${measures.map(m=>`${PA_KPI_LABELS[m]}: ${paFmtVal(m, data.totals?.[m])}`).join(', ')}
 TOP VENDORS:\n${topV}
 RECENT MONTHLY TREND:\n${periods}`;
   }
@@ -20014,6 +20618,18 @@ RECENT MONTHLY TREND:\n${periods}`;
 #sales-analysis-panel .sa-dim-chip.active{background:var(--saf-blue-light);color:var(--saf-blue);border-color:var(--saf-blue);font-weight:600}
 /* content */
 #sales-analysis-panel .saf-content{flex:1;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column;gap:16px}
+/* Visible scrollbars (main 16px, table 12px, Fiori theme) — overrides the global 4px ::-webkit-scrollbar rule */
+#sales-analysis-panel .saf-content,#sales-analysis-panel .sa-table-wrap{overflow-x:scroll}
+#sales-analysis-panel .saf-content::-webkit-scrollbar{width:16px;height:16px}
+#sales-analysis-panel .sa-table-wrap::-webkit-scrollbar{width:12px;height:12px}
+#sales-analysis-panel .saf-content::-webkit-scrollbar-track,#sales-analysis-panel .sa-table-wrap::-webkit-scrollbar-track{background:var(--saf-bg);box-shadow:inset 0 0 0 1px var(--saf-border)}
+#sales-analysis-panel .saf-content::-webkit-scrollbar-thumb,#sales-analysis-panel .sa-table-wrap::-webkit-scrollbar-thumb{background:#8396a8;border-radius:8px;border:3px solid var(--saf-bg);min-width:48px}
+#sales-analysis-panel .sa-table-wrap::-webkit-scrollbar-thumb{border-width:2px;border-radius:6px}
+#sales-analysis-panel .saf-content::-webkit-scrollbar-thumb:hover,#sales-analysis-panel .sa-table-wrap::-webkit-scrollbar-thumb:hover{background:var(--saf-blue)}
+#sales-analysis-panel .saf-content::-webkit-scrollbar-corner,#sales-analysis-panel .sa-table-wrap::-webkit-scrollbar-corner{background:var(--saf-bg)}
+@supports (-moz-appearance:none){
+  #sales-analysis-panel .saf-content,#sales-analysis-panel .sa-table-wrap{scrollbar-width:auto;scrollbar-color:#8396a8 var(--saf-bg)}
+}
 /* KPI tiles (numeric content) */
 #sales-analysis-panel .sa-kpi-row{gap:12px}
 #sales-analysis-panel .sa-kpi-card{background:var(--saf-card);border:1px solid var(--saf-border)!important;border-radius:12px;padding:14px 16px;box-shadow:0 2px 8px rgba(0,0,0,.04),0 0 2px rgba(0,0,0,.06)}
@@ -20156,11 +20772,12 @@ RECENT MONTHLY TREND:\n${periods}`;
   function saToken() { return localStorage.getItem('hanny_token') || ''; }
   function saFmtPct(n) { return n==null?'—':Number(n).toFixed(1)+'%'; }
   function saIsPct(m) { return m.toLowerCase().includes('percent')||m.toLowerCase().includes('margin')||m.toLowerCase().includes('rate'); }
-  function saFmtVal(m,v) { return saIsPct(m)?saFmtPct(v):fmtN(v); }
+  function saFmtVal(m,v) { return saIsPct(m)?saFmtPct(v):saIsMoney(m)?fmtUSD(v):fmtN(v); }
   function saIsMoney(m) { return !saIsPct(m) && /LC$|SC$|Amount|Balance|Limit|Profit|Price|Cost|Value/i.test(m); }
-  // KPI tiles: money in millions for non-INR companies
+  // KPI tiles: money in USD millions
   function saFmtKpi(m,v) { return (saIsMoney(m) && appUsesMillions() && Math.abs(Number(v)) >= 1e4) ? fmtMillions(v) : saFmtVal(m,v); }
-  function saTicks(m) { return saIsPct(m) ? (v => v.toFixed(1) + '%') : saIsMoney(m) ? appMoneyTicks(saAbbreviate) : saAbbreviate; }
+  function saTicks(m) { return saIsPct(m) ? (v => v.toFixed(1) + '%') : saIsMoney(m) ? appMoneyTicks(v => (v < 0 ? '-$' : '$') + saAbbreviate(Math.abs(v))) : saAbbreviate; }
+  const saTip = m => ({ callbacks: { label: c => ` ${c.dataset.label ? c.dataset.label + ': ' : ''}${saFmtVal(m, c.raw)}` } });
   function fmtN(n,d=0) { if(n==null||isNaN(Number(n))) return '—'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
   function saAbbreviate(v) {
     if (Math.abs(v)>=1e6) return (v/1e6).toFixed(1)+'M';
@@ -20504,7 +21121,8 @@ BRAND BREAKDOWN:\n${brands}`;
           borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: colors[i], tension: .3,
           yAxisID: dual && i === 1 ? 'y1' : 'y' })) },
       options: { responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false },
-        plugins: { legend: { position:'bottom', labels:{ font:{ size:11 }, color:'#1d2d3e', boxWidth:10, boxHeight:10, usePointStyle:true, pointStyle:'circle' } } },
+        plugins: { legend: { position:'bottom', labels:{ font:{ size:11 }, color:'#1d2d3e', boxWidth:10, boxHeight:10, usePointStyle:true, pointStyle:'circle' } },
+          tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${saFmtVal(ms[c.datasetIndex], c.raw)}` } } },
         scales: { x: { ...SA_AXIS, grid:{ display:false } },
           y: { ...SA_AXIS, ticks:{ ...SA_AXIS.ticks, callback: saTicks(ms[0]) } },
           ...(dual ? { y1: { ...SA_AXIS, position:'right', grid:{ display:false }, ticks:{ ...SA_AXIS.ticks, callback: saTicks(ms[1]) } } } : {}) } },
@@ -20527,7 +21145,7 @@ BRAND BREAKDOWN:\n${brands}`;
       data: { labels: rows.map(r => String(r._label || r._key || '—').substring(0, 18)),
         datasets: [{ label: saMeasureLabel(m), data: rows.map(r => Number(r[m] || 0)),
           backgroundColor: '#13A4B4', hoverBackgroundColor: '#0e7c88', borderWidth: 0, borderRadius: 4, maxBarThickness: 18 }] },
-      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip: saTip(m) },
         scales: { x: { ...SA_AXIS, ticks:{ ...SA_AXIS.ticks, callback: saTicks(m) } },
                   y: { ...SA_AXIS, grid:{ display:false } } } },
     });
@@ -20570,7 +21188,7 @@ BRAND BREAKDOWN:\n${brands}`;
       type:'bar',
       data:{ labels:rows.map(r=>String(r._label||r._key||'').substring(0,22)),
         datasets:[{label, data:rows.map(r=>Number(r[m]||0)), backgroundColor:'#5899DA', hoverBackgroundColor:'#0a6ed1', borderWidth:0, borderRadius:4, maxBarThickness:36}] },
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{...SA_AXIS,grid:{display:false}},y:{...SA_AXIS,ticks:{...SA_AXIS.ticks,callback: saTicks(m)}}}},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:saTip(m)},scales:{x:{...SA_AXIS,grid:{display:false}},y:{...SA_AXIS,ticks:{...SA_AXIS.ticks,callback: saTicks(m)}}}},
     });
     document.getElementById('sa-chart1-title').textContent = `Top 10 by ${label}`;
   }
@@ -20589,7 +21207,7 @@ BRAND BREAKDOWN:\n${brands}`;
     SA.chart2 = new Chart(ctx, {
       type:'doughnut',
       data:{labels:rows.map(r=>String(r._label||r._key||'').substring(0,20)),datasets:[{data:rows.map(r=>Math.abs(Number(r[m]||0))),backgroundColor:SA_CHART_COLORS,borderColor:'#fff',borderWidth:2}]},
-      options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{font:{size:11},color:'#1d2d3e',boxWidth:10,boxHeight:10,usePointStyle:true,pointStyle:'circle'}}}},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{font:{size:11},color:'#1d2d3e',boxWidth:10,boxHeight:10,usePointStyle:true,pointStyle:'circle'}},tooltip:{callbacks:{label:c=>` ${c.label}: ${saFmtVal(m, c.raw)}`}}}},
     });
   }
 
@@ -20847,7 +21465,7 @@ BRAND BREAKDOWN:\n${brands}`;
   <div id="dp-scenarios-wrap" style="flex-shrink:0;border-bottom:1px solid var(--border)">
     <button onclick="dpToggleScenarios()" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 16px;background:#F0F4F8;border:none;cursor:pointer;font-size:11px;font-weight:600;color:#354A5E;text-align:left">
       <svg id="dp-sc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform .2s;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
-      How Pricing Scenarios Are Calculated — 9 signal-based rules
+      How Pricing Scenarios Are Calculated — 9 rules + Balanced, checked top to bottom (first match wins)
     </button>
     <div id="dp-scenarios-body" style="display:none;padding:12px 16px 14px;background:#FAFBFC;overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:700px">
@@ -20861,6 +21479,13 @@ BRAND BREAKDOWN:\n${brands}`;
           </tr>
         </thead>
         <tbody>
+          <tr style="border-bottom:1px solid #E5E7EB;background:#F8F8FF">
+            <td style="padding:7px 10px;font-weight:700;color:#4B5563;white-space:nowrap">Price Establishment</td>
+            <td style="padding:7px 10px;text-align:center"><span style="background:#F0FDF4;color:#166534;border:1px solid #86EFAC;padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px">▲ Increase</span></td>
+            <td style="padding:7px 10px;color:#374151">No price-list price <strong>AND</strong> no sales in the last 12 months — there is no selling price yet</td>
+            <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">suggestedPrice = cost ÷ (1 − target%)<br><span style="font-size:10px;color:#6B7280;font-family:inherit">= exactly the target margin. No cost in SAP → <b>Hold</b>: set the price manually.</span></td>
+            <td style="padding:7px 10px;color:#6B7280">AvgStdPrice (Items), GP% target (user input)</td>
+          </tr>
           <tr style="border-bottom:1px solid #E5E7EB;background:#FFF0F0">
             <td style="padding:7px 10px;font-weight:700;color:#991B1B;white-space:nowrap">Dead Stock</td>
             <td style="padding:7px 10px;text-align:center"><span style="background:#FFF0F0;color:#991B1B;border:1px solid #FCA5A5;padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px">▼ Decrease</span></td>
@@ -20878,7 +21503,7 @@ BRAND BREAKDOWN:\n${brands}`;
           <tr style="border-bottom:1px solid #E5E7EB;background:#FFF8F8">
             <td style="padding:7px 10px;font-weight:700;color:#991B1B;white-space:nowrap">Margin Recovery</td>
             <td style="padding:7px 10px;text-align:center"><span style="background:#F0FDF4;color:#166534;border:1px solid #86EFAC;padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px">▲ Increase</span></td>
-            <td style="padding:7px 10px;color:#374151">Current GP% is more than 2% below margin target</td>
+            <td style="padding:7px 10px;color:#374151">Current GP% is <strong>more than 10%</strong> below the margin target</td>
             <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">+(|marginGap| × 1.3)%, max 20%<br><span style="font-size:10px;color:#6B7280">marginGap = ((price−cost)/price×100) − target%</span></td>
             <td style="padding:7px 10px;color:#6B7280">AvgStdPrice (Items), Avg selling price (SMLSVC), GP% target (user input)</td>
           </tr>
@@ -20892,22 +21517,22 @@ BRAND BREAKDOWN:\n${brands}`;
           <tr style="border-bottom:1px solid #E5E7EB;background:#F8FFF8">
             <td style="padding:7px 10px;font-weight:700;color:#166534;white-space:nowrap">Demand Capture</td>
             <td style="padding:7px 10px;text-align:center"><span style="background:#F0FDF4;color:#166534;border:1px solid #86EFAC;padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px">▲ Increase</span></td>
-            <td style="padding:7px 10px;color:#374151">Demand HIGH <strong>AND</strong> stock normal/overstocked <strong>AND</strong> margin not above target</td>
+            <td style="padding:7px 10px;color:#374151">Demand HIGH <strong>AND</strong> stock not below minimum <strong>AND</strong> margin not more than 8% above target</td>
             <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">+5% flat</td>
             <td style="padding:7px 10px;color:#6B7280">Sales qty (SMLSVC), On hand vs MaxInventory, GP% (Items + SMLSVC)</td>
           </tr>
           <tr style="border-bottom:1px solid #E5E7EB">
             <td style="padding:7px 10px;font-weight:700;color:#92400E;white-space:nowrap">Margin Improvement</td>
             <td style="padding:7px 10px;text-align:center"><span style="background:#F0FDF4;color:#166534;border:1px solid #86EFAC;padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px">▲ Increase</span></td>
-            <td style="padding:7px 10px;color:#374151">Demand MEDIUM (30–200 units/yr) <strong>AND</strong> margin below target</td>
+            <td style="padding:7px 10px;color:#374151">Margin <strong>2–10%</strong> below target <strong>AND</strong> some sales in the last 12 months</td>
             <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">+|marginGap|%, max 10%</td>
             <td style="padding:7px 10px;color:#6B7280">Sales qty (SMLSVC), GP% vs target (Items + SMLSVC)</td>
           </tr>
           <tr style="border-bottom:1px solid #E5E7EB;background:#FFF8F0">
             <td style="padding:7px 10px;font-weight:700;color:#991B1B;white-space:nowrap">Overstock Clearance</td>
             <td style="padding:7px 10px;text-align:center"><span style="background:#FFF0F0;color:#991B1B;border:1px solid #FCA5A5;padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px">▼ Decrease</span></td>
-            <td style="padding:7px 10px;color:#374151">Stock &gt; MaxInventory × 1.1 <strong>AND</strong> demand not high</td>
-            <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">−7% (low/medium demand) or −12% (no demand)</td>
+            <td style="padding:7px 10px;color:#374151">Stock &gt; MaxInventory × 1.1 <strong>AND</strong> demand low or medium</td>
+            <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">−7% flat<br><span style="font-size:10px;color:#6B7280;font-family:inherit">Items with no demand are handled by <b>Dead Stock</b> (−15%).</span></td>
             <td style="padding:7px 10px;color:#6B7280">On hand vs MaxInventory (Items), Sales qty (SMLSVC)</td>
           </tr>
           <tr style="border-bottom:1px solid #E5E7EB">
@@ -20916,13 +21541,6 @@ BRAND BREAKDOWN:\n${brands}`;
             <td style="padding:7px 10px;color:#374151">Realized GP% &lt; industry benchmark (35%) by &gt;5% <strong>AND</strong> demand exists</td>
             <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">+8% flat</td>
             <td style="padding:7px 10px;color:#6B7280">Realized GP% (SMLSVC), Industry benchmark 35% (fixed)</td>
-          </tr>
-          <tr style="border-bottom:1px solid #E5E7EB;background:#F8F8FF">
-            <td style="padding:7px 10px;font-weight:700;color:#4B5563;white-space:nowrap">Price Establishment</td>
-            <td style="padding:7px 10px;text-align:center"><span style="background:#F0FDF4;color:#166534;border:1px solid #86EFAC;padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px">▲ Increase</span></td>
-            <td style="padding:7px 10px;color:#374151">No selling price in SAP — priced at cost or unpriced stock</td>
-            <td style="padding:7px 10px;font-family:monospace;color:#1D4ED8">+marginTarget% above cost<br><span style="font-size:10px;color:#6B7280">suggestedPrice = cost / (1 − target%)</span></td>
-            <td style="padding:7px 10px;color:#6B7280">AvgStdPrice (Items), GP% target (user input)</td>
           </tr>
           <tr>
             <td style="padding:7px 10px;font-weight:700;color:#6B7280;white-space:nowrap">Balanced</td>
@@ -20934,11 +21552,12 @@ BRAND BREAKDOWN:\n${brands}`;
         </tbody>
       </table>
       <div style="margin-top:10px;padding:8px 12px;background:#EBF4FF;border-left:3px solid #0070F2;border-radius:0 4px 4px 0;font-size:10px;color:#1D4ED8;line-height:1.6">
-        <strong>Price Source Priority:</strong>
-        1&nbsp;Avg realized selling price = SMLSVC NetSalesAmountLC ÷ QuantityInInventoryUoM &nbsp;|&nbsp;
-        2&nbsp;Implied price = AvgStdPrice ÷ (1 − marginTarget%) &nbsp;|&nbsp;
-        3&nbsp;Cost floor = AvgStdPrice &nbsp;|&nbsp;
-        4&nbsp;Unpriced stock (placeholder) &nbsp;·&nbsp;
+        <strong>Current price (first one available):</strong>
+        1&nbsp;Price in the selected price list &nbsp;|&nbsp;
+        2&nbsp;Avg realized selling price = SMLSVC NetSalesAmountLC ÷ QuantityInInventoryUoM (12 months) &nbsp;|&nbsp;
+        3&nbsp;Cost = AvgStdPrice (no selling price yet → Price Establishment) &nbsp;|&nbsp;
+        4&nbsp;Unpriced stock (placeholder 1) &nbsp;·&nbsp;
+        <strong>Order of results:</strong> decreases first, then increases, then holds — biggest change first &nbsp;·&nbsp;
         <strong>Demand thresholds:</strong> High &gt; 200 units/yr · Medium 30–200 · Low &gt;0 · None = 0
       </div>
     </div>
@@ -21349,10 +21968,10 @@ BRAND BREAKDOWN:\n${brands}`;
         <td style="padding:8px 12px;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.itemName}">${it.itemName}</td>
         <td style="padding:8px 12px;font-size:11px;color:var(--muted)">${it.itemGroup || '—'}</td>
         <td style="padding:8px 12px;font-size:11px;text-align:right;font-weight:500">${fmt(it.currentPrice, it.currency)}</td>
-        <td style="padding:8px 12px;font-size:11px;text-align:right;font-weight:700;color:${chgColor}">${fmt(it.suggestedPrice, it.currency)}</td>
-        <td style="padding:8px 12px;text-align:right"><span style="font-size:11px;font-weight:700;color:${chgColor}">${chgStr}</span></td>
+        <td style="padding:8px 12px;font-size:11px;text-align:right;font-weight:700;color:${chgColor}"><span${agxAttr('dp', it.itemCode+':p', it.explain?.suggestedPrice, it.itemCode)}>${fmt(it.suggestedPrice, it.currency)}</span></td>
+        <td style="padding:8px 12px;text-align:right"><span${agxAttr('dp', it.itemCode+':c', it.explain?.suggestedPrice, it.itemCode)} style="font-size:11px;font-weight:700;color:${chgColor}">${chgStr}</span></td>
         <td style="padding:8px 12px;text-align:center">
-          <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:10px;background:${rec.bg};color:${rec.color};border:1px solid ${rec.border}">${rec.label}</span>
+          <span${agxAttr('dp', it.itemCode+':r', it.explain?.suggestedPrice, it.itemCode)} style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:10px;background:${rec.bg};color:${rec.color};border:1px solid ${rec.border}">${rec.label}</span>
           ${it.scenario ? `<div style="font-size:9px;color:var(--muted);margin-top:2px">${it.scenario}</div>` : ''}
         </td>
         <td style="padding:8px 12px;text-align:center">
@@ -21410,6 +22029,10 @@ BRAND BREAKDOWN:\n${brands}`;
     const badge  = document.getElementById('pdm-change-badge');
     badge.textContent   = chgStr;
     badge.style.color   = it.changePct > 0 ? '#22C55E' : it.changePct < 0 ? '#BB0000' : '#6B7280';
+    // "How is this calculated?" — which of the 9 pricing rules applied, and the maths
+    agxBind(badge, 'dpm', 'chg', it.explain?.suggestedPrice, it.itemCode);
+    agxBind(document.getElementById('pdm-suggested-price'), 'dpm', 'price', it.explain?.suggestedPrice, it.itemCode);
+    agxBind(document.getElementById('pdm-rec-label'), 'dpm', 'rec', it.explain?.suggestedPrice, it.itemCode);
 
     // Recommendation banner
     const BAN = {
@@ -21528,7 +22151,19 @@ BRAND BREAKDOWN:\n${brands}`;
       if (r.ok) {
         noteEl.textContent    = '✅ ' + r.message;
         noteEl.style.display  = 'block';
-        // Reflect what SAP actually saved on the price list
+        // Reflect what SAP actually saved on the price list. The "how is this calculated"
+        // popup now describes the applied change instead of the original suggestion.
+        const prev = { price: it.currentPrice, scenario: it.scenario, change: it.changePct, source: it.priceSource };
+        const applied = {
+          title: 'Price applied to SAP',
+          steps: [
+            { label: 'Price before', formula: prev.source, value: Number(prev.price).toFixed(2) },
+            { label: 'Rule that suggested the change', formula: prev.scenario, value: `${prev.change > 0 ? '+' : ''}${prev.change}%` },
+            { label: 'Price saved in SAP', formula: `Price list ${r.priceListNum}`, value: Number(r.newPrice).toFixed(2) },
+          ],
+          note: 'This price is now the current price on the price list. Click Analyse again for a fresh recommendation based on it.',
+        };
+        it.explain = { suggestedPrice: applied };
         it.currentPrice = r.newPrice;
         it.listPrice    = r.newPrice;
         if (r.currency) it.currency = r.currency;
@@ -21715,7 +22350,7 @@ BRAND BREAKDOWN:\n${brands}`;
       <div id="pf-kpi-stockout" style="font-size:22px;font-weight:700;color:#EF4444">—</div>
     </div>
     <div style="background:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 14px;border-top:3px solid #8B5CF6">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">12-Month Forecast</div>
+      <div id="pf-kpi-fc12m-label" style="font-size:11px;color:var(--muted);margin-bottom:4px">12-Month Forecast</div>
       <div id="pf-kpi-fc12m" style="font-size:22px;font-weight:700;color:#8B5CF6">—</div>
     </div>
   </div>
@@ -21744,7 +22379,7 @@ BRAND BREAKDOWN:\n${brands}`;
           <th style="padding:8px 12px;text-align:left;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border)">Item Name</th>
           <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap">Avg Monthly</th>
           <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap">3-Month FC</th>
-          <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap">12-Month FC</th>
+          <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap" id="pf-th-fc12m">12-Month FC</th>
           <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border)">Trend</th>
           <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap">Stock Cover</th>
           <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border)">Risk</th>
@@ -21913,6 +22548,7 @@ BRAND BREAKDOWN:\n${brands}`;
     setEl('pf-kpi-declining', s.declining    || 0);
     setEl('pf-kpi-stockout',  s.highStockout || 0);
     setEl('pf-kpi-fc12m',     (s.totalFc12m  || 0).toLocaleString());
+    window.pfSetHorizonLabels?.(s.horizonMonths);
 
     const statusEl = document.getElementById('pf-status');
     if (statusEl) statusEl.textContent = `✓ ${PF.items.length} products loaded from chat · ${s.dataSource || 'SAP'} · ${s.periodFrom || ''} → ${s.periodTo || ''}`;
@@ -21983,6 +22619,14 @@ BRAND BREAKDOWN:\n${brands}`;
   window.pfOnGroupChange = function() {};
 
   // ── Run analysis ────────────────────────────────────────────────────────────
+  // The forecast total covers the chosen horizon (3 / 6 / 12 months), so its labels follow it.
+  window.pfSetHorizonLabels = function(months) {
+    const m = Number(months) || 12;
+    const lbl = document.getElementById('pf-kpi-fc12m-label'), th = document.getElementById('pf-th-fc12m');
+    if (lbl) lbl.textContent = `${m}-Month Forecast`;
+    if (th) th.textContent = `${m}-Month FC`;
+  };
+
   window.pfRunAnalysis = async function() {
     const btn         = document.getElementById('pf-analyse-btn');
     const statusEl    = document.getElementById('pf-status');
@@ -22037,6 +22681,7 @@ BRAND BREAKDOWN:\n${brands}`;
       document.getElementById('pf-kpi-declining').textContent = s.declining    || 0;
       document.getElementById('pf-kpi-stockout').textContent  = s.highStockout || 0;
       document.getElementById('pf-kpi-fc12m').textContent     = (s.totalFc12m  || 0).toLocaleString();
+      window.pfSetHorizonLabels?.(s.horizonMonths || horizon);
 
       const src = `${s.dataSource || 'SAP'} · ${(s.rowCount || 0).toLocaleString()} rows`;
       statusEl.textContent = `✓ ${PF.items.length} products analysed · ${src} · ${s.periodFrom} → ${s.periodTo}`;
@@ -22136,17 +22781,19 @@ BRAND BREAKDOWN:\n${brands}`;
         <td style="padding:9px 12px;text-align:center;font-weight:600;color:#059669">${(it.forecastQty3m||0).toLocaleString()}</td>
         <td style="padding:9px 12px;text-align:center;font-weight:700;color:#7C3AED">${(it.forecastQty12m||0).toLocaleString()}</td>
         <td style="padding:9px 12px;text-align:center">
-          <span style="background:${ts.bg};color:${ts.color};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${ts.icon} ${it.trendLabel} (${it.trendPct > 0 ? '+' : ''}${it.trendPct}%)</span>
+          <span${agxAttr('pf', it.itemCode+':t', it.explain?.trend, it.itemCode)} style="background:${ts.bg};color:${ts.color};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${ts.icon} ${it.trendLabel} (${it.trendPct > 0 ? '+' : ''}${it.trendPct}%)</span>
         </td>
-        <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:12px">${it.weeksOfCover >= 999 ? '∞' : it.weeksOfCover + ' wks'}</td>
+        <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:12px"><span${agxAttr('pf', it.itemCode+':w', it.explain?.stockoutRisk, it.itemCode)}>${it.weeksOfCover >= 999 ? '∞' : it.weeksOfCover + ' wks'}</span></td>
         <td style="padding:9px 12px;text-align:center">
-          <span style="background:${rs.bg};color:${rs.color};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600">${it.stockoutRisk}</span>
+          <span${agxAttr('pf', it.itemCode+':r', it.explain?.stockoutRisk, it.itemCode)} style="background:${rs.bg};color:${rs.color};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600">${it.stockoutRisk}</span>
         </td>
         <td style="padding:9px 12px;text-align:center">
+          <div${agxAttr('pf', it.itemCode+':c', it.explain?.confidence, it.itemCode)}>
           <div style="height:6px;background:#F3F4F6;border-radius:3px;width:60px;margin:auto;overflow:hidden">
             <div style="height:100%;background:${confidenceColor};width:${it.confidence}%;border-radius:3px"></div>
           </div>
           <div style="font-size:10px;color:${confidenceColor};margin-top:2px">${it.confidence}%</div>
+          </div>
         </td>
         <td style="padding:9px 12px;text-align:center">
           <button onclick="pfShowDetail('${it.itemCode.replace(/'/g,"\\'")}')" style="font-size:11px;padding:4px 10px;background:var(--blue);color:#fff;border:none;border-radius:4px;cursor:pointer">Detail</button>
@@ -22178,6 +22825,9 @@ BRAND BREAKDOWN:\n${brands}`;
     const rStyle = { HIGH: 'background:#FEE2E2;color:#991B1B', MEDIUM: 'background:#FEF3C7;color:#92400E', LOW: 'background:#D1FAE5;color:#065F46' };
     rBadge.style.cssText = rStyle[it.stockoutRisk] || rStyle.LOW;
     rBadge.textContent = `${it.stockoutRisk} Stockout Risk`;
+    agxBind(tBadge, 'pfm', 'trend', it.explain?.trend, it.itemCode);
+    agxBind(rBadge, 'pfm', 'risk', it.explain?.stockoutRisk, it.itemCode);
+    agxBind(document.getElementById('pf-modal-weeks'), 'pfm', 'weeks', it.explain?.stockoutRisk, it.itemCode);
 
     // History chart
     pfRenderBarChart('pf-modal-history-chart', 'pf-modal-history-labels', it.monthlyHistory || [], '#3B82F6');
@@ -22384,6 +23034,7 @@ BRAND BREAKDOWN:\n${brands}`;
     <label style="font-size:12px;font-weight:600;color:var(--muted)">
       <input type="checkbox" id="ro-dry-run" checked style="margin-right:4px">Dry Run
     </label>
+    <button type="button" id="ro-tiers-btn" onclick="roOpenTiers()" title="VIP customers and high-tier customer groups used in the Customer tier score" style="height:32px;padding:0 12px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:12px;font-weight:600;color:#991B1B">★ Customer tiers <span id="ro-tiers-sum" style="font-weight:400;color:var(--muted)"></span></button>
     <button id="ro-scan-btn" onclick="roRunScan()" style="height:32px;padding:0 18px;background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       Scan Orders
@@ -26704,7 +27355,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
 
     // ── Utilities ──────────────────────────────────────────────────────────────
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-    const cur = () => state.meta?.currency?.symbol || '';
+    const cur = () => '$';
     const fmt = (n, dp = 2) => {
       if (n === null || n === undefined || !Number.isFinite(n)) return '—';
       const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -28980,6 +29631,99 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
   </div>
 </div>
 
+<!-- ── Shared "How is this calculated?" popup for standalone agent screens ──
+     Same look as the Rush Orders score/tag popup. Backends attach
+     row.explain = { <field>: { title?, parts?, steps?, rules?, result?, note? } }
+       parts — score components (summed):  [{ label, max, points, formula, detail }]
+       steps — calculation steps:          [{ label, formula?, value, detail? }]
+       rules — decision table:             [{ rule, result, hit? }]  (hit = the rule that applied)
+     Usage in a table template:  <span ${agxAttr('ns', key, ex, 'Item X')}>value</span>
+-->
+<style>
+  [data-agx]{cursor:pointer;transition:filter .12s,box-shadow .12s}
+  [data-agx]:hover{filter:brightness(.94);box-shadow:0 0 0 2px rgba(37,99,235,.25);border-radius:6px}
+  #agx-modal table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+  #agx-modal th{padding:6px 8px;text-align:left;background:#F8FAFC;border-bottom:2px solid #E2E8F0;font-size:11px;color:#475569}
+  #agx-modal td{padding:6px 8px;border-bottom:1px solid #F1F5F9;vertical-align:top}
+  #agx-modal tr.agx-hit td{background:#FEF9C3}
+  #agx-modal .agx-hint{font-size:10px;color:#94A3B8}
+</style>
+<div id="agx-modal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10001;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:640px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
+    <div style="background:linear-gradient(135deg,#1E293B,#334155);padding:14px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#93C5FD" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span id="agx-title" style="font-size:14px;font-weight:700;color:#fff;flex:1"></span>
+      <button onclick="document.getElementById('agx-modal').style.display='none'" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;cursor:pointer">&times;</button>
+    </div>
+    <div id="agx-body" style="padding:16px 20px;font-size:12px;line-height:1.6;color:#374151;overflow-y:auto"></div>
+  </div>
+</div>
+<script>
+(function() {
+  const STORE = new Map();
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const val = v => typeof v === 'number' ? esc(v.toLocaleString(undefined, { maximumFractionDigits: 2 })) : esc(v);
+
+  // Register an explanation and return the attributes that make an element open it.
+  // Returns '' when there is nothing to explain, so the cell renders exactly as before.
+  window.agxAttr = function(ns, key, ex, who) {
+    if (!ex) return '';
+    const id = `${ns}:${key}`;
+    STORE.set(id, { ex, who });
+    return ` data-agx="${esc(id)}" onclick="event.stopPropagation();agxOpen(this.dataset.agx)" title="Click to see how this is calculated"`;
+  };
+  // Make an existing DOM element (e.g. in a detail modal) open an explanation.
+  window.agxBind = function(el, ns, key, ex, who) {
+    if (!el) return;
+    if (!ex) { el.removeAttribute('data-agx'); el.onclick = null; return; }
+    const id = `${ns}:${key}`;
+    STORE.set(id, { ex, who });
+    el.setAttribute('data-agx', id);
+    el.title = 'Click to see how this is calculated';
+    el.onclick = e => { e.stopPropagation(); agxOpen(id); };
+  };
+  window.agxOpen = function(id) {
+    const hit = STORE.get(id);
+    if (hit) agxShow(hit.ex, hit.who);
+  };
+  window.agxShow = function(ex, who) {
+    if (!ex) return;
+    const parts = ex.parts || [], steps = ex.steps || [], rules = ex.rules || [];
+    let html = '';
+    if (parts.length) {
+      const total = parts.reduce((s, p) => s + Number(p.points || 0), 0);
+      const max   = parts.reduce((s, p) => s + Number(p.max || 0), 0);
+      html += `<table><thead><tr><th>Component</th><th>How it is calculated</th><th style="text-align:right">Points</th></tr></thead><tbody>
+        ${parts.map(p => `<tr><td><b>${esc(p.label)}</b>${p.detail ? `<div class="agx-hint">${esc(p.detail)}</div>` : ''}</td>
+          <td>${esc(p.formula)}</td><td style="text-align:right;white-space:nowrap"><b>${val(p.points)}</b> <span class="agx-hint">/ ${val(p.max)}</span></td></tr>`).join('')}
+        <tr style="background:#F8FAFC"><td><b>Total</b></td><td class="agx-hint">${parts.map(p => val(p.points)).join(' + ')}</td>
+          <td style="text-align:right;white-space:nowrap"><b>${val(Math.round(total))}</b> <span class="agx-hint">/ ${val(max)}</span></td></tr></tbody></table>`;
+    }
+    if (steps.length) {
+      html += `<table><thead><tr><th>Step</th><th>How it is calculated</th><th style="text-align:right">Value</th></tr></thead><tbody>
+        ${steps.map(s => `<tr><td><b>${esc(s.label)}</b>${s.detail ? `<div class="agx-hint">${esc(s.detail)}</div>` : ''}</td>
+          <td>${esc(s.formula || '')}</td><td style="text-align:right;white-space:nowrap"><b>${val(s.value)}</b></td></tr>`).join('')}
+        ${ex.result ? `<tr style="background:#F8FAFC"><td colspan="2"><b>${esc(ex.result.label)}</b></td><td style="text-align:right;white-space:nowrap"><b>${val(ex.result.value)}</b></td></tr>` : ''}
+        </tbody></table>`;
+    } else if (ex.result && !parts.length) {
+      html += `<div style="font-size:13px;margin-bottom:10px">${esc(ex.result.label)}: <b>${val(ex.result.value)}</b></div>`;
+    }
+    if (rules.length) {
+      html += `<div class="agx-hint" style="margin-bottom:2px">Decision rules (the one that applied is highlighted):</div>
+        <table><thead><tr><th>Rule</th><th>Result</th></tr></thead><tbody>
+        ${rules.map(r => `<tr class="${r.hit ? 'agx-hit' : ''}"><td>${r.hit ? '▶ <b>' + esc(r.rule) + '</b>' : esc(r.rule)}</td>
+          <td>${r.hit ? '<b>' + esc(r.result) + '</b>' : esc(r.result)}</td></tr>`).join('')}
+        </tbody></table>`;
+    }
+    if (ex.note) html += `<div class="agx-hint" style="font-size:11px">${esc(ex.note)}</div>`;
+    const title = ex.title || 'How this is calculated';
+    document.getElementById('agx-title').textContent = who ? `${title} — ${who}` : title;
+    document.getElementById('agx-body').innerHTML = html || '<em>No explanation available — run a new scan.</em>';
+    document.getElementById('agx-modal').style.display = 'flex';
+  };
+})();
+</script>
+
 <div id="ro-action-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:600;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:12px;width:520px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
     <div style="background:linear-gradient(135deg,#7F1D1D,#991B1B);padding:14px 20px;display:flex;align-items:center;gap:10px">
@@ -29085,6 +29829,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
     panel.style.display = 'flex';
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('nav-rush-orders')?.classList.add('active');
+    window.roTiersSummary?.();
     // Check for pre-loaded data from main chat
     if (window.__roPendingLoad) {
       window.__roInjectData(window.__roPendingLoad);
@@ -29101,6 +29846,54 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
   };
 
   // ── Run scan ────────────────────────────────────────────────────────────────
+  // ── Customer tiers (VIP customers → 20 pts, high-tier groups → 15 pts, others 5) ──
+  // Saved per company in this browser and sent with every scan.
+  const roTiersKey = () => `ro-tiers-${(document.getElementById('active-company-label')?.textContent || 'default').trim()}`;
+  function roTiers() {
+    try { const v = JSON.parse(localStorage.getItem(roTiersKey()) || '{}'); return { vip: v.vip || [], groups: v.groups || [] }; }
+    catch { return { vip: [], groups: [] }; }
+  }
+  function roTiersSummary() {
+    const t = roTiers(), el = document.getElementById('ro-tiers-sum');
+    if (el) el.textContent = t.vip.length || t.groups.length ? `(${t.vip.length} VIP · ${t.groups.length} group${t.groups.length === 1 ? '' : 's'})` : '(not set)';
+  }
+  window.roOpenTiers = async function() {
+    const t = roTiers();
+    const bg = document.createElement('div');
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2100;display:flex;align-items:center;justify-content:center;padding:16px';
+    bg.innerHTML = `<div style="background:#fff;border-radius:8px;width:560px;max-width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+      <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB;font-weight:700;font-size:14px">★ Customer tiers — Rush Order score</div>
+      <div style="padding:14px 16px;overflow:auto;display:flex;flex-direction:column;gap:12px;font-size:12px">
+        <div style="color:#6B7280">The <b>Customer tier</b> factor gives <b>20 points</b> to VIP customers, <b>15</b> to customers in a high-tier group and <b>5</b> to everyone else. Saved for this company in this browser.</div>
+        <label style="display:flex;flex-direction:column;gap:4px;font-weight:600">VIP customer codes <span style="font-weight:400;color:#6B7280">comma or new line separated, e.g. C00001, C00025</span>
+          <textarea id="ro-tiers-vip" rows="3" style="font:12px ui-monospace,Consolas,monospace;padding:6px 8px;border:1px solid #D0D7E3;border-radius:4px">${t.vip.join(', ')}</textarea></label>
+        <div style="font-weight:600">High-tier customer groups</div>
+        <div id="ro-tiers-groups" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px;max-height:220px;overflow:auto;border:1px solid #E5E7EB;border-radius:4px;padding:8px">Loading customer groups…</div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:10px 16px;border-top:1px solid #E5E7EB">
+        <button data-x style="font-size:12px;padding:6px 14px;border-radius:4px;border:1px solid #CBD5E1;background:#fff;cursor:pointer">Cancel</button>
+        <button data-save style="font-size:12px;padding:6px 14px;border-radius:4px;border:1px solid #991B1B;background:#991B1B;color:#fff;cursor:pointer;font-weight:600">Save</button></div></div>`;
+    const close = () => bg.remove();
+    bg.addEventListener('click', ev => { if (ev.target === bg) close(); });
+    bg.querySelector('[data-x]').onclick = close;
+    bg.querySelector('[data-save]').onclick = () => {
+      const vip = bg.querySelector('#ro-tiers-vip').value.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean);
+      const groups = [...bg.querySelectorAll('#ro-tiers-groups input:checked')].map(x => x.value);
+      try { localStorage.setItem(roTiersKey(), JSON.stringify({ vip, groups })); } catch {}
+      roTiersSummary(); close();
+    };
+    document.body.appendChild(bg);
+    const box = bg.querySelector('#ro-tiers-groups');
+    try {
+      const r = await apiGet('/api/rush-orders/customer-groups');
+      if (!r.ok) throw new Error(r.error || 'failed');
+      box.innerHTML = r.groups.length ? r.groups.map(g => `<label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" value="${escHtml(g.code)}" ${t.groups.includes(String(g.code)) ? 'checked' : ''}>${escHtml(g.name)} <span style="color:#9CA3AF">(${escHtml(g.code)})</span></label>`).join('')
+        : '<span style="color:#6B7280">No customer groups found.</span>';
+    } catch (err) { box.innerHTML = `<span style="color:#991B1B">Could not load customer groups: ${escHtml(err.message)}</span>`; }
+  };
+  window.roTiersSummary = roTiersSummary;
+  setTimeout(roTiersSummary, 0);
+
   window.roRunScan = async function() {
     const btn    = document.getElementById('ro-scan-btn');
     const status = document.getElementById('ro-status');
@@ -29125,9 +29918,11 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       const dryRun   = document.getElementById('ro-dry-run').checked;
       const createAl = document.getElementById('ro-create-activities').checked;
 
+      const tiers = roTiers();
       const r = await apiPost('/api/rush-orders/scan', {
         urgentWithinDays: days, autoApproveMaxCost: maxCost,
         maxExpediteCost: maxCost * 10, dryRun, createActivities: createAl, useAI: false,
+        vipCustomers: tiers.vip, highTierGroups: tiers.groups,
       });
 
       clearInterval(ticker);
@@ -29767,29 +30562,90 @@ window.roAskFollowUp = function() {
     }
   }
 
-  // Calendar picker for the due-date step (shown beside the quick-date chips)
+  // Calendar picker for the due-date step (shown beside the quick-date chips).
+  // Self-drawn popup — does not rely on the browser's native <input type=date> popup.
   function praShowDatePicker() {
-    const qrArea = document.getElementById('pra-qr-area');
+    agentDatePicker('pra-qr-area', dt => { praMarkQRUsed(); praSend(dt); });
+  }
+
+  // Shared "📅 Pick date" chip + calendar popup for agent quick-reply rows.
+  // onPick(YYYY-MM-DD) fires when the user hits Set. Used by PR Agent and PR → PO.
+  window.agentDatePicker = function(qrAreaId, onPick) {
+    const qrArea = document.getElementById(qrAreaId);
     if (!qrArea) return;
-    const d = new Date(), pad = n => String(n).padStart(2, '0');
-    const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const pad = n => String(n).padStart(2, '0');
+    const iso = dt => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let selected = null;
+    let view = new Date(today.getFullYear(), today.getMonth(), 1);
+
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:1px solid var(--blue);border-radius:20px;padding:2px 4px 2px 12px;background:#fff';
+    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:1px solid var(--blue);border-radius:20px;padding:2px 4px 2px 12px;background:#fff;cursor:pointer';
     const lbl = document.createElement('span');
     lbl.textContent = '📅 Pick date:';
     lbl.style.cssText = 'font-size:12px;color:var(--blue);font-weight:500';
-    const inp = document.createElement('input');
-    inp.type = 'date'; inp.min = todayStr;
-    inp.style.cssText = 'border:none;outline:none;font-size:12px;font-family:var(--font);color:var(--text);background:transparent';
+    const val = document.createElement('span');
+    val.textContent = 'YYYY-MM-DD';
+    val.style.cssText = 'font-size:12px;font-family:var(--font);color:#89919a;min-width:78px';
     const btn = document.createElement('button');
     btn.textContent = 'Set';
     btn.disabled = true;
     btn.style.cssText = 'background:var(--blue);color:#fff;border:none;border-radius:16px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);opacity:.5';
-    inp.addEventListener('change', () => { btn.disabled = !inp.value; btn.style.opacity = inp.value ? '1' : '.5'; });
-    btn.onclick = () => { if (!inp.value) return; praMarkQRUsed(); praSend(inp.value); };
-    wrap.appendChild(lbl); wrap.appendChild(inp); wrap.appendChild(btn);
+    wrap.appendChild(lbl); wrap.appendChild(val); wrap.appendChild(btn);
     qrArea.appendChild(wrap);
-  }
+
+    const closePop = () => { document.getElementById('pra-cal-pop')?.remove(); document.removeEventListener('mousedown', onOutside, true); };
+    const onOutside = e => { const p = document.getElementById('pra-cal-pop'); if (p && !p.contains(e.target) && !wrap.contains(e.target)) closePop(); };
+
+    function render(pop) {
+      const y = view.getFullYear(), m = view.getMonth();
+      const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
+      const canPrev = new Date(y, m, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
+      const navBtn = 'border:none;background:transparent;cursor:pointer;font-size:16px;width:28px;height:28px;border-radius:50%;color:var(--blue)';
+      let h = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <button data-nav="-1" style="${navBtn};${canPrev ? '' : 'opacity:.3;cursor:default'}" ${canPrev ? '' : 'disabled'}>‹</button>
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${view.toLocaleString('en-US', { month: 'long' })} ${y}</div>
+        <button data-nav="1" style="${navBtn}">›</button></div>
+        <div style="display:grid;grid-template-columns:repeat(7,32px);gap:2px;text-align:center">`;
+      ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(w => { h += `<div style="font-size:10.5px;color:#89919a;font-weight:600;padding:2px 0">${w}</div>`; });
+      for (let i = 0; i < first; i++) h += '<div></div>';
+      for (let dd = 1; dd <= days; dd++) {
+        const dt = new Date(y, m, dd), s = iso(dt), past = dt < today;
+        const isSel = s === selected, isToday = dt.getTime() === today.getTime();
+        const st = isSel ? 'background:var(--blue);color:#fff;font-weight:600'
+                 : past ? 'color:#c4c8cc;cursor:default'
+                 : `color:var(--text);${isToday ? 'border:1px solid var(--blue);' : ''}`;
+        h += `<button ${past ? 'disabled' : `data-d="${s}"`} style="width:32px;height:30px;border:none;border-radius:6px;background:transparent;font-size:12px;cursor:pointer;font-family:var(--font);${st}">${dd}</button>`;
+      }
+      h += '</div>';
+      pop.innerHTML = h;
+      pop.querySelectorAll('[data-nav]').forEach(b => b.onclick = e => { e.stopPropagation(); view = new Date(y, m + (+b.dataset.nav), 1); render(pop); });
+      pop.querySelectorAll('[data-d]').forEach(b => b.onclick = e => {
+        e.stopPropagation();
+        selected = b.dataset.d;
+        val.textContent = selected; val.style.color = 'var(--text)';
+        btn.disabled = false; btn.style.opacity = '1';
+        closePop();
+      });
+    }
+
+    function openPop() {
+      if (document.getElementById('pra-cal-pop')) { closePop(); return; }
+      const pop = document.createElement('div');
+      pop.id = 'pra-cal-pop';
+      pop.style.cssText = 'position:fixed;z-index:10000;background:#fff;border:1px solid #d9d9d9;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px;font-family:var(--font)';
+      document.body.appendChild(pop);
+      render(pop);
+      // open above the chip row (it sits at the bottom of the panel); fall back to below if no room
+      const r = wrap.getBoundingClientRect(), ph = pop.offsetHeight, pw = pop.offsetWidth;
+      pop.style.top = (r.top - ph - 6 >= 0 ? r.top - ph - 6 : r.bottom + 6) + 'px';
+      pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pw - 8)) + 'px';
+      document.addEventListener('mousedown', onOutside, true);
+    }
+
+    wrap.addEventListener('click', e => { if (e.target !== btn) openPop(); });
+    btn.onclick = e => { e.stopPropagation(); if (!selected) return; closePop(); onPick(selected); };
+  };
 
   function praMarkQRUsed() {
     const qrArea = document.getElementById('pra-qr-area');
@@ -31520,11 +32376,14 @@ window.roAskFollowUp = function() {
         ptpoAddMsg('bot', data.reply, hasCombo ? [] : (data.quickReplies || []));
         if (hasPRList)          ptpoShowPRCombo(data.prList, data.quickReplies || []);
         else if (hasVendorList) ptpoShowVendorCombo(data.vendorList);
+        if (data.step === 'CONFIRM_DATE' && window.agentDatePicker)
+          agentDatePicker('ptpo-qr-area', dt => { ptpoMarkQRUsed(); ptpoSend(dt); });
         ptpoUpdateStep(data.step);
         _ptpoState.mergedLines   = data.mergedLines  || [];
         _ptpoState.vendor        = data.vendor;
         _ptpoState.dueDate       = data.dueDate;
         _ptpoState.selectedCount = data.selectedCount || 0;
+        if (Array.isArray(data.taxCodes) && data.taxCodes.length) _ptpoState.taxCodes = data.taxCodes;
         if (data.meta?.docEntry) _ptpoState.result = data.meta;
         ptpoUpdateSummary();
       }
@@ -31875,6 +32734,16 @@ window.roAskFollowUp = function() {
            onchange="ptpoEditLine(${idx},'warehouseCode',this.value,true)"
            style="width:52px;border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-size:11px;font-family:var(--font)">`
       : (l.warehouseCode ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f0f4ff;color:var(--blue)">${escHtml(l.warehouseCode)}</span>` : '');
+    let taxHtml = '';
+    if (editable) {
+      const codes = [...(_ptpoState.taxCodes || [])];
+      if (l.taxCode && !codes.some(t => t.code === l.taxCode)) codes.unshift({ code: l.taxCode, rate: 0 });
+      taxHtml = `<select class="ptpo-tax-select" data-idx="${idx}" onchange="ptpoEditLine(${idx},'taxCode',this.value,true)"
+           style="max-width:96px;border:1px solid ${l.taxCode?'var(--border)':'#f59e0b'};border-radius:4px;padding:1px 3px;font-size:11px;font-family:var(--font);background:#fff">
+           <option value="">— None —</option>${codes.map(t => `<option value="${escHtml(t.code)}"${t.code===l.taxCode?' selected':''}>${escHtml(t.code)}${t.rate?` (${t.rate}%)`:''}</option>`).join('')}</select>`;
+    } else if (l.taxCode) {
+      taxHtml = `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#fff7ed;color:#b45309">Tax: ${escHtml(l.taxCode)}</span>`;
+    }
     return `<div style="border:1px solid var(--border);border-radius:4px;padding:8px 10px;margin-bottom:6px;background:var(--bg)">
       <div style="font-size:11.5px;font-weight:700;color:#1a5c2e">${escHtml(l.itemCode||'')}</div>
       <div style="font-size:11px;color:var(--text);margin:1px 0;line-height:1.3">${escHtml(l.itemName||'—')}</div>
@@ -31882,6 +32751,7 @@ window.roAskFollowUp = function() {
         <span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e">Qty: ${fNpo(l.qty,0)} ${l.unit||'EA'}</span>
         <label style="font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:3px">${editable?'Price:':''}${priceHtml}</label>
         <label style="font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:3px">${editable?'Whs:':''}${whHtml}</label>
+        ${editable ? `<label style="font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:3px">Tax:${taxHtml}</label>` : taxHtml}
         ${l.sourcePR ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#f5f0ff;color:#6d28d9">PR#${l.sourcePR}</span>` : ''}
         ${editable ? `<span data-lt="${idx}" style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e;font-weight:700">${lt>0?fNpo(lt):'—'}</span>`
                    : (lt > 0 ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:#e8f5ec;color:#1a5c2e">${fNpo(lt)}</span>` : '')}
@@ -31896,10 +32766,10 @@ window.roAskFollowUp = function() {
   window.ptpoEditLine = function(idx, field, value, sync) {
     const l = _ptpoState.mergedLines[idx];
     if (!l) return;
-    if (field === 'warehouseCode') l.warehouseCode = value;
+    if (field === 'warehouseCode' || field === 'taxCode') l[field] = value;
     else l[field] = parseFloat(value) || 0;
 
-    const inputSel = field === 'warehouseCode' ? '.ptpo-wh-input' : '.ptpo-price-input';
+    const inputSel = field === 'warehouseCode' ? '.ptpo-wh-input' : field === 'taxCode' ? '.ptpo-tax-select' : '.ptpo-price-input';
     document.querySelectorAll(`${inputSel}[data-idx="${idx}"]`).forEach(el => { if (el.value !== value) el.value = value; });
 
     const lt = (l.qty||0)*(l.unitPrice||0);
@@ -37958,7 +38828,7 @@ const _finOpen = new Set();   // expanded "section|group" keys in the statements
 const _finCharts = {};
 const FIN_C = { s1:'#2a78d6', s2:'#eb6834', s3:'#1baf7a', s4:'#eda100', up:'#1baf7a', down:'#e34948', total:'#2a78d6',
                 good:'#0f7b3f', bad:'#c0262d', grid:'#eef0f2', tick:'#6b7280', muted:'#9ca3af', ink:'#111827' };
-const finSym   = () => (window.APP_CURRENCY || { symbol: '₹' }).symbol;
+const finSym   = () => '$';
 const finMoney = v => (v == null || !isFinite(v)) ? '—' : fmtKpiValue(Number(v), 'inr');
 const finFull  = v => { if (v == null || !isFinite(v)) return '—'; const n = Math.round(Number(v)); const s = finSym() + Math.abs(n).toLocaleString(); return n < 0 ? `(${s})` : s; };
 const finPctTxt = v => (v == null || !isFinite(v)) ? 'n/m' : `${v.toFixed(1)}%`;
@@ -40278,6 +41148,8 @@ window.almReset = almReset;
 </script>
 
 <script src="/insight-agents.js"></script>
+<script src="/agent-about.js"></script>
+<script src="/agent-kpi-help.js"></script>
 <script src="/ocr-workbench.js"></script>
 <script>
 // ── Launchpad deep link ──────────────────────────────────────

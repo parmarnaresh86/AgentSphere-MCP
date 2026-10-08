@@ -243,9 +243,6 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
       } else if (avgSellingPrice > 0) {
         currentPrice = avgSellingPrice;
         priceSource  = 'Avg realized selling price (last 12 months)';
-      } else if (impliedPrice > 0) {
-        currentPrice = impliedPrice;
-        priceSource  = `Implied price at ${marginTarget}% margin target`;
       } else if (costPrice > 0) {
         currentPrice = costPrice;          // treat cost as floor price
         priceSource  = 'Cost price (no selling price available — priced at cost)';
@@ -256,6 +253,8 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
         continue;                          // truly no data — skip
       }
 
+      // No price-list price and no sales in 12 months: there is no selling price to adjust yet.
+      const hasSellingPrice = listPrice > 0 || avgSellingPrice > 0;
       const calcMarginPct = costPrice > 0 && currentPrice > 0
         ? ((currentPrice - costPrice) / currentPrice) * 100 : gpPct;
       const marginGap = calcMarginPct - marginTarget;
@@ -298,6 +297,7 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
 
       // ── Competitor / benchmark signal ─────────────────────────────────────────
       const benchmarkGP    = 35;
+      const SEVERE_MARGIN_GAP = 10;   // margin gap (points) above which Margin Recovery applies instead of Margin Improvement
       const priceVsCost    = costPrice > 0 ? currentPrice / costPrice : 1;
       // discount depth: how far avg selling price is below the implied (target-margin) price
       const discountDepth  = impliedPrice > 0 && avgSellingPrice > 0
@@ -320,59 +320,65 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
       // ── Final recommendation (9 scenarios) ───────────────────────────────────
       let recommendation, changePct, reason, scenario;
 
-      // 1. Dead stock: has stock, zero sales for 12 months → aggressive price cut
-      if (demandSignal === 'none' && onHand > 0 && inventorySignal !== 'zero_stock') {
+      // 1. Price establishment: no price-list price and no sales → set the first price at the
+      //    target margin (cost ÷ (1 − target)); without a cost the price must be set manually.
+      if (!hasSellingPrice) {
+        scenario = 'Price Establishment';
+        if (costPrice > 0) {
+          recommendation = 'increase'; changePct = (1 / (1 - marginTarget / 100) - 1) * 100;
+          reason = `No selling price yet — set the first price at cost ÷ (1 − ${marginTarget}%) = ${marginTarget}% margin`;
+        } else {
+          recommendation = 'hold'; changePct = 0;
+          reason = 'No price, no sales and no cost in SAP — set the price manually';
+        }
+
+      // 2. Dead stock: has stock, zero sales for 12 months → aggressive price cut
+      } else if (demandSignal === 'none' && onHand > 0 && inventorySignal !== 'zero_stock') {
         recommendation = 'decrease'; changePct = -15;
         scenario = 'Dead Stock';
         reason = `No sales in 12 months with ${onHand} units on hand — aggressive price reduction to clear dead stock`;
 
-      // 2. Discount heavy: customers consistently getting large discounts → recover margin
+      // 3. Discount heavy: customers consistently getting large discounts → recover margin
       } else if (competitorSignal === 'discount_heavy') {
         recommendation = 'increase'; changePct = Math.min(15, discountDepth * 0.7);
         scenario = 'Discount Recovery';
         reason = `Avg ${discountDepth.toFixed(1)}% discount below target price — increase list price to recover margin leakage`;
 
-      // 3. Margin critically below target → price increase required
-      } else if (marginSignal === 'below_target') {
+      // 4. Margin far below target (more than SEVERE_MARGIN_GAP points) → strong price increase
+      } else if (marginSignal === 'below_target' && marginGap < -SEVERE_MARGIN_GAP) {
         recommendation = 'increase'; changePct = Math.min(20, Math.abs(marginGap) * 1.3);
         scenario = 'Margin Recovery';
         reason = `GP ${calcMarginPct.toFixed(1)}% is ${Math.abs(marginGap).toFixed(1)}% below ${marginTarget}% target — price increase required`;
 
-      // 4. Shortage pricing: high demand + understocked → increase while supply is tight
+      // 5. Shortage pricing: high demand + understocked → increase while supply is tight
       } else if (demandSignal === 'high' && inventorySignal === 'understocked') {
         recommendation = 'increase'; changePct = 8;
         scenario = 'Shortage Pricing';
         reason = `High demand (${Math.round(quantity)} units/yr) with stock below minimum — increase price to manage demand during shortage`;
 
-      // 5. Strong demand + healthy stock → capture value
+      // 6. Strong demand + healthy stock → capture value
       } else if (demandSignal === 'high' && inventorySignal !== 'understocked' && marginSignal !== 'above_target') {
         recommendation = 'increase'; changePct = 5;
         scenario = 'Demand Capture';
         reason = `Strong demand signal — price increase to capture value while demand is high`;
 
-      // 6. Medium demand + below margin → moderate increase
-      } else if (demandSignal === 'medium' && marginSignal === 'below_target') {
+      // 7. Margin moderately below target (2–SEVERE_MARGIN_GAP points) with sales → partial increase
+      } else if (marginSignal === 'below_target' && demandSignal !== 'none') {
         recommendation = 'increase'; changePct = Math.min(10, Math.abs(marginGap));
         scenario = 'Margin Improvement';
-        reason = `Moderate demand with margin ${Math.abs(marginGap).toFixed(1)}% below target — partial price increase`;
+        reason = `Margin ${Math.abs(marginGap).toFixed(1)}% below target with ${demandSignal} demand — partial price increase`;
 
-      // 7. Overstocked + weak demand → clear inventory
+      // 8. Overstocked + weak demand → clear inventory (no-demand items are already Dead Stock)
       } else if (inventorySignal === 'overstocked' && demandSignal !== 'high') {
-        recommendation = 'decrease'; changePct = demandSignal === 'none' ? -12 : -7;
+        recommendation = 'decrease'; changePct = -7;
         scenario = 'Overstock Clearance';
-        reason = `Inventory ${demandSignal === 'none' ? 'well above' : 'above'} maximum with ${demandSignal} demand — reduce price to accelerate stock movement`;
+        reason = `Inventory above maximum with ${demandSignal} demand — reduce price to accelerate stock movement`;
 
-      // 8. Underpriced vs market benchmark
+      // 9. Underpriced vs market benchmark
       } else if (competitorSignal === 'underpriced' && demandSignal !== 'none') {
         recommendation = 'increase'; changePct = 8;
         scenario = 'Market Alignment';
         reason = `Realized margin ${gpPct.toFixed(1)}% below industry benchmark ~${benchmarkGP}% — align price with market`;
-
-      // 9. Unpriced / cost-floor items → establish pricing
-      } else if (priceSource.includes('Unpriced') || priceSource.includes('at cost')) {
-        recommendation = 'increase'; changePct = marginTarget;
-        scenario = 'Price Establishment';
-        reason = `Item has no established selling price — set price at ${marginTarget}% margin above cost`;
 
       // Hold: balanced
       } else {
@@ -382,6 +388,48 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
       }
 
       const suggestedPrice = Math.round(currentPrice * (1 + changePct / 100) * 100) / 100;
+
+      // "How is this calculated?" popup — built from the same variables as the rules above.
+      const _f = (n, d = 2) => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: d });
+      const chgFormula = {
+        'Dead Stock':          'Fixed −15% (clear dead stock)',
+        'Discount Recovery':   `Discount depth ${_f(discountDepth, 1)}% × 0.7, max 15%`,
+        'Margin Recovery':     `Margin gap ${_f(Math.abs(marginGap), 1)}% (more than ${SEVERE_MARGIN_GAP}%) × 1.3, max 20%`,
+        'Shortage Pricing':    'Fixed +8%',
+        'Demand Capture':      'Fixed +5%',
+        'Margin Improvement':  `Margin gap ${_f(Math.abs(marginGap), 1)}%, max 10%`,
+        'Overstock Clearance': 'Fixed −7%',
+        'Market Alignment':    'Fixed +8%',
+        'Price Establishment': costPrice > 0 ? `Cost ${_f(costPrice)} ÷ (1 − ${marginTarget}%) = ${marginTarget}% margin` : 'No cost — set the price manually',
+        'Balanced':            'No change (0%)',
+      }[scenario];
+      const pricingSteps = [
+        { label: 'Current price', formula: priceSource, value: _f(currentPrice) },
+        { label: 'Demand (units sold, 12 months)', formula: '>200 high · >30 medium · >0 low · 0 none', value: `${_f(quantity, 0)} → ${demandSignal}` },
+        { label: 'Inventory', formula: `On hand ${_f(onHand)} vs min ${_f(minStock)} / max ${_f(maxStock)} (overstocked above max + 10%)`, value: inventorySignal },
+        { label: 'Margin', formula: costPrice > 0 ? `(Price ${_f(currentPrice)} − cost ${_f(costPrice)}) ÷ price; target ${marginTarget}% (below if gap < −2%, above if > +8%)` : `Realized GP%; target ${marginTarget}%`, value: `${_f(calcMarginPct, 1)}% (gap ${_f(marginGap, 1)}%) → ${marginSignal}` },
+        { label: 'Discount / benchmark', formula: `Discount depth (target-margin price vs avg selling price) >15% = discount heavy; realized GP below ${benchmarkGP - 5}% = underpriced`, value: `${_f(discountDepth, 1)}% / GP ${_f(gpPct, 1)}% → ${competitorSignal}` },
+        { label: 'Change %', formula: `${scenario}: ${chgFormula}`, value: `${Math.round(changePct * 10) / 10}%` },
+        { label: 'Suggested price', formula: `Current ${_f(currentPrice)} × (1 + ${Math.round(changePct * 10) / 10}%), rounded to 2 decimals`, value: _f(suggestedPrice) },
+      ];
+      const pricingRules = [
+        ['Price Establishment', 'No price-list price and no sales in 12 months', `Cost ÷ (1 − ${marginTarget}%); no cost → set manually`],
+        ['Dead Stock', 'No sales in 12 months and stock on hand', '−15%'],
+        ['Discount Recovery', 'Avg discount more than 15% below target-margin price', '+ discount × 0.7 (max 15%)'],
+        ['Margin Recovery', `Margin more than ${SEVERE_MARGIN_GAP}% below target`, '+ gap × 1.3 (max 20%)'],
+        ['Shortage Pricing', 'High demand and stock below minimum', '+8%'],
+        ['Demand Capture', 'High demand, stock not short, margin not above target', '+5%'],
+        ['Margin Improvement', `Margin 2–${SEVERE_MARGIN_GAP}% below target and some sales`, '+ gap (max 10%)'],
+        ['Overstock Clearance', 'Stock above max + 10% and demand low or medium', '−7%'],
+        ['Market Alignment', `Realized GP below ${benchmarkGP - 5}% benchmark and some demand`, '+8%'],
+        ['Balanced', 'None of the above', 'Hold (0%)'],
+      ].map(([sc, rule, res], i) => ({ rule: `${i < 9 ? i + 1 + '. ' : ''}${sc}: ${rule}`, result: res, hit: sc === scenario }));
+      const pricingExplain = {
+        title: `How the suggested price is calculated — ${scenario}`,
+        steps: pricingSteps,
+        rules: pricingRules,
+        note: 'Rules are checked in order 1 → 9; the first one that matches decides the change.',
+      };
 
       result.push({
         itemCode: it.ItemCode,
@@ -394,6 +442,7 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
         recommendation,
         scenario,
         reason,
+        explain: { suggestedPrice: pricingExplain },  // also used for Change % / Recommendation in the UI
         currency: listEntry?.currency || '',
         listPrice,
         priceSource,
@@ -428,8 +477,11 @@ async function runPricingAnalysis(sap, { priceListNum = 1, marginTarget = 30 } =
       });
     }
 
+    // Decreases first, then increases, then holds; biggest change first within each group.
+    // (`??` not `||`: decrease has rank 0, which `||` treated as "unknown" and sorted last.)
     const ord = { decrease: 0, increase: 1, hold: 2 };
-    result.sort((a, b) => (ord[a.recommendation] || 3) - (ord[b.recommendation] || 3));
+    result.sort((a, b) => ((ord[a.recommendation] ?? 3) - (ord[b.recommendation] ?? 3))
+      || (Math.abs(b.changePct) - Math.abs(a.changePct)));
 
     return {
       items: result,
@@ -485,7 +537,7 @@ async function executePricingTool(name, args, sap, smlsvcDeps) {
     let items = data.items;
     if (args.itemCode) items = items.filter(i => i.itemCode === args.itemCode);
     else if (args.recommendation && args.recommendation !== 'all') items = items.filter(i => i.recommendation === args.recommendation);
-    items = [...items].sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct)).slice(0, limit);
+    items = [...items].sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct)).slice(0, limit).map(({ explain, ...i }) => i);
     return { items, summary: data.summary, priceListNum, marginTarget, source: data.source, totalMatching: items.length };
   }
   if (name === 'get_price_lists') {

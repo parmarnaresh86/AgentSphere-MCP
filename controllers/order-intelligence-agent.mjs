@@ -173,6 +173,50 @@ async function buildStockMap(sap, dbDeps) {
   return map;
 }
 
+// ── "How is this calculated?" popups ─────────────────────────────────────────
+// Built from the same variables used to compute each value, so they cannot drift.
+const _xf = n => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 2 });
+
+function oiItemExplain(s) {
+  return {
+    coveragePct: {
+      title: 'How item coverage % is calculated',
+      steps: [
+        { label: 'In stock', formula: 'Quantity on hand in SAP', value: s.onHand },
+        { label: 'Committed', formula: 'Quantity reserved by open sales orders', value: s.committed },
+        { label: 'Shortage', formula: `Committed ${_xf(s.committed)} − in stock ${_xf(s.onHand)}`, value: s.shortage },
+        { label: 'Coverage %', formula: `In stock ${_xf(s.onHand)} ÷ committed ${_xf(s.committed)} × 100`, value: `${s.coveragePct}%` },
+      ],
+      note: 'An item is "short" when what is in stock is less than what sales orders have committed.',
+    },
+  };
+}
+
+function oiOrderExplain({ shortLines, totalNeeded, totalAvailable, overallCovPct, severity }) {
+  const steps = shortLines.slice(0, 8).map(l => ({
+    label: l.itemCode,
+    detail: l.description || '',
+    formula: `Open qty ${_xf(l.openQty)} × item coverage ${l.coveragePct}% (rounded) → available ${_xf(l.available)}`,
+    value: `short ${_xf(l.shortage)}`,
+  }));
+  if (shortLines.length > 8) steps.push({ label: `+${shortLines.length - 8} more`, formula: 'Other short lines on this order', value: '' });
+  steps.push(
+    { label: 'Total needed', formula: 'Sum of open qty on short lines', value: totalNeeded },
+    { label: 'Total available', formula: 'Sum of estimated available qty', value: totalAvailable },
+    { label: 'Order coverage %', formula: `Available ${_xf(totalAvailable)} ÷ needed ${_xf(totalNeeded)} × 100`, value: `${overallCovPct}%` },
+  );
+  const rules = [
+    { rule: 'Coverage is 0% (nothing can be shipped)', result: 'CRITICAL', hit: severity === 'CRITICAL' },
+    { rule: 'Coverage below 50%', result: 'HIGH', hit: severity === 'HIGH' },
+    { rule: 'Coverage 50% or more (but some lines short)', result: 'MEDIUM', hit: severity === 'MEDIUM' },
+  ];
+  const note = "Each item's coverage = in stock ÷ committed across all open sales orders; it is applied to this order's open qty to estimate what can ship.";
+  return {
+    coverage: { title: `How coverage ${overallCovPct}% is calculated`, steps, note },
+    severity: { title: `Why severity is ${severity}`, steps, rules, note },
+  };
+}
+
 // ── Step 2: identify globally short items ────────────────────────────────────
 function getShortItems(stockMap) {
   const short = {};
@@ -184,6 +228,7 @@ function getShortItems(stockMap) {
         coveragePct: s.committed > 0 ? Math.round(s.onHand / s.committed * 100) : 100,
         affectedSOs: [],   // filled during SO scan
       };
+      short[code].explain = oiItemExplain(short[code]);
     }
   }
   return short;
@@ -305,6 +350,7 @@ async function scanOrderRisks(sap, dbDeps) {
       totalShortage:   totalNeeded - totalAvailable,
       overallCovPct,
       severity,
+      explain:         oiOrderExplain({ shortLines, totalNeeded, totalAvailable, overallCovPct, severity }),
     });
   };
 
@@ -430,12 +476,12 @@ async function executeOrderIntelTool(name, args, sap, dbDeps) {
     const data  = await scanOrderRisks(sap, dbDeps);
     let orders  = data.atRiskOrders;
     if (args.severity && args.severity !== 'all') orders = orders.filter(o => o.severity === args.severity);
-    return { orders: orders.slice(0, limit), summary: data.summary, totalMatching: orders.length };
+    return { orders: orders.slice(0, limit).map(({ explain, ...o }) => o), summary: data.summary, totalMatching: orders.length };
   }
   if (name === 'get_short_items') {
     const limit = Math.min(parseInt(args.limit) || 20, 100);
     const data  = await scanOrderRisks(sap, dbDeps);
-    return { shortItems: data.shortItems.slice(0, limit), summary: data.summary };
+    return { shortItems: data.shortItems.slice(0, limit).map(({ explain, ...i }) => i), summary: data.summary };
   }
   if (name === 'check_item_coverage') {
     const it = await sap.get(`/Items('${esc(args.itemCode)}')`, {

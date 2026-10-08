@@ -54,6 +54,32 @@ function getCacheItems() {
     FROM cache_items WHERE company_id=? AND Frozen='tNO' ORDER BY ItemName LIMIT 500`).all(cid);
 }
 
+// Items matching text typed in the chat box at the ADD_ITEM step. Searches the whole
+// item cache (the combo list is capped at 500 rows), every word must match code or
+// name; falls back to a live SAP search when the cache has no match.
+async function searchItems(sap, query) {
+  const words = query.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const where = words.map(() => '(ItemCode LIKE ? OR ItemName LIKE ?)').join(' AND ');
+  const rows = db.prepare(`SELECT ItemCode, ItemName, SalesUnit, SalesVATGroup, QuantityOnStock
+    FROM cache_items WHERE company_id=? AND Frozen='tNO' AND ${where} ORDER BY ItemName LIMIT 50`)
+    .all(getCompanyId(), ...words.flatMap(w => [`%${w}%`, `%${w}%`]));
+  if (rows.length) return rows;
+  try {
+    const q = query.replace(/'/g, "''");
+    const r = await sap.get('/Items', {
+      $filter:  `Frozen eq 'tNO' and (substringof('${q}',ItemCode) or substringof('${q}',ItemName))`,
+      $select:  'ItemCode,ItemName,SalesUnit,SalesVATGroup,QuantityOnStock',
+      $orderby: 'ItemName',
+      $top:     50,
+    });
+    return Array.isArray(r.value) ? r.value : [];
+  } catch (e) {
+    console.error('[SQ-Agent] searchItems error:', e.message);
+    return [];
+  }
+}
+
 function getCacheTaxCodes() {
   const cid = getCompanyId();
   return db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
@@ -325,7 +351,11 @@ export function createSalesQuotationRouter(deps) {
       if (!_sessions.has(sid)) _sessions.set(sid, initSession());
       const session = _sessions.get(sid);
       const sap     = getActiveSap();
-      const msg     = message.trim();
+      let   msg     = message.trim();
+      // Typing "done" at the add-item step does the same as the Done Adding Items button.
+      if (session.step === 'ADD_ITEM' && /^(done|finish(ed)?|review|no more( items)?|that'?s all)[.!]?$/i.test(msg)) {
+        msg = JSON.stringify({ action: 'done_items' });
+      }
       const msgL    = msg.toLowerCase();
 
       if (msg) session.history.push({ role: 'user', content: msg });
@@ -552,6 +582,24 @@ export function createSalesQuotationRouter(deps) {
       }
 
       // ── REVIEW_FORM — form open, awaiting post or navigation ───────────────
+      // ── ADD_ITEM — text typed in the chat box: cancel, or search items ────
+      else if (session.step === 'ADD_ITEM') {
+        if (/start over|reset|cancel/i.test(msgL)) {
+          Object.assign(session, initSession());
+          reply = `<div style="margin-bottom:6px">Session reset.</div>${buildCustomerComboHtml(getCacheCustomers())}`;
+          session.step = 'INIT';
+        } else {
+          const found = await searchItems(sap, msg);
+          const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+          // New form index so its element ids don't clash with the form already in the chat.
+          session._lineIdx = (session._lineIdx || 0) + 1;
+          reply = found.length
+            ? `<div style="font-size:13px;margin-bottom:6px">Found <strong>${found.length}</strong> item(s) matching <strong>"${escHtml(msg)}"</strong>. Select one:</div>${buildItemLineHtml(found, taxes, whs, session._lineIdx)}`
+            : `<div style="color:#b91c1c;margin-bottom:8px">No items found matching <strong>"${escHtml(msg)}"</strong>. Try another code or name, or select from the list:</div>${buildItemLineHtml(getCacheItems(), taxes, whs, session._lineIdx)}`;
+          quickReplies = (session._lines || []).length ? ['Done'] : [];
+        }
+      }
+
       else if (session.step === 'REVIEW_FORM') {
         if (/open|form|quotation|create|post/i.test(msgL)) {
           formData = buildFormData(session.selectedCustomer);

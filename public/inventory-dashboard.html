@@ -243,17 +243,17 @@ function setCurrency(c) {
   LOCALE = CUR.code === 'INR' ? 'en-IN' : 'en-US';
   if (window.Chart) Chart.defaults.locale = LOCALE;
   const el = document.getElementById('curNote');
-  if (el) el.textContent = `Amounts in ${CUR.code}${sym() && sym() !== CUR.code ? ` (${sym()})` : ''}`;
+  if (el) el.textContent = 'Amounts in USD ($)';
 }
 const fmtAmt = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString(LOCALE, { minimumFractionDigits:2, maximumFractionDigits:2 });
 const fmtQty = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString(LOCALE, { maximumFractionDigits:3 });
 const fmtInt = n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString(LOCALE);
 const fmtPct = n => n == null || isNaN(n) ? '—' : `${Number(n).toFixed(1)}%`;
-const sym = () => String(CUR.symbol || '').trim();
+// Every amount on the dashboard carries the USD sign
+const sym = () => '$';
 const fmtMoney = n => n == null || isNaN(n) ? '—' : `${n < 0 ? '-' : ''}${sym()}${fmtAmt(Math.abs(n))}`;
 const fmtShort = n => {
   const a = Math.abs(n), sg = n < 0 ? '-' : '';
-  if (CUR.code === 'INR') return sg + (a >= 1e7 ? (a/1e7).toFixed(2)+' Cr' : a >= 1e5 ? (a/1e5).toFixed(2)+' L' : a >= 1e3 ? (a/1e3).toFixed(1)+'K' : a.toFixed(0));
   return sg + (a >= 1e9 ? (a/1e9).toFixed(2)+'B' : a >= 1e6 ? (a/1e6).toFixed(2)+'M' : a >= 1e3 ? (a/1e3).toFixed(1)+'K' : a.toFixed(0));
 };
 const fmtShortMoney = n => { const t = fmtShort(n); return t.startsWith('-') ? `-${sym()}${t.slice(1)}` : `${sym()}${t}`; };
@@ -263,8 +263,8 @@ const fmtMonth = ym => { const m = /^(\d{4})-(\d{2})$/.exec(ym || ''); return m 
 function fmtVal(v, f) {
   if (v === '' || v == null) return '';
   switch (f) {
-    case 'amt': return fmtAmt(v); case 'qty': return fmtQty(v); case 'int': return fmtInt(v);
-    case 'pct': return fmtPct(v); case 'cost': return v ? Number(v).toLocaleString(LOCALE,{maximumFractionDigits:4}) : '—';
+    case 'amt': return fmtMoney(v); case 'qty': return fmtQty(v); case 'int': return fmtInt(v);
+    case 'pct': return fmtPct(v); case 'cost': return v ? `${v < 0 ? '-' : ''}${sym()}${Math.abs(Number(v)).toLocaleString(LOCALE,{maximumFractionDigits:4})}` : '—';
     case 'x': return v == null ? '—' : `${v}×`; default: return esc(v);
   }
 }
@@ -666,9 +666,9 @@ function transBreakdown(rows) {
   const list = [...m.values()].sort((a, b) => (b.inVal + b.outVal) - (a.inVal + a.outVal));
   if (!list.length) return '<span class="meta">No movements in this period — opening balance carried forward.</span>';
   return `<table class="sub"><thead><tr><th class="l">Transaction</th><th>Postings</th><th>In qty</th><th>In value</th><th>Out qty</th><th>Out value</th><th>Net qty</th><th>Net value</th></tr></thead><tbody>
-    ${list.map(t => `<tr><td class="l">${esc(t.name)}</td><td>${fmtInt(t.count)}</td><td class="in">${t.inQty ? fmtQty(t.inQty) : ''}</td><td class="in">${t.inVal ? fmtAmt(t.inVal) : ''}</td>
-      <td class="out">${t.outQty ? fmtQty(t.outQty) : ''}</td><td class="out">${t.outVal ? fmtAmt(t.outVal) : ''}</td>
-      <td>${fmtQty(t.inQty - t.outQty)}</td><td>${fmtAmt(t.inVal - t.outVal)}</td></tr>`).join('')}</tbody></table>`;
+    ${list.map(t => `<tr><td class="l">${esc(t.name)}</td><td>${fmtInt(t.count)}</td><td class="in">${t.inQty ? fmtQty(t.inQty) : ''}</td><td class="in">${t.inVal ? fmtMoney(t.inVal) : ''}</td>
+      <td class="out">${t.outQty ? fmtQty(t.outQty) : ''}</td><td class="out">${t.outVal ? fmtMoney(t.outVal) : ''}</td>
+      <td>${fmtQty(t.inQty - t.outQty)}</td><td>${fmtMoney(t.inVal - t.outVal)}</td></tr>`).join('')}</tbody></table>`;
 }
 function openLedger(itemCode, whs) {
   fCode.value = itemCode;
@@ -710,13 +710,13 @@ function ledgerLines(rows) {
     return `${rows.length > 1 ? `<div class="meta" style="margin:4px 0">${esc(g.itemCode)} · ${esc(g.whsCode)}</div>` : ''}
     <table class="sub"><thead><tr><th class="l">Date</th><th class="l">Transaction</th><th class="l">Doc no.</th><th class="l">Business partner / memo</th>
       <th>In qty</th><th>Out qty</th><th>Balance qty</th><th>Cost</th><th>Trans. value</th><th>Balance value</th></tr></thead><tbody>
-      <tr class="op"><td class="l" colspan="6">Opening balance</td><td>${fmtQty(g.openQty)}</td><td></td><td></td><td>${fmtAmt(g.openVal)}</td></tr>
+      <tr class="op"><td class="l" colspan="6">Opening balance</td><td>${fmtQty(g.openQty)}</td><td></td><td></td><td>${fmtMoney(g.openVal)}</td></tr>
       ${shown.map(l => `<tr><td class="l">${esc(fmtDate(l.date))}</td><td class="l">${esc(l.transName)}</td><td class="l">${esc(l.docNum)}</td>
         <td class="l">${esc(l.cardName || l.memo)}${l.cardName && l.memo ? ` <span class="meta">· ${esc(l.memo)}</span>` : ''}</td>
         <td class="in">${l.inQty ? fmtQty(l.inQty) : ''}</td><td class="out">${l.outQty ? fmtQty(l.outQty) : ''}</td><td>${fmtQty(l.balQty)}</td>
-        <td>${fmtVal(l.cost, 'cost')}</td><td class="${l.value < 0 ? 'neg' : ''}">${fmtAmt(l.value)}</td><td>${fmtAmt(l.balVal)}</td></tr>`).join('')}
+        <td>${fmtVal(l.cost, 'cost')}</td><td class="${l.value < 0 ? 'neg' : ''}">${fmtMoney(l.value)}</td><td>${fmtMoney(l.balVal)}</td></tr>`).join('')}
       ${lines.length > LIM ? `<tr><td class="l" colspan="10">… ${fmtInt(lines.length - LIM)} more lines — export to CSV for the full ledger</td></tr>` : ''}
-      <tr class="op"><td class="l" colspan="6">Closing balance</td><td>${fmtQty(g.closeQty)}</td><td></td><td></td><td>${fmtAmt(g.closeVal)}</td></tr>
+      <tr class="op"><td class="l" colspan="6">Closing balance</td><td>${fmtQty(g.closeQty)}</td><td></td><td></td><td>${fmtMoney(g.closeVal)}</td></tr>
     </tbody></table>`;
   }).join('');
 }
@@ -852,7 +852,7 @@ function profitDocsHtml(lines) {
   if (!lines.length) return '<span class="meta">No invoice lines.</span>';
   return `<table class="sub"><thead><tr><th class="l">Date</th><th class="l">Document</th><th class="l">Customer</th><th class="l">Whs</th><th>Qty</th><th>Unit price</th><th>Revenue</th><th>Cost</th><th>Gross profit</th><th>Margin</th></tr></thead><tbody>
     ${lines.slice(0, 300).map(l => `<tr><td class="l">${esc(fmtDate(l.date))}</td><td class="l">${esc(l.docType)} #${esc(l.docNum)}</td><td class="l">${esc(l.cardCode)} <span class="meta">${esc(l.cardName)}</span></td><td class="l">${esc(l.whsCode)}</td>
-      <td>${fmtQty(l.qty)}</td><td>${fmtVal(l.unitPrice, 'cost')}</td><td>${fmtAmt(l.revenue)}</td><td>${fmtAmt(l.cost)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtAmt(l.gp)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtPct(l.marginPct)}</td></tr>`).join('')}
+      <td>${fmtQty(l.qty)}</td><td>${fmtVal(l.unitPrice, 'cost')}</td><td>${fmtMoney(l.revenue)}</td><td>${fmtMoney(l.cost)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtMoney(l.gp)}</td><td class="${l.gp < 0 ? 'neg' : ''}">${fmtPct(l.marginPct)}</td></tr>`).join('')}
     ${lines.length > 300 ? `<tr><td class="l" colspan="10">… ${fmtInt(lines.length - 300)} more lines</td></tr>` : ''}</tbody></table>`;
 }
 
