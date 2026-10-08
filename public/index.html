@@ -14923,6 +14923,7 @@ setInterval(() => {
     <div class="fd-kpi" style="border-left-color:#BB0000"><div class="fd-kpi-label">Critical</div><div id="shp-kpi-critical" class="fd-kpi-val">—</div><div class="fd-kpi-sub">overdue / ≥80%</div></div>
     <div class="fd-kpi" style="border-left-color:#E9730C"><div class="fd-kpi-label">High Risk</div><div id="shp-kpi-high" class="fd-kpi-val">—</div><div class="fd-kpi-sub">≥50% delay prob</div></div>
     <div class="fd-kpi" style="border-left-color:#0070F2"><div class="fd-kpi-label">SOs Impacted</div><div id="shp-kpi-soimpact" class="fd-kpi-val">—</div><div class="fd-kpi-sub">customer orders</div></div>
+    <div class="fd-kpi" style="border-left-color:#0F766E"><div class="fd-kpi-label">Prod. Orders Impacted</div><div id="shp-kpi-prodimpact" class="fd-kpi-val">—</div><div id="shp-kpi-prodimpact-sub" class="fd-kpi-sub">short of components</div></div>
     <div class="fd-kpi" style="border-left-color:#8B5CF6"><div class="fd-kpi-label">Risky Vendors</div><div id="shp-kpi-vendors" class="fd-kpi-val">—</div><div class="fd-kpi-sub">high overdue rate</div></div>
   </div>
 
@@ -14931,6 +14932,7 @@ setInterval(() => {
     <button id="shp-tab-btn-pos"     onclick="shpTab('pos')"     style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:#7C3AED;border-bottom:2px solid #7C3AED;margin-bottom:-2px;cursor:pointer;white-space:nowrap">🚚 Shipment Risk</button>
     <button id="shp-tab-btn-vendors" onclick="shpTab('vendors')" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap">📊 Vendor Reliability</button>
     <button id="shp-tab-btn-impact"  onclick="shpTab('impact')"  style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap">📦 SO Impact</button>
+    <button id="shp-tab-btn-prod"    onclick="shpTab('prod')"    style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap">🏭 Production Impact</button>
     <button id="shp-tab-btn-inbound" onclick="shpTab('inbound')" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap">📅 Inbound Schedule</button>
   </div>
 
@@ -15005,7 +15007,7 @@ setInterval(() => {
     <!-- SO IMPACT TAB -->
     <div id="shp-panel-impact" style="display:none;flex-direction:column;padding:16px;gap:14px">
       <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:10px 14px;font-size:11px;color:#1E40AF;flex-shrink:0">
-        Sales orders due in the next <strong>60 days</strong> that include items sourced from at-risk (CRITICAL/HIGH) purchase orders.
+        Sales orders due in the next <strong>60 days</strong> that include items sourced from at-risk (CRITICAL/HIGH) purchase orders. <span id="shp-so-scope"></span>
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-radius:4px;overflow:hidden">
         <div style="overflow-x:auto">
@@ -15015,10 +15017,48 @@ setInterval(() => {
               <th style="padding:8px 10px;text-align:left;font-weight:600">Customer</th>
               <th style="padding:8px 10px;text-align:center;font-weight:600">SO Due</th>
               <th style="padding:8px 10px;text-align:left;font-weight:600">Item at Risk</th>
+              <th style="padding:8px 10px;text-align:right;font-weight:600">Qty</th>
               <th style="padding:8px 10px;text-align:left;font-weight:600">Delayed PO</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">PO Due</th>
               <th style="padding:8px 10px;text-align:center;font-weight:600">Delay Prob.</th>
             </tr></thead>
-            <tbody id="shp-impact-tbody"><tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+            <tbody id="shp-impact-tbody"><tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUCTION IMPACT TAB -->
+    <div id="shp-panel-prod" style="display:none;flex-direction:column;padding:16px;gap:14px">
+      <div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:6px;padding:10px 14px;font-size:11px;color:#115E59;flex-shrink:0">
+        Planned and released <strong>production orders due in the next 60 days</strong> that still need a component sitting on a Critical/High-risk purchase order.
+        <strong style="color:#BB0000">STOP</strong> = stock on hand does not cover the remaining quantity and the PO is overdue or due after the order's start date ·
+        <strong style="color:#E9730C">AT RISK</strong> = stock does not cover it, PO due before the start · <strong style="color:#107E3E">COVERED</strong> = stock on hand covers it.
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex-shrink:0">
+        <input id="shp-pf-q" type="search" placeholder="Search order, product, component or vendor…" oninput="shpProdRender()" style="flex:1;min-width:220px;font-size:12px;padding:7px 10px;border:1px solid #D0D7E3;border-radius:6px">
+        <select id="shp-pf-imp" onchange="shpProdRender()" style="font-size:12px;padding:6px 8px;border:1px solid #D0D7E3;border-radius:6px">
+          <option value="short">STOP + AT RISK</option><option value="">All (incl. covered)</option><option value="STOP">STOP only</option><option value="AT RISK">AT RISK only</option><option value="COVERED">COVERED only</option>
+        </select>
+        <span id="shp-pf-count" style="font-size:11px;color:var(--muted);white-space:nowrap"></span>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:#F5F3FF;border-bottom:1px solid var(--border)">
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Impact</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600">Prod. Order</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600">Product</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Start</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Due</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600">Component</th>
+              <th style="padding:8px 10px;text-align:right;font-weight:600">Still to Issue</th>
+              <th style="padding:8px 10px;text-align:right;font-weight:600">On Hand</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600">Delayed PO</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">PO Due</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Delay Prob.</th>
+            </tr></thead>
+            <tbody id="shp-prod-tbody"><tr><td colspan="11" style="padding:20px;text-align:center;color:var(--muted)">Click Scan to check production orders…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -15111,6 +15151,7 @@ setInterval(() => {
       renderPOTable(d.atRiskPOs || []);
       renderVendorTable(d.vendors || []);
       renderImpactTable(d.impactedSOs || []);
+      shpProdRender();
       renderInbound();
       sts.textContent = 'Updated ' + new Date().toLocaleTimeString();
     } catch(e) {
@@ -15130,6 +15171,12 @@ setInterval(() => {
     document.getElementById('shp-kpi-high').textContent     = s.high            ?? '—';
     document.getElementById('shp-kpi-soimpact').textContent = s.impactedSOCount ?? '—';
     document.getElementById('shp-kpi-vendors').textContent  = s.riskyVendors    ?? '—';
+    const pk = document.getElementById('shp-kpi-prodimpact');
+    if (pk) pk.textContent = s.impactedProdCount ?? '—';
+    const ps = document.getElementById('shp-kpi-prodimpact-sub');
+    if (ps) ps.textContent = s.prodStopCount ? `${s.prodStopCount} will stop` : 'short of components';
+    const sc = document.getElementById('shp-so-scope');
+    if (sc && s.soImpactScope) sc.textContent = `Checked: ${s.soImpactScope}.`;
   }
 
   function renderAdvisory(ai) {
@@ -15361,6 +15408,36 @@ setInterval(() => {
     if (row) { _vendOpen = _vendOpen === row.dataset.vend ? null : row.dataset.vend; shpVendRender(); }
   });
 
+  // ── Production impact: production orders short of components on delayed POs ──
+  const IMP_C = { STOP:'#BB0000', 'AT RISK':'#E9730C', COVERED:'#107E3E' }, IMP_B = { STOP:'#FFF0F0', 'AT RISK':'#FFF7EE', COVERED:'#F0FDF4' };
+  window.shpProdRender = function() {
+    const tb = document.getElementById('shp-prod-tbody');
+    if (!tb) return;
+    const all = (_scanData && _scanData.prodImpact) || [];
+    const q = (document.getElementById('shp-pf-q')?.value || '').trim().toLowerCase();
+    const imp = document.getElementById('shp-pf-imp')?.value ?? 'short';
+    const rows = all.filter(r => (imp === '' || (imp === 'short' ? r.impact !== 'COVERED' : r.impact === imp))
+      && (!q || [r.prodNum, r.prodItem, r.prodName, r.compItem, r.compName, r.poNum, r.vendor].some(x => String(x ?? '').toLowerCase().includes(q))));
+    const cnt = document.getElementById('shp-pf-count');
+    if (cnt) cnt.textContent = all.length ? `${rows.length} of ${all.length} component lines · ${new Set(rows.map(r => r.prodNum)).size} orders` : '';
+    if (!_scanData) return;
+    if (!all.length) { tb.innerHTML = '<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--muted)">No planned or released production order due in the next 60 days needs a component from a Critical/High-risk PO.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--muted)">No rows match the filters</td></tr>'; return; }
+    tb.innerHTML = rows.map(r => `<tr style="border-bottom:1px solid #F3F4F6">
+      <td style="padding:8px 10px;text-align:center"><span style="background:${IMP_B[r.impact]};color:${IMP_C[r.impact]};border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap">${r.impact}</span></td>
+      <td style="padding:8px 10px;font-weight:600;color:#0F766E">${esc(r.prodNum)}<div style="font-size:10px;font-weight:400;color:#6B7280">${esc(r.status)}</div></td>
+      <td style="padding:8px 10px;font-size:11px;max-width:170px">${esc(r.prodItem)}<div style="font-size:10px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.prodName)}</div></td>
+      <td style="padding:8px 10px;text-align:center;${r.daysToStart != null && r.daysToStart <= 7 ? 'font-weight:600' : ''}">${fmtDate(r.startDate)}${r.daysToStart != null ? `<div style="font-size:10px;color:#6B7280">${r.daysToStart < 0 ? 'started' : 'in ' + r.daysToStart + 'd'}</div>` : ''}</td>
+      <td style="padding:8px 10px;text-align:center">${fmtDate(r.dueDate)}</td>
+      <td style="padding:8px 10px;font-size:11px;max-width:170px">${esc(r.compItem)}<div style="font-size:10px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.compName)}</div></td>
+      <td style="padding:8px 10px;text-align:right;font-weight:600">${fmt(r.remaining)}</td>
+      <td style="padding:8px 10px;text-align:right;${r.onHand != null && r.onHand < r.remaining ? 'color:#BB0000;font-weight:600' : ''}">${r.onHand != null ? fmt(r.onHand) : '—'}</td>
+      <td style="padding:8px 10px;font-weight:500;color:#7C3AED">${esc(r.poNum)}<div style="font-size:10px;font-weight:400;color:#6B7280">${esc(r.vendor)}</div></td>
+      <td style="padding:8px 10px;text-align:center;${r.poOverdue ? 'color:#BB0000;font-weight:600' : ''}">${fmtDate(r.poDue)}${r.poOverdue ? '<div style="font-size:10px">overdue</div>' : ''}</td>
+      <td style="padding:8px 10px;text-align:center">${pctBar(r.delayProb || 0)}</td>
+    </tr>`).join('');
+  };
+
   // ── Inbound schedule: open PO value due per week, with the at-risk part ──
   function renderInbound() {
     const tb = document.getElementById('shp-inb-tbody'), ch = document.getElementById('shp-inb-chart');
@@ -15415,21 +15492,23 @@ setInterval(() => {
 
   function renderImpactTable(sos) {
     const tb = document.getElementById('shp-impact-tbody');
-    if (!sos.length) { tb.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted)">No impacted sales orders found</td></tr>'; return; }
+    if (!sos.length) { tb.innerHTML = '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted)">No impacted sales orders found</td></tr>'; return; }
     const poExplain = new Map(((_scanData && _scanData.atRiskPOs) || []).map(p => [String(p.docNum), p.explain?.delayProb]));
     tb.innerHTML = sos.map((s, i) => `<tr style="border-bottom:1px solid #F3F4F6">
       <td style="padding:8px 10px;font-weight:600;color:#5B21B6">${s.soNum}</td>
       <td style="padding:8px 10px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.customerName}</td>
       <td style="padding:8px 10px;text-align:center">${fmtDate(s.soDueDate)}</td>
       <td style="padding:8px 10px;font-size:11px">${s.itemCode}${s.itemDesc?' — '+(s.itemDesc).slice(0,28):''}</td>
-      <td style="padding:8px 10px;font-weight:500;color:#7C3AED">${s.poNum}</td>
+      <td style="padding:8px 10px;text-align:right">${s.openQty != null ? fmt(s.openQty) : '—'}</td>
+      <td style="padding:8px 10px;font-weight:500;color:#7C3AED">${s.poNum}${s.vendor?`<div style="font-size:10px;font-weight:400;color:#6B7280">${s.vendor}</div>`:''}</td>
+      <td style="padding:8px 10px;text-align:center;${s.poOverdue?'color:#BB0000;font-weight:600':''}">${fmtDate(s.poDue)}${s.poOverdue?'<div style="font-size:10px">overdue</div>':''}</td>
       <td style="padding:8px 10px;text-align:center"><span${agxAttr('shpi', i, poExplain.get(String(s.poNum)), 'PO '+s.poNum)}>${pctBar(s.delayProbPct)}</span></td>
     </tr>`).join('');
   }
 
   // ── Tab switching ─────────────────────────────────────────────────────────
   window.shpTab = function(tab) {
-    ['pos','vendors','impact','inbound'].forEach(t => {
+    ['pos','vendors','impact','prod','inbound'].forEach(t => {
       document.getElementById('shp-panel-' + t).style.display    = t===tab ? 'flex' : 'none';
       const btn = document.getElementById('shp-tab-btn-' + t);
       btn.style.color        = t===tab ? '#7C3AED'              : 'var(--muted)';
@@ -15474,7 +15553,9 @@ setInterval(() => {
     addMsg(msg,'user');
     const typing = addMsg('…','ai');
     try {
-      const ctx = _scanData ? { summary:_scanData.summary, topPOs:(_scanData.atRiskPOs||[]).slice(0,5).map(({explain, ...p}) => p), aiAdvisory:_scanData.aiAdvisory } : null;
+      const ctx = _scanData ? { summary:_scanData.summary, topPOs:(_scanData.atRiskPOs||[]).slice(0,5).map(({explain, ...p}) => p), aiAdvisory:_scanData.aiAdvisory,
+        productionImpact:(_scanData.prodImpact||[]).filter(r => r.impact !== 'COVERED').slice(0,15),
+        salesOrderImpact:(_scanData.impactedSOs||[]).slice(0,15) } : null;
       const r = await postJSON('/api/shipment-delays/chat', { message:msg, sessionId:_sessionId, context:ctx });
       _sessionId = r.sessionId;
       typing.textContent = r.reply || 'Unable to process.';

@@ -3,6 +3,8 @@
  * Mounted at /api/shipment-delays by chat-server.mjs
  *
  * Predicts which open purchase orders are likely to be delayed by combining:
+ * All SAP data is read through DB Direct (MSSQL / HANA) — no Service Layer.
+ *
  *  1. Vendor delay history  — overdue rate, avg days late (last 6 months of POs)
  *  2. Open PO risk scoring  — delay probability per PO based on vendor + urgency
  *  3. Sales order impact    — which customer orders depend on at-risk stock
@@ -45,10 +47,10 @@ async function callAI(aiDeps, messages, systemPrompt, maxTokens = 1200) {
   return '';
 }
 
-// ── DB Direct (ODBC/HANA) reads, Service Layer fallback ─────────────────────
+// ── DB Direct (ODBC/HANA) reads ──────────────────────────────────────────────
 // Same pattern as the other supply-chain agents: resolve every logical field
 // against the LIVE column list before building SQL — never guess — and fall
-// back to Service Layer on any connection/mapping failure. HANA folds unquoted
+// fail loudly on a connection/mapping problem. HANA folds unquoted
 // identifiers to uppercase, so identifiers are quoted on HANA only.
 function qcol(name, isHana) { return isHana ? `"${name}"` : name; }
 
@@ -67,7 +69,7 @@ const RDR1_FIELD_CANDIDATES = {
 };
 
 // Fetches OPOR headers. `fromDate` filters DocDate >= fromDate (history window);
-// `openOnly` filters DocStatus = 'O'. Normalized to the Service Layer's shape.
+// `openOnly` filters DocStatus = 'O'. Field names follow SAP's document shape.
 async function fetchPOsViaDB(dbDeps, { fromDate, openOnly } = {}) {
   const { getActiveConfig, getActiveType, getTableColumns, resolveFieldMap, tableRef, executeSQL } = dbDeps;
   const cfg    = getActiveConfig();
@@ -160,21 +162,8 @@ async function fetchSOLineItemsViaDB(dbDeps, docEntries) {
   return linesByOrder;
 }
 
-// ── Paginated SL fetch ────────────────────────────────────────────────────────
-async function fetchAllPaginated(sap, endpoint, params, { pageSize = 50, maxItems = 2000 } = {}) {
-  let skip = 0, all = [];
-  while (true) {
-    const r     = await sap.get(endpoint, { ...params, $top: pageSize, $skip: skip });
-    const batch = r.value || [];
-    all.push(...batch);
-    if (batch.length < pageSize || all.length >= maxItems) break;
-    skip += pageSize;
-  }
-  return all;
-}
-
 // ── Step 1: build vendor delay history from recent POs ────────────────────────
-// DB Direct (ODBC/HANA) preferred, Service Layer fallback.
+// DB Direct (ODBC/HANA) only.
 // ── "How is this calculated?" popups ─────────────────────────────────────────
 // Built from the same variables used to compute each value, so they cannot drift.
 function sdVendorSteps(v) {
@@ -257,22 +246,8 @@ async function buildVendorHistory(sap, dbDeps) {
   const todayStr = today.toISOString().slice(0, 10);
   const histStart= new Date(today.getTime() - HISTORY_MONTHS * 30 * 86400000).toISOString().slice(0, 10);
 
-  let allPOs, source = 'service-layer';
-  if (dbDeps?.isConnected?.()) {
-    try {
-      allPOs = await fetchPOsViaDB(dbDeps, { fromDate: histStart });
-      source = dbDeps.getActiveType();
-    } catch (dbErr) {
-      console.warn('[ShipDelay/history] DB Direct failed, falling back to Service Layer:', dbErr.message);
-    }
-  }
-  if (!allPOs) {
-    allPOs = await fetchAllPaginated(sap, '/PurchaseOrders', {
-      $filter: `DocDate ge '${histStart}' and Cancelled eq 'tNO'`,
-      $select: 'DocEntry,CardCode,CardName,DocDate,DocDueDate,DocumentStatus,DocTotal',
-    }, { pageSize: 100, maxItems: 3000 });
-    source = 'service-layer';
-  }
+  const allPOs = await fetchPOsViaDB(dbDeps, { fromDate: histStart });
+  const source = dbDeps.getActiveType();
 
   const vendorMap = {};
   for (const po of allPOs) {
@@ -328,25 +303,12 @@ async function buildVendorHistory(sap, dbDeps) {
 }
 
 // ── Step 2: score all open POs ────────────────────────────────────────────────
-// DB Direct (ODBC/HANA) preferred, Service Layer fallback.
+// DB Direct (ODBC/HANA) only.
 async function scoreOpenPOs(sap, vendorMap, dbDeps) {
   const today    = new Date();
   const todayStr = today.toISOString().slice(0, 10);
 
-  let openPOs;
-  if (dbDeps?.isConnected?.()) {
-    try {
-      openPOs = await fetchPOsViaDB(dbDeps, { openOnly: true });
-    } catch (dbErr) {
-      console.warn('[ShipDelay/openPOs] DB Direct failed, falling back to Service Layer:', dbErr.message);
-    }
-  }
-  if (!openPOs) {
-    openPOs = await fetchAllPaginated(sap, '/PurchaseOrders', {
-      $filter: `DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'`,
-      $select: 'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal',
-    }, { pageSize: 100, maxItems: 2000 });
-  }
+  const openPOs = await fetchPOsViaDB(dbDeps, { openOnly: true });
 
   const scored = openPOs.map(po => {
     const vs          = vendorMap[po.CardCode] || { overdueRate: 10, avgDelayDays: 0, riskLevel: 'LOW', reliability: 'Unknown' };
@@ -411,24 +373,16 @@ async function scoreOpenPOs(sap, vendorMap, dbDeps) {
 }
 
 // ── Step 3: map delayed POs to impacted sales orders ─────────────────────────
-// DB Direct (ODBC/HANA) preferred (batched queries instead of one HTTP round-trip
-// per PO/SO), Service Layer fallback.
+// DB Direct (ODBC/HANA): batched queries for the PO lines, SOs and SO lines.
+const SO_IMPACT_DB = { pos: 200, sos: 300 };   // risky POs × open SOs checked
 async function findImpactedSOs(sap, atRiskPOs, dbDeps) {
   if (atRiskPOs.length === 0) return [];
 
   const today    = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const horizon  = new Date(today.getTime() + 60 * 86400000).toISOString().slice(0, 10);
-  const criticalPOs = atRiskPOs.filter(p => p.risk === 'CRITICAL' || p.risk === 'HIGH').slice(0, 20);
-
-  if (dbDeps?.isConnected?.()) {
-    try {
-      return await findImpactedSOsViaDB(dbDeps, criticalPOs, { todayStr, horizon });
-    } catch (dbErr) {
-      console.warn('[ShipDelay/impact] DB Direct failed, falling back to Service Layer:', dbErr.message);
-    }
-  }
-  return findImpactedSOsViaServiceLayer(sap, criticalPOs, { todayStr, horizon });
+  const riskyPOs = atRiskPOs.filter(p => p.risk === 'CRITICAL' || p.risk === 'HIGH');
+  return findImpactedSOsViaDB(dbDeps, riskyPOs.slice(0, SO_IMPACT_DB.pos), { todayStr, horizon });
 }
 
 async function findImpactedSOsViaDB(dbDeps, criticalPOs, { todayStr, horizon }) {
@@ -442,14 +396,14 @@ async function findImpactedSOsViaDB(dbDeps, criticalPOs, { todayStr, horizon }) 
       if (!l.ItemCode) continue;
       atRiskItems.add(l.ItemCode);
       if (!itemToPO[l.ItemCode]) itemToPO[l.ItemCode] = [];
-      itemToPO[l.ItemCode].push({ poNum: po.docNum, vendor: po.cardName, risk: po.risk, delayProb: po.delayProbability });
+      itemToPO[l.ItemCode].push({ poNum: po.docNum, vendor: po.cardName, risk: po.risk, delayProb: po.delayProbability, poDue: po.docDueDate ? String(po.docDueDate).slice(0, 10) : null, poOverdue: po.isOverdue });
     }
   }
   if (atRiskItems.size === 0) return [];
 
   const openSOs = await fetchOpenSOsInRangeViaDB(dbDeps, { fromDate: todayStr, toDate: horizon });
   if (!openSOs.length) return [];
-  const soCheck = openSOs.slice(0, 25);
+  const soCheck = openSOs.slice(0, SO_IMPACT_DB.sos);
   const soLinesByOrder = await fetchSOLineItemsViaDB(dbDeps, soCheck.map(s => s.DocEntry));
 
   const impacted = [];
@@ -473,80 +427,6 @@ async function findImpactedSOsViaDB(dbDeps, criticalPOs, { todayStr, horizon }) 
       });
     }
   }
-  return impacted.sort((a, b) => (a.daysLeft ?? 999) - (b.daysLeft ?? 999));
-}
-
-async function findImpactedSOsViaServiceLayer(sap, criticalPOs, { todayStr, horizon }) {
-  const today = new Date();
-
-  // Fetch open SOs due in the next 60 days
-  const openSOs = await fetchAllPaginated(sap, '/Orders', {
-    $filter: `DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO' and DocDueDate ge '${todayStr}' and DocDueDate le '${horizon}'`,
-    $select: 'DocEntry,DocNum,CardCode,CardName,DocDueDate,DocTotal',
-  }, { pageSize: 50, maxItems: 200 });
-
-  if (!openSOs.length) return [];
-
-  // Get items from at-risk POs (fetch lines for critical/high risk POs only)
-  const atRiskItems = new Set();
-  const itemToPO = {};
-
-  let idx = 0;
-  const CONC = 4;
-  const workers = Array.from({ length: Math.min(CONC, criticalPOs.length) }, async () => {
-    while (idx < criticalPOs.length) {
-      const po = criticalPOs[idx++];
-      try {
-        const full  = await sap.get(`/PurchaseOrders(${po.docEntry})`);
-        const lines = full.DocumentLines || [];
-        for (const l of lines) {
-          if (l.ItemCode) {
-            atRiskItems.add(l.ItemCode);
-            if (!itemToPO[l.ItemCode]) itemToPO[l.ItemCode] = [];
-            itemToPO[l.ItemCode].push({ poNum: po.docNum, vendor: po.cardName, risk: po.risk, delayProb: po.delayProbability });
-          }
-        }
-      } catch (e) {
-        console.warn(`[ShipDelay/impact] PO ${po.docEntry}:`, e.message);
-      }
-    }
-  });
-  await Promise.all(workers);
-
-  if (atRiskItems.size === 0) return [];
-
-  // Check open SOs against at-risk items (sample top 25 most urgent)
-  const impacted = [];
-  const soCheck  = openSOs.slice(0, 25);
-  let soIdx = 0;
-  const soWorkers = Array.from({ length: Math.min(4, soCheck.length) }, async () => {
-    while (soIdx < soCheck.length) {
-      const so = soCheck[soIdx++];
-      try {
-        const full  = await sap.get(`/Orders(${so.DocEntry})`);
-        const lines = (full.DocumentLines || []).filter(l => atRiskItems.has(l.ItemCode));
-        if (lines.length > 0) {
-          const daysLeft = so.DocDueDate ? Math.ceil((new Date(so.DocDueDate) - today) / 86400000) : null;
-          impacted.push({
-            docNum:    so.DocNum,
-            cardName:  so.CardName,
-            cardCode:  so.CardCode,
-            dueDate:   so.DocDueDate,
-            daysLeft,
-            docTotal:  Number(so.DocTotal || 0),
-            atRiskLines: lines.map(l => ({
-              itemCode: l.ItemCode,
-              desc:     (l.ItemDescription || '').slice(0, 40),
-              openQty:  Number(l.OpenQty ?? l.Quantity ?? 0),
-              poRisk:   itemToPO[l.ItemCode]?.[0] || null,
-            })),
-          });
-        }
-      } catch {}
-    }
-  });
-  await Promise.all(soWorkers);
-
   return impacted.sort((a, b) => (a.daysLeft ?? 999) - (b.daysLeft ?? 999));
 }
 
@@ -620,6 +500,7 @@ export async function runShipmentDelayScan(sap, { aiDeps = null, dbDeps = null }
   const scoredPOs = await scoreOpenPOs(sap, vendorMap, dbDeps);
   const atRisk    = scoredPOs.filter(p => p.risk === 'CRITICAL' || p.risk === 'HIGH');
   const impacted  = await findImpactedSOs(sap, atRisk, dbDeps);
+  const prodImpact = await findImpactedProdOrders(sap, atRisk, dbDeps);
 
   const overduePos    = scoredPOs.filter(p => p.isOverdue);
   const overdueValue  = overduePos.reduce((s, p) => s + p.docTotal, 0);
@@ -644,14 +525,89 @@ export async function runShipmentDelayScan(sap, { aiDeps = null, dbDeps = null }
     ? await getAIIntelligence(aiDeps, summary, atRisk, vendorList)
     : null;
 
-  return { scoredPOs, vendorList, impactedSOs: impacted, summary, aiIntelligence };
+  return { scoredPOs, vendorList, impactedSOs: impacted, prodImpact, summary, aiIntelligence };
+}
+
+// ── Step 3b: production orders that need components from delayed POs ────────
+// Planned / released production orders due within 60 days whose component
+// (WOR1) still has quantity to issue and is on a CRITICAL/HIGH open PO line.
+// Impact per component:
+//   COVERED  — stock on hand (OITM.OnHand, all warehouses) ≥ remaining to issue
+//   STOP     — not covered AND the PO is overdue or due after the order's start
+//   AT RISK  — not covered, PO due on/before the start but itself at risk
+const PROD_HORIZON_DAYS = 60;
+const sqlList = vals => [...vals].map(v => `'${String(v).replace(/'/g, "''")}'`).join(',');
+function prodImpactLevel({ remaining, onHand, poOverdue, poDue, startDate }) {
+  if (onHand != null && onHand >= remaining) return 'COVERED';
+  if (poOverdue || (poDue && startDate && String(poDue).slice(0, 10) > String(startDate).slice(0, 10))) return 'STOP';
+  return 'AT RISK';
+}
+async function findImpactedProdOrders(sap, atRiskPOs, dbDeps) {
+  if (!atRiskPOs.length) return [];
+  const today = new Date();
+  const horizon = new Date(today.getTime() + PROD_HORIZON_DAYS * 86400000).toISOString().slice(0, 10);
+  const pos = atRiskPOs.filter(p => p.risk === 'CRITICAL' || p.risk === 'HIGH');
+  const linkOf = p => ({ poNum: p.docNum, vendor: p.cardName, poDue: p.docDueDate ? String(p.docDueDate).slice(0, 10) : null,
+    poOverdue: p.isOverdue, delayProb: p.delayProbability, risk: p.risk });
+  const build = (r, itemToPO, stock) => {
+    const link = itemToPO.get(r.compItem);
+    const remaining = Math.max(0, Number(r.planned || 0) - Number(r.issued || 0));
+    const st = stock.get(r.compItem);
+    const onHand = st ? st.onHand : null;
+    const startDate = r.startDate ? String(r.startDate).slice(0, 10) : null;
+    return {
+      prodNum: r.docNum, prodEntry: r.docEntry, prodItem: r.prodItem, prodName: String(r.prodName || '').slice(0, 50),
+      status: r.status === 'R' || r.status === 'boposReleased' ? 'Released' : 'Planned', prodQty: Number(r.prodQty || 0),
+      startDate, dueDate: r.dueDate ? String(r.dueDate).slice(0, 10) : null,
+      daysToStart: startDate ? Math.ceil((new Date(startDate) - today) / 86400000) : null,
+      compItem: r.compItem, compName: String(st?.name || r.compName || '').slice(0, 50), remaining, onHand,
+      ...link, impact: prodImpactLevel({ remaining, onHand, poOverdue: link.poOverdue, poDue: link.poDue, startDate }),
+    };
+  };
+  const rank = { STOP: 0, 'AT RISK': 1, COVERED: 2 };
+  const sortRows = rows => rows.sort((a, z) => rank[a.impact] - rank[z.impact] || String(a.startDate).localeCompare(String(z.startDate)));
+
+  const { getActiveConfig, getActiveType, getTableColumns, tableRef, executeSQL } = dbDeps;
+  const cfg = getActiveConfig(), q = n => qcol(n, getActiveType() === 'hana');
+  for (const [t, cols] of Object.entries({ OWOR: ['DocEntry', 'DocNum', 'ItemCode', 'ProdName', 'PlannedQty', 'Status', 'StartDate', 'DueDate'],
+    WOR1: ['DocEntry', 'ItemCode', 'PlannedQty', 'IssuedQty'], POR1: ['DocEntry', 'ItemCode', 'LineStatus'], OITM: ['ItemCode', 'ItemName', 'OnHand'] })) {
+    const have = await getTableColumns(t);
+    const miss = cols.filter(c => !have.has(c.toLowerCase()));
+    if (miss.length) throw new Error(`${t} missing ${miss.join(', ')}`);
+  }
+  const top = pos.slice(0, 200);
+  const byEntry = new Map(top.map(p => [p.docEntry, p]));
+  const lines = top.length ? await executeSQL(`SELECT ${q('DocEntry')} AS ${q('DocEntry')}, ${q('ItemCode')} AS ${q('ItemCode')} FROM ${tableRef('POR1', cfg)} ` +
+    `WHERE ${q('DocEntry')} IN (${top.map(p => Number(p.docEntry)).join(',')}) AND ${q('LineStatus')} = 'O'`) : [];
+  // Item → the most urgent at-risk PO for it (CRITICAL before HIGH, then earliest due).
+  const itemToPO = new Map();
+  for (const l of lines) {
+    const p = byEntry.get(l.DocEntry);
+    if (!l.ItemCode || !p) continue;
+    const cur = itemToPO.get(l.ItemCode);
+    if (!cur || (cur.risk !== 'CRITICAL' && p.risk === 'CRITICAL') || (cur.risk === p.risk && String(p.docDueDate) < String(cur.poDue))) itemToPO.set(l.ItemCode, linkOf(p));
+  }
+  if (!itemToPO.size) return [];
+  const items = [...itemToPO.keys()].slice(0, 500);
+  const rows = await executeSQL(`SELECT T0.${q('DocEntry')} AS ${q('DocEntry')}, T0.${q('DocNum')} AS ${q('DocNum')}, T0.${q('ItemCode')} AS ${q('ProdItem')}, ` +
+    `T0.${q('ProdName')} AS ${q('ProdName')}, T0.${q('PlannedQty')} AS ${q('ProdQty')}, T0.${q('Status')} AS ${q('Status')}, T0.${q('StartDate')} AS ${q('StartDate')}, ` +
+    `T0.${q('DueDate')} AS ${q('DueDate')}, T1.${q('ItemCode')} AS ${q('CompItem')}, T1.${q('PlannedQty')} AS ${q('Planned')}, T1.${q('IssuedQty')} AS ${q('Issued')} ` +
+    `FROM ${tableRef('OWOR', cfg)} T0 INNER JOIN ${tableRef('WOR1', cfg)} T1 ON T1.${q('DocEntry')} = T0.${q('DocEntry')} ` +
+    `WHERE T0.${q('Status')} IN ('P','R') AND T0.${q('DueDate')} <= '${horizon}' AND T1.${q('ItemCode')} IN (${sqlList(items)}) ` +
+    `AND T1.${q('PlannedQty')} > T1.${q('IssuedQty')}`);
+  if (!rows.length) return [];
+  const comps = new Set(rows.map(r => r.CompItem));
+  const stockRows = await executeSQL(`SELECT ${q('ItemCode')} AS ${q('ItemCode')}, ${q('ItemName')} AS ${q('ItemName')}, ${q('OnHand')} AS ${q('OnHand')} ` +
+    `FROM ${tableRef('OITM', cfg)} WHERE ${q('ItemCode')} IN (${sqlList(comps)})`);
+  const stock = new Map(stockRows.map(s => [s.ItemCode, { onHand: Number(s.OnHand || 0), name: s.ItemName }]));
+  return sortRows(rows.map(r => build({ docEntry: r.DocEntry, docNum: r.DocNum, prodItem: r.ProdItem, prodName: r.ProdName, prodQty: r.ProdQty,
+    status: r.Status, startDate: r.StartDate, dueDate: r.DueDate, compItem: r.CompItem, planned: r.Planned, issued: r.Issued }, itemToPO, stock)));
 }
 
 // ── Actual delivery history (goods receipts against POs) ─────────────────────
 // One row per GRPO line copied from a PO line (PDN1.BaseType = 22). Due date =
 // PO line ship date, else PO due date. On time = received on or before due.
-// DB Direct only (the Service Layer has no cheap way to join receipts to PO
-// lines); returns null when no DB connection or a column is missing.
+// Returns null when a required column is missing on this database.
 const dayDiff = (a, b) => Math.round((new Date(String(a).slice(0, 10)) - new Date(String(b).slice(0, 10))) / 86400000);
 async function fetchReceiptHistoryViaDB(dbDeps, { fromDate, cardCode } = {}) {
   if (!dbDeps?.isConnected?.()) return null;
@@ -711,37 +667,16 @@ function summariseReceipts(rows) {
 // Open PO lines of one vendor (for the vendor drill-down).
 async function fetchVendorOpenLines(sap, dbDeps, cardCode) {
   const code = String(cardCode).replace(/'/g, "''");
-  if (dbDeps?.isConnected?.()) {
-    try {
-      const { getActiveConfig, getActiveType, tableRef, executeSQL } = dbDeps;
-      const cfg = getActiveConfig(), q = n => qcol(n, getActiveType() === 'hana');
-      const rows = await executeSQL(`SELECT T0.${q('DocNum')} AS ${q('DocNum')}, T0.${q('DocDueDate')} AS ${q('DocDueDate')}, T1.${q('LineNum')} AS ${q('LineNum')}, ` +
-        `T1.${q('ItemCode')} AS ${q('ItemCode')}, T1.${q('Dscription')} AS ${q('Descr')}, T1.${q('Quantity')} AS ${q('Qty')}, T1.${q('OpenQty')} AS ${q('OpenQty')}, ` +
-        `T1.${q('ShipDate')} AS ${q('ShipDate')}, T1.${q('Price')} AS ${q('Price')} ` +
-        `FROM ${tableRef('OPOR', cfg)} T0 INNER JOIN ${tableRef('POR1', cfg)} T1 ON T1.${q('DocEntry')} = T0.${q('DocEntry')} ` +
-        `WHERE T0.${q('CardCode')} = '${code}' AND T0.${q('DocStatus')} = 'O' AND T0.${q('CANCELED')} = 'N' AND T1.${q('LineStatus')} = 'O'`);
-      return rows.map(r => ({ docNum: r.DocNum, lineNum: r.LineNum, itemCode: r.ItemCode, desc: String(r.Descr || '').slice(0, 60),
-        qty: Number(r.Qty || 0), openQty: Number(r.OpenQty || 0), shipDate: String(r.ShipDate || r.DocDueDate || '').slice(0, 10),
-        openValue: Math.round(Number(r.OpenQty || 0) * Number(r.Price || 0)) }));
-    } catch (e) { console.warn('[ShipDelay/lines] DB failed, using Service Layer:', e.message); }
-  }
-  const heads = await fetchAllPaginated(sap, '/PurchaseOrders', {
-    $filter: `CardCode eq '${code}' and DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'`, $select: 'DocEntry,DocNum,DocDueDate',
-  }, { pageSize: 50, maxItems: 30 });
-  const out = [];
-  for (const h of heads) {
-    try {
-      const full = await sap.get(`/PurchaseOrders(${h.DocEntry})`);
-      for (const l of full.DocumentLines || []) {
-        if (l.LineStatus && l.LineStatus !== 'bost_Open') continue;
-        const open = Number(l.RemainingOpenQuantity ?? l.OpenQuantity ?? l.Quantity ?? 0);
-        out.push({ docNum: h.DocNum, lineNum: l.LineNum, itemCode: l.ItemCode, desc: String(l.ItemDescription || '').slice(0, 60),
-          qty: Number(l.Quantity || 0), openQty: open, shipDate: String(l.ShipDate || h.DocDueDate || '').slice(0, 10),
-          openValue: Math.round(open * Number(l.Price || 0)) });
-      }
-    } catch (e) { console.warn(`[ShipDelay/lines] PO ${h.DocEntry}:`, e.message); }
-  }
-  return out;
+  const { getActiveConfig, getActiveType, tableRef, executeSQL } = dbDeps;
+  const cfg = getActiveConfig(), q = n => qcol(n, getActiveType() === 'hana');
+  const rows = await executeSQL(`SELECT T0.${q('DocNum')} AS ${q('DocNum')}, T0.${q('DocDueDate')} AS ${q('DocDueDate')}, T1.${q('LineNum')} AS ${q('LineNum')}, ` +
+    `T1.${q('ItemCode')} AS ${q('ItemCode')}, T1.${q('Dscription')} AS ${q('Descr')}, T1.${q('Quantity')} AS ${q('Qty')}, T1.${q('OpenQty')} AS ${q('OpenQty')}, ` +
+    `T1.${q('ShipDate')} AS ${q('ShipDate')}, T1.${q('Price')} AS ${q('Price')} ` +
+    `FROM ${tableRef('OPOR', cfg)} T0 INNER JOIN ${tableRef('POR1', cfg)} T1 ON T1.${q('DocEntry')} = T0.${q('DocEntry')} ` +
+    `WHERE T0.${q('CardCode')} = '${code}' AND T0.${q('DocStatus')} = 'O' AND T0.${q('CANCELED')} = 'N' AND T1.${q('LineStatus')} = 'O'`);
+  return rows.map(r => ({ docNum: r.DocNum, lineNum: r.LineNum, itemCode: r.ItemCode, desc: String(r.Descr || '').slice(0, 60),
+    qty: Number(r.Qty || 0), openQty: Number(r.OpenQty || 0), shipDate: String(r.ShipDate || r.DocDueDate || '').slice(0, 10),
+    openValue: Math.round(Number(r.OpenQty || 0) * Number(r.Price || 0)) }));
 }
 
 // Expediting e-mail: overdue POs first, then at-risk ones, asking for dates.
@@ -769,8 +704,8 @@ Purchasing Team`;
 // ── Router factory ────────────────────────────────────────────────────────────
 export function createShipmentDelayRouter(deps) {
   const {
-    requireAuth, getActiveSap, AI_PROVIDER, USE_AI, gptChatComplete, azureMessagesCreate,
-    isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap,
+    requireAuth, AI_PROVIDER, USE_AI, gptChatComplete, azureMessagesCreate,
+    isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap, ensureConnected,
   } = deps;
   const router  = Router();
   const _aiDeps = () => USE_AI ? { AI_PROVIDER, gptChatComplete, azureMessagesCreate } : null;
@@ -778,10 +713,23 @@ export function createShipmentDelayRouter(deps) {
     ? { isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap }
     : null;
 
+  // Every route reads SAP through DB Direct only. Reconnect to the saved
+  // connection when needed (e.g. after a server restart), else a clear error.
+  const DB_REQUIRED = 'Shipment Delays reads SAP data through DB Direct only. Configure a database under Tools → DB Connection, then scan again.';
+  async function needDb() {
+    if (!isConnected?.() && ensureConnected) { try { await ensureConnected(); } catch (e) { console.warn('[ShipDelay] DB reconnect failed:', e.message); } }
+    if (!isConnected?.()) { const e = new Error(DB_REQUIRED); e.status = 400; throw e; }
+  }
+  const fail = (res, tag, e) => {
+    if (!e.status) console.error(`[ShipDelay/${tag}]`, e);
+    res.status(e.status || 500).json({ ok: false, error: e.message, dbRequired: e.message === DB_REQUIRED });
+  };
+
   // GET /api/shipment-delays/scan
   router.get('/scan', requireAuth, async (req, res) => {
     try {
-      const result = await runShipmentDelayScan(getActiveSap(), { aiDeps: _aiDeps(), dbDeps: _dbDeps });
+      await needDb();
+      const result = await runShipmentDelayScan(null, { aiDeps: _aiDeps(), dbDeps: _dbDeps });
 
       // Normalize field names for the frontend
       const atRiskPOs = result.scoredPOs
@@ -845,6 +793,11 @@ export function createShipmentDelayRouter(deps) {
           itemDesc:     l.desc || '',
           poNum:        l.poRisk?.poNum  || '—',
           delayProbPct: l.poRisk?.delayProb || 0,
+          openQty:      l.openQty ?? null,
+          poDue:        l.poRisk?.poDue || null,
+          poOverdue:    !!l.poRisk?.poOverdue,
+          vendor:       l.poRisk?.vendor || '',
+          soDocTotal:   s.docTotal || 0,
         }))
       );
 
@@ -854,6 +807,9 @@ export function createShipmentDelayRouter(deps) {
         critical:        result.summary.criticalCount,
         high:            result.summary.highCount,
         impactedSOCount: result.summary.impactedSOCount,
+        impactedProdCount: new Set((result.prodImpact || []).filter(r => r.impact !== 'COVERED').map(r => r.prodNum)).size,
+        prodStopCount:   new Set((result.prodImpact || []).filter(r => r.impact === 'STOP').map(r => r.prodNum)).size,
+        soImpactScope:   'up to 300 SOs × 200 risky POs',
         riskyVendors:    result.vendorList.filter(v => v.riskLevel === 'HIGH').length,
         source:          result.summary.source,
         // Totals over ALL open POs (the PO table lists only MEDIUM+), for the KPI popups.
@@ -867,11 +823,8 @@ export function createShipmentDelayRouter(deps) {
       };
 
       summary.receiptHistory = receipts ? 'db' : 'unavailable';
-      res.json({ ok: true, atRiskPOs, allOpenPOs, vendors, impactedSOs, summary, aiAdvisory: result.aiIntelligence });
-    } catch (e) {
-      console.error('[ShipDelay/scan]', e);
-      res.status(500).json({ ok: false, error: e.message });
-    }
+      res.json({ ok: true, atRiskPOs, allOpenPOs, vendors, impactedSOs, prodImpact: result.prodImpact || [], summary, aiAdvisory: result.aiIntelligence });
+    } catch (e) { fail(res, 'scan', e); }
   });
 
   // GET /api/shipment-delays/vendor-history?cardCode=V001&months=12
@@ -880,20 +833,18 @@ export function createShipmentDelayRouter(deps) {
     try {
       const cardCode = String(req.query.cardCode || '').trim();
       if (!cardCode) return res.status(400).json({ ok: false, error: 'cardCode required' });
+      await needDb();
       const months = Math.min(24, Math.max(1, Number(req.query.months) || 12));
       const from = new Date(Date.now() - months * 30 * 86400000).toISOString().slice(0, 10);
       const rows = await fetchReceiptHistoryViaDB(_dbDeps, { fromDate: from, cardCode });
       if (!rows) return res.json({ ok: true, available: false, cardCode, months, rows: [], monthly: [],
-        message: 'Delivery history needs a DB Direct connection (Tools → DB Connection) to join goods receipts to purchase orders.' });
+        message: 'Delivery history is not available: the goods-receipt / PO tables (OPDN, PDN1, OPOR, POR1) are missing a required column on this database.' });
       rows.sort((a, z) => z.recDate.localeCompare(a.recDate));
       const byMonth = new Map();
       for (const r of rows) { const m = r.recDate.slice(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m).push(r); }
       const monthly = [...byMonth].sort((a, z) => a[0].localeCompare(z[0])).map(([month, list]) => ({ month, ...summariseReceipts(list) }));
       res.json({ ok: true, available: true, cardCode, cardName: rows[0]?.cardName || '', months, from, summary: summariseReceipts(rows), monthly, rows: rows.slice(0, 500) });
-    } catch (e) {
-      console.error('[ShipDelay/vendor-history]', e);
-      res.status(500).json({ ok: false, error: e.message });
-    }
+    } catch (e) { fail(res, 'vendor-history', e); }
   });
 
   // GET /api/shipment-delays/vendor-lines?cardCode=V001 — open PO lines of one vendor.
@@ -901,31 +852,29 @@ export function createShipmentDelayRouter(deps) {
     try {
       const cardCode = String(req.query.cardCode || '').trim();
       if (!cardCode) return res.status(400).json({ ok: false, error: 'cardCode required' });
-      const lines = await fetchVendorOpenLines(getActiveSap(), _dbDeps, cardCode);
+      await needDb();
+      const lines = await fetchVendorOpenLines(null, _dbDeps, cardCode);
       res.json({ ok: true, cardCode, lines });
-    } catch (e) {
-      console.error('[ShipDelay/vendor-lines]', e);
-      res.status(500).json({ ok: false, error: e.message });
-    }
+    } catch (e) { fail(res, 'vendor-lines', e); }
   });
 
   // POST /api/shipment-delays/followup-email { cardCode, cardName, pos:[…] }
-  // Draft expediting e-mail; the vendor's e-mail / contact come from SAP.
+  // Draft expediting e-mail; the vendor's e-mail / contact person / phone come from OCRD.
   router.post('/followup-email', requireAuth, async (req, res) => {
     try {
       const { cardCode, cardName, pos = [] } = req.body || {};
       if (!cardCode) return res.status(400).json({ ok: false, error: 'cardCode required' });
+      await needDb();
       let contact = null;
       try {
-        const bp = await getActiveSap().get(`/BusinessPartners('${String(cardCode).replace(/'/g, "''")}')`, { $select: 'CardName,EmailAddress,ContactPerson,Phone1' });
-        contact = { email: bp.EmailAddress || '', name: bp.ContactPerson || '', phone: bp.Phone1 || '' };
+        const q = n => qcol(n, getActiveType() === 'hana');
+        const [bp] = await executeSQL(`SELECT ${q('E_Mail')} AS ${q('Email')}, ${q('CntctPrsn')} AS ${q('Contact')}, ${q('Phone1')} AS ${q('Phone')} ` +
+          `FROM ${tableRef('OCRD', getActiveConfig())} WHERE ${q('CardCode')} = '${String(cardCode).replace(/'/g, "''")}'`);
+        if (bp) contact = { email: bp.Email || '', name: bp.Contact || '', phone: bp.Phone || '' };
       } catch (e) { console.warn('[ShipDelay/followup] contact lookup failed:', e.message); }
       const mail = followupEmail({ cardCode, cardName }, pos.slice(0, 40), contact);
       res.json({ ok: true, ...mail, phone: contact?.phone || '' });
-    } catch (e) {
-      console.error('[ShipDelay/followup-email]', e);
-      res.status(500).json({ ok: false, error: e.message });
-    }
+    } catch (e) { fail(res, 'followup-email', e); }
   });
 
   // POST /api/shipment-delays/chat

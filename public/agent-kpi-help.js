@@ -550,9 +550,25 @@
         'shp-kpi-soimpact': {
           label: 'SOs Impacted',
           means: 'Customer orders due in the next 60 days that contain an item from a Critical or High-risk PO.',
-          calc: ['Takes the items on the top 20 Critical/High POs and counts open sales orders (due today … +60 days; first 25 checked) that contain one of those items.'],
+          calc: ['Takes the items on the Critical/High-risk POs and counts open sales orders due today … +60 days that contain one of those items.',
+            'Checks up to 200 risky POs × 300 open sales orders, read through DB Direct.'],
           source: ['**POR1** (PO lines), **ORDR / RDR1** (sales orders).'],
-          action: ['Warn the customers or reallocate stock. The count is a sample, so it can be lower than reality.'],
+          action: ['Warn the customers or reallocate stock.'],
+        },
+        'shp-kpi-prodimpact': {
+          label: 'Prod. Orders Impacted',
+          means: 'Planned or released production orders due in the next 60 days that are short of a component sitting on a Critical or High-risk purchase order.',
+          calc: [
+            'For each component of a planned/released production order due within 60 days: **still to issue** = planned qty − issued qty.',
+            'The component must be on an open line of a **Critical or High-risk PO**.',
+            '**COVERED** when stock on hand (all warehouses) ≥ still to issue — not counted.',
+            '**STOP** when not covered and the PO is overdue or due **after the order\'s start date**.',
+            '**AT RISK** when not covered but the PO is due on/before the start date.',
+            'Count = production orders with at least one STOP or AT RISK component (the sub-line shows how many will stop).',
+          ],
+          source: ['**OWOR / WOR1** (production orders and components), **POR1** (PO lines), **OITM** (on hand).',
+            'Read through DB Direct; checks up to 200 risky POs.'],
+          action: ['Expedite the PO, issue from another warehouse, use a substitute, or reschedule the production order.'],
         },
         'shp-kpi-vendors': {
           label: 'Risky Vendors',
@@ -605,8 +621,27 @@
             'Customer': 'Customer name.',
             'SO Due': 'Sales order due date.',
             'Item at Risk': 'Item on the sales order that is also on a delayed PO.',
-            'Delayed PO': 'The Critical/High-risk purchase order for that item.',
+            'Qty': 'Open (undelivered) quantity of that item on the sales order.',
+            'Delayed PO': 'The Critical/High-risk purchase order for that item, and its vendor.',
+            'PO Due': 'Due date of that purchase order ("overdue" when already past).',
             'Delay Prob.': 'Delay probability of that purchase order.',
+          },
+        },
+        {
+          tbody: 'shp-prod-tbody', title: 'Production impact',
+          summary: 'One row per production order and component that sits on a Critical/High-risk purchase order. Filter by impact or search above the table.',
+          cols: {
+            'Impact': 'STOP = stock does not cover the remaining qty and the PO is overdue or due after the start date · AT RISK = not covered, PO due before the start · COVERED = stock on hand covers it.',
+            'Prod. Order': 'Production order number (OWOR DocNum) and status (Planned / Released).',
+            'Product': 'Item the production order makes.',
+            'Start': 'Production order start date and days until it starts.',
+            'Due': 'Production order due date.',
+            'Component': 'Component (WOR1) that is on a delayed PO.',
+            'Still to Issue': 'Planned component qty − issued qty.',
+            'On Hand': 'Stock on hand of the component, all warehouses (OITM OnHand). Red when it does not cover the remaining qty.',
+            'Delayed PO': 'The most urgent Critical/High-risk PO for that component, and its vendor.',
+            'PO Due': 'Due date of that PO ("overdue" when already past).',
+            'Delay Prob.': 'Delay probability of that PO.',
           },
         },
       ],
@@ -1102,8 +1137,37 @@ html[data-ui="fiori"] .akh-colbtn{color:#0064d9;font-size:12px}
         insight: soCount ? `**${soCount} customer orders (${sos.length} lines) depend on items from Critical or High-risk POs; ${dueSoon} are due within 14 days.**\n\n` +
           (custs[0] ? `- Most affected customer: **${custs[0][0]}** — ${custs[0][1]} order lines.\n` : '') +
           (worst ? `- Riskiest link: SO ${worst.soNum} item **${worst.itemCode}** waits on PO ${worst.poNum} (${worst.delayProbPct}% delay probability).\n` : '') +
-          '- Tell these customers early or reallocate stock. This is a sample (top 20 risky POs × first 25 SOs), so the real number can be higher.'
-          : '**No open customer order due in the next 60 days depends on a Critical or High-risk PO** (sample: top 20 risky POs × first 25 SOs).',
+          `- Tell these customers early or reallocate stock. Checked: ${s.soImpactScope || 'sample'}.`
+          : `**No open customer order due in the next 60 days depends on a Critical or High-risk PO** (checked: ${s.soImpactScope || 'sample'}).`,
+      };
+    }
+    if (kpiId === 'shp-kpi-prodimpact') {
+      const all = d.prodImpact || [];
+      const short = all.filter(r => r.impact !== 'COVERED');
+      const orders = new Set(short.map(r => r.prodNum));
+      const stopOrders = new Set(short.filter(r => r.impact === 'STOP').map(r => r.prodNum));
+      const soonest = [...short].filter(r => r.startDate).sort((a, z) => String(a.startDate).localeCompare(String(z.startDate)))[0];
+      const comps = [...short.reduce((m, r) => m.set(r.compItem, (m.get(r.compItem) || 0) + 1), new Map())].sort((a, z) => z[1] - a[1]);
+      const vend = [...short.reduce((m, r) => m.set(r.vendor || '—', (m.get(r.vendor || '—') || 0) + 1), new Map())].sort((a, z) => z[1] - a[1]);
+      const IMPS = ['STOP', 'AT RISK', 'COVERED'];
+      return {
+        tone: stopOrders.size ? 'bad' : orders.size ? 'warn' : 'good',
+        stats: [{ label: 'Orders impacted', value: orders.size, fmt: 'int' }, { label: 'Orders that will stop', value: stopOrders.size, fmt: 'int' },
+          { label: 'Short component lines', value: short.length, fmt: 'int' }, { label: 'Covered by stock', value: all.length - short.length, fmt: 'int' },
+          { label: 'Components affected', value: comps.length, fmt: 'int' }, { label: 'Starting within 7 days', value: new Set(short.filter(r => r.daysToStart != null && r.daysToStart <= 7).map(r => r.prodNum)).size, fmt: 'int' }],
+        chart: all.length ? { title: 'Component lines by impact', type: 'bar', fmt: 'int', labels: IMPS,
+          series: [{ name: 'Lines', values: IMPS.map(i => all.filter(r => r.impact === i).length) }] } : null,
+        table: { title: 'Production orders short of components — STOP first, then by start date',
+          columns: [{ key: 'impact', label: 'Impact', fmt: 'badge', badge: { STOP: 'red', 'AT RISK': 'amber', COVERED: 'green' } },
+            { key: 'prodNum', label: 'Prod. order', sub: 'prodItem' }, { key: 'startDate', label: 'Start', fmt: 'date' }, { key: 'compItem', label: 'Component', sub: 'compName' },
+            { key: 'remaining', label: 'To issue', fmt: 'num' }, { key: 'onHand', label: 'On hand', fmt: 'num' }, { key: 'poNum', label: 'PO', sub: 'vendor' }, { key: 'poDue', label: 'PO due', fmt: 'date' }],
+          rows: short },
+        insight: orders.size ? `**${orders.size} production orders are short of components that sit on delayed POs; ${stopOrders.size} will stop because the PO arrives after the start date or is already overdue.**\n\n` +
+          (soonest ? `- Starts first: **order ${soonest.prodNum}** (${soonest.prodItem}) on ${soonest.startDate} — needs ${soonest.remaining} × ${soonest.compItem}, on hand ${soonest.onHand ?? '—'}, PO ${soonest.poNum} due ${soonest.poDue || '—'}.\n` : '') +
+          (comps[0] ? `- Most-needed component: **${comps[0][0]}** (${comps[0][1]} order lines).\n` : '') +
+          (vend[0] && vend[0][0] !== '—' ? `- Vendor to chase first: **${vend[0][0]}** (${vend[0][1]} lines).\n` : '') +
+          '- Expedite those POs, transfer stock from another warehouse, use a substitute, or reschedule the orders.'
+          : `**No planned or released production order due in the next 60 days is short of a component on a delayed PO.**${all.length ? ` ${all.length} component lines on delayed POs are covered by stock.` : ''}`,
       };
     }
     if (kpiId === 'shp-kpi-vendors') {

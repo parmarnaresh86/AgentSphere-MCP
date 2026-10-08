@@ -6313,6 +6313,7 @@ app.use('/api/purchasing', createPurchasingAgentRouter({
 app.use('/api/shipment-delays', createShipmentDelayRouter({
   requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
   isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap,
+  ensureConnected: rushEnsureDb,   // DB Direct only — reconnect to the saved connection
 }));
 
 // ── Activity Agent routes ──────────────────────────────────────────────────
