@@ -14931,6 +14931,7 @@ setInterval(() => {
     <button id="shp-tab-btn-pos"     onclick="shpTab('pos')"     style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:#7C3AED;border-bottom:2px solid #7C3AED;margin-bottom:-2px;cursor:pointer;white-space:nowrap">🚚 Shipment Risk</button>
     <button id="shp-tab-btn-vendors" onclick="shpTab('vendors')" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap">📊 Vendor Reliability</button>
     <button id="shp-tab-btn-impact"  onclick="shpTab('impact')"  style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap">📦 SO Impact</button>
+    <button id="shp-tab-btn-inbound" onclick="shpTab('inbound')" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap">📅 Inbound Schedule</button>
   </div>
 
   <!-- Tab content -->
@@ -14960,21 +14961,42 @@ setInterval(() => {
     <!-- VENDOR RELIABILITY TAB -->
     <div id="shp-panel-vendors" style="display:none;flex-direction:column;padding:16px;gap:14px">
       <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;padding:10px 14px;font-size:11px;color:#4C1D95;flex-shrink:0">
-        Vendor reliability based on <strong>last 6 months of purchase order history</strong>. Overdue rate = POs past due date ÷ total open POs.
+        <strong>Open POs</strong> = all purchase orders open today. <strong>On-time %</strong>, <strong>Lead time</strong> and <strong>Delay history</strong> come from actual goods receipts against POs in the last 6 months (needs DB Direct).
+        Overdue rate = open POs (last 6 months) past due ÷ open POs. Click a vendor row to see its open POs; click <strong>Delay history</strong> for every past delivery.
+      </div>
+      <div id="shp-vend-filters" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex-shrink:0">
+        <input id="shp-vf-q" type="search" placeholder="Search vendor name or code…" oninput="shpVendRender()" style="flex:1;min-width:200px;font-size:12px;padding:7px 10px;border:1px solid #D0D7E3;border-radius:6px">
+        <select id="shp-vf-risk" onchange="shpVendRender()" style="font-size:12px;padding:6px 8px;border:1px solid #D0D7E3;border-radius:6px">
+          <option value="">All risk levels</option><option value="HIGH">High risk</option><option value="MEDIUM">Medium risk</option><option value="LOW">Low risk</option>
+        </select>
+        <select id="shp-vf-rel" onchange="shpVendRender()" style="font-size:12px;padding:6px 8px;border:1px solid #D0D7E3;border-radius:6px">
+          <option value="">All reliability</option><option>Reliable</option><option>Generally On-Time</option><option>Occasionally Late</option><option>Frequently Delayed</option><option>Unreliable</option><option>Unknown</option>
+        </select>
+        <label style="font-size:12px;display:flex;align-items:center;gap:5px;white-space:nowrap"><input id="shp-vf-open" type="checkbox" checked onchange="shpVendRender()"> Only with open POs</label>
+        <label style="font-size:12px;display:flex;align-items:center;gap:5px;white-space:nowrap"><input id="shp-vf-late" type="checkbox" onchange="shpVendRender()"> Only with overdue POs</label>
+        <span id="shp-vf-count" style="font-size:11px;color:var(--muted);white-space:nowrap"></span>
+        <button onclick="shpVendExport()" style="font-size:12px;padding:6px 12px;border:1px solid #D0D7E3;border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap">⬇ Export CSV</button>
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-radius:4px;overflow:hidden">
         <div style="overflow-x:auto">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr style="background:#F5F3FF;border-bottom:1px solid var(--border)">
               <th style="padding:8px 10px;text-align:left;font-weight:600">Vendor</th>
-              <th style="padding:8px 10px;text-align:center;font-weight:600">Total POs</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Open POs</th>
+              <th style="padding:8px 10px;text-align:right;font-weight:600">Open Value</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Overdue</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">At Risk</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Next Due</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">On-Time %</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Lead Time</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Delay History</th>
               <th style="padding:8px 10px;text-align:center;font-weight:600">Overdue Rate</th>
-              <th style="padding:8px 10px;text-align:center;font-weight:600">Avg Delay</th>
               <th style="padding:8px 10px;text-align:center;font-weight:600">Spend Share</th>
               <th style="padding:8px 10px;text-align:center;font-weight:600">Reliability</th>
               <th style="padding:8px 10px;text-align:center;font-weight:600">Risk</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Action</th>
             </tr></thead>
-            <tbody id="shp-vend-tbody"><tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+            <tbody id="shp-vend-tbody"><tr><td colspan="14" style="padding:20px;text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -14997,6 +15019,30 @@ setInterval(() => {
               <th style="padding:8px 10px;text-align:center;font-weight:600">Delay Prob.</th>
             </tr></thead>
             <tbody id="shp-impact-tbody"><tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- INBOUND SCHEDULE TAB -->
+    <div id="shp-panel-inbound" style="display:none;flex-direction:column;padding:16px;gap:14px">
+      <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:6px;padding:10px 14px;font-size:11px;color:#065F46;flex-shrink:0">
+        When open purchase orders are <strong>due to arrive</strong>, week by week, and how much of that value is at risk of arriving late. Click a week to see its POs.
+      </div>
+      <div id="shp-inb-chart" style="background:#fff;border:1px solid var(--border);border-radius:4px;padding:12px 14px"></div>
+      <div style="background:#fff;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:#F5F3FF;border-bottom:1px solid var(--border)">
+              <th style="padding:8px 10px;text-align:left;font-weight:600">Week</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">POs</th>
+              <th style="padding:8px 10px;text-align:right;font-weight:600">Value Due</th>
+              <th style="padding:8px 10px;text-align:right;font-weight:600">At-Risk Value</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">At-Risk %</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:600">Vendors</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600">Largest PO</th>
+            </tr></thead>
+            <tbody id="shp-inb-tbody"><tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">Click Scan to load the schedule…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -15059,11 +15105,13 @@ setInterval(() => {
     try {
       const d = await apiFetch('/api/shipment-delays/scan');
       _scanData = d;
+      window.shpScanData = d;   // read by the KPI popups (agent-kpi-help.js)
       renderKPIs(d.summary);
       renderAdvisory(d.aiAdvisory);
       renderPOTable(d.atRiskPOs || []);
       renderVendorTable(d.vendors || []);
       renderImpactTable(d.impactedSOs || []);
+      renderInbound();
       sts.textContent = 'Updated ' + new Date().toLocaleTimeString();
     } catch(e) {
       sts.textContent = 'Error';
@@ -15117,23 +15165,252 @@ setInterval(() => {
     }).join('');
   }
 
-  function renderVendorTable(vendors) {
-    const RELC = { Unreliable:'#BB0000','Frequently Delayed':'#E9730C','Occasionally Late':'#D97706','Generally On-Time':'#0070F2',Reliable:'#107E3E',Unknown:'#6B7280' };
+  // ── Vendor reliability: filters, drill-down, delay history, follow-up ─────
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const RELC = { Unreliable:'#BB0000','Frequently Delayed':'#E9730C','Occasionally Late':'#D97706','Generally On-Time':'#0070F2',Reliable:'#107E3E',Unknown:'#6B7280' };
+  let _vendOpen = null;   // cardCode of the expanded vendor row
+
+  function vendFiltered() {
+    const vs = (_scanData && _scanData.vendors) || [];
+    const q = (document.getElementById('shp-vf-q')?.value || '').trim().toLowerCase();
+    const risk = document.getElementById('shp-vf-risk')?.value || '';
+    const rel = document.getElementById('shp-vf-rel')?.value || '';
+    const onlyOpen = document.getElementById('shp-vf-open')?.checked;
+    const onlyLate = document.getElementById('shp-vf-late')?.checked;
+    return vs.filter(v => (!q || String(v.vendorName||'').toLowerCase().includes(q) || String(v.vendorCode||'').toLowerCase().includes(q))
+      && (!risk || v.riskLevel === risk) && (!rel || v.reliability === rel)
+      && (!onlyOpen || v.openNow > 0) && (!onlyLate || v.overdueNow > 0));
+  }
+  function renderVendorTable() { shpVendRender(); }
+  window.shpVendRender = function() {
     const tb = document.getElementById('shp-vend-tbody');
-    if (!vendors.length) { tb.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">No vendor data</td></tr>'; return; }
+    if (!tb) return;
+    const all = (_scanData && _scanData.vendors) || [];
+    const vendors = vendFiltered();
+    const cnt = document.getElementById('shp-vf-count');
+    if (cnt) cnt.textContent = all.length ? `${vendors.length} of ${all.length} vendors` : '';
+    if (!all.length) { tb.innerHTML = '<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--muted)">No vendor data</td></tr>'; return; }
+    if (!vendors.length) { tb.innerHTML = '<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--muted)">No vendor matches the filters</td></tr>'; return; }
+    const noHist = _scanData.summary?.receiptHistory !== 'db';
     tb.innerHTML = vendors.map(v => {
       const rc = RISK_C[v.riskLevel]||'#374151', rb = RISK_B[v.riskLevel]||'#F9FAFB';
       const relC = RELC[v.reliability]||'#374151';
-      return `<tr style="border-bottom:1px solid #F3F4F6">
-        <td style="padding:8px 10px;font-weight:500">${v.vendorName||v.vendorCode}</td>
-        <td style="padding:8px 10px;text-align:center">${v.totalPOs}</td>
+      const h = v.history;
+      const otC = h && h.onTimePct != null ? (h.onTimePct >= 90 ? '#107E3E' : h.onTimePct >= 70 ? '#D97706' : '#BB0000') : '#6B7280';
+      const open = _vendOpen === v.vendorCode;
+      const row = `<tr data-vend="${esc(v.vendorCode)}" style="border-bottom:1px solid #F3F4F6;cursor:pointer;${open?'background:#F5F3FF':''}" title="Click to show this vendor's open POs">
+        <td style="padding:8px 10px;font-weight:500"><span style="color:#7C3AED;margin-right:4px">${open?'▾':'▸'}</span>${esc(v.vendorName||v.vendorCode)}<div style="font-size:10px;color:#6B7280">${esc(v.vendorCode)}</div></td>
+        <td style="padding:8px 10px;text-align:center">${v.openNow||0}</td>
+        <td style="padding:8px 10px;text-align:right">${fmt(v.openValue)}</td>
+        <td style="padding:8px 10px;text-align:center;${v.overdueNow?'color:#BB0000;font-weight:600':''}">${v.overdueNow ? `${v.overdueNow}<div style="font-size:10px;font-weight:400">${fmt(v.overdueValue)}${v.oldestOverdue?` · oldest ${v.oldestOverdue.days}d`:''}</div>` : '—'}</td>
+        <td style="padding:8px 10px;text-align:center;${v.atRiskNow?'color:#E9730C;font-weight:600':''}">${v.atRiskNow||'—'}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:11px">${v.nextDue ? `PO ${esc(v.nextDue.docNum)}<div style="font-size:10px;color:#6B7280">${fmtDate(v.nextDue.date)} · ${v.nextDue.days}d</div>` : '—'}</td>
+        <td style="padding:8px 10px;text-align:center;color:${otC};font-weight:600" title="${noHist?'Needs DB Direct connection':'Receipt lines received on or before their due date, last 6 months'}">${h && h.onTimePct != null ? h.onTimePct+'%' : '—'}${h ? `<div style="font-size:10px;font-weight:400;color:#6B7280">${h.receiptLines} receipts</div>` : ''}</td>
+        <td style="padding:8px 10px;text-align:center" title="Average days from PO date to goods receipt">${h && h.avgLeadDays != null ? h.avgLeadDays+'d' : '—'}</td>
+        <td style="padding:8px 10px;text-align:center"><button data-hist="${esc(v.vendorCode)}" style="font-size:11px;padding:3px 9px;border:1px solid #DDD6FE;border-radius:10px;background:#F5F3FF;color:#5B21B6;cursor:pointer;white-space:nowrap" title="Every past delivery: due date vs received date">${h && h.lateLines ? `⏱ ${h.lateLines} late · avg +${h.avgLateDays}d` : '⏱ View'}</button></td>
         <td style="padding:8px 10px;text-align:center">${pctBar(v.overdueRate)}</td>
-        <td style="padding:8px 10px;text-align:center;${v.avgDelayDays>0?'color:#E9730C;font-weight:600':''}">${v.avgDelayDays>0?'+'+v.avgDelayDays+'d':'—'}</td>
         <td style="padding:8px 10px;text-align:center">${v.spendShare}%</td>
         <td style="padding:8px 10px;text-align:center;color:${relC};font-weight:600;font-size:11px"><span${agxAttr('shpv', v.vendorCode+':rel', v.explain?.reliability, v.vendorName||v.vendorCode)}>${v.reliability}</span></td>
         <td style="padding:8px 10px;text-align:center"><span${agxAttr('shpv', v.vendorCode+':risk', v.explain?.riskLevel, v.vendorName||v.vendorCode)} style="background:${rb};color:${rc};border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700">${v.riskLevel}</span></td>
+        <td style="padding:8px 10px;text-align:center"><button data-mail="${esc(v.vendorCode)}" ${v.openNow?'':'disabled'} style="font-size:11px;padding:3px 9px;border:1px solid #BFDBFE;border-radius:10px;background:#EFF6FF;color:#1D4ED8;cursor:pointer;white-space:nowrap" title="Draft an expediting e-mail for this vendor's overdue and upcoming POs">✉ Follow up</button></td>
       </tr>`;
+      return open ? row + `<tr><td colspan="14" style="padding:0 10px 12px 34px;background:#FAFAFF">${vendDrill(v)}</td></tr>` : row;
     }).join('');
+  };
+
+  function vendDrill(v) {
+    const pos = ((_scanData && _scanData.allOpenPOs) || []).filter(p => p.cardCode === v.vendorCode)
+      .sort((a, z) => (a.daysLeft ?? 9999) - (z.daysLeft ?? 9999));
+    if (!pos.length) return '<div style="padding:10px;color:var(--muted);font-size:11px">No open purchase orders.</div>';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;font-size:11px;color:#4C1D95"><strong>${pos.length} open PO${pos.length>1?'s':''}</strong> · value ${fmt(pos.reduce((s,p)=>s+p.docTotal,0))}
+        <button data-lines="${esc(v.vendorCode)}" style="font-size:11px;padding:3px 9px;border:1px solid #DDD6FE;border-radius:10px;background:#fff;color:#5B21B6;cursor:pointer">Show item lines</button></div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #EEF1F5">
+        <thead><tr style="background:#F8F9FB"><th style="padding:6px 8px;text-align:left">PO #</th><th style="padding:6px 8px">PO date</th><th style="padding:6px 8px">Due</th><th style="padding:6px 8px">Days left</th><th style="padding:6px 8px">Delay prob.</th><th style="padding:6px 8px">Risk</th><th style="padding:6px 8px;text-align:right">Value</th></tr></thead>
+        <tbody>${pos.map(p => `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:5px 8px;font-weight:600;color:#5B21B6">${esc(p.docNum)}</td><td style="padding:5px 8px;text-align:center">${fmtDate(p.docDate)}</td>
+          <td style="padding:5px 8px;text-align:center">${fmtDate(p.docDueDate)}</td>
+          <td style="padding:5px 8px;text-align:center">${p.isOverdue?`<span style="color:#BB0000;font-weight:700">${p.daysOverdue}d late</span>`:(p.daysLeft ?? '—')}</td>
+          <td style="padding:5px 8px;text-align:center">${pctBar(p.delayProbPct)}</td>
+          <td style="padding:5px 8px;text-align:center"><span style="background:${RISK_B[p.riskTag]};color:${RISK_C[p.riskTag]};border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">${p.riskTag}</span></td>
+          <td style="padding:5px 8px;text-align:right">${fmt(p.docTotal)}</td></tr>`).join('')}</tbody></table>
+      <div id="shp-lines-${esc(v.vendorCode)}"></div>`;
+  }
+
+  async function vendLines(code) {
+    const box = document.getElementById('shp-lines-' + code);
+    if (!box) return;
+    box.innerHTML = '<div style="padding:8px;font-size:11px;color:var(--muted)">Loading item lines…</div>';
+    try {
+      const d = await apiFetch('/api/shipment-delays/vendor-lines?cardCode=' + encodeURIComponent(code));
+      const ls = d.lines || [];
+      box.innerHTML = !ls.length ? '<div style="padding:8px;font-size:11px;color:var(--muted)">No open lines.</div>' :
+        `<div style="padding:8px 0 4px;font-size:11px;color:#4C1D95"><strong>Open item lines</strong> (${ls.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #EEF1F5">
+        <thead><tr style="background:#F8F9FB"><th style="padding:6px 8px;text-align:left">PO #</th><th style="padding:6px 8px;text-align:left">Item</th><th style="padding:6px 8px">Ship date</th><th style="padding:6px 8px;text-align:right">Ordered</th><th style="padding:6px 8px;text-align:right">Open qty</th><th style="padding:6px 8px;text-align:right">Open value</th></tr></thead>
+        <tbody>${ls.sort((a,z)=>String(a.shipDate).localeCompare(String(z.shipDate))).map(l => `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:5px 8px">${esc(l.docNum)}</td><td style="padding:5px 8px">${esc(l.itemCode)} <span style="color:#6B7280">${esc(l.desc)}</span></td>
+          <td style="padding:5px 8px;text-align:center;${l.shipDate && l.shipDate < new Date().toISOString().slice(0,10)?'color:#BB0000;font-weight:600':''}">${fmtDate(l.shipDate)}</td>
+          <td style="padding:5px 8px;text-align:right">${fmt(l.qty)}</td><td style="padding:5px 8px;text-align:right;font-weight:600">${fmt(l.openQty)}</td><td style="padding:5px 8px;text-align:right">${fmt(l.openValue)}</td></tr>`).join('')}</tbody></table>`;
+    } catch (e) { box.innerHTML = `<div style="padding:8px;font-size:11px;color:#BB0000">Could not load lines: ${esc(e.message)}</div>`; }
+  }
+
+  // Delay history popup — every goods receipt against a PO for one vendor.
+  async function vendHistory(code) {
+    const v = ((_scanData && _scanData.vendors) || []).find(x => x.vendorCode === code) || { vendorCode: code, vendorName: code };
+    let d;
+    try { d = await apiFetch(`/api/shipment-delays/vendor-history?cardCode=${encodeURIComponent(code)}&months=12`); }
+    catch (e) { alert('Could not load delivery history: ' + e.message); return; }
+    const open = ((_scanData && _scanData.allOpenPOs) || []).filter(p => p.cardCode === code && p.isOverdue);
+    const s = d.summary || {};
+    const rows = d.rows || [];
+    const worst = [...rows].filter(r => r.lateDays > 0).sort((a, z) => z.lateDays - a.lateDays)[0];
+    const trend = d.monthly || [];
+    const last3 = trend.slice(-3), prev3 = trend.slice(-6, -3);
+    // On-time % over several months = on-time lines ÷ lines with a due date (on time + late).
+    const avg = l => { const n = l.reduce((t, m) => t + m.onTimeLines + m.lateLines, 0); return n ? Math.round(l.reduce((t, m) => t + m.onTimeLines, 0) / n * 100) : null; };
+    const a3 = avg(last3), p3 = avg(prev3);
+    const detail = !d.available ? {
+      stats: [{ label: 'Currently overdue POs', value: open.length, fmt: 'int' }, { label: 'Overdue value', value: open.reduce((t, p) => t + p.docTotal, 0), fmt: 'amt' }],
+      table: { title: 'Open POs past their due date', columns: [{ key: 'docNum', label: 'PO #' }, { key: 'docDueDate', label: 'Due', fmt: 'date' }, { key: 'daysOverdue', label: 'Days late', fmt: 'int' }, { key: 'docTotal', label: 'Value', fmt: 'amt' }], rows: open },
+      empty: d.message, insight: `**Past deliveries can't be read without a DB Direct connection.** ${open.length} open POs from this vendor are overdue right now.`,
+    } : {
+      stats: [{ label: 'Receipt lines (12 months)', value: s.receiptLines, fmt: 'int' }, { label: 'On time', value: s.onTimePct, fmt: 'pct' },
+        { label: 'Late deliveries', value: s.lateLines, fmt: 'int' }, { label: 'Avg days late (late ones)', value: s.avgLateDays, fmt: 'int' },
+        { label: 'Worst delay (days)', value: s.maxLateDays, fmt: 'int' }, { label: 'Avg lead time (days)', value: s.avgLeadDays, fmt: 'int' }],
+      chart: trend.length ? { title: 'On-time % by month (goods receipts)', type: 'bar', fmt: 'pct', labels: trend.map(m => m.month),
+        series: [{ name: 'On time %', values: trend.map(m => m.onTimePct), color: '#107E3E' }, { name: 'Avg days late', values: trend.map(m => m.avgLateDays), type: 'line', color: '#BB0000' }] } : null,
+      table: { title: 'Every delivery — most recent first', columns: [
+        { key: 'recDate', label: 'Received', fmt: 'date' }, { key: 'grpoNum', label: 'GRPO #' }, { key: 'poNum', label: 'PO #' },
+        { key: 'dueDate', label: 'Due', fmt: 'date' }, { key: 'lateDays', label: 'Days late', fmt: 'int' }, { key: 'status', label: 'Status', fmt: 'badge', badge: { 'ON TIME': 'green', LATE: 'red', 'NO DUE DATE': 'grey' } },
+        { key: 'itemCode', label: 'Item', sub: 'desc' }, { key: 'qty', label: 'Qty', fmt: 'num' }, { key: 'leadDays', label: 'Lead (d)', fmt: 'int' }], rows },
+      empty: rows.length ? '' : 'No goods receipts against purchase orders from this vendor in the last 12 months.',
+      insight: rows.length ? `**${v.vendorName || code} delivered ${s.onTimePct ?? '—'}% of ${s.receiptLines} receipt lines on time in the last 12 months; late deliveries averaged +${s.avgLateDays} days.**\n\n` +
+        (worst ? `- Worst delay: **PO ${worst.poNum}** (item ${worst.itemCode}) received ${worst.recDate}, ${worst.lateDays} days after its due date ${worst.dueDate}.\n` : '') +
+        (a3 != null && p3 != null ? `- Trend: last 3 months ${a3}% on time vs ${p3}% the 3 months before — ${a3 > p3 ? 'improving' : a3 < p3 ? 'getting worse' : 'flat'}.\n` : '') +
+        `- Average lead time ${s.avgLeadDays ?? '—'} days from PO to receipt — use it when setting PO due dates.\n` +
+        (open.length ? `- ${open.length} open POs are overdue right now — send a follow-up.` : '- No open PO from this vendor is overdue right now.')
+        : `**No goods receipts against POs from ${v.vendorName || code} in the last 12 months.**`,
+    };
+    if (!window.KpiDetail) { alert('Popup component not loaded — refresh the page.'); return; }
+    window.KpiDetail.open({
+      label: `Delay history — ${v.vendorName || code}`, valueHtml: d.available && s.onTimePct != null ? `${s.onTimePct}% on time` : esc(v.reliability || ''),
+      tone: d.available && s.onTimePct != null ? (s.onTimePct >= 90 ? 'good' : s.onTimePct >= 70 ? 'warn' : 'bad') : '',
+      hint: `${code} · receipts since ${d.from || '—'}`, color: '#7C3AED',
+      footnote: 'Goods receipts (OPDN/PDN1) copied from purchase orders (OPOR/POR1). Due date = PO line ship date, else PO due date. On time = received on or before the due date.',
+      detail: { ...detail, formula: 'Days late = goods receipt date − due date (PO line ship date, else PO due date). On-time % = receipt lines with days late ≤ 0 ÷ receipt lines with a due date.',
+        steps: ['One row per goods-receipt line copied from a PO line (PDN1.BaseType = 22), cancelled receipts excluded.', 'Lead time = receipt date − PO date.', 'Monthly figures group the receipts by the month they were received.'],
+        sources: ['**OPDN / PDN1** — goods receipts and their PO links', '**OPOR / POR1** — PO date, PO due date, line ship date'] },
+      buttons: open.length || ((_scanData && _scanData.allOpenPOs) || []).some(p => p.cardCode === code) ? [{ label: '✉ Draft follow-up', onClick: () => vendMail(code) }] : [],
+    });
+  }
+
+  // Expediting e-mail modal.
+  async function vendMail(code) {
+    const v = ((_scanData && _scanData.vendors) || []).find(x => x.vendorCode === code) || { vendorCode: code, vendorName: code };
+    const pos = ((_scanData && _scanData.allOpenPOs) || []).filter(p => p.cardCode === code && (p.isOverdue || p.riskTag !== 'LOW' || (p.daysLeft != null && p.daysLeft <= 14)));
+    if (!pos.length) { alert('No overdue, at-risk or soon-due POs for this vendor.'); return; }
+    let m;
+    try { m = await postJSON('/api/shipment-delays/followup-email', { cardCode: code, cardName: v.vendorName, pos }); }
+    catch (e) { alert('Could not draft the e-mail: ' + e.message); return; }
+    const bg = document.createElement('div');
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2100;display:flex;align-items:center;justify-content:center;padding:16px';
+    bg.innerHTML = `<div style="background:#fff;border-radius:12px;width:680px;max-width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+      <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;font-weight:700;font-size:15px">✉ Follow-up e-mail — ${esc(v.vendorName || code)}</div>
+      <div style="padding:14px 18px;display:flex;flex-direction:column;gap:8px;overflow:auto;font-size:12px">
+        <label>To <input id="shp-m-to" value="${esc(m.to)}" placeholder="vendor e-mail (not set in SAP)" style="width:100%;padding:6px 8px;border:1px solid #D0D7E3;border-radius:6px;box-sizing:border-box"></label>
+        <label>Subject <input id="shp-m-sub" value="${esc(m.subject)}" style="width:100%;padding:6px 8px;border:1px solid #D0D7E3;border-radius:6px;box-sizing:border-box"></label>
+        <textarea id="shp-m-body" style="width:100%;min-height:300px;font:12px/1.5 ui-monospace,Consolas,monospace;padding:10px;border:1px solid #D0D7E3;border-radius:6px;box-sizing:border-box">${esc(m.body)}</textarea>
+        <div style="color:#6B7280;font-size:11px">${pos.length} POs included (overdue, at risk or due within 14 days).${m.phone ? ` Vendor phone: ${esc(m.phone)}.` : ''} Edit the text before sending.</div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid #E5E7EB;display:flex;gap:8px;justify-content:flex-end">
+        <button data-a="copy" style="padding:7px 14px;border:1px solid #CBD5E1;border-radius:6px;background:#fff;cursor:pointer">Copy</button>
+        <button data-a="mailto" style="padding:7px 14px;border:1px solid #CBD5E1;border-radius:6px;background:#fff;cursor:pointer">Open in mail app</button>
+        <button data-a="close" style="padding:7px 14px;border:1px solid #0070F2;border-radius:6px;background:#0070F2;color:#fff;cursor:pointer">Close</button>
+      </div></div>`;
+    const val = id => bg.querySelector(id).value;
+    bg.addEventListener('click', e => {
+      const a = e.target.dataset && e.target.dataset.a;
+      if (e.target === bg || a === 'close') bg.remove();
+      else if (a === 'copy') navigator.clipboard.writeText(`Subject: ${val('#shp-m-sub')}\n\n${val('#shp-m-body')}`).then(() => { e.target.textContent = 'Copied ✓'; });
+      else if (a === 'mailto') window.location.href = `mailto:${encodeURIComponent(val('#shp-m-to'))}?subject=${encodeURIComponent(val('#shp-m-sub'))}&body=${encodeURIComponent(val('#shp-m-body'))}`;
+    });
+    document.body.appendChild(bg);
+  }
+
+  window.shpVendExport = function() {
+    const vs = vendFiltered();
+    if (!vs.length) { alert('Nothing to export.'); return; }
+    const q = x => { const s = String(x ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const head = ['Vendor code','Vendor','Open POs','Open value','Overdue POs','Overdue value','Oldest overdue (days)','At-risk POs','Next due PO','Next due date','On-time %','Receipt lines','Late deliveries','Avg days late','Avg lead time (days)','Overdue rate %','Spend share %','Reliability','Risk'];
+    const lines = vs.map(v => [v.vendorCode, v.vendorName, v.openNow, v.openValue, v.overdueNow, v.overdueValue, v.oldestOverdue?.days ?? '', v.atRiskNow, v.nextDue?.docNum ?? '', v.nextDue?.date ?? '',
+      v.history?.onTimePct ?? '', v.history?.receiptLines ?? '', v.history?.lateLines ?? '', v.history?.avgLateDays ?? '', v.history?.avgLeadDays ?? '', v.overdueRate, v.spendShare, v.reliability, v.riskLevel].map(q).join(','));
+    const blob = new Blob(['﻿' + [head.join(','), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `vendor-reliability-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  document.getElementById('shp-vend-tbody')?.addEventListener('click', e => {
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const h = t.closest('[data-hist]'), m = t.closest('[data-mail]'), l = t.closest('[data-lines]');
+    if (h) { e.stopPropagation(); vendHistory(h.dataset.hist); return; }
+    if (m) { e.stopPropagation(); vendMail(m.dataset.mail); return; }
+    if (l) { e.stopPropagation(); vendLines(l.dataset.lines); return; }
+    const row = t.closest('tr[data-vend]');   // reliability / risk "why" spans stop their own click
+    if (row) { _vendOpen = _vendOpen === row.dataset.vend ? null : row.dataset.vend; shpVendRender(); }
+  });
+
+  // ── Inbound schedule: open PO value due per week, with the at-risk part ──
+  function renderInbound() {
+    const tb = document.getElementById('shp-inb-tbody'), ch = document.getElementById('shp-inb-chart');
+    if (!tb) return;
+    const pos = (_scanData && _scanData.allOpenPOs) || [];
+    if (!pos.length) { tb.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">No open purchase orders</td></tr>'; if (ch) ch.innerHTML = ''; return; }
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dstr = d => d.toISOString().slice(0,10);
+    const buckets = [{ key: 'od', label: 'Overdue (past due)', test: p => p.isOverdue }];
+    for (let w = 0; w < 8; w++) {
+      const from = new Date(today.getTime() + w*7*86400000), to = new Date(today.getTime() + (w*7+6)*86400000);
+      buckets.push({ key: 'w'+w, label: `${w===0?'This week':'Week '+(w+1)} · ${dstr(from).slice(5)} → ${dstr(to).slice(5)}`, test: p => !p.isOverdue && p.daysLeft != null && p.daysLeft >= w*7 && p.daysLeft <= w*7+6 });
+    }
+    buckets.push({ key: 'later', label: 'Later (8+ weeks)', test: p => !p.isOverdue && p.daysLeft != null && p.daysLeft >= 56 });
+    buckets.push({ key: 'none', label: 'No due date', test: p => p.daysLeft == null });
+    const rows = buckets.map(b => {
+      const list = pos.filter(b.test);
+      const val = list.reduce((t,p)=>t+p.docTotal,0), risk = list.filter(p=>p.riskTag==='CRITICAL'||p.riskTag==='HIGH').reduce((t,p)=>t+p.docTotal,0);
+      const big = [...list].sort((a,z)=>z.docTotal-a.docTotal)[0];
+      return { ...b, list, val, risk, vendors: new Set(list.map(p=>p.cardCode)).size, big };
+    }).filter(r => r.list.length || r.key.startsWith('w'));
+    const max = Math.max(1, ...rows.map(r=>r.val));
+    if (ch) ch.innerHTML = `<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:8px">Value due by week — <span style="color:#BB0000">red</span> = Critical/High risk</div>` +
+      rows.map(r => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:11px">
+        <div style="width:190px;flex-shrink:0;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.label)}</div>
+        <div style="flex:1;height:14px;background:#F1F5F9;border-radius:3px;display:flex;overflow:hidden">
+          <div style="width:${r.risk/max*100}%;background:#BB0000"></div><div style="width:${(r.val-r.risk)/max*100}%;background:#7C3AED;opacity:.55"></div></div>
+        <div style="width:110px;text-align:right;font-variant-numeric:tabular-nums">${fmt(r.val)}</div></div>`).join('');
+    tb.innerHTML = rows.map(r => `<tr data-week="${r.key}" style="border-bottom:1px solid #F3F4F6;${r.list.length?'cursor:pointer':''};${r.key==='od'&&r.list.length?'background:#FFF5F5':''}" title="${r.list.length?'Click to list these POs':''}">
+      <td style="padding:8px 10px;font-weight:600">${esc(r.label)}</td>
+      <td style="padding:8px 10px;text-align:center">${r.list.length||'—'}</td>
+      <td style="padding:8px 10px;text-align:right">${r.list.length?fmt(r.val):'—'}</td>
+      <td style="padding:8px 10px;text-align:right;${r.risk?'color:#BB0000;font-weight:600':''}">${r.risk?fmt(r.risk):'—'}</td>
+      <td style="padding:8px 10px;text-align:center">${r.val?pctBar(r.risk/r.val*100):'—'}</td>
+      <td style="padding:8px 10px;text-align:center">${r.vendors||'—'}</td>
+      <td style="padding:8px 10px;font-size:11px">${r.big?`PO ${esc(r.big.docNum)} · ${esc(r.big.vendorName)} · ${fmt(r.big.docTotal)}`:'—'}</td></tr>`).join('');
+    tb.onclick = e => {
+      const tr = e.target.closest && e.target.closest('tr[data-week]');
+      const r = tr && rows.find(x => x.key === tr.dataset.week);
+      if (!r || !r.list.length || !window.KpiDetail) return;
+      const byV = [...r.list.reduce((m,p)=>m.set(p.vendorName,(m.get(p.vendorName)||0)+p.docTotal),new Map())].sort((a,z)=>z[1]-a[1]);
+      window.KpiDetail.open({ label: `Inbound — ${r.label}`, valueHtml: fmt(r.val), hint: `${r.list.length} POs from ${r.vendors} vendors`, color: '#7C3AED',
+        detail: { formula: 'Σ open PO value (DocTotal) whose due date falls in this week; at risk = Critical + High delay risk.',
+          stats: [{ label: 'POs', value: r.list.length, fmt: 'int' }, { label: 'Value due', value: r.val, fmt: 'amt' }, { label: 'At-risk value', value: r.risk, fmt: 'amt' }, { label: 'Vendors', value: r.vendors, fmt: 'int' }],
+          chart: byV.length > 1 ? { title: 'Value by vendor', type: 'bar', horizontal: true, labels: byV.slice(0,10).map(x=>x[0]), series: [{ name: 'Value', values: byV.slice(0,10).map(x=>Math.round(x[1])) }] } : null,
+          table: { title: 'POs due', columns: [{ key: 'docNum', label: 'PO #' }, { key: 'vendorName', label: 'Vendor', sub: 'cardCode' }, { key: 'docDueDate', label: 'Due', fmt: 'date' }, { key: 'delayProbPct', label: 'Delay prob.', fmt: 'pct' }, { key: 'riskTag', label: 'Risk', fmt: 'badge', badge: { CRITICAL: 'red', HIGH: 'amber', MEDIUM: 'blue', LOW: 'green' } }, { key: 'docTotal', label: 'Value', fmt: 'amt' }],
+            rows: [...r.list].sort((a,z)=>z.docTotal-a.docTotal) },
+          insight: `**${r.list.length} POs worth ${fmt(r.val)} ${r.key==='od'?'are past due':'are due in this period'}; ${fmt(r.risk)} (${r.val?Math.round(r.risk/r.val*100):0}%) is at Critical/High risk.**\n\n` +
+            (byV[0] ? `- Largest vendor: **${byV[0][0]}** — ${fmt(byV[0][1])}.\n` : '') + (r.big ? `- Largest PO: **${r.big.docNum}** (${fmt(r.big.docTotal)}).` : '') } });
+    };
   }
 
   function renderImpactTable(sos) {
@@ -15152,7 +15429,7 @@ setInterval(() => {
 
   // ── Tab switching ─────────────────────────────────────────────────────────
   window.shpTab = function(tab) {
-    ['pos','vendors','impact'].forEach(t => {
+    ['pos','vendors','impact','inbound'].forEach(t => {
       document.getElementById('shp-panel-' + t).style.display    = t===tab ? 'flex' : 'none';
       const btn = document.getElementById('shp-tab-btn-' + t);
       btn.style.color        = t===tab ? '#7C3AED'              : 'var(--muted)';

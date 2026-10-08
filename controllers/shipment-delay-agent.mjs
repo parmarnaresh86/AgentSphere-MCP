@@ -647,6 +647,125 @@ export async function runShipmentDelayScan(sap, { aiDeps = null, dbDeps = null }
   return { scoredPOs, vendorList, impactedSOs: impacted, summary, aiIntelligence };
 }
 
+// ── Actual delivery history (goods receipts against POs) ─────────────────────
+// One row per GRPO line copied from a PO line (PDN1.BaseType = 22). Due date =
+// PO line ship date, else PO due date. On time = received on or before due.
+// DB Direct only (the Service Layer has no cheap way to join receipts to PO
+// lines); returns null when no DB connection or a column is missing.
+const dayDiff = (a, b) => Math.round((new Date(String(a).slice(0, 10)) - new Date(String(b).slice(0, 10))) / 86400000);
+async function fetchReceiptHistoryViaDB(dbDeps, { fromDate, cardCode } = {}) {
+  if (!dbDeps?.isConnected?.()) return null;
+  const { getActiveConfig, getActiveType, getTableColumns, tableRef, executeSQL } = dbDeps;
+  const cfg = getActiveConfig(), isHana = getActiveType() === 'hana', q = n => qcol(n, isHana);
+  const need = { OPDN: ['DocEntry', 'DocNum', 'DocDate', 'CardCode', 'CardName', 'CANCELED'],
+    PDN1: ['DocEntry', 'BaseType', 'BaseEntry', 'BaseLine', 'ItemCode', 'Dscription', 'Quantity'],
+    OPOR: ['DocEntry', 'DocNum', 'DocDate', 'DocDueDate'], POR1: ['DocEntry', 'LineNum', 'ShipDate'] };
+  try {
+    for (const [t, cols] of Object.entries(need)) {
+      const have = await getTableColumns(t);
+      const miss = cols.filter(c => !have.has(c.toLowerCase()));
+      if (miss.length) { console.warn(`[ShipDelay/history] ${t} missing ${miss.join(', ')}`); return null; }
+    }
+    const conds = [`T1.${q('BaseType')} = 22`, `T0.${q('CANCELED')} = 'N'`, `T0.${q('DocDate')} >= '${fromDate}'`];
+    if (cardCode) conds.push(`T0.${q('CardCode')} = '${String(cardCode).replace(/'/g, "''")}'`);
+    const sql = `SELECT T0.${q('DocNum')} AS ${q('GrpoNum')}, T0.${q('DocDate')} AS ${q('RecDate')}, T0.${q('CardCode')} AS ${q('CardCode')}, ` +
+      `T0.${q('CardName')} AS ${q('CardName')}, T2.${q('DocNum')} AS ${q('PoNum')}, T2.${q('DocDate')} AS ${q('PoDate')}, ` +
+      `T2.${q('DocDueDate')} AS ${q('PoDue')}, T3.${q('ShipDate')} AS ${q('LineDue')}, T1.${q('ItemCode')} AS ${q('ItemCode')}, ` +
+      `T1.${q('Dscription')} AS ${q('Descr')}, T1.${q('Quantity')} AS ${q('Qty')} ` +
+      `FROM ${tableRef('OPDN', cfg)} T0 INNER JOIN ${tableRef('PDN1', cfg)} T1 ON T1.${q('DocEntry')} = T0.${q('DocEntry')} ` +
+      `INNER JOIN ${tableRef('OPOR', cfg)} T2 ON T2.${q('DocEntry')} = T1.${q('BaseEntry')} ` +
+      `LEFT JOIN ${tableRef('POR1', cfg)} T3 ON T3.${q('DocEntry')} = T1.${q('BaseEntry')} AND T3.${q('LineNum')} = T1.${q('BaseLine')} ` +
+      `WHERE ${conds.join(' AND ')}`;
+    const rows = await executeSQL(sql);
+    return rows.map(r => {
+      const due = r.LineDue || r.PoDue;
+      const late = due ? dayDiff(r.RecDate, due) : null;
+      return {
+        cardCode: r.CardCode, cardName: r.CardName, grpoNum: r.GrpoNum, recDate: String(r.RecDate).slice(0, 10),
+        poNum: r.PoNum, poDate: String(r.PoDate).slice(0, 10), dueDate: due ? String(due).slice(0, 10) : null,
+        lateDays: late, leadDays: r.PoDate ? dayDiff(r.RecDate, r.PoDate) : null,
+        itemCode: r.ItemCode, desc: String(r.Descr || '').slice(0, 60), qty: Number(r.Qty || 0),
+        status: late == null ? 'NO DUE DATE' : late <= 0 ? 'ON TIME' : 'LATE',
+      };
+    });
+  } catch (e) {
+    console.warn('[ShipDelay/history] receipt history failed:', e.message);
+    return null;
+  }
+}
+function summariseReceipts(rows) {
+  const dated = rows.filter(r => r.lateDays != null);
+  const late = dated.filter(r => r.lateDays > 0);
+  const lead = rows.filter(r => r.leadDays != null && r.leadDays >= 0);
+  return {
+    receiptLines: rows.length,
+    onTimeLines:  dated.length - late.length,
+    onTimePct:    dated.length ? Math.round(((dated.length - late.length) / dated.length) * 100) : null,
+    lateLines:    late.length,
+    avgLateDays:  late.length ? Math.round(late.reduce((s, r) => s + r.lateDays, 0) / late.length) : 0,
+    maxLateDays:  late.reduce((m, r) => Math.max(m, r.lateDays), 0),
+    avgLeadDays:  lead.length ? Math.round(lead.reduce((s, r) => s + r.leadDays, 0) / lead.length) : null,
+  };
+}
+
+// Open PO lines of one vendor (for the vendor drill-down).
+async function fetchVendorOpenLines(sap, dbDeps, cardCode) {
+  const code = String(cardCode).replace(/'/g, "''");
+  if (dbDeps?.isConnected?.()) {
+    try {
+      const { getActiveConfig, getActiveType, tableRef, executeSQL } = dbDeps;
+      const cfg = getActiveConfig(), q = n => qcol(n, getActiveType() === 'hana');
+      const rows = await executeSQL(`SELECT T0.${q('DocNum')} AS ${q('DocNum')}, T0.${q('DocDueDate')} AS ${q('DocDueDate')}, T1.${q('LineNum')} AS ${q('LineNum')}, ` +
+        `T1.${q('ItemCode')} AS ${q('ItemCode')}, T1.${q('Dscription')} AS ${q('Descr')}, T1.${q('Quantity')} AS ${q('Qty')}, T1.${q('OpenQty')} AS ${q('OpenQty')}, ` +
+        `T1.${q('ShipDate')} AS ${q('ShipDate')}, T1.${q('Price')} AS ${q('Price')} ` +
+        `FROM ${tableRef('OPOR', cfg)} T0 INNER JOIN ${tableRef('POR1', cfg)} T1 ON T1.${q('DocEntry')} = T0.${q('DocEntry')} ` +
+        `WHERE T0.${q('CardCode')} = '${code}' AND T0.${q('DocStatus')} = 'O' AND T0.${q('CANCELED')} = 'N' AND T1.${q('LineStatus')} = 'O'`);
+      return rows.map(r => ({ docNum: r.DocNum, lineNum: r.LineNum, itemCode: r.ItemCode, desc: String(r.Descr || '').slice(0, 60),
+        qty: Number(r.Qty || 0), openQty: Number(r.OpenQty || 0), shipDate: String(r.ShipDate || r.DocDueDate || '').slice(0, 10),
+        openValue: Math.round(Number(r.OpenQty || 0) * Number(r.Price || 0)) }));
+    } catch (e) { console.warn('[ShipDelay/lines] DB failed, using Service Layer:', e.message); }
+  }
+  const heads = await fetchAllPaginated(sap, '/PurchaseOrders', {
+    $filter: `CardCode eq '${code}' and DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'`, $select: 'DocEntry,DocNum,DocDueDate',
+  }, { pageSize: 50, maxItems: 30 });
+  const out = [];
+  for (const h of heads) {
+    try {
+      const full = await sap.get(`/PurchaseOrders(${h.DocEntry})`);
+      for (const l of full.DocumentLines || []) {
+        if (l.LineStatus && l.LineStatus !== 'bost_Open') continue;
+        const open = Number(l.RemainingOpenQuantity ?? l.OpenQuantity ?? l.Quantity ?? 0);
+        out.push({ docNum: h.DocNum, lineNum: l.LineNum, itemCode: l.ItemCode, desc: String(l.ItemDescription || '').slice(0, 60),
+          qty: Number(l.Quantity || 0), openQty: open, shipDate: String(l.ShipDate || h.DocDueDate || '').slice(0, 10),
+          openValue: Math.round(open * Number(l.Price || 0)) });
+      }
+    } catch (e) { console.warn(`[ShipDelay/lines] PO ${h.DocEntry}:`, e.message); }
+  }
+  return out;
+}
+
+// Expediting e-mail: overdue POs first, then at-risk ones, asking for dates.
+function followupEmail(vendor, pos, contact) {
+  const fa = v => Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const overdue = pos.filter(p => p.isOverdue).sort((a, z) => z.daysOverdue - a.daysOverdue);
+  const upcoming = pos.filter(p => !p.isOverdue).sort((a, z) => String(a.docDueDate).localeCompare(String(z.docDueDate)));
+  const line = p => `  • PO ${p.docNum} — due ${String(p.docDueDate || '').slice(0, 10)}${p.isOverdue ? ` (${p.daysOverdue} days overdue)` : ''} — value ${fa(p.docTotal)}`;
+  const subject = overdue.length
+    ? `Delivery follow-up: ${overdue.length} overdue purchase order${overdue.length > 1 ? 's' : ''} — please confirm ship dates`
+    : `Delivery confirmation request: ${upcoming.length} upcoming purchase order${upcoming.length > 1 ? 's' : ''}`;
+  const body = `Dear ${contact?.name || `${vendor.cardName || vendor.cardCode} team`},
+
+We are reviewing our open purchase orders with you and would appreciate your update on the following:
+${overdue.length ? `\nOverdue — please confirm the dispatch date, tracking details and any partial-shipment option:\n${overdue.map(line).join('\n')}\n` : ''}${upcoming.length ? `\nDue soon — please confirm that these will ship on time:\n${upcoming.map(line).join('\n')}\n` : ''}
+Kindly reply within 2 business days with a confirmed ship date for each order. If any item cannot be delivered on time, please let us know the earliest possible date so we can plan accordingly.
+
+Thank you for your support.
+
+Best regards,
+Purchasing Team`;
+  return { to: contact?.email || '', subject, body };
+}
+
 // ── Router factory ────────────────────────────────────────────────────────────
 export function createShipmentDelayRouter(deps) {
   const {
@@ -680,10 +799,40 @@ export function createShipmentDelayRouter(deps) {
           ].filter(Boolean),
         }));
 
-      const vendors = result.vendorList.map(v => ({
-        ...v,
-        vendorCode: v.cardCode,
-        vendorName: v.cardName,
+      // Vendor table: 6-month history + every currently open PO + actual
+      // receipt performance (GRPO vs due date, DB Direct only).
+      const histStart = new Date(Date.now() - HISTORY_MONTHS * 30 * 86400000).toISOString().slice(0, 10);
+      const receipts = await fetchReceiptHistoryViaDB(_dbDeps, { fromDate: histStart });
+      const recBy = new Map();
+      for (const r of receipts || []) { if (!recBy.has(r.cardCode)) recBy.set(r.cardCode, []); recBy.get(r.cardCode).push(r); }
+      const openBy = new Map();
+      for (const p of result.scoredPOs) { if (!openBy.has(p.cardCode)) openBy.set(p.cardCode, []); openBy.get(p.cardCode).push(p); }
+      const base = new Map(result.vendorList.map(v => [v.cardCode, v]));
+      for (const [code, list] of openBy) if (!base.has(code)) base.set(code, { cardCode: code, cardName: list[0].cardName, totalPOs: 0, openPOs: 0, overduePOs: 0, avgDelayDays: 0, maxDelayDays: 0, totalSpend: 0, spendShare: 0, overdueRate: 0, reliability: 'Unknown', riskLevel: 'LOW' });
+      const vendors = [...base.values()].map(v => {
+        const open = openBy.get(v.cardCode) || [];
+        const od = open.filter(p => p.isOverdue);
+        const upcoming = open.filter(p => !p.isOverdue && p.docDueDate).sort((a, z) => String(a.docDueDate).localeCompare(String(z.docDueDate)));
+        const oldest = od.sort((a, z) => z.daysOverdue - a.daysOverdue)[0];
+        const openValue = open.reduce((s, p) => s + p.docTotal, 0);
+        const rec = recBy.has(v.cardCode) ? summariseReceipts(recBy.get(v.cardCode)) : null;
+        return {
+          ...v, vendorCode: v.cardCode, vendorName: v.cardName,
+          openNow: open.length, openValue: Math.round(openValue),
+          overdueNow: od.length, overdueValue: Math.round(od.reduce((s, p) => s + p.docTotal, 0)),
+          atRiskNow: open.filter(p => p.risk === 'CRITICAL' || p.risk === 'HIGH').length,
+          weightedProb: openValue ? Math.round(open.reduce((s, p) => s + p.delayProbability * p.docTotal, 0) / openValue) : 0,
+          nextDue: upcoming[0] ? { docNum: upcoming[0].docNum, date: String(upcoming[0].docDueDate).slice(0, 10), days: upcoming[0].daysUntilDue } : null,
+          oldestOverdue: oldest ? { docNum: oldest.docNum, days: oldest.daysOverdue } : null,
+          history: rec,   // null = no DB Direct / no receipts in the window
+        };
+      }).sort((a, z) => z.overdueValue - a.overdueValue || z.openValue - a.openValue || z.overdueRate - a.overdueRate);
+
+      // Every open PO (slim), for the vendor drill-down and the inbound schedule.
+      const allOpenPOs = result.scoredPOs.map(p => ({
+        docNum: p.docNum, docEntry: p.docEntry, cardCode: p.cardCode, vendorName: p.cardName, docDate: p.docDate,
+        docDueDate: p.docDueDate, daysLeft: p.daysUntilDue, isOverdue: p.isOverdue, daysOverdue: p.daysOverdue,
+        docTotal: p.docTotal, delayProbPct: p.delayProbability, riskTag: p.risk,
       }));
 
       // Flatten SO impact to one row per (SO × item) for the table
@@ -707,11 +856,74 @@ export function createShipmentDelayRouter(deps) {
         impactedSOCount: result.summary.impactedSOCount,
         riskyVendors:    result.vendorList.filter(v => v.riskLevel === 'HIGH').length,
         source:          result.summary.source,
+        // Totals over ALL open POs (the PO table lists only MEDIUM+), for the KPI popups.
+        lowCount:        result.scoredPOs.filter(p => p.risk === 'LOW').length,
+        overdueCount:    result.summary.overdueCount,
+        totalValue:      Math.round(result.scoredPOs.reduce((s, p) => s + p.docTotal, 0)),
+        overdueValue:    Math.round(result.scoredPOs.filter(p => p.isOverdue).reduce((s, p) => s + p.docTotal, 0)),
+        riskValue:       Object.fromEntries(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(r =>
+          [r, Math.round(result.scoredPOs.filter(p => p.risk === r).reduce((s, p) => s + p.docTotal, 0))])),
+        vendorsWithOpen: new Set(result.scoredPOs.map(p => p.cardCode)).size,
       };
 
-      res.json({ ok: true, atRiskPOs, vendors, impactedSOs, summary, aiAdvisory: result.aiIntelligence });
+      summary.receiptHistory = receipts ? 'db' : 'unavailable';
+      res.json({ ok: true, atRiskPOs, allOpenPOs, vendors, impactedSOs, summary, aiAdvisory: result.aiIntelligence });
     } catch (e) {
       console.error('[ShipDelay/scan]', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // GET /api/shipment-delays/vendor-history?cardCode=V001&months=12
+  // Every goods receipt against a PO for one vendor: due vs received, days late.
+  router.get('/vendor-history', requireAuth, async (req, res) => {
+    try {
+      const cardCode = String(req.query.cardCode || '').trim();
+      if (!cardCode) return res.status(400).json({ ok: false, error: 'cardCode required' });
+      const months = Math.min(24, Math.max(1, Number(req.query.months) || 12));
+      const from = new Date(Date.now() - months * 30 * 86400000).toISOString().slice(0, 10);
+      const rows = await fetchReceiptHistoryViaDB(_dbDeps, { fromDate: from, cardCode });
+      if (!rows) return res.json({ ok: true, available: false, cardCode, months, rows: [], monthly: [],
+        message: 'Delivery history needs a DB Direct connection (Tools → DB Connection) to join goods receipts to purchase orders.' });
+      rows.sort((a, z) => z.recDate.localeCompare(a.recDate));
+      const byMonth = new Map();
+      for (const r of rows) { const m = r.recDate.slice(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m).push(r); }
+      const monthly = [...byMonth].sort((a, z) => a[0].localeCompare(z[0])).map(([month, list]) => ({ month, ...summariseReceipts(list) }));
+      res.json({ ok: true, available: true, cardCode, cardName: rows[0]?.cardName || '', months, from, summary: summariseReceipts(rows), monthly, rows: rows.slice(0, 500) });
+    } catch (e) {
+      console.error('[ShipDelay/vendor-history]', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // GET /api/shipment-delays/vendor-lines?cardCode=V001 — open PO lines of one vendor.
+  router.get('/vendor-lines', requireAuth, async (req, res) => {
+    try {
+      const cardCode = String(req.query.cardCode || '').trim();
+      if (!cardCode) return res.status(400).json({ ok: false, error: 'cardCode required' });
+      const lines = await fetchVendorOpenLines(getActiveSap(), _dbDeps, cardCode);
+      res.json({ ok: true, cardCode, lines });
+    } catch (e) {
+      console.error('[ShipDelay/vendor-lines]', e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // POST /api/shipment-delays/followup-email { cardCode, cardName, pos:[…] }
+  // Draft expediting e-mail; the vendor's e-mail / contact come from SAP.
+  router.post('/followup-email', requireAuth, async (req, res) => {
+    try {
+      const { cardCode, cardName, pos = [] } = req.body || {};
+      if (!cardCode) return res.status(400).json({ ok: false, error: 'cardCode required' });
+      let contact = null;
+      try {
+        const bp = await getActiveSap().get(`/BusinessPartners('${String(cardCode).replace(/'/g, "''")}')`, { $select: 'CardName,EmailAddress,ContactPerson,Phone1' });
+        contact = { email: bp.EmailAddress || '', name: bp.ContactPerson || '', phone: bp.Phone1 || '' };
+      } catch (e) { console.warn('[ShipDelay/followup] contact lookup failed:', e.message); }
+      const mail = followupEmail({ cardCode, cardName }, pos.slice(0, 40), contact);
+      res.json({ ok: true, ...mail, phone: contact?.phone || '' });
+    } catch (e) {
+      console.error('[ShipDelay/followup-email]', e);
       res.status(500).json({ ok: false, error: e.message });
     }
   });

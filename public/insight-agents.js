@@ -937,6 +937,8 @@
 .ia-kd .ia-kd-formula{font:13px/1.5 ui-monospace,Consolas,monospace;background:#F8FAFC;border-radius:6px;padding:8px 10px}
 .ia-kd .ia-kd-list{margin:0;padding-left:20px;font-size:12.5px;line-height:1.6}
 .ia-kd .ia-kd-ai{background:linear-gradient(135deg,#F5F3FF,#EFF6FF);font-size:13px}
+.ia-kd .ia-insight{font-size:13px;line-height:1.55;color:#1F2937}.ia-kd .ia-insight p{margin:0 0 6px}.ia-kd .ia-insight ul{margin:4px 0;padding-left:20px}
+.ia-kd .ia-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap}.ia-kd .ia-sub{font-size:10.5px;color:#64748B}
 @media (max-width:640px){.ia-kd .ia-kd-stats{grid-template-columns:repeat(2,1fr)}}
 .ia-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1F2937;color:#fff;padding:10px 18px;border-radius:6px;font-size:12.5px;z-index:2100;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90vw}
 .ia-toast.bad{background:#991B1B}
@@ -1727,6 +1729,33 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
     const k = st.data?.kpis?.[index], d = k?.detail;
     if (!d) return;
     const ks = st.kpiAI ||= {};
+    openKpiPopup({
+      label: k.label, valueHtml: fmt(k.value, k.fmt), tone: k.tone, hint: k.hint, detail: d, color: a.c2,
+      footnote: `As of ${st.data.asOf || ''} · read live from SAP Business One.`,
+      cache: ks, cacheKey: index,
+      loadAI: () => call(`${a.api}/kpi-insight`, { index }).then(r => ({ text: r.insight, source: r.source })),
+      buttons: [
+        ...(k.tab && st.data.tabs.some(t => t.key === k.tab) ? [{ label: 'Open full list', onClick: () => {
+          st.tab = k.tab; st.page = 1; st.search = ''; st.sort = null; renderResult(key);
+          document.querySelector(`#${PANEL_ID} .ia-tabs`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } }] : []),
+        { label: 'Ask AI in chat', onClick: () => sendChat(`Explain the "${k.label}" KPI (${fmt(k.value, k.fmt).replace(/<[^>]+>/g, '')}): what drives it and what should we do?`) },
+      ],
+    });
+  }
+
+  // Shared KPI popup — also used by the standalone agent screens through
+  // window.KpiDetail.open (see agent-kpi-help.js).
+  //   o = { label, valueHtml, tone, hint, color, footnote,
+  //         detail: { formula, steps[], sources[], actions[], stats[], chart, table, insight },
+  //         loadAI: () => Promise<{text, source}>, cache: {}, cacheKey,
+  //         buttons: [{ label, onClick }] }   (each button closes the popup first)
+  // Text in formula / steps / sources / actions may use **bold**.
+  const mdInline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  function openKpiPopup(o) {
+    injectCss();   // other screens open this before any agent panel has loaded its styles
+    const d = o.detail || {};
+    const ks = o.cache || {}, ck = o.cacheKey ?? 0;
     let view = 'summary', chart = null;
     const tabsHtml = () => [['summary', 'Data summary'], ['calc', 'How it’s calculated'], ['ai', '✦ AI insight']]
       .map(([v, l]) => `<button class="ia-kd-tab ${v === view ? 'on' : ''}" data-v="${v}">${l}</button>`).join('');
@@ -1736,29 +1765,27 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
       ${d.table?.rows?.length ? `<div class="ia-kd-box"><div class="ia-kd-h">${esc(d.table.title || 'Contributors')} <span class="ia-m-hint">(${d.table.rows.length})</span></div>
         <div style="overflow:auto;max-height:300px"><table class="ia-grid"><thead><tr>${d.table.columns.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
         <tbody>${d.table.rows.map(r => `<tr>${d.table.columns.map(c => `<td${c.wrap ? ' style="white-space:normal;text-align:left;min-width:180px"' : ''}>${cell(r, c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`
-        : d.table ? '<div class="ia-m-hint">No rows contribute to this KPI.</div>' : ''}`;
+        : d.table ? '<div class="ia-m-hint">No rows contribute to this KPI.</div>' : ''}
+      ${d.empty ? `<div class="ia-m-hint">${esc(d.empty)}</div>` : ''}`;
     const calcHtml = () => `
-      <div class="ia-kd-box"><div class="ia-kd-h">Formula</div><div class="ia-kd-formula">${esc(d.formula || k.hint || '')}</div></div>
-      ${(d.steps || []).length ? `<div class="ia-kd-box"><div class="ia-kd-h">Calculation steps</div><ol class="ia-kd-list">${d.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
-      ${(d.sources || []).length ? `<div class="ia-kd-box"><div class="ia-kd-h">SAP data sources</div><ul class="ia-kd-list">${d.sources.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
-      <div class="ia-m-hint">As of ${esc(st.data.asOf || '')} · read live from SAP Business One.</div>`;
+      <div class="ia-kd-box"><div class="ia-kd-h">Formula</div><div class="ia-kd-formula">${mdInline(d.formula || o.hint || '')}</div></div>
+      ${(d.steps || []).length ? `<div class="ia-kd-box"><div class="ia-kd-h">Calculation steps</div><ol class="ia-kd-list">${d.steps.map(x => `<li>${mdInline(x)}</li>`).join('')}</ol></div>` : ''}
+      ${(d.sources || []).length ? `<div class="ia-kd-box"><div class="ia-kd-h">SAP data sources</div><ul class="ia-kd-list">${d.sources.map(x => `<li>${mdInline(x)}</li>`).join('')}</ul></div>` : ''}
+      ${(d.actions || []).length ? `<div class="ia-kd-box"><div class="ia-kd-h">How to use it</div><ul class="ia-kd-list">${d.actions.map(x => `<li>${mdInline(x)}</li>`).join('')}</ul></div>` : ''}
+      ${o.footnote ? `<div class="ia-m-hint">${esc(o.footnote)}</div>` : ''}`;
     const aiHtml = () => {
-      const r = ks[index];
+      const r = ks[ck];
       if (!r || r.loading) return '<div class="ia-kd-box ia-kd-ai"><span style="display:inline-block;animation:ia-spin 1s linear infinite">⟳</span> Generating AI insight…</div>';
       return `<div class="ia-kd-box ia-kd-ai"><div class="ia-kd-h">${r.source === 'ai' ? '✦ AI insight' : 'Insight · rule-based'}</div><div class="ia-insight">${md(r.text)}</div></div>
         ${r.error ? `<div class="ia-m-hint" style="color:#991B1B">AI unavailable: ${esc(r.error)} — showing rule-based insight.</div>` : ''}`;
     };
-    const body = `<div class="ia-kd-head"><div class="ia-kd-val ${k.tone || ''}">${fmt(k.value, k.fmt)}</div><div class="ia-m-hint">${esc(k.hint || '')}</div></div>
+    const body = `<div class="ia-kd-head"><div class="ia-kd-val ${o.tone || ''}">${o.valueHtml ?? ''}</div><div class="ia-m-hint">${esc(o.hint || '')}</div></div>
       <div class="ia-kd-tabs"></div><div class="ia-kd-body"></div>`;
     const destroy = () => { try { chart?.destroy(); } catch {} chart = null; };
     const onKey = e => { if (e.key === 'Escape') close(); };
     const close = () => { destroy(); document.removeEventListener('keydown', onKey); bg.remove(); };
-    const bg = modal(k.label, body, [
-      ...(k.tab && st.data.tabs.some(t => t.key === k.tab) ? [{ label: 'Open full list', onClick: () => {
-        close(); st.tab = k.tab; st.page = 1; st.search = ''; st.sort = null; renderResult(key);
-        document.querySelector(`#${PANEL_ID} .ia-tabs`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } }] : []),
-      { label: 'Ask AI in chat', onClick: () => { close(); sendChat(`Explain the "${k.label}" KPI (${fmt(k.value, k.fmt).replace(/<[^>]+>/g, '')}): what drives it and what should we do?`); } },
+    const bg = modal(o.label, body, [
+      ...(o.buttons || []).map(b => ({ label: b.label, onClick: () => { close(); b.onClick(); } })),
       { label: 'Close', primary: true, onClick: () => close() },
     ]);
     bg.querySelector('.ia-modal').classList.add('ia-kd');
@@ -1770,18 +1797,27 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
       bg.querySelector('.ia-kd-tabs').innerHTML = tabsHtml();
       bg.querySelectorAll('.ia-kd-tab').forEach(b => b.onclick = () => { view = b.dataset.v; paint(); });
       bg.querySelector('.ia-kd-body').innerHTML = view === 'calc' ? calcHtml() : view === 'ai' ? aiHtml() : summaryHtml();
-      if (view === 'summary' && d.chart) chart = drawChart(bg.querySelector('.ia-kd-body canvas'), d.chart, a.c2);
+      if (view === 'summary' && d.chart) chart = drawChart(bg.querySelector('.ia-kd-body canvas'), d.chart, o.color || '#0070F2');
     };
     paint();
-    // AI insight is fetched once per KPI per analysis run (cache cleared on re-run).
-    if (!ks[index]) {
-      ks[index] = { loading: true };
-      call(`${a.api}/kpi-insight`, { index })
-        .then(r => { ks[index] = { text: r.insight || d.insight || 'No insight available.', source: r.source }; })
-        .catch(e => { ks[index] = { text: d.insight || 'No insight available.', source: 'rules', error: e.message }; })
-        .finally(() => { if (view === 'ai') paint(); });
+    // AI insight is fetched once per cache key (callers reset the cache on a new run).
+    if (!ks[ck]) {
+      const fallback = d.insight || 'No insight available.';
+      if (!o.loadAI) ks[ck] = { text: fallback, source: 'rules' };
+      else {
+        ks[ck] = { loading: true };
+        o.loadAI()
+          .then(r => { ks[ck] = { text: r?.text || fallback, source: r?.text ? r.source || 'ai' : 'rules' }; })
+          .catch(e => { ks[ck] = { text: fallback, source: 'rules', error: e.message }; })
+          .finally(() => { if (view === 'ai') paint(); });
+      }
     }
+    return { close };
   }
+  // Public: lets other screens open the same popup. `fmt` formats values
+  // (amt / int / num / pct / date) the same way as the agents do.
+  window.KpiDetail = { open: openKpiPopup, fmt: (v, f) => fmt(v, f) };
+
   // Column guide: what the current tab shows and what every column means
   // (tab.desc + column.hint, written by each agent's backend).
   function showColumnGuide(tab) {

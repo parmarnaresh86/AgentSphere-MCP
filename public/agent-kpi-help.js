@@ -579,12 +579,19 @@
         },
         {
           tbody: 'shp-vend-tbody', title: 'Vendor reliability',
-          summary: 'Vendor delivery performance based on purchase orders of the last 180 days. Click Reliability or Risk in a row for its calculation.',
+          summary: 'Vendor delivery performance: what is open today, how the vendor actually delivered in the last 6 months (goods receipts vs PO due dates), and its current overdue rate. Use the filters above the table, click a row for its open POs, Delay History for every past delivery, and Follow up to draft an expediting e-mail.',
           cols: {
-            'Vendor': 'Vendor name.',
-            'Total POs': 'All non-cancelled POs dated in the last 180 days (open and closed).',
-            'Overdue Rate': 'Open POs past due ÷ open POs × 100 (a current snapshot).',
-            'Avg Delay': 'Average days past due of the currently overdue POs.',
+            'Vendor': 'Vendor name and code. Click the row to expand its open purchase orders (and item lines).',
+            'Open POs': 'All purchase orders open today for this vendor (any PO date).',
+            'Open Value': 'Σ DocTotal of the open POs.',
+            'Overdue': 'Open POs past their due date, their value, and how many days the oldest one is late.',
+            'At Risk': 'Open POs with Critical or High delay risk (overdue, or ≥ 50% delay probability).',
+            'Next Due': 'The next open PO that is not yet overdue, its due date and days left.',
+            'On-Time %': 'Goods-receipt lines received on or before their due date (PO line ship date, else PO due date) ÷ receipt lines with a due date, last 6 months. Needs DB Direct.',
+            'Lead Time': 'Average days from PO date to goods receipt, last 6 months.',
+            'Delay History': 'Number of late deliveries and their average days late. Click for every delivery of the last 12 months with a monthly trend.',
+            'Overdue Rate': 'Open POs (dated in the last 180 days) past due ÷ those open POs × 100 (a current snapshot).',
+            'Action': 'Follow up — drafts an e-mail asking the vendor to confirm ship dates for overdue, at-risk and soon-due POs.',
             'Spend Share': 'The vendor\'s PO value ÷ total PO value of all vendors in the last 6 months × 100. A high share means a delay from this vendor hurts more.',
             'Reliability': '0% Reliable · ≤ 15% Generally On-Time · ≤ 40% Occasionally Late · ≤ 70% Frequently Delayed · above 70% Unreliable.',
             'Risk': 'HIGH ≥ 50% overdue rate · MEDIUM ≥ 20% · LOW below 20%.',
@@ -942,7 +949,191 @@ html[data-ui="fiori"] .akh-colbtn{color:#0064d9;font-size:12px}
     return valueEl.closest('.fd-kpi') || valueEl.parentElement;
   }
 
+  // ── Rich popups (data summary + chart + AI insight) ───────────────────────
+  // A panel with `richData()` (its last loaded result) and `rich(kpiId, data)`
+  // opens the same 3-tab popup as the insight agents (window.KpiDetail from
+  // insight-agents.js). The text above (calc / source / action) becomes the
+  // "How it's calculated" tab. Without data the plain text popup is used.
+  const RICH = {
+    'shipment-delay-panel': {
+      data: () => window.shpScanData,
+      build: shipmentDetail,
+      ai: (K, detail, value) => postJson('/api/shipment-delays/chat', {
+        sessionId: `kpi_${Date.now()}`,
+        message: `Explain the "${K.label}" KPI (value ${value}) on the Shipment Delay dashboard to a purchasing manager. ` +
+          'Reply in concise markdown: a bold one-line headline, then "**What drives it**" (2-4 bullets naming PO numbers, vendors, customers and amounts), ' +
+          '"**Watch out**" (1-2 bullets) and "**Next actions**" (2-3 bullets). Use only the figures in the context; amounts are in local currency, no currency symbols.',
+        context: { kpi: K.label, value, formula: K.calc, stats: detail.stats, rows: (detail.table?.rows || []).slice(0, 15) },
+      }).then(r => (!r.reply || /^AI not configured|^Unable to process/.test(r.reply) ? null : { text: r.reply, source: 'ai' })),
+    },
+  };
+  const richCache = new WeakMap();   // scan result → { kpiId: {text, source} }
+
+  function postJson(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-auth-token': localStorage.getItem('hanny_token') || '' }, body: JSON.stringify(body) })
+      .then(r => r.json()).then(d => { if (d.ok === false) throw new Error(d.error || 'Request failed'); return d; });
+  }
+
+  function richPopup(panelId, kpiId) {
+    const P = PANELS[panelId], K = P && P.kpis[kpiId], R = RICH[panelId];
+    const data = R && R.data && R.data();
+    if (!K || !R || !data || !window.KpiDetail) return false;
+    const built = R.build(kpiId, data);
+    if (!built) return false;
+    const calc = K.calc || [];
+    const detail = { ...built, formula: calc[0] || K.means, steps: calc.slice(1), sources: K.source || [], actions: K.action || [] };
+    const shown = txt(document.getElementById(kpiId)) || String(built.value ?? '—');
+    if (!richCache.has(data)) richCache.set(data, {});
+    window.KpiDetail.open({
+      label: `${K.label} — ${P.name}`, valueHtml: escHtml(shown), tone: built.tone, hint: K.means, color: P.color,
+      footnote: 'Live from SAP Business One — refreshed each time you click Scan.',
+      detail, cache: richCache.get(data), cacheKey: kpiId,
+      loadAI: R.ai ? () => R.ai(K, detail, shown) : null,
+    });
+    return true;
+  }
+  const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Shipment Delays: one detail per KPI from the last /api/shipment-delays/scan.
+  function shipmentDetail(kpiId, d) {
+    const s = d.summary || {}, pos = d.atRiskPOs || [], vendors = d.vendors || [], sos = d.impactedSOs || [];
+    const fa = v => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    const sum = (l, k) => l.reduce((t, r) => t + (Number(r[k]) || 0), 0);
+    const top = (l, k, n) => [...l].sort((a, z) => (Number(z[k]) || 0) - (Number(a[k]) || 0)).slice(0, n);
+    const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+    const RISKS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+    const RISK_BADGE = { CRITICAL: 'red', HIGH: 'amber', MEDIUM: 'blue', LOW: 'green' };
+    const RISK_COLOR = { CRITICAL: '#BB0000', HIGH: '#E9730C', MEDIUM: '#0070F2', LOW: '#107E3E' };
+    const C = {
+      po: { key: 'docNum', label: 'PO #' }, vendor: { key: 'vendorName', label: 'Vendor', sub: 'cardCode' },
+      due: { key: 'docDueDate', label: 'Due', fmt: 'date' }, left: { key: 'daysLeftTxt', label: 'Days left' },
+      prob: { key: 'delayProbPct', label: 'Delay prob.', fmt: 'pct' }, risk: { key: 'riskTag', label: 'Risk', fmt: 'badge', badge: RISK_BADGE },
+      value: { key: 'docTotal', label: 'Value', fmt: 'amt' },
+    };
+    const poRows = pos.map(p => ({ ...p, daysLeftTxt: p.isOverdue ? `${p.daysOverdue}d late` : (p.daysLeft ?? '—') }));
+    const byVendor = list => [...list.reduce((m, p) => {
+      const k = p.vendorName || p.cardCode;
+      const v = m.get(k) || { name: k, n: 0, value: 0 }; v.n++; v.value += p.docTotal || 0; return m.set(k, v);
+    }, new Map()).values()].sort((a, z) => z.value - a.value);
+    const band = (list, bands, f) => bands.map(([label, test]) => list.filter(p => test(f(p))).length);
+    const totalVal = s.totalValue ?? sum(pos, 'docTotal');
+
+    if (kpiId === 'shp-kpi-checked') {
+      const rv = s.riskValue || {};
+      const counts = { CRITICAL: s.critical || 0, HIGH: s.high || 0, MEDIUM: (s.atRisk || 0) - (s.critical || 0) - (s.high || 0), LOW: s.lowCount ?? null };
+      return {
+        stats: [{ label: 'Open POs', value: s.totalPOs, fmt: 'int' }, { label: 'Total value', value: totalVal, fmt: 'amt' },
+          { label: 'Overdue POs', value: s.overdueCount, fmt: 'int' }, { label: 'Overdue value', value: s.overdueValue, fmt: 'amt' },
+          { label: 'Low risk (on track)', value: s.lowCount, fmt: 'int' }, { label: 'Vendors with open POs', value: s.vendorsWithOpen, fmt: 'int' }],
+        chart: { title: 'Open POs by delay risk', type: 'bar', fmt: 'int', labels: RISKS,
+          series: [{ name: 'POs', values: RISKS.map(r => counts[r] ?? 0) }] },
+        table: { title: 'Highest-value POs at Medium risk or worse (Low-risk POs are not listed)', columns: [C.po, C.vendor, C.due, C.risk, C.value], rows: top(poRows, 'docTotal', 20) },
+        insight: `**${s.totalPOs ?? 0} open POs worth ${fa(totalVal)}; ${s.atRisk ?? 0} (${pct(s.atRisk || 0, s.totalPOs || 0)}%) carry a medium-or-higher delay risk.**\n\n` +
+          (rv.CRITICAL != null ? `- Value by risk: Critical ${fa(rv.CRITICAL)}, High ${fa(rv.HIGH)}, Medium ${fa(rv.MEDIUM)}, Low ${fa(rv.LOW)}.\n` : '') +
+          (s.overdueCount ? `- ${s.overdueCount} POs (${fa(s.overdueValue)}) are already past their due date.\n` : '- No open PO is past its due date.\n') +
+          `- ${s.lowCount ?? '—'} POs are on track (Low risk) and need no action.`,
+      };
+    }
+    if (kpiId === 'shp-kpi-atrisk') {
+      const vv = byVendor(pos);
+      const atVal = sum(pos, 'docTotal');
+      return {
+        stats: [{ label: 'At-risk POs', value: pos.length, fmt: 'int' }, { label: '% of open POs', value: pct(pos.length, s.totalPOs || 0), fmt: 'pct' },
+          { label: 'Value at risk', value: atVal, fmt: 'amt' }, { label: 'Already overdue', value: pos.filter(p => p.isOverdue).length, fmt: 'int' },
+          { label: 'Avg delay probability', value: pos.length ? sum(pos, 'delayProbPct') / pos.length : 0, fmt: 'pct' }, { label: 'Vendors involved', value: vv.length, fmt: 'int' }],
+        chart: { title: 'At-risk PO value by vendor (top 10)', type: 'bar', horizontal: true, stacked: true, labels: vv.slice(0, 10).map(v => v.name),
+          series: RISKS.slice(0, 3).map(r => ({ name: r, color: RISK_COLOR[r], values: vv.slice(0, 10).map(v => Math.round(sum(pos.filter(p => (p.vendorName || p.cardCode) === v.name && p.riskTag === r), 'docTotal'))) })) },
+        table: { title: 'At-risk POs — highest delay probability first', columns: [C.po, C.vendor, C.due, C.left, C.prob, C.risk, C.value], rows: top(poRows, 'delayProbPct', 25) },
+        insight: pos.length ? `**${pos.length} open POs worth ${fa(atVal)} are likely to arrive late (${pct(atVal, totalVal)}% of open PO value).**\n\n` +
+          `- Critical ${s.critical || 0}, High ${s.high || 0}, Medium ${pos.length - (s.critical || 0) - (s.high || 0)}.\n` +
+          (vv[0] ? `- Most exposed vendor: **${vv[0].name}** — ${vv[0].n} POs, ${fa(vv[0].value)}.\n` : '') +
+          `- Ask these vendors for confirmed ship dates, starting with the Critical POs.` : '**No open PO is at medium or higher delay risk.**',
+      };
+    }
+    if (kpiId === 'shp-kpi-critical' || kpiId === 'shp-kpi-high') {
+      const crit = kpiId === 'shp-kpi-critical', tag = crit ? 'CRITICAL' : 'HIGH';
+      const rows = poRows.filter(p => p.riskTag === tag);
+      const vv = byVendor(rows);
+      const bands = crit
+        ? [['Not yet due (≥ 80%)', p => !p.isOverdue], ['1–7d late', p => p.isOverdue && p.daysOverdue <= 7], ['8–30d late', p => p.isOverdue && p.daysOverdue > 7 && p.daysOverdue <= 30], ['31–60d late', p => p.isOverdue && p.daysOverdue > 30 && p.daysOverdue <= 60], ['> 60d late', p => p.isOverdue && p.daysOverdue > 60]]
+        : [['≤ 2 days', p => p.daysLeft <= 2], ['3–5 days', p => p.daysLeft > 2 && p.daysLeft <= 5], ['6–10 days', p => p.daysLeft > 5 && p.daysLeft <= 10], ['11–21 days', p => p.daysLeft > 10 && p.daysLeft <= 21], ['> 21 days', p => p.daysLeft > 21]];
+      const overdue = rows.filter(p => p.isOverdue);
+      const oldest = top(overdue, 'daysOverdue', 1)[0];
+      const first = [...rows].sort((a, z) => (a.daysLeft ?? -999) - (z.daysLeft ?? -999))[0];
+      return {
+        tone: rows.length ? 'bad' : 'good',
+        stats: crit
+          ? [{ label: 'Critical POs', value: rows.length, fmt: 'int' }, { label: 'Value', value: sum(rows, 'docTotal'), fmt: 'amt' },
+              { label: 'Already overdue', value: overdue.length, fmt: 'int' }, { label: 'Not due, ≥ 80% risk', value: rows.length - overdue.length, fmt: 'int' },
+              { label: 'Oldest (days late)', value: oldest ? oldest.daysOverdue : 0, fmt: 'int' }, { label: 'Vendors', value: vv.length, fmt: 'int' }]
+          : [{ label: 'High-risk POs', value: rows.length, fmt: 'int' }, { label: 'Value', value: sum(rows, 'docTotal'), fmt: 'amt' },
+              { label: 'Due in ≤ 5 days', value: rows.filter(p => p.daysLeft <= 5).length, fmt: 'int' }, { label: 'Due in ≤ 10 days', value: rows.filter(p => p.daysLeft <= 10).length, fmt: 'int' },
+              { label: 'Avg delay probability', value: rows.length ? sum(rows, 'delayProbPct') / rows.length : 0, fmt: 'pct' }, { label: 'Vendors', value: vv.length, fmt: 'int' }],
+        chart: { title: crit ? 'Critical POs by days late' : 'High-risk POs by days until due', type: 'bar', fmt: 'int', labels: bands.map(b => b[0]),
+          series: [{ name: 'POs', color: RISK_COLOR[tag], values: band(rows, bands, p => p) }] },
+        table: { title: crit ? 'Critical POs — most overdue first' : 'High-risk POs — due soonest first', columns: [C.po, C.vendor, C.due, C.left, C.prob, C.value, { key: 'vendorReliability', label: 'Vendor reliability' }],
+          rows: crit ? [...rows].sort((a, z) => (z.daysOverdue || 0) - (a.daysOverdue || 0) || z.delayProbPct - a.delayProbPct) : [...rows].sort((a, z) => (a.daysLeft ?? 999) - (z.daysLeft ?? 999)) },
+        insight: !rows.length ? `**No ${crit ? 'critical' : 'high-risk'} POs right now.**` : crit
+          ? `**${rows.length} critical POs worth ${fa(sum(rows, 'docTotal'))}: ${overdue.length} already overdue, ${rows.length - overdue.length} not yet due but ≥ 80% likely to be late.**\n\n` +
+            (oldest ? `- Oldest: **PO ${oldest.docNum}** from ${oldest.vendorName} — ${oldest.daysOverdue} days late, ${fa(oldest.docTotal)}.\n` : '') +
+            (vv[0] ? `- Biggest vendor exposure: **${vv[0].name}** — ${vv[0].n} critical POs, ${fa(vv[0].value)}.\n` : '') +
+            '- Escalate to these vendors today and line up an alternative source for anything a customer is waiting for.'
+          : `**${rows.length} high-risk POs worth ${fa(sum(rows, 'docTotal'))}; ${rows.filter(p => p.daysLeft <= 5).length} are due within 5 days.**\n\n` +
+            (first ? `- Due first: **PO ${first.docNum}** from ${first.vendorName} in ${first.daysLeft} days (${first.delayProbPct}% delay probability).\n` : '') +
+            (vv[0] ? `- Most exposed vendor: **${vv[0].name}** — ${vv[0].n} POs, ${fa(vv[0].value)}.\n` : '') +
+            '- Ask for written ship-date confirmation and an expedite where possible.',
+      };
+    }
+    if (kpiId === 'shp-kpi-soimpact') {
+      const custs = [...sos.reduce((m, r) => m.set(r.customerName, (m.get(r.customerName) || 0) + 1), new Map())].sort((a, z) => z[1] - a[1]);
+      const soCount = new Set(sos.map(r => r.soNum)).size;
+      const soon = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+      const dueSoon = new Set(sos.filter(r => r.soDueDate && String(r.soDueDate).slice(0, 10) <= soon).map(r => r.soNum)).size;
+      const worst = top(sos, 'delayProbPct', 1)[0];
+      return {
+        tone: soCount ? 'warn' : 'good',
+        stats: [{ label: 'Sales orders', value: soCount, fmt: 'int' }, { label: 'Order lines at risk', value: sos.length, fmt: 'int' },
+          { label: 'Customers', value: custs.length, fmt: 'int' }, { label: 'Items', value: new Set(sos.map(r => r.itemCode)).size, fmt: 'int' },
+          { label: 'Delayed POs linked', value: new Set(sos.map(r => r.poNum)).size, fmt: 'int' }, { label: 'SOs due ≤ 14 days', value: dueSoon, fmt: 'int' }],
+        chart: custs.length ? { title: 'At-risk order lines by customer (top 10)', type: 'bar', horizontal: true, fmt: 'int', labels: custs.slice(0, 10).map(c => c[0]), series: [{ name: 'Lines', values: custs.slice(0, 10).map(c => c[1]) }] } : null,
+        table: { title: 'Customer orders waiting on a delayed PO — soonest due first',
+          columns: [{ key: 'soNum', label: 'SO #' }, { key: 'customerName', label: 'Customer' }, { key: 'soDueDate', label: 'SO due', fmt: 'date' }, { key: 'itemCode', label: 'Item', sub: 'itemDesc' }, { key: 'poNum', label: 'PO #' }, { key: 'delayProbPct', label: 'PO delay prob.', fmt: 'pct' }],
+          rows: [...sos].sort((a, z) => String(a.soDueDate).localeCompare(String(z.soDueDate))) },
+        insight: soCount ? `**${soCount} customer orders (${sos.length} lines) depend on items from Critical or High-risk POs; ${dueSoon} are due within 14 days.**\n\n` +
+          (custs[0] ? `- Most affected customer: **${custs[0][0]}** — ${custs[0][1]} order lines.\n` : '') +
+          (worst ? `- Riskiest link: SO ${worst.soNum} item **${worst.itemCode}** waits on PO ${worst.poNum} (${worst.delayProbPct}% delay probability).\n` : '') +
+          '- Tell these customers early or reallocate stock. This is a sample (top 20 risky POs × first 25 SOs), so the real number can be higher.'
+          : '**No open customer order due in the next 60 days depends on a Critical or High-risk PO** (sample: top 20 risky POs × first 25 SOs).',
+      };
+    }
+    if (kpiId === 'shp-kpi-vendors') {
+      const risky = vendors.filter(v => v.riskLevel === 'HIGH');
+      const withOpen = vendors.filter(v => v.openPOs > 0).sort((a, z) => z.overdueRate - a.overdueRate || z.openPOs - a.openPOs);
+      const worst = [...risky].sort((a, z) => z.overdueRate - a.overdueRate || z.spendShare - a.spendShare)[0];
+      const RELS = ['Reliable', 'Generally On-Time', 'Occasionally Late', 'Frequently Delayed', 'Unreliable'];
+      return {
+        tone: risky.length ? 'bad' : 'good',
+        stats: [{ label: 'Risky vendors', value: risky.length, fmt: 'int' }, { label: 'Vendors analysed', value: vendors.length, fmt: 'int' },
+          { label: 'Their open POs', value: sum(risky, 'openPOs'), fmt: 'int' }, { label: 'Their overdue POs', value: sum(risky, 'overduePOs'), fmt: 'int' },
+          { label: 'Their spend share', value: sum(risky, 'spendShare'), fmt: 'pct' }, { label: 'Longest delay (days)', value: Math.max(0, ...risky.map(v => v.maxDelayDays || 0)), fmt: 'int' }],
+        chart: { title: 'Vendors by reliability (open POs, last 180 days)', type: 'bar', fmt: 'int', labels: RELS,
+          series: [{ name: 'Vendors', values: RELS.map(r => vendors.filter(v => v.reliability === r).length) }] },
+        table: { title: 'Vendors with open POs — highest overdue rate first',
+          columns: [{ key: 'vendorName', label: 'Vendor', sub: 'vendorCode' }, { key: 'openPOs', label: 'Open POs', fmt: 'int' }, { key: 'overduePOs', label: 'Overdue', fmt: 'int' },
+            { key: 'overdueRate', label: 'Overdue rate', fmt: 'pct' }, { key: 'avgDelayDays', label: 'Avg delay (d)', fmt: 'int' }, { key: 'spendShare', label: 'Spend share', fmt: 'pct' }, { key: 'riskLevel', label: 'Risk', fmt: 'badge', badge: { HIGH: 'red', MEDIUM: 'amber', LOW: 'green' } }],
+          rows: withOpen.slice(0, 25) },
+        insight: risky.length ? `**${risky.length} of ${vendors.length} vendors have half or more of their open POs past due; together they hold ${Math.round(sum(risky, 'spendShare') * 10) / 10}% of PO spend.**\n\n` +
+          (worst ? `- Worst: **${worst.vendorName || worst.vendorCode}** — ${worst.overduePOs} of ${worst.openPOs} open POs overdue (${worst.overdueRate}%), avg ${worst.avgDelayDays} days late.\n` : '') +
+          `- ${vendors.filter(v => v.reliability === 'Unreliable').length} vendors are rated Unreliable (> 70% overdue).\n` +
+          '- Review these vendors, agree delivery recovery plans and qualify a backup supplier for the biggest ones.'
+          : `**No vendor has 50% or more of its open POs overdue.** ${vendors.filter(v => v.riskLevel === 'MEDIUM').length} vendors are at medium risk (20–49%).`,
+      };
+    }
+    return null;
+  }
+
   function kpiPopup(panelId, kpiId) {
+    if (richPopup(panelId, kpiId)) return;
     const P = PANELS[panelId], K = P && P.kpis[kpiId];
     if (!K || !window.AgentAbout) return;
     const valueEl = document.getElementById(kpiId);
@@ -991,7 +1182,9 @@ html[data-ui="fiori"] .akh-colbtn{color:#0064d9;font-size:12px}
       // A tile that already has its own click action only gets the ⓘ icon.
       if (tile.hasAttribute('onclick') || tile.dataset.akhIconly) tile.classList.add('akh-iconly');
       if (!tile.hasAttribute("title")) tile.title = TILE_TIP;
-      if (!tile.querySelector(':scope > .akh-i')) {
+      // The ⓘ icon is only needed on tiles with their own click action; any
+      // other tile opens the popup when clicked anywhere.
+      if (tile.classList.contains('akh-iconly') && !tile.querySelector(':scope > .akh-i')) {
         const i = document.createElement('span');
         i.className = 'akh-i';
         i.textContent = 'i';
