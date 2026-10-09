@@ -791,5 +791,20 @@ Write 4-5 short bullet points (plain text, each starting with "• ") for a CFO:
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── AI insight for one KPI tile's detail popup (Financial Dashboard /
+  //    Customer Aging). The page sends the figures it already shows, so no
+  //    second GL read is needed. ─────────────────────────────────────────────
+  router.post('/finance/kpi-insight', requireAuth, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const clip = (v, n) => String(v ?? '').slice(0, n);
+      const ctx = JSON.stringify({ period: b.period, formula: b.formula, stats: b.stats, rows: Array.isArray(b.rows) ? b.rows.slice(0, 15) : [] }).slice(0, 12000);
+      const prompt = `Explain the "${clip(b.kpi, 80)}" KPI (value ${clip(b.value, 40)}) on the ${clip(b.screen, 60) || 'Financial Dashboard'} to a CFO. KPI detail: ${ctx}
+Reply in concise markdown: a bold one-line headline, then "**What drives it**" (2-4 bullets naming accounts, groups, customers, vendors or months and amounts), "**Watch out**" (1-2 bullets) and "**Next actions**" (2-3 bullets). Use only the figures given; round to K/M; amounts are in local currency, no currency symbols. If the latest month looks far below the months before, say it is probably not fully posted yet.`;
+      const insight = await callAI([{ role: 'user', content: prompt }], 500);
+      res.json({ insight: String(insight || '').trim(), source: 'ai' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   return router;
 }

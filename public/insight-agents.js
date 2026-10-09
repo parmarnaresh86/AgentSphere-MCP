@@ -1169,7 +1169,7 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
       const v = st.params[f.key];
       if (v === '' || v === undefined || v === null) continue;
       // A name picked from a showName list is sent as its code; typed free text goes as-is.
-      const picked = f.showName ? nameChoices(f, st).find(o => o.text === v) : null;
+      const picked = f.showName ? comboList(f, st).find(o => o.name && `${o.name} (${o.code})` === v) : null;
       out[f.key] = f.type === 'number' ? Number(v) : picked ? picked.code : v;
     }
     return out;

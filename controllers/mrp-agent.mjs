@@ -124,7 +124,21 @@ export const OITM_FIELD_CANDIDATES = {
   purchaseItem: ['PrchseItem'],
 };
 
-async function mrpInventoryCheckViaDB() {
+// SAP B1 MRP planning data on the item master (Planning / Purchasing tabs). Optional:
+// when a column is missing the rule it drives is simply not applied.
+const OITM_PLANNING_FIELD_CANDIDATES = {
+  inventoryItem:     ['InvntItem'],
+  frozen:            ['frozenFor'],
+  planningSystem:    ['PlaningSys'],
+  procurementMethod: ['PrcrmntMtd'],
+  minOrderQty:       ['MinOrdrQty'],
+  orderMultiple:     ['OrdrMulti'],
+  numInBuy:          ['NumInBuy'],
+  buyUnit:           ['BuyUnitMsr'],
+  lastPurchasePrice: ['LastPurPrc'],
+};
+
+export async function mrpInventoryCheckViaDB() {
   const cfg = getActiveConfig();
   const isHana = getActiveType() === 'hana';
   const q = n => qcol(n, isHana);
@@ -133,29 +147,128 @@ async function mrpInventoryCheckViaDB() {
   if (missing.length) {
     throw new Error(`OITM field mapping incomplete — no matching column found for: ${missing.join(', ')}`);
   }
+  const { resolved: opt } = resolveFieldMap(cols, OITM_PLANNING_FIELD_CANDIDATES);
+  const optSel = Object.entries(opt).map(([k, c]) => `, ${q(c)} AS ${q(k)}`).join('');
   const oitm = tableRef('OITM', cfg);
+  // Same scope as the SAP MRP run: active, stock-managed purchase items with a minimum level
+  const where = [`${q(resolved.purchaseItem)} = 'Y'`, `${q(resolved.minInventory)} > 0`];
+  if (opt.inventoryItem) where.push(`${q(opt.inventoryItem)} = 'Y'`);
+  if (opt.frozen) where.push(`${q(opt.frozen)} <> 'Y'`);
   const sql = `SELECT ${q(resolved.itemCode)} AS ${q('ItemCode')}, ${q(resolved.itemName)} AS ${q('ItemName')}, ` +
     `${q(resolved.onHand)} AS ${q('OnHand')}, ${q(resolved.committed)} AS ${q('IsCommited')}, ${q(resolved.onOrder)} AS ${q('OnOrder')}, ` +
     `${q(resolved.minInventory)} AS ${q('MinInventory')}, ${q(resolved.maxInventory)} AS ${q('MaxInventory')}, ` +
-    `${q(resolved.leadTime)} AS ${q('LeadTime')}, ${q(resolved.mainSupplier)} AS ${q('CardCode')}, ${q(resolved.uom)} AS ${q('Uom')} ` +
-    `FROM ${oitm} WHERE ${q(resolved.purchaseItem)} = 'Y' AND ${q(resolved.minInventory)} > 0`;
+    `${q(resolved.leadTime)} AS ${q('LeadTime')}, ${q(resolved.mainSupplier)} AS ${q('CardCode')}, ${q(resolved.uom)} AS ${q('Uom')}${optSel} ` +
+    `FROM ${oitm} WHERE ${where.join(' AND ')}`;
   const rows = await executeSQL(sql);
+  const has = k => k in opt;
   return rows.map(r => ({
     ItemCode: r.ItemCode, ItemName: r.ItemName,
     QuantityOnStock: r.OnHand, QuantityOrderedByCustomers: r.IsCommited,
     QuantityOrderedFromVendors: r.OnOrder,
     MinInventory: r.MinInventory, MaxInventory: r.MaxInventory,
     LeadTime: r.LeadTime, Mainsupplier: r.CardCode, InventoryUOM: r.Uom,
+    PlanningSystem:       has('planningSystem') ? (r.planningSystem === 'M' ? 'bop_MRP' : 'bop_None') : undefined,
+    ProcurementMethod:    has('procurementMethod') ? (r.procurementMethod === 'M' ? 'bom_Make' : 'bom_Buy') : undefined,
+    MinOrderQuantity:     r.minOrderQty, OrderMultiple: r.orderMultiple,
+    PurchaseItemsPerUnit: r.numInBuy, PurchaseUnit: r.buyUnit,
+    LastPurchasePrice:    r.lastPurchasePrice,
   }));
 }
 
 async function mrpInventoryCheckViaServiceLayer(sap) {
   const r = await sap.get("/Items", {
-    $filter: "PurchaseItem eq 'tYES' and Frozen eq 'tNO' and MinInventory gt 0",
-    $select: "ItemCode,ItemName,QuantityOnStock,MinInventory,MaxInventory,LeadTime,Mainsupplier,InventoryUOM,QuantityOrderedFromVendors,QuantityOrderedByCustomers",
+    $filter: "PurchaseItem eq 'tYES' and InventoryItem eq 'tYES' and Frozen eq 'tNO' and MinInventory gt 0",
+    $select: "ItemCode,ItemName,QuantityOnStock,MinInventory,MaxInventory,LeadTime,Mainsupplier,InventoryUOM,QuantityOrderedFromVendors,QuantityOrderedByCustomers," +
+      "PlanningSystem,ProcurementMethod,MinOrderQuantity,OrderMultiple,PurchaseItemsPerUnit,PurchaseUnit",
     $top: 2000,
   });
   return r.value || [];
+}
+
+// ── MRP planning rules (SAP Business One reorder-point logic) ────────────────
+// All quantities are company-wide (all warehouses) and in the INVENTORY UoM until
+// the last step converts the order to the PURCHASING UoM the PO line uses.
+//   Available  = In stock − Committed            (OnHand − IsCommited)
+//   Projected  = Available + Ordered              (+ OnOrder, open POs count as supply)
+//   Planned when Projected < Minimum inventory    (MinLevel)
+//   Net requirement = Max level − Projected when a maximum above the minimum is set,
+//                     otherwise Minimum − Projected (SAP MRP: replenish to the minimum)
+//   Lot sizing      = at least Minimum order qty, rounded up to the Order multiple
+//   Purchase qty    = Lot ÷ Items per purchase unit (NumInBuy), rounded up to whole units
+// Make items (procurement method Make) are not purchased — SAP MRP recommends a
+// production order for them — so they are excluded and counted separately.
+const num = v => Number(v || 0) || 0;
+const round6 = v => Math.round(v * 1e6) / 1e6;
+
+export function mrpPlanItem(it) {
+  const onHand    = num(it.QuantityOnStock ?? it.OnHand);
+  const committed = num(it.QuantityOrderedByCustomers);
+  const onOrder   = num(it.QuantityOrderedFromVendors ?? it.QuantityOrderedByVendors);
+  const minStock  = num(it.MinInventory);
+  const maxStock  = num(it.MaxInventory);
+  const available = onHand - committed;
+  const projected = available + onOrder;
+  if (!(minStock > 0) || projected >= minStock) return null;
+
+  const gap         = round6(minStock - projected);
+  const useMax      = maxStock > minStock;
+  const netReq      = round6(useMax ? maxStock - projected : gap);
+  const minOrderQty = num(it.MinOrderQuantity);
+  const orderMult   = num(it.OrderMultiple);
+  let lot = Math.max(netReq, minOrderQty);
+  if (orderMult > 0) lot = Math.ceil(round6(lot / orderMult)) * orderMult;
+  const reorderQty  = Math.max(1, round6(lot));
+  const numInBuy    = num(it.PurchaseItemsPerUnit) > 0 ? num(it.PurchaseItemsPerUnit) : 1;
+  const purchaseQty = numInBuy === 1 ? reorderQty : Math.ceil(round6(reorderQty / numInBuy));
+  const urgency     = available <= 0 ? 'critical' : gap / minStock >= 0.7 ? 'high' : 'medium';
+  const leadTimeSet = num(it.LeadTime) > 0;
+  const uom         = it.InventoryUOM || it.InventoryUoM || 'EA';
+  const plan = {
+    itemCode: it.ItemCode, itemName: it.ItemName,
+    onHand, committed, available, onOrder, projected, minStock, maxStock, gap,
+    netReq, minOrderQty, orderMultiple: orderMult, reorderQty, urgency,
+    numInBuy, purchaseQty, purchaseUom: it.PurchaseUnit || uom, uom,
+    leadTime: leadTimeSet ? num(it.LeadTime) : 7, leadTimeSet,
+    coveragePct: Math.max(0, Math.round(projected / minStock * 100)),
+    planningSystem: it.PlanningSystem === 'bop_MRP' ? 'mrp' : it.PlanningSystem === 'bop_None' ? 'none' : null,
+    procurement: it.ProcurementMethod === 'bom_Make' ? 'make' : 'buy',
+    preferredVendor: it.Mainsupplier || null,
+    lastPurchasePrice: num(it.LastPurchasePrice), // per inventory unit; enriched in ai-analyze
+  };
+  plan.explain = mrpExplain(plan);
+  return plan;
+}
+
+// Run the MRP check: DB Direct (ODBC/HANA) when available, else Service Layer /Items
+async function mrpRunPlan(sap) {
+  let raw, source;
+  if (isConnected()) {
+    try {
+      raw = await mrpInventoryCheckViaDB();
+      source = getActiveType(); // 'mssql' | 'hana'
+    } catch (dbErr) {
+      mrpLog('MRP_DB_FALLBACK', { reason: dbErr.message });
+      console.warn('[MRP inventory-check] DB Direct failed, falling back to Service Layer:', dbErr.message);
+    }
+  }
+  if (!raw) {
+    raw = await mrpInventoryCheckViaServiceLayer(sap);
+    source = 'service-layer';
+  }
+  const planned = raw.map(mrpPlanItem).filter(Boolean);
+  const items = planned.filter(i => i.procurement !== 'make');
+  const summary = {
+    scanned:     raw.length,
+    total:       items.length,
+    critical:    items.filter(i => i.urgency === 'critical').length,
+    high:        items.filter(i => i.urgency === 'high').length,
+    medium:      items.filter(i => i.urgency === 'medium').length,
+    noVendor:    items.filter(i => !i.preferredVendor).length,
+    lotAdjusted: items.filter(i => i.reorderQty !== Math.max(1, i.netReq)).length,
+    notMrpPlanned: items.filter(i => i.planningSystem === 'none').length,
+    skippedMake: planned.length - items.length,
+  };
+  return { items, summary, source };
 }
 
 // ── ai-analyze enrichment: DB Direct (OCRD/OCTG/OITM) with SL fallback ──────
@@ -296,21 +409,9 @@ const MRP_GPT_TOOLS = [
 async function executeMrpTool(name, args, sap) {
   const esc = s => String(s).replace(/'/g, "''");
   if (name === 'run_mrp_check') {
-    const r = await sap.get("/Items", {
-      $filter: "PurchaseItem eq 'tYES' and Frozen eq 'tNO' and MinInventory gt 0",
-      $select: "ItemCode,ItemName,QuantityOnStock,MinInventory,MaxInventory,LeadTime,Mainsupplier,InventoryUOM,QuantityOrderedFromVendors,QuantityOrderedByCustomers",
-      $top: 2000,
-    });
-    const items = (r.value || []).map(it => {
-      const onHand=Number(it.QuantityOnStock||0), committed=Number(it.QuantityOrderedByCustomers||0);
-      const onOrder=Number(it.QuantityOrderedFromVendors||0), minStock=Number(it.MinInventory||0), maxStock=Number(it.MaxInventory||0);
-      const available=onHand-committed;
-      if (available>=minStock) return null;
-      const gap=minStock-available, reorderQty=Math.max(1,maxStock>0?maxStock-available-onOrder:gap*2);
-      const urgency=available<=0?'critical':gap/minStock>=0.7?'high':'medium';
-      return { itemCode:it.ItemCode, itemName:it.ItemName, onHand, committed, available, onOrder, minStock, gap, reorderQty, urgency, leadTime:it.LeadTime||7, preferredVendor:it.Mainsupplier||null };
-    }).filter(Boolean);
-    return { items, total:items.length, critical:items.filter(i=>i.urgency==='critical').length, high:items.filter(i=>i.urgency==='high').length };
+    // Same planning rules as the Run MRP button, so chat and screen always agree
+    const { items, summary } = await mrpRunPlan(sap);
+    return { ...summary, items: items.map(({ explain, ...i }) => i) };
   }
   if (name === 'get_vendor_info') {
     const v = await sap.get(`/BusinessPartners('${esc(args.vendorCode)}')`, { $select:"CardCode,CardName,EmailAddress,Phone1,Currency,PaymentGroupCode,City,Country" });
@@ -339,9 +440,11 @@ async function executeMrpTool(name, args, sap) {
 
 // "How is this calculated?" popups — built from the same variables used above so the
 // explanation can never drift from the value shown in the table.
-function mrpExplain({ onHand, committed, available, onOrder, minStock, maxStock, projected, gap, reorderQty, urgency }) {
+function mrpExplain({ onHand, committed, available, onOrder, minStock, maxStock, projected, gap, netReq, minOrderQty, orderMultiple,
+  reorderQty, numInBuy, purchaseQty, purchaseUom, uom, urgency }) {
   const f = n => Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 2 });
   const gapPct = minStock > 0 ? Math.round(gap / minStock * 100) : 0;
+  const useMax = maxStock > minStock;
   const base = [
     { label: 'Available stock', formula: `In stock ${f(onHand)} − committed to sales orders ${f(committed)}`, value: available },
     { label: 'Projected stock', formula: `Available ${f(available)} + already on order from vendors ${f(onOrder)}`, value: projected },
@@ -367,15 +470,19 @@ function mrpExplain({ onHand, committed, available, onOrder, minStock, maxStock,
       title: 'How the reorder quantity is calculated',
       steps: [
         ...base,
-        maxStock > 0
-          ? { label: 'Fill up to maximum', formula: `Maximum stock ${f(maxStock)} − projected ${f(projected)}`, value: maxStock - projected }
-          : { label: 'Twice the gap', formula: `Gap ${f(gap)} × 2 (no maximum stock set)`, value: gap * 2 },
+        useMax
+          ? { label: 'Net requirement — fill up to maximum', formula: `Maximum stock ${f(maxStock)} − projected ${f(projected)}`, value: netReq }
+          : { label: 'Net requirement — back to minimum', formula: `Minimum stock ${f(minStock)} − projected ${f(projected)}`, value: netReq },
+        { label: 'Minimum order quantity', formula: minOrderQty > 0 ? `At least ${f(minOrderQty)} ${uom}` : 'Not set on the item', value: Math.max(netReq, minOrderQty) },
+        { label: 'Order multiple', formula: orderMultiple > 0 ? `Rounded up to a multiple of ${f(orderMultiple)}` : 'Not set on the item', value: reorderQty },
+        ...(numInBuy !== 1 ? [{ label: 'Purchasing units', formula: `${f(reorderQty)} ${uom} ÷ ${f(numInBuy)} per ${purchaseUom}, rounded up`, value: `${f(purchaseQty)} ${purchaseUom}` }] : []),
       ],
-      result: { label: 'Reorder quantity (at least 1)', value: reorderQty },
+      result: { label: `Reorder quantity (${uom}, at least 1)`, value: reorderQty },
       rules: [
-        { rule: 'Maximum stock is set on the item', result: 'Maximum − projected stock', hit: maxStock > 0 },
-        { rule: 'No maximum stock set', result: 'Gap × 2', hit: !(maxStock > 0) },
+        { rule: 'Maximum stock above the minimum is set', result: 'Maximum − projected stock', hit: useMax },
+        { rule: 'No maximum stock (SAP MRP default)', result: 'Minimum − projected stock', hit: !useMax },
       ],
+      note: 'Item master planning data (OITM): Minimum order qty (MinOrdrQty), Order multiple (OrdrMulti), Items per purchase unit (NumInBuy). The PO line is posted in purchasing units.',
     },
   };
 }
@@ -387,56 +494,13 @@ export function createMrpAgentRouter(deps) {
   // 1. MRP Inventory Threshold Check — DB Direct (ODBC/HANA) when available, else /Items
   router.get('/inventory-check', requireAuth, async (req, res) => {
     try {
-      let raw, source;
-      if (isConnected()) {
-        try {
-          raw = await mrpInventoryCheckViaDB();
-          source = getActiveType(); // 'mssql' | 'hana'
-        } catch (dbErr) {
-          mrpLog('MRP_DB_FALLBACK', { reason: dbErr.message });
-          console.warn('[MRP inventory-check] DB Direct failed, falling back to Service Layer:', dbErr.message);
-        }
-      }
-      if (!raw) {
-        raw = await mrpInventoryCheckViaServiceLayer(getActiveSap());
-        source = 'service-layer';
-      }
-
-      const items = raw.map(it => {
-        const onHand    = Number(it.QuantityOnStock || it.OnHand || 0);
-        const committed = Number(it.QuantityOrderedByCustomers || 0);
-        const onOrder   = Number(it.QuantityOrderedFromVendors || it.QuantityOrderedByVendors || 0);
-        const minStock  = Number(it.MinInventory || 0);
-        const maxStock  = Number(it.MaxInventory || 0);
-        const available = onHand - committed;
-        // Open PO quantity counts toward supply, so an item whose shortfall is already
-        // covered by a posted PO is not suggested again.
-        const projected = available + onOrder;
-        if (projected >= minStock) return null;
-        const gap        = minStock - projected;
-        const reorderQty = Math.max(1, maxStock > 0 ? maxStock - projected : gap * 2);
-        const urgency    = available <= 0 ? 'critical' : gap / minStock >= 0.7 ? 'high' : 'medium';
-        const explain    = mrpExplain({ onHand, committed, available, onOrder, minStock, maxStock, projected, gap, reorderQty, urgency });
-        return {
-          itemCode: it.ItemCode, itemName: it.ItemName,
-          onHand, committed, available, onOrder, minStock, maxStock, gap, reorderQty, urgency, explain,
-          leadTime: Number(it.LeadTime || 7),
-          uom: it.InventoryUOM || it.InventoryUoM || 'EA',
-          preferredVendor: it.Mainsupplier || null,
-          lastPurchasePrice: 0, // fetched per-item in ai-analyze step
-        };
-      }).filter(Boolean);
+      const { items, summary, source } = await mrpRunPlan(getActiveSap());
 
       // Flag items already sitting in an open (unposted) draft PO
       const inDraft = draftRepo.openItemCodes(mrpCompanyId());
       for (const it of items) it.draftId = inDraft.get(it.itemCode) || null;
+      summary.inDraft = items.filter(i => i.draftId).length;
 
-      const summary = {
-        total: items.length,
-        critical: items.filter(i => i.urgency === 'critical').length,
-        high:     items.filter(i => i.urgency === 'high').length,
-        medium:   items.filter(i => i.urgency === 'medium').length,
-      };
       mrpLog('MRP_RUN', { itemsFound: items.length, source, ...summary });
       res.json({ ok: true, items, summary, source, scannedAt: new Date().toISOString() });
     } catch(e) {
@@ -508,19 +572,22 @@ export function createMrpAgentRouter(deps) {
         }
         if (!rows) {
           rows = [];
-          try {
-            // Batch in chunks of 50 to stay within URL length limits
-            for (let i = 0; i < itemCodes.length; i += 50) {
-              const chunk = itemCodes.slice(i, i + 50);
-              const filter = chunk.map(c => `ItemCode eq '${esc(c)}'`).join(' or ');
-              const pd = await sap.get("/Items", {
-                $filter: filter,
-                $select: "ItemCode,LastPurchasePrice,BuyUnitMsr,InventoryUoM",
-                $top: 50,
-              });
-              rows.push(...(pd.value || []));
-            }
-          } catch { /* non-fatal — prices will default to 0 */ }
+          // Not every Service Layer version exposes LastPurchasePrice on Items — retry without it
+          // so the purchasing UoM is still read (prices then default to 0).
+          for (const sel of ["ItemCode,LastPurchasePrice,BuyUnitMsr,InventoryUOM", "ItemCode,BuyUnitMsr,InventoryUOM"]) {
+            try {
+              const got = [];
+              // Batch in chunks of 50 to stay within URL length limits
+              for (let i = 0; i < itemCodes.length; i += 50) {
+                const chunk = itemCodes.slice(i, i + 50);
+                const filter = chunk.map(c => `ItemCode eq '${esc(c)}'`).join(' or ');
+                const pd = await sap.get("/Items", { $filter: filter, $select: sel, $top: 50 });
+                got.push(...(pd.value || []));
+              }
+              rows = got;
+              break;
+            } catch { /* try the next $select; non-fatal */ }
+          }
         }
         for (const it of rows) priceMap.set(it.ItemCode, it);
       }
@@ -529,11 +596,19 @@ export function createMrpAgentRouter(deps) {
         const vendor    = vendorMap.get(item.preferredVendor) || null;
         const pt        = vendor ? ptMap.get(vendor.PaymentGroupCode) : null;
         const priceInfo = priceMap.get(item.itemCode);
-        const unitPrice = Number(priceInfo?.LastPurchasePrice || item.lastPurchasePrice || 0);
-        const uom       = priceInfo?.BuyUnitMsr || priceInfo?.InventoryUoM || item.uom || 'EA';
+        // Last purchase price is held per inventory unit; the PO line is priced per purchasing unit
+        const invPrice  = Number(priceInfo?.LastPurchasePrice || item.lastPurchasePrice || 0);
+        const numInBuy  = Number(item.numInBuy) > 0 ? Number(item.numInBuy) : 1;
+        const unitPrice = Math.round(invPrice * numInBuy * 1e6) / 1e6;
+        const purchaseQty = Number(item.purchaseQty ?? item.reorderQty);
+        const uom       = item.purchaseUom || priceInfo?.BuyUnitMsr || priceInfo?.InventoryUOM || priceInfo?.InventoryUoM || item.uom || 'EA';
         return {
           ...item,
+          purchaseQty,
+          purchaseUom: uom,
+          invUom: item.uom,
           uom,
+          invPrice,
           vendorName:       vendor?.CardName || null,
           vendorEmail:      vendor?.EmailAddress || null,
           vendorPhone:      vendor?.Phone1 || null,
@@ -542,7 +617,7 @@ export function createMrpAgentRouter(deps) {
           paymentTerms:     pt?.PaymentTermsGroupName || null,
           paymentGroupCode: vendor?.PaymentGroupCode ?? null,
           unitPrice,
-          lineTotal:        unitPrice * item.reorderQty,
+          lineTotal:        unitPrice * purchaseQty,
         };
       });
 
@@ -584,14 +659,19 @@ export function createMrpAgentRouter(deps) {
         const maxLead = lines.reduce((m, l) => Math.max(m, l.leadTime || 7), 7);
         return new Date(today.getTime() + maxLead * 86400000).toISOString().slice(0, 10);
       };
-      const toLine = l => ({
-        itemCode:  l.itemCode, itemName: l.itemName,
-        qty:       l.reorderQty, uom: l.uom,
-        unitPrice: l.unitPrice || 0,
-        lineTotal: (l.unitPrice || 0) * l.reorderQty,
-        urgency:   l.urgency,
-        leadTime:  l.leadTime || 7,
-      });
+      // Line qty / price are in the purchasing UoM (what the SAP PO line expects)
+      const toLine = l => {
+        const qty = Number(l.purchaseQty ?? l.reorderQty);
+        return {
+          itemCode:  l.itemCode, itemName: l.itemName,
+          qty, uom: l.purchaseUom || l.uom,
+          invQty:    l.reorderQty, invUom: l.invUom || null, numInBuy: Number(l.numInBuy) > 0 ? Number(l.numInBuy) : 1,
+          unitPrice: l.unitPrice || 0,
+          lineTotal: (l.unitPrice || 0) * qty,
+          urgency:   l.urgency,
+          leadTime:  l.leadTime || 7,
+        };
+      };
 
       const touched = [];
       for (const [vendorCode, lines] of byVendor.entries()) {
@@ -733,11 +813,12 @@ export function createMrpAgentRouter(deps) {
         DocDueDate:  dueDate,
         Comments:    `MRP Auto-PO — AI Procurement Agent — ${today}`,
         ...(draftPO.paymentGroupCode != null ? { PaymentGroupCode: draftPO.paymentGroupCode } : {}),
+        // No UoMCode: SAP defaults the item's purchasing UoM, which is the unit qty/price are
+        // already expressed in (sending the UoM *name* as a code fails for manual-UoM items).
         DocumentLines: lines.map(l => ({
           ItemCode:  l.itemCode,
           Quantity:  Number(l.qty),
           UnitPrice: Number(l.unitPrice || 0),
-          UoMCode:   l.uom || undefined,
         })),
       };
 
@@ -785,10 +866,11 @@ export function createMrpAgentRouter(deps) {
         remarks:     ar.Remarks,
         templateId:  ar.ApprovalTemplatesID,
         creationDate: ar.CreationDate?.slice(0, 10),
+        isPurchaseOrder: String(ar.ObjectType) === '22' || /PurchaseOrder/i.test(String(ar.ObjectType || '')),
       }));
-      res.json({ ok: true, requests, total: requests.length });
+      res.json({ ok: true, requests, total: requests.length, poTotal: requests.filter(r => r.isPurchaseOrder).length });
     } catch(e) {
-      res.json({ ok: true, requests: [], total: 0, note: e.message });
+      res.json({ ok: true, requests: [], total: 0, poTotal: 0, note: e.message });
     }
   });
 
@@ -818,7 +900,7 @@ export function createMrpAgentRouter(deps) {
         <tr style="background:${i % 2 ? '#f9f9f9' : '#fff'}">
           <td style="padding:7px 10px;border-bottom:1px solid #eee">${l.itemCode || ''}</td>
           <td style="padding:7px 10px;border-bottom:1px solid #eee">${l.itemName || l.itemDescription || ''}</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">${fmt(l.qty || l.quantity)}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">${fmt(l.qty || l.quantity)}${l.uom ? ` ${l.uom}` : ''}</td>
           <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">${fmt(l.unitPrice)}</td>
           <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${fmt(l.lineTotal || (l.qty || 0) * (l.unitPrice || 0))}</td>
         </tr>`).join('');
@@ -877,7 +959,7 @@ export function createMrpAgentRouter(deps) {
   // 9. MRP AI Chat
   router.post('/chat', requireAuth, async (req, res) => {
     try {
-      const { message, sessionId = `mrp_${Date.now()}` } = req.body;
+      const { message, sessionId = `mrp_${Date.now()}`, context } = req.body;
       if (!message?.trim()) return res.status(400).json({ ok: false, error: 'message required' });
       const sap = getActiveSap();
       const today = new Date().toISOString().slice(0, 10);
@@ -897,7 +979,12 @@ export function createMrpAgentRouter(deps) {
 7. Auto-Convert → PO posted after approval
 8. Email Vendor → send PO confirmation
 
-Today is ${today}. Always call tools first. Be concise and action-oriented. When listing items needing reorder, show urgency, gap, and estimated cost.`;
+Planning rules (SAP Business One MRP, company-wide, inventory UoM): Available = On hand − Committed; Projected = Available + On order;
+an item is planned when Projected < Minimum. Net requirement = Maximum − Projected when a maximum above the minimum is set, else Minimum − Projected;
+then at least the Minimum order qty, rounded up to the Order multiple, and converted to purchasing units (÷ Items per purchase unit, rounded up).
+Make items are excluded (SAP recommends production orders for them). Urgency: Critical = Available ≤ 0, High = Gap ≥ 70% of minimum, else Medium.
+
+Today is ${today}. Always call tools first. Be concise and action-oriented. When listing items needing reorder, show urgency, gap, and estimated cost.${context ? `\n\nCurrent Dashboard Context (already loaded from SAP — use these figures, no tool call needed):\n${JSON.stringify(context, null, 2)}` : ''}`;
 
       const messages = [{ role:"system", content: systemPrompt }, ...history];
       let response = null;

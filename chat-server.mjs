@@ -24,6 +24,8 @@ import { fileURLToPath } from "url";
 import path from "path";
 import { nlpQuery } from "./nlp-engine.mjs";
 import { createForecastingRouter, runForecastCore, runPurchaseForecastCore } from './controllers/forecasting.mjs';
+import { createForecastDashboardAiRouter } from './controllers/forecast-dashboard-ai.mjs';
+import { agentSettingsRepo } from './lib/insight-store.mjs';
 import { createRushOrderRouter, runRushOrderScan } from './controllers/rush-orders.mjs';
 import { createPurchasingAgentRouter }      from './controllers/purchasing-agent.mjs';
 import { createOrderIntelligenceRouter }    from './controllers/order-intelligence-agent.mjs';
@@ -5474,92 +5476,150 @@ app.get("/api/forecast/data-years", requireAuth, async (req, res) => {
 });
 
 // ── B1 Forecast: monthly sales + supply for one item ──────────────────────────
+// ── Item demand / supply per month (DB Direct, HANA or MSSQL) ───────────────
+// Shared by the Forecast Dashboard (Standard Forecast + Supply vs Demand).
+// Rules, checked against live data:
+//  • Cancelled documents are excluded (CANCELED = 'N'). Cancelling a document
+//    keeps the original (CANCELED='Y') and adds a cancellation document
+//    (CANCELED='C') with the same positive quantity — counting either one
+//    inflates the figures.
+//  • Returns are subtracted: demand = A/R invoices − A/R credit memos,
+//    supply = goods receipts PO − goods returns.
+//  • LineStatus is NOT used for posted documents: invoice / GRPO lines are
+//    'C' once copied to a follow-up document but are still real quantities.
+//  • Demand source: 'invoice' (net invoices), 'order' (sales orders) or
+//    'auto' (invoices, sales orders only when the year has no invoices).
+//  • Drop-ship warehouses (OWHS.DropShip = 'Y') are excluded by default
+//    (scope 'stock'): the vendor ships straight to the customer, so those
+//    sales never consume stock and those POs never add to it. SAP itself
+//    leaves them out of Committed / On Order. scope 'dropship' = only those.
+let _fdDsCache = { at: 0, key: '', set: null };
+async function fdDropShipWhs() {
+  const cfg = getActiveConfig();
+  const key = String(cfg?.database || cfg?.schema_name || '');
+  if (_fdDsCache.set && _fdDsCache.key === key && Date.now() - _fdDsCache.at < 600_000) return _fdDsCache.set;
+  let codes = [];
+  try {
+    if (isConnected()) {
+      const q = c => qcol(c, getActiveType() === 'hana');
+      codes = (await executeSQL(`SELECT ${q('WhsCode')} AS ${q('WhsCode')} FROM ${tableRef('OWHS', cfg)} WHERE ${q('DropShip')} = 'Y'`)).map(r => r.WhsCode);
+    } else {
+      const r = await getActiveSap().get('/Warehouses', { $filter: "DropShip eq 'tYES'", $select: 'WarehouseCode' });
+      codes = (r.value || []).map(w => w.WarehouseCode);
+    }
+  } catch (e) { console.warn('[ForecastDashboard] drop-ship warehouse lookup failed:', e.message); }
+  _fdDsCache = { at: Date.now(), key, set: new Set(codes) };
+  return _fdDsCache.set;
+}
+const fdWhsScopeSql = (scope, q) => scope === 'stock' ? ` AND COALESCE(W.${q('DropShip')}, 'N') <> 'Y'`
+  : scope === 'dropship' ? ` AND W.${q('DropShip')} = 'Y'` : '';
+async function fdMonthlyQtyDb(hdrTable, lineTable, itemCode, from, to, scope = 'stock') {
+  const cfg = getActiveConfig(), h = getActiveType() === 'hana', q = c => qcol(c, h);
+  const rows = await executeSQL(`
+    SELECT MONTH(T0.${q('DocDate')}) AS ${q('M')}, SUM(T1.${q('Quantity')}) AS ${q('Qty')}
+    FROM ${tableRef(hdrTable, cfg)} T0
+    INNER JOIN ${tableRef(lineTable, cfg)} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+    LEFT JOIN ${tableRef('OWHS', cfg)} W ON W.${q('WhsCode')} = T1.${q('WhsCode')}
+    WHERE T1.${q('ItemCode')} = '${itemCode.replace(/'/g, "''")}' AND T0.${q('CANCELED')} = 'N'
+      AND T0.${q('DocDate')} >= '${from}' AND T0.${q('DocDate')} <= '${to}'${fdWhsScopeSql(scope, q)}
+    GROUP BY MONTH(T0.${q('DocDate')})`);
+  const arr = Array(12).fill(0);
+  for (const r of rows) arr[Number(r.M) - 1] = Number(r.Qty || 0);
+  return arr;
+}
+const fdSub = (a, b) => a.map((v, i) => v - b[i]);
+const fdSum = a => a.reduce((s, v) => s + v, 0);
+// Sales-order demand per month. Qty = what the customer still wants: open
+// lines in full, closed lines only what was delivered (a part closed without
+// delivery was cancelled demand). dateMode 'delivery' = RDR1.ShipDate (the
+// customer's requested date, SAP's requirements date), 'order' = ORDR.DocDate.
+// openOnly → open quantity of open lines (for projections).
+async function fdSoMonthlyDb(itemCode, from, to, { dateMode = 'delivery', scope = 'stock', openOnly = false } = {}) {
+  const cfg = getActiveConfig(), h = getActiveType() === 'hana', q = c => qcol(c, h);
+  const dateCol = dateMode === 'order' ? `T0.${q('DocDate')}` : `COALESCE(T1.${q('ShipDate')}, T0.${q('DocDueDate')})`;
+  const qtyExpr = openOnly ? `T1.${q('OpenQty')}` : `CASE WHEN T1.${q('LineStatus')} = 'C' THEN T1.${q('DelivrdQty')} ELSE T1.${q('Quantity')} END`;
+  const rows = await executeSQL(`
+    SELECT YEAR(${dateCol}) AS ${q('Y')}, MONTH(${dateCol}) AS ${q('M')}, SUM(${qtyExpr}) AS ${q('Qty')}
+    FROM ${tableRef('ORDR', cfg)} T0 INNER JOIN ${tableRef('RDR1', cfg)} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+    LEFT JOIN ${tableRef('OWHS', cfg)} W ON W.${q('WhsCode')} = T1.${q('WhsCode')}
+    WHERE T1.${q('ItemCode')} = '${itemCode.replace(/'/g, "''")}' AND T0.${q('CANCELED')} = 'N'
+      ${from ? `AND ${dateCol} >= '${from}'` : ''} AND ${dateCol} <= '${to}'${openOnly ? ` AND T1.${q('LineStatus')} = 'O'` : ''}${fdWhsScopeSql(scope, q)}
+    GROUP BY YEAR(${dateCol}), MONTH(${dateCol})`);
+  return rows.map(r => ({ y: Number(r.Y), m: Number(r.M), qty: Number(r.Qty || 0) }));
+}
+const fdYearArr = (rows, y) => { const a = Array(12).fill(0); for (const r of rows) if (r.y === y) a[r.m - 1] += r.qty; return a; };
+
+async function fdItemDemandSupplyDb(itemCode, y, demandSource = 'auto', scope = 'stock') {
+  const from = `${y}-01-01`, to = `${y}-12-31`;
+  let demand = Array(12).fill(0), source = 'invoice';
+  if (demandSource === 'so-delivery' || demandSource === 'so-order') {
+    demand = fdYearArr(await fdSoMonthlyDb(itemCode, from, to, { dateMode: demandSource === 'so-order' ? 'order' : 'delivery', scope }), y);
+    source = demandSource;
+  } else if (demandSource !== 'order') {
+    const [inv, crn] = await Promise.all([fdMonthlyQtyDb('OINV', 'INV1', itemCode, from, to, scope), fdMonthlyQtyDb('ORIN', 'RIN1', itemCode, from, to, scope)]);
+    demand = fdSub(inv, crn);
+  }
+  if (demandSource === 'order' || (demandSource === 'auto' && fdSum(demand) === 0)) {
+    demand = await fdMonthlyQtyDb('ORDR', 'RDR1', itemCode, from, to, scope);
+    source = 'order';
+  }
+  const [grpo, ret] = await Promise.all([fdMonthlyQtyDb('OPDN', 'PDN1', itemCode, from, to, scope), fdMonthlyQtyDb('ORPD', 'RPD1', itemCode, from, to, scope)]);
+  const supply = fdSub(grpo, ret);
+  // Drop-ship sales of the year, for information (never part of stock demand).
+  let dropShipDemand = Array(12).fill(0);
+  if (scope === 'stock' && source === 'invoice') {
+    const [dInv, dCrn] = await Promise.all([fdMonthlyQtyDb('OINV', 'INV1', itemCode, from, to, 'dropship'), fdMonthlyQtyDb('ORIN', 'RIN1', itemCode, from, to, 'dropship')]);
+    dropShipDemand = fdSub(dInv, dCrn);
+  }
+  return { demand, supply, dropShipDemand, demandSource: source, total: fdSum(demand.map(Math.abs)) + fdSum(supply.map(Math.abs)) };
+}
+
 app.get("/api/b1/item-monthly-data", requireAuth, async (req, res) => {
   try {
     const itemCode = (req.query.itemCode || "").trim();
     let   year     = parseInt(req.query.year) || new Date().getFullYear();
     if (!itemCode) return res.status(400).json({ error: "itemCode required" });
+    const demandSource = ['invoice', 'order', 'so-delivery', 'so-order'].includes(req.query.demandSource) ? req.query.demandSource : 'auto';
 
     const sap = getActiveSap();
-    const useHana = isConnected() && getActiveType() === 'hana';
+    const useDb   = isConnected();                                // DB Direct (HANA or MSSQL)
+    const useHana = useDb && getActiveType() === 'hana';         // item-name lookup below is HANA-quoted
 
-    // Helper: load one year's demand + supply for the item — direct HANA SQL.
-    // Column mapping verified live against the HANA schema (see forecasting.mjs
-    // fetchItemMasterHana comment for the OITM field-name notes):
-    //   Invoices → OINV/INV1, Sales Orders (fallback) → ORDR/RDR1
-    //   GoodsReceiptPO → OPDN/PDN1, Purchase Orders (fallback) → OPOR/POR1
     async function loadYearHana(y) {
-      const cfg  = getActiveConfig();
-      const from = `${y}-01-01`, to = `${y}-12-31`;
-      const demand = Array(12).fill(0), supply = Array(12).fill(0);
-      const esc2 = itemCode.replace(/'/g, "''");
-
-      async function monthlyQty(hdrTable, lineTable) {
-        const rows = await executeSQL(`
-          SELECT MONTH(T0."DocDate") AS "M", SUM(T1."Quantity") AS "Qty"
-          FROM ${tableRef(hdrTable, cfg)} T0
-          INNER JOIN ${tableRef(lineTable, cfg)} T1 ON T0."DocEntry" = T1."DocEntry"
-          WHERE T1."ItemCode" = '${esc2}' AND T0."DocDate" >= '${from}' AND T0."DocDate" <= '${to}'
-          GROUP BY MONTH(T0."DocDate")`);
-        const arr = Array(12).fill(0);
-        for (const r of rows) arr[Number(r.M) - 1] = Number(r.Qty || 0);
-        return arr;
-      }
-
-      const invDemand = await monthlyQty('OINV', 'INV1');
-      let demandArr = invDemand;
-      if (invDemand.reduce((s, v) => s + v, 0) === 0) {
-        demandArr = await monthlyQty('ORDR', 'RDR1'); // Sales Orders fallback
-      }
-      demandArr.forEach((v, i) => { demand[i] = v; });
-
-      const grpoSupply = await monthlyQty('OPDN', 'PDN1');
-      let supplyArr = grpoSupply;
-      if (grpoSupply.reduce((s, v) => s + v, 0) === 0) {
-        supplyArr = await monthlyQty('OPOR', 'POR1'); // open Purchase Orders fallback
-      }
-      supplyArr.forEach((v, i) => { supply[i] = v; });
-
-      const total = demand.reduce((s, v) => s + v, 0) + supply.reduce((s, v) => s + v, 0);
-      return { demand, supply, total };
+      const r = await fdItemDemandSupplyDb(itemCode, y, demandSource);
+      // Supply fallback: open POs when nothing was received that year.
+      if (fdSum(r.supply) === 0) r.supply = await fdMonthlyQtyDb('OPOR', 'POR1', itemCode, `${y}-01-01`, `${y}-12-31`);
+      r.total = fdSum(r.demand.map(Math.abs)) + fdSum(r.supply);
+      return r;
     }
 
     // Helper: load one year's demand + supply for the item — Service Layer.
+    // Same rules as fdItemDemandSupplyDb: cancelled documents excluded, returns
+    // subtracted, closed lines kept (posted documents).
     async function loadYear(y) {
       const from = `${y}-01-01`, to = `${y}-12-31`;
       const demand = Array(12).fill(0), supply = Array(12).fill(0);
-      let invoiceDemand = 0;
-      try {
-        const inv  = await sap.get("/Invoices", { $select:"DocEntry,DocDate", $filter:`DocDate ge '${from}' and DocDate le '${to}'`, $top:2000 });
-        const docs = await fdLoadDocumentLines(sap, "Invoices", inv.value||[], itemCode);
+      const ds = await fdDropShipWhs();   // stock warehouses only (see fdMonthlyQtyDb)
+      const addDocs = async (entity, target, sign) => {
+        const hdr = await sap.get(`/${entity}`, { $select:"DocEntry,DocDate", $filter:`DocDate ge '${from}' and DocDate le '${to}' and Cancelled eq 'tNO'`, $top:2000 });
+        const docs = await fdLoadDocumentLines(sap, entity, hdr.value||[], itemCode);
         for (const doc of docs) {
-          const lines = fdDocLinesForItem(doc, itemCode);
-          if (!lines.length) continue;
-          demand[new Date(doc.DocDate).getMonth()] += lines.reduce((s,l)=>s+fdLineQty(l),0);
+          const lines = fdPostedLinesForItem(doc, itemCode).filter(l => !ds.has(l.WarehouseCode));
+          if (lines.length) target[new Date(doc.DocDate).getMonth()] += sign * lines.reduce((s,l)=>s+fdLineQty(l),0);
         }
-        invoiceDemand = demand.reduce((s,v)=>s+v,0);
-      } catch(e) { console.log(`[B1Forecast] Invoices ${y}:`, e.message); }
-      // Fallback: use Sales Orders as demand proxy when no AR Invoices exist
-      if (invoiceDemand === 0) {
-        try {
-          const ords = await sap.get("/Orders", { $select:"DocEntry,DocDate", $filter:`DocDate ge '${from}' and DocDate le '${to}'`, $top:2000 });
-          const docs = await fdLoadDocumentLines(sap, "Orders", ords.value||[], itemCode);
-          for (const doc of docs) {
-            const lines = fdDocLinesForItem(doc, itemCode);
-            if (!lines.length) continue;
-            demand[new Date(doc.DocDate).getMonth()] += lines.reduce((s,l)=>s+fdLineQty(l),0);
-          }
-        } catch(e) { console.log(`[B1Forecast] Orders fallback ${y}:`, e.message); }
+      };
+      let source = 'invoice';
+      if (demandSource !== 'order') {
+        try { await addDocs("Invoices", demand, 1); } catch(e) { console.log(`[B1Forecast] Invoices ${y}:`, e.message); }
+        try { await addDocs("CreditNotes", demand, -1); } catch(e) { console.log(`[B1Forecast] CreditNotes ${y}:`, e.message); }
       }
-      try {
-        const grpo = await sap.get("/GoodsReceiptsPO", { $select:"DocEntry,DocDate", $filter:`DocDate ge '${from}' and DocDate le '${to}'`, $top:2000 });
-        const docs = await fdLoadDocumentLines(sap, "GoodsReceiptsPO", grpo.value||[], itemCode);
-        for (const doc of docs) {
-          const lines = fdDocLinesForItem(doc, itemCode);
-          if (!lines.length) continue;
-          supply[new Date(doc.DocDate).getMonth()] += lines.reduce((s,l)=>s+fdLineQty(l),0);
-        }
-      } catch(e) { console.log(`[B1Forecast] GRPO ${y}:`, e.message); }
+      // Sales Orders as demand proxy: on request, or when the year has no invoices
+      if (demandSource === 'order' || (demandSource === 'auto' && demand.every(v => v === 0))) {
+        demand.fill(0); source = 'order';
+        try { await addDocs("Orders", demand, 1); } catch(e) { console.log(`[B1Forecast] Orders ${y}:`, e.message); }
+      }
+      try { await addDocs("GoodsReceiptsPO", supply, 1); } catch(e) { console.log(`[B1Forecast] GRPO ${y}:`, e.message); }
+      try { await addDocs("PurchaseReturns", supply, -1); } catch(e) { console.log(`[B1Forecast] PurchaseReturns ${y}:`, e.message); }
       // Fallback: use open POs as supply proxy when no GRPOs exist
       const supplyTotal = supply.reduce((s,v)=>s+v,0);
       if (supplyTotal === 0) {
@@ -5573,25 +5633,24 @@ app.get("/api/b1/item-monthly-data", requireAuth, async (req, res) => {
           }
         } catch(e) { console.log(`[B1Forecast] PO fallback ${y}:`, e.message); }
       }
-      const total = demand.reduce((s,v)=>s+v,0) + supply.reduce((s,v)=>s+v,0);
-      return { demand, supply, total };
+      const total = demand.reduce((s,v)=>s+Math.abs(v),0) + supply.reduce((s,v)=>s+Math.abs(v),0);
+      return { demand, supply, total, demandSource: source };
     }
 
-    // Prefer direct HANA ODBC when connected for this company — falls back to
-    // Service Layer on any failure (SAP outage, wrong item code, etc).
+    // Prefer DB Direct when connected for this company — falls back to Service
+    // Layer only when the query fails (a genuine zero from the DB is kept).
     async function loadYearPreferHana(y) {
-      if (useHana) {
+      if (useDb) {
         try {
-          const r = await loadYearHana(y);
-          if (r.total > 0) return r;
+          return await loadYearHana(y);
         } catch (e) {
-          console.warn(`[B1Forecast] HANA direct query failed for ${y}, falling back to Service Layer:`, e.message);
+          console.warn(`[B1Forecast] DB direct query failed for ${y}, falling back to Service Layer:`, e.message);
         }
       }
       return loadYear(y);
     }
 
-    let { demand, supply, total } = await loadYearPreferHana(year);
+    let { demand, supply, total, demandSource: usedSource, dropShipDemand } = await loadYearPreferHana(year);
 
     // If requested year has no data, scan backwards up to 15 years to find data
     if (total === 0) {
@@ -5600,7 +5659,7 @@ app.get("/api/b1/item-monthly-data", requireAuth, async (req, res) => {
         if (tryYear < 1990) break;
         const result = await loadYearPreferHana(tryYear);
         if (result.total > 0) {
-          ({ demand, supply, total } = result);
+          ({ demand, supply, total, demandSource: usedSource, dropShipDemand } = result);
           year = tryYear;
           break;
         }
@@ -5630,7 +5689,8 @@ app.get("/api/b1/item-monthly-data", requireAuth, async (req, res) => {
       } catch { /* non-fatal */ }
     }
 
-    res.json({ demand, supply, itemCode, itemName, onHand, year, dataYear: year });
+    res.json({ demand, supply, itemCode, itemName, onHand, year, dataYear: year, demandSource: usedSource,
+      scope: 'stock', dropShipDemand: dropShipDemand || Array(12).fill(0) });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -5648,6 +5708,10 @@ const fdLineAmount = (line) => {
 };
 const fdDocLinesForItem = (doc, itemCode) =>
   (doc?.DocumentLines || []).filter(line => line?.LineStatus !== "bost_Close" && fdLineItemMatches(line, itemCode));
+// Posted documents (invoices, credit memos, goods receipts/returns): a line is
+// 'closed' once copied to a follow-up document but its quantity still counts.
+const fdPostedLinesForItem = (doc, itemCode) =>
+  (doc?.DocumentLines || []).filter(line => fdLineItemMatches(line, itemCode));
 const fdLineRows = (lines) => lines.map(line => ({
   itemCode: line.ItemCode,
   description: line.ItemDescription,
@@ -5856,6 +5920,7 @@ app.get("/api/forecast/open-pos", requireAuth, async (req, res) => {
       }
     } catch { /* non-fatal */ }
 
+    const dsWhs = await fdDropShipWhs();
     const result = pos.map(po => {
       const matchedLines = fdDocLinesForItem(po, itemCode);
       if (itemCode && !matchedLines.length) return null;
@@ -5884,11 +5949,500 @@ app.get("/api/forecast/open-pos", requireAuth, async (req, res) => {
         advanceRef: adv.refs.join(', '),
         quantity: matchedLines.reduce((sum, line) => sum + fdLineQty(line), 0),
         openQty: matchedLines.reduce((sum, line) => sum + fdLineOpenQty(line), 0),
+        // Drop-ship lines (vendor → customer) never reach stock.
+        dropShipOpenQty: matchedLines.filter(l => dsWhs.has(l.WarehouseCode)).reduce((sum, line) => sum + fdLineOpenQty(line), 0),
+        warehouses: [...new Set(matchedLines.map(l => l.WarehouseCode).filter(Boolean))],
         lines: fdLineRows(itemCode ? matchedLines : (po.DocumentLines || [])),
       };
     }).filter(Boolean);
     res.json({ ok: true, pos: result, total: result.length });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Forecast Dashboard: Actual vendor lead times (supply history) ────────────
+// Every goods receipt of the item that traces back to a PO (directly, or via an
+// A/P reserve invoice — see fdPoLinkSql) gives one observation:
+//   actual lead = receipt date − PO date
+//   delay       = receipt date − promised date (PO line ShipDate, else PO DocDueDate)
+// Summarised per vendor and overall. The Reorder Plan uses the actual lead
+// time, and open POs get an expected arrival = promised date + vendor's expected
+// lateness (average of max(0, delay) — early deliveries don't cancel late ones).
+// A goods receipt reaches its PO either directly (PDN1.BaseType 22) or through
+// an A/P reserve invoice (PDN1.BaseType 18 → PCH1.BaseType 22: PO → reserve
+// invoice → goods receipt). Both routes are followed.
+const fdPoLinkSql = (T, q) => {
+  const poEntry = `COALESCE(CASE WHEN L.${q('BaseType')} = 22 THEN L.${q('BaseEntry')} END, CASE WHEN IL.${q('BaseType')} = 22 THEN IL.${q('BaseEntry')} END)`;
+  const poLine = `COALESCE(CASE WHEN L.${q('BaseType')} = 22 THEN L.${q('BaseLine')} END, CASE WHEN IL.${q('BaseType')} = 22 THEN IL.${q('BaseLine')} END)`;
+  return `LEFT JOIN ${T('PCH1')} IL ON L.${q('BaseType')} = 18 AND IL.${q('DocEntry')} = L.${q('BaseEntry')} AND IL.${q('LineNum')} = L.${q('BaseLine')}
+          JOIN ${T('OPOR')} P ON P.${q('DocEntry')} = ${poEntry}
+          LEFT JOIN ${T('POR1')} PL ON PL.${q('DocEntry')} = P.${q('DocEntry')} AND PL.${q('LineNum')} = ${poLine}`;
+};
+const fdDays = (a, b) => Math.round((new Date(String(b).slice(0, 10)) - new Date(String(a).slice(0, 10))) / 86400000);
+function fdLeadStats(obs) {
+  const n = obs.length;
+  if (!n) return null;
+  const leads = obs.map(o => o.leadDays).sort((a, b) => a - b);
+  const delays = obs.map(o => o.delayDays);
+  const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+  const avgLead = mean(leads);
+  const sdLead = n > 1 ? Math.sqrt(leads.reduce((s, v) => s + (v - avgLead) ** 2, 0) / (n - 1)) : 0;
+  // Robust spread (1.4826 × median absolute deviation): a few extreme receipts —
+  // old partial deliveries, data-entry slips — would otherwise blow up the
+  // standard deviation and with it the lead-time safety stock. Used as σLT.
+  const medLead = leads[Math.floor(n / 2)];
+  const madLead = [...leads.map(v => Math.abs(v - medLead))].sort((a, b) => a - b)[Math.floor(n / 2)];
+  return {
+    receipts: n,
+    avgLeadDays: Math.round(avgLead * 10) / 10,
+    medianLeadDays: leads[Math.floor(n / 2)],
+    p90LeadDays: leads[Math.min(n - 1, Math.ceil(n * 0.9) - 1)],
+    sdLeadDays: Math.round(Math.min(sdLead, 1.4826 * madLead || sdLead) * 10) / 10,
+    sdLeadDaysRaw: Math.round(sdLead * 10) / 10,
+    avgPlannedLeadDays: Math.round(mean(obs.map(o => o.plannedLeadDays)) * 10) / 10,
+    avgDelayDays: Math.round(mean(delays) * 10) / 10,
+    avgLateDaysWhenLate: delays.some(d => d > 0) ? Math.round(mean(delays.filter(d => d > 0)) * 10) / 10 : 0,
+    // Mean of max(0, delay): early deliveries don't offset late ones, so this is
+    // the delay to plan for. Shifts the expected arrival of open POs.
+    expectedLateDays: Math.round(mean(delays.map(d => Math.max(0, d))) * 10) / 10,
+    onTimePct: Math.round((delays.filter(d => d <= 0).length / n) * 1000) / 10,
+    lastReceipt: obs.map(o => o.receiptDate).sort().pop(),
+  };
+}
+app.get("/api/forecast/vendor-lead-times", requireAuth, async (req, res) => {
+  try {
+    const itemCode = (req.query.itemCode || "").trim();
+    if (!itemCode) return res.status(400).json({ ok: false, error: "itemCode required" });
+    const months = Math.min(60, Math.max(3, parseInt(req.query.months) || 24));
+    const fromD = new Date(); fromD.setMonth(fromD.getMonth() - months);
+    const from = fromD.toISOString().slice(0, 10);
+    let raw = [], source = 'service-layer';
+
+    if (isConnected()) {
+      try {
+        const cfg = getActiveConfig(), h = getActiveType() === 'hana', q = c => qcol(c, h);
+        const T = t => tableRef(t, cfg);
+        const rows = await executeSQL(`
+          SELECT TOP 1000 G.${q('DocNum')} AS ${q('GrNum')}, G.${q('DocDate')} AS ${q('GrDate')},
+                 G.${q('CardCode')} AS ${q('CardCode')}, G.${q('CardName')} AS ${q('CardName')}, L.${q('Quantity')} AS ${q('Qty')},
+                 P.${q('DocNum')} AS ${q('PoNum')}, P.${q('DocDate')} AS ${q('PoDate')}, P.${q('DocDueDate')} AS ${q('PoDue')},
+                 PL.${q('ShipDate')} AS ${q('LineShip')}
+          FROM ${T('OPDN')} G
+          JOIN ${T('PDN1')} L ON L.${q('DocEntry')} = G.${q('DocEntry')}
+          ${fdPoLinkSql(T, q)}
+          WHERE L.${q('ItemCode')} = '${itemCode.replace(/'/g, "''")}' AND G.${q('DocDate')} >= '${from}' AND G.${q('CANCELED')} = 'N'
+          ORDER BY G.${q('DocDate')} DESC`);
+        raw = rows.map(r => ({ grNum: r.GrNum, receiptDate: r.GrDate, vendorCode: r.CardCode, vendorName: r.CardName, qty: Number(r.Qty || 0),
+          poNum: r.PoNum, poDate: r.PoDate, promised: r.LineShip || r.PoDue }));
+        source = getActiveType();
+      } catch (e) { console.warn('[ForecastDashboard] DB vendor-lead-times failed, falling back to Service Layer:', e.message); raw = []; source = 'service-layer'; }
+    }
+
+    if (source === 'service-layer') {
+      const sap = getActiveSap();
+      const hdr = await sap.get("/GoodsReceiptsPO", {
+        $filter: `DocDate ge '${from}' and Cancelled eq 'tNO'`,
+        $select: "DocEntry,DocNum,DocDate,CardCode,CardName", $orderby: "DocDate desc", $top: 300,
+      }).catch(() => ({ value: [] }));
+      const grpos = await fdLoadDocumentLines(sap, "GoodsReceiptsPO", hdr.value || [], itemCode);
+      const poCache = new Map();
+      const getPo = async entry => {
+        if (!poCache.has(entry)) poCache.set(entry, sap.get(`/PurchaseOrders(${entry})`).catch(() => null));
+        return poCache.get(entry);
+      };
+      for (const g of grpos) {
+        for (const l of (g.DocumentLines || [])) {
+          if (!fdLineItemMatches(l, itemCode) || Number(l.BaseType) !== 22 || !l.BaseEntry) continue;
+          const po = await getPo(l.BaseEntry);
+          if (!po) continue;
+          const pl = (po.DocumentLines || []).find(x => x.LineNum === l.BaseLine);
+          raw.push({ grNum: g.DocNum, receiptDate: g.DocDate, vendorCode: g.CardCode, vendorName: g.CardName, qty: Number(l.Quantity || 0),
+            poNum: po.DocNum, poDate: po.DocDate, promised: pl?.ShipDate || po.DocDueDate });
+        }
+      }
+    }
+
+    // One PO is often received in several GRPOs on the same day — count that as
+    // one delivery (quantities summed) so split receipts don't over-weight it.
+    const merged = new Map();
+    for (const r of raw) {
+      const k = `${r.poNum}|${String(r.receiptDate).slice(0, 10)}`;
+      if (merged.has(k)) merged.get(k).qty += r.qty; else merged.set(k, { ...r });
+    }
+    raw = [...merged.values()];
+    const obs = raw.filter(r => r.receiptDate && r.poDate).map(r => {
+      const receiptDate = String(r.receiptDate).slice(0, 10), poDate = String(r.poDate).slice(0, 10);
+      const promised = r.promised ? String(r.promised).slice(0, 10) : poDate;
+      return { ...r, receiptDate, poDate, promised,
+        leadDays: Math.max(0, fdDays(poDate, receiptDate)), plannedLeadDays: Math.max(0, fdDays(poDate, promised)), delayDays: fdDays(promised, receiptDate) };
+    });
+    const byVendor = new Map();
+    for (const o of obs) {
+      if (!byVendor.has(o.vendorCode)) byVendor.set(o.vendorCode, { vendorCode: o.vendorCode, vendorName: o.vendorName, obs: [] });
+      byVendor.get(o.vendorCode).obs.push(o);
+    }
+    const vendors = [...byVendor.values()].map(v => ({ vendorCode: v.vendorCode, vendorName: v.vendorName, ...fdLeadStats(v.obs) }))
+      .sort((a, b) => b.receipts - a.receipts);
+
+    // Fallback for vendors with little or no history on THIS item (e.g. a new
+    // vendor on an open PO): their delivery record across all items. DB Direct
+    // only — on Service Layer this would mean reading every GRPO document.
+    const askVendors = String(req.query.vendors || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 20)
+      .filter(c => (byVendor.get(c)?.obs.length || 0) < 3);
+    let vendorsAllItems = [];
+    if (askVendors.length && source !== 'service-layer') {
+      try {
+        const cfg = getActiveConfig(), h = getActiveType() === 'hana', q = c => qcol(c, h);
+        const T = t => tableRef(t, cfg);
+        const inList = askVendors.map(c => `'${c.replace(/'/g, "''")}'`).join(',');
+        const rows = await executeSQL(`
+          SELECT TOP 5000 G.${q('CardCode')} AS ${q('CardCode')}, G.${q('CardName')} AS ${q('CardName')}, G.${q('DocDate')} AS ${q('GrDate')},
+                 P.${q('DocNum')} AS ${q('PoNum')}, P.${q('DocDate')} AS ${q('PoDate')}, P.${q('DocDueDate')} AS ${q('PoDue')}, PL.${q('ShipDate')} AS ${q('LineShip')}
+          FROM ${T('OPDN')} G
+          JOIN ${T('PDN1')} L ON L.${q('DocEntry')} = G.${q('DocEntry')}
+          ${fdPoLinkSql(T, q)}
+          WHERE G.${q('CardCode')} IN (${inList}) AND G.${q('DocDate')} >= '${from}' AND G.${q('CANCELED')} = 'N'
+          ORDER BY G.${q('DocDate')} DESC`);
+        const seen = new Set(), per = new Map();
+        for (const r of rows) {
+          const rd = String(r.GrDate).slice(0, 10), pd = String(r.PoDate).slice(0, 10);
+          const prom = r.LineShip || r.PoDue ? String(r.LineShip || r.PoDue).slice(0, 10) : pd;
+          const k = `${r.CardCode}|${r.PoNum}|${rd}|${prom}`;   // one delivery per PO / date / promised line date
+          if (seen.has(k)) continue;
+          seen.add(k);
+          if (!per.has(r.CardCode)) per.set(r.CardCode, { vendorName: r.CardName, obs: [] });
+          per.get(r.CardCode).obs.push({ receiptDate: rd, leadDays: Math.max(0, fdDays(pd, rd)), plannedLeadDays: Math.max(0, fdDays(pd, prom)), delayDays: fdDays(prom, rd) });
+        }
+        vendorsAllItems = [...per].map(([vendorCode, v]) => ({ vendorCode, vendorName: v.vendorName, ...fdLeadStats(v.obs) }));
+      } catch (e) { console.warn('[ForecastDashboard] vendor all-items lead times failed:', e.message); }
+    }
+
+    res.json({ ok: true, itemCode, months, from, source, overall: fdLeadStats(obs), vendors, vendorsAllItems,
+      receipts: obs.slice(0, 60).map(({ promised, ...o }) => ({ ...o, promisedDate: promised })) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Forecast Dashboard: Planning Report (one item, month by month) ───────────
+// Raw, line-level data the Planning Report tab builds its monthly table from:
+//  • sales-order lines by DELIVERY date (RDR1.ShipDate) — ordered / delivered / open
+//  • PO lines by DUE date (POR1.ShipDate, else OPOR.DocDueDate) — ordered / received / open
+//  • monthly actuals: net invoiced (OINV − ORIN) and net received (OPDN − ORPD)
+// Window: 12 months back … 12 months ahead, plus every still-open line outside it.
+// Cancelled documents are excluded; drop-ship warehouse lines are flagged
+// (dropShip: true) so the report can show them apart from stock.
+app.get("/api/forecast/planning-report", requireAuth, async (req, res) => {
+  try {
+    const itemCode = (req.query.itemCode || "").trim();
+    if (!itemCode) return res.status(400).json({ ok: false, error: "itemCode required" });
+    if (!isConnected()) return res.status(400).json({ ok: false, error: "The Planning Report reads SAP tables directly and needs a DB Direct connection (Tools → DB Connection)." });
+    const back = Math.min(24, Math.max(3, parseInt(req.query.monthsBack) || 12));
+    const fwd = Math.min(24, Math.max(3, parseInt(req.query.monthsFwd) || 12));
+    const now = new Date();
+    const ymd = d => d.toISOString().slice(0, 10);
+    const from = ymd(new Date(Date.UTC(now.getFullYear(), now.getMonth() - back, 1)));
+    const to = ymd(new Date(Date.UTC(now.getFullYear(), now.getMonth() + fwd + 1, 0)));
+    const cfg = getActiveConfig(), h = getActiveType() === 'hana', q = c => qcol(c, h), T = t => tableRef(t, cfg);
+    const it = itemCode.replace(/'/g, "''");
+    const iso = v => (v ? (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10) : null);
+    const n = v => Number(v || 0);
+
+    const lineSql = (hdr, lin) => `
+      SELECT TOP 5000 T0.${q('DocNum')} AS ${q('DocNum')}, T0.${q('CardCode')} AS ${q('CardCode')}, T0.${q('CardName')} AS ${q('CardName')},
+             T0.${q('DocDate')} AS ${q('DocDate')}, T0.${q('DocDueDate')} AS ${q('DocDueDate')}, T1.${q('LineNum')} AS ${q('LineNum')},
+             T1.${q('ShipDate')} AS ${q('ShipDate')}, T1.${q('WhsCode')} AS ${q('WhsCode')}, T1.${q('Quantity')} AS ${q('Quantity')},
+             T1.${q('DelivrdQty')} AS ${q('DelivrdQty')}, T1.${q('OpenQty')} AS ${q('OpenQty')}, T1.${q('LineStatus')} AS ${q('LineStatus')},
+             COALESCE(W.${q('DropShip')}, 'N') AS ${q('DS')}
+      FROM ${T(hdr)} T0 INNER JOIN ${T(lin)} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+      LEFT JOIN ${T('OWHS')} W ON W.${q('WhsCode')} = T1.${q('WhsCode')}
+      WHERE T1.${q('ItemCode')} = '${it}' AND T0.${q('CANCELED')} = 'N'
+        AND ((COALESCE(T1.${q('ShipDate')}, T0.${q('DocDueDate')}) >= '${from}' AND COALESCE(T1.${q('ShipDate')}, T0.${q('DocDueDate')}) <= '${to}')
+             OR (T1.${q('LineStatus')} = 'O' AND T0.${q('DocStatus')} = 'O'))
+      ORDER BY COALESCE(T1.${q('ShipDate')}, T0.${q('DocDueDate')})`;
+    const ymSql = (hdr, lin) => `
+      SELECT YEAR(T0.${q('DocDate')}) AS ${q('Y')}, MONTH(T0.${q('DocDate')}) AS ${q('M')}, COALESCE(W.${q('DropShip')}, 'N') AS ${q('DS')}, SUM(T1.${q('Quantity')}) AS ${q('Qty')}
+      FROM ${T(hdr)} T0 INNER JOIN ${T(lin)} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+      LEFT JOIN ${T('OWHS')} W ON W.${q('WhsCode')} = T1.${q('WhsCode')}
+      WHERE T1.${q('ItemCode')} = '${it}' AND T0.${q('CANCELED')} = 'N' AND T0.${q('DocDate')} >= '${from}' AND T0.${q('DocDate')} <= '${to}'
+      GROUP BY YEAR(T0.${q('DocDate')}), MONTH(T0.${q('DocDate')}), COALESCE(W.${q('DropShip')}, 'N')`;
+
+    // Per-warehouse view: stock (OITW), open inventory transfer requests (they
+    // commit stock in the From warehouse) and last-12-month net invoiced by warehouse.
+    const whsSql = `
+      SELECT W.${q('WhsCode')} AS ${q('WhsCode')}, H.${q('WhsName')} AS ${q('WhsName')}, COALESCE(H.${q('DropShip')}, 'N') AS ${q('DS')},
+             W.${q('OnHand')} AS ${q('OnHand')}, W.${q('IsCommited')} AS ${q('IsCommited')}, W.${q('OnOrder')} AS ${q('OnOrder')}
+      FROM ${T('OITW')} W LEFT JOIN ${T('OWHS')} H ON H.${q('WhsCode')} = W.${q('WhsCode')}
+      WHERE W.${q('ItemCode')} = '${it}'`;
+    const wtqSql = `
+      SELECT T0.${q('DocNum')} AS ${q('DocNum')}, T0.${q('DocDate')} AS ${q('DocDate')}, COALESCE(T1.${q('ShipDate')}, T0.${q('DocDueDate')}) AS ${q('DueDate')},
+             T1.${q('FromWhsCod')} AS ${q('FromWhs')}, T1.${q('WhsCode')} AS ${q('ToWhs')}, T1.${q('OpenQty')} AS ${q('OpenQty')}
+      FROM ${T('OWTQ')} T0 INNER JOIN ${T('WTQ1')} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+      WHERE T1.${q('ItemCode')} = '${it}' AND T1.${q('LineStatus')} = 'O' AND T0.${q('CANCELED')} = 'N'`;
+    const from12 = ymd(new Date(Date.UTC(now.getFullYear(), now.getMonth() - 12, 1)));
+    const invWhsSql = (hdr, lin) => `
+      SELECT T1.${q('WhsCode')} AS ${q('WhsCode')}, SUM(T1.${q('Quantity')}) AS ${q('Qty')}
+      FROM ${T(hdr)} T0 INNER JOIN ${T(lin)} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+      WHERE T1.${q('ItemCode')} = '${it}' AND T0.${q('CANCELED')} = 'N' AND T0.${q('DocDate')} >= '${from12}'
+      GROUP BY T1.${q('WhsCode')}`;
+    const opt = p => p.catch(e => { console.warn('[PlanningReport] optional query failed:', e.message); return []; });
+    const prSql = `
+      SELECT T0.${q('DocNum')} AS ${q('DocNum')}, T0.${q('DocDate')} AS ${q('DocDate')},
+             COALESCE(T1.${q('PQTReqDate')}, T1.${q('ShipDate')}, T0.${q('ReqDate')}, T0.${q('DocDueDate')}) AS ${q('ReqDate')},
+             T1.${q('LineVendor')} AS ${q('Vendor')}, T1.${q('WhsCode')} AS ${q('WhsCode')}, T1.${q('OpenQty')} AS ${q('OpenQty')}, COALESCE(W.${q('DropShip')}, 'N') AS ${q('DS')}
+      FROM ${T('OPRQ')} T0 INNER JOIN ${T('PRQ1')} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+      LEFT JOIN ${T('OWHS')} W ON W.${q('WhsCode')} = T1.${q('WhsCode')}
+      WHERE T1.${q('ItemCode')} = '${it}' AND T1.${q('LineStatus')} = 'O' AND T0.${q('CANCELED')} = 'N'`;
+
+    const [soRows, poRows, inv, crn, grpo, ret, whsRows, wtqRows, invW, crnW, prRows] = await Promise.all([
+      executeSQL(lineSql('ORDR', 'RDR1')), executeSQL(lineSql('OPOR', 'POR1')),
+      executeSQL(ymSql('OINV', 'INV1')), executeSQL(ymSql('ORIN', 'RIN1')),
+      executeSQL(ymSql('OPDN', 'PDN1')), executeSQL(ymSql('ORPD', 'RPD1')),
+      opt(executeSQL(whsSql)), opt(executeSQL(wtqSql)), opt(executeSQL(invWhsSql('OINV', 'INV1'))), opt(executeSQL(invWhsSql('ORIN', 'RIN1'))),
+      opt(executeSQL(prSql)),
+    ]);
+    const invByWhs = {};
+    for (const r of invW) invByWhs[r.WhsCode] = (invByWhs[r.WhsCode] || 0) + n(r.Qty);
+    for (const r of crnW) invByWhs[r.WhsCode] = (invByWhs[r.WhsCode] || 0) - n(r.Qty);
+    const lineOut = r => {
+      const qty = n(r.Quantity), delivered = n(r.DelivrdQty), open = r.LineStatus === 'O' ? n(r.OpenQty) : 0;
+      return {
+        docNum: r.DocNum, cardCode: r.CardCode, cardName: r.CardName, lineNum: r.LineNum,
+        docDate: iso(r.DocDate), dueDate: iso(r.ShipDate) || iso(r.DocDueDate), whs: r.WhsCode, dropShip: r.DS === 'Y',
+        qty, delivered, open, status: r.LineStatus === 'O' ? 'Open' : delivered >= qty ? 'Done' : 'Closed short',
+        closedShort: r.LineStatus === 'O' ? 0 : Math.max(0, qty - delivered),
+      };
+    };
+    // Monthly actuals keyed 'YYYY-MM' → { stock, dropShip }
+    const ymMap = (rows, sign = 1, into = {}) => {
+      for (const r of rows) {
+        const k = `${r.Y}-${String(r.M).padStart(2, '0')}`;
+        into[k] = into[k] || { stock: 0, dropShip: 0 };
+        into[k][r.DS === 'Y' ? 'dropShip' : 'stock'] += sign * n(r.Qty);
+      }
+      return into;
+    };
+    res.json({
+      ok: true, itemCode, from, to, today: ymd(now), monthsBack: back, monthsFwd: fwd,
+      dropShipWarehouses: [...(await fdDropShipWhs())],
+      soLines: soRows.map(lineOut), poLines: poRows.map(lineOut),
+      invoicedNet: ymMap(crn, -1, ymMap(inv)), receivedNet: ymMap(ret, -1, ymMap(grpo)),
+      warehouses: whsRows.map(r => ({ whs: r.WhsCode, name: r.WhsName, dropShip: r.DS === 'Y', onHand: n(r.OnHand), committed: n(r.IsCommited),
+        onOrder: n(r.OnOrder), invoiced12m: invByWhs[r.WhsCode] || 0 })),
+      transferRequests: wtqRows.map(r => ({ docNum: r.DocNum, docDate: iso(r.DocDate), dueDate: iso(r.DueDate), fromWhs: r.FromWhs, toWhs: r.ToWhs, open: n(r.OpenQty) })),
+      purchaseRequests: prRows.map(r => ({ docNum: r.DocNum, docDate: iso(r.DocDate), reqDate: iso(r.ReqDate), vendor: r.Vendor, whs: r.WhsCode, dropShip: r.DS === 'Y', open: n(r.OpenQty) })),
+    });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Forecast Dashboard: customer order timing (sales side) ───────────────────
+// For each sales-order line of the item (last N months, stock warehouses, not
+// cancelled):
+//   order lead     = requested delivery date (RDR1.ShipDate) − order date (ORDR.DocDate)
+//   delivery delay = actual delivery date − requested date, where the actual
+//                    delivery is the first delivery (DLN1) or invoice (INV1)
+//                    copied from that line (BaseType 17).
+// Used by the Simulator to predict when forecast sales orders will be booked
+// and when goods will actually go out.
+app.get("/api/forecast/customer-timing", requireAuth, async (req, res) => {
+  try {
+    const itemCode = (req.query.itemCode || "").trim();
+    if (!itemCode) return res.status(400).json({ ok: false, error: "itemCode required" });
+    if (!isConnected()) return res.json({ ok: true, available: false });
+    const months = Math.min(36, Math.max(3, parseInt(req.query.months) || 24));
+    const cfg = getActiveConfig(), h = getActiveType() === 'hana', q = c => qcol(c, h), T = t => tableRef(t, cfg);
+    const it = itemCode.replace(/'/g, "''");
+    const now = new Date();
+    const from = new Date(Date.UTC(now.getFullYear(), now.getMonth() - months, 1)).toISOString().slice(0, 10);
+    const outSql = (hdr, lin) => `SELECT L.${q('BaseEntry')} AS ${q('BE')}, L.${q('BaseLine')} AS ${q('BL')}, MIN(D.${q('DocDate')}) AS ${q('OutDate')}
+      FROM ${T(hdr)} D INNER JOIN ${T(lin)} L ON L.${q('DocEntry')} = D.${q('DocEntry')}
+      WHERE L.${q('ItemCode')} = '${it}' AND L.${q('BaseType')} = 17 AND D.${q('CANCELED')} = 'N' AND D.${q('DocDate')} >= '${from}'
+      GROUP BY L.${q('BaseEntry')}, L.${q('BaseLine')}`;
+    const [soRows, dln, inv] = await Promise.all([
+      executeSQL(`SELECT T0.${q('DocEntry')} AS ${q('DE')}, T1.${q('LineNum')} AS ${q('LN')}, T0.${q('DocDate')} AS ${q('OrderDate')},
+          COALESCE(T1.${q('ShipDate')}, T0.${q('DocDueDate')}) AS ${q('ReqDate')}, T1.${q('Quantity')} AS ${q('Qty')}
+        FROM ${T('ORDR')} T0 INNER JOIN ${T('RDR1')} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+        LEFT JOIN ${T('OWHS')} W ON W.${q('WhsCode')} = T1.${q('WhsCode')}
+        WHERE T1.${q('ItemCode')} = '${it}' AND T0.${q('CANCELED')} = 'N' AND T0.${q('DocDate')} >= '${from}'${fdWhsScopeSql('stock', q)}`),
+      executeSQL(outSql('ODLN', 'DLN1')).catch(() => []), executeSQL(outSql('OINV', 'INV1')).catch(() => []),
+    ]);
+    const outMap = new Map();
+    for (const r of [...dln, ...inv]) {
+      const k = `${r.BE}|${r.BL}`, d = String(r.OutDate).slice(0, 10);
+      if (!outMap.has(k) || d < outMap.get(k)) outMap.set(k, d);
+    }
+    const leads = [], delays = [];
+    for (const r of soRows) {
+      const od = String(r.OrderDate).slice(0, 10), rq = String(r.ReqDate).slice(0, 10);
+      leads.push(Math.max(0, fdDays(od, rq)));
+      const out = outMap.get(`${r.DE}|${r.LN}`);
+      if (out) delays.push(fdDays(rq, out));
+    }
+    const st = a => {
+      if (!a.length) return null;
+      const b = [...a].sort((x, y) => x - y), mean = b.reduce((s, v) => s + v, 0) / b.length;
+      return { n: b.length, median: b[Math.floor(b.length / 2)], avg: Math.round(mean * 10) / 10, p10: b[Math.floor(b.length * 0.1)], p90: b[Math.min(b.length - 1, Math.ceil(b.length * 0.9) - 1)] };
+    };
+    const d = st(delays);
+    res.json({ ok: true, available: true, itemCode, months, from, lines: soRows.length,
+      orderLead: st(leads),
+      deliveryDelay: d ? { ...d, onTimePct: Math.round(delays.filter(x => x <= 0).length / delays.length * 1000) / 10,
+        lateWhenLate: delays.some(x => x > 0) ? Math.round(delays.filter(x => x > 0).reduce((s, v) => s + v, 0) / delays.filter(x => x > 0).length * 10) / 10 : 0 } : null });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Forecast Dashboard: company-wide data cut-off ────────────────────────────
+// Last complete month with normal company activity. A test/copy database often
+// stops receiving real documents at some date (STTL_SD: ~3,000 invoices a month
+// until Jul 2026, 6 in Sep); forecasting through those empty months would read
+// as a demand collapse. Activity = A/R invoices + sales orders (all items) per
+// posting month; a month is normal when it reaches 50% of the median of the 12
+// months before it. Cached per company for an hour.
+const _fdCutoffCache = new Map();
+app.get("/api/forecast/data-cutoff", requireAuth, async (req, res) => {
+  try {
+    if (!isConnected()) return res.json({ ok: true, available: false });
+    const cfg = getActiveConfig(), key = String(cfg?.database || cfg?.schema_name || '');
+    const hit = _fdCutoffCache.get(key);
+    if (hit && Date.now() - hit.at < 3_600_000) return res.json(hit.data);
+    const h = getActiveType() === 'hana', q = c => qcol(c, h);
+    const now = new Date();
+    const from = new Date(Date.UTC(now.getFullYear(), now.getMonth() - 25, 1)).toISOString().slice(0, 10);
+    const cnt = t => `SELECT YEAR(${q('DocDate')}) AS ${q('Y')}, MONTH(${q('DocDate')}) AS ${q('M')}, COUNT(*) AS ${q('N')}
+      FROM ${tableRef(t, cfg)} WHERE ${q('CANCELED')} = 'N' AND ${q('DocDate')} >= '${from}' GROUP BY YEAR(${q('DocDate')}), MONTH(${q('DocDate')})`;
+    const [inv, so] = await Promise.all([executeSQL(cnt('OINV')), executeSQL(cnt('ORDR'))]);
+    const ym = r => `${r.Y}-${String(r.M).padStart(2, '0')}`;
+    const act = {};
+    for (const r of inv) act[ym(r)] = { ...(act[ym(r)] || {}), invoices: Number(r.N) };
+    for (const r of so) act[ym(r)] = { ...(act[ym(r)] || {}), salesOrders: Number(r.N) };
+    const months = [];
+    for (let i = 25; i >= 1; i--) {   // complete months only
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1), k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const a = act[k] || {};
+      months.push({ month: k, invoices: a.invoices || 0, salesOrders: a.salesOrders || 0, total: (a.invoices || 0) + (a.salesOrders || 0) });
+    }
+    const median = a => { const b = [...a].sort((x, y) => x - y), m = Math.floor(b.length / 2); return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+    let lastNormal = null;
+    for (let i = months.length - 1; i >= 6; i--) {
+      const base = median(months.slice(Math.max(0, i - 12), i).map(m => m.total));
+      months[i].baseline = base;
+      if (base > 0 && months[i].total >= 0.5 * base) { lastNormal = months[i].month; break; }
+    }
+    const lastComplete = months[months.length - 1].month;
+    const data = { ok: true, available: true, lastComplete, lastNormalMonth: lastNormal,
+      cutoffDetected: !!lastNormal && lastNormal < lastComplete, months: months.slice(-14) };
+    _fdCutoffCache.set(key, { at: Date.now(), data });
+    res.json(data);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Forecast Dashboard: create SAP Purchase Request(s) from the Purchase Plan ─
+// Called only after the user confirmed the preview in the dashboard. One PR
+// document per planned order (its own required date), same payload shape as
+// the PR agent (controllers/pr-agent.mjs). { dryRun: true } returns the
+// payloads without posting.
+app.post("/api/forecast/create-pr", requireAuth, async (req, res) => {
+  try {
+    const { itemCode, orders, dryRun } = req.body || {};
+    const code = String(itemCode || '').trim();
+    if (!code) return res.status(400).json({ ok: false, error: 'itemCode required' });
+    if (!Array.isArray(orders) || !orders.length) return res.status(400).json({ ok: false, error: 'No planned orders selected.' });
+    if (orders.length > 24) return res.status(400).json({ ok: false, error: 'At most 24 purchase requests at a time.' });
+    const isoD = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+    const today = new Date().toISOString().slice(0, 10);
+    const payloads = [];
+    for (const o of orders) {
+      const qty = Math.round(Number(o.qty) * 1000) / 1000, reqDate = isoD(o.requiredDate);
+      if (!(qty > 0) || !reqDate) return res.status(400).json({ ok: false, error: `Invalid planned order (qty ${o.qty}, required date ${o.requiredDate}).` });
+      payloads.push({
+        DocDate: today, DocDueDate: reqDate, RequriedDate: reqDate,   // SAP B1 spells it "RequriedDate"
+        Comments: String(o.comments || `Forecast Dashboard purchase plan — need by ${reqDate}`).slice(0, 254),
+        DocumentLines: [{
+          ItemCode: code, Quantity: qty, RequiredDate: reqDate,
+          ...(o.vendor ? { LineVendor: String(o.vendor) } : {}),
+          ...(o.warehouse ? { WarehouseCode: String(o.warehouse) } : {}),
+        }],
+      });
+    }
+    if (dryRun) return res.json({ ok: true, dryRun: true, payloads });
+    const sap = getActiveSap(), created = [];
+    for (const p of payloads) {
+      try {
+        const r = await sap.post('/PurchaseRequests', p);
+        created.push({ ok: true, docEntry: r.DocEntry, docNum: r.DocNum, requiredDate: p.RequriedDate, qty: p.DocumentLines[0].Quantity });
+      } catch (e) {
+        created.push({ ok: false, error: e.message, requiredDate: p.RequriedDate, qty: p.DocumentLines[0].Quantity });
+      }
+    }
+    console.log(`[ForecastDashboard] create-pr by ${req.user?.username || '?'} item ${code}:`, created.map(c => c.ok ? `PR ${c.docNum}` : `FAILED ${c.error}`).join(', '));
+    res.json({ ok: created.some(c => c.ok), created });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Forecast Dashboard: Simulator scenarios (saved per company + item) ───────
+// Stored in insight_agent_settings under agent key "fd-sim:<ItemCode>". A
+// scenario is only the user's inputs (settings, parameters, monthly overrides,
+// what-if POs) — SAP data is re-read when it is loaded.
+const fdSimCompany = () => { const c = getActiveConfig(); return String(c?.database || c?.schema_name || process.env.SL_COMPANY || 'default'); };
+app.get("/api/forecast/sim-scenarios", requireAuth, (req, res) => {
+  const item = String(req.query.itemCode || '').trim();
+  if (!item) return res.status(400).json({ ok: false, error: 'itemCode required' });
+  const list = agentSettingsRepo.get(fdSimCompany(), `fd-sim:${item}`).scenarios || [];
+  res.json({ ok: true, scenarios: list });
+});
+app.post("/api/forecast/sim-scenarios", requireAuth, (req, res) => {
+  const { itemCode, name, data } = req.body || {};
+  const item = String(itemCode || '').trim(), nm = String(name || '').trim().slice(0, 80);
+  if (!item || !nm || !data || typeof data !== 'object') return res.status(400).json({ ok: false, error: 'itemCode, name and data required' });
+  if (JSON.stringify(data).length > 100_000) return res.status(400).json({ ok: false, error: 'Scenario too large' });
+  const key = `fd-sim:${item}`, store = agentSettingsRepo.get(fdSimCompany(), key);
+  const list = (store.scenarios || []).filter(x => x.name !== nm);
+  list.unshift({ name: nm, data, savedBy: req.user?.username || '?', savedAt: new Date().toISOString() });
+  agentSettingsRepo.set(fdSimCompany(), key, { ...store, scenarios: list.slice(0, 30) });
+  res.json({ ok: true, scenarios: list.slice(0, 30) });
+});
+app.delete("/api/forecast/sim-scenarios", requireAuth, (req, res) => {
+  const item = String(req.query.itemCode || '').trim(), nm = String(req.query.name || '');
+  const key = `fd-sim:${item}`, store = agentSettingsRepo.get(fdSimCompany(), key);
+  const list = (store.scenarios || []).filter(x => x.name !== nm);
+  agentSettingsRepo.set(fdSimCompany(), key, { ...store, scenarios: list });
+  res.json({ ok: true, scenarios: list });
+});
+
+// ── Forecast Dashboard: create SAP Purchase Order(s) (Simulator / plan) ──────
+// Called only after the user confirmed the preview. One PO per order:
+// vendor (CardCode), delivery date (DocDueDate + line ShipDate), warehouse.
+// No price is sent — SAP applies the vendor price list / last price as on a
+// manually created PO. { dryRun: true } returns the payloads only.
+app.post("/api/forecast/create-po", requireAuth, async (req, res) => {
+  try {
+    const { itemCode, orders, dryRun } = req.body || {};
+    const code = String(itemCode || '').trim();
+    if (!code) return res.status(400).json({ ok: false, error: 'itemCode required' });
+    if (!Array.isArray(orders) || !orders.length) return res.status(400).json({ ok: false, error: 'No orders selected.' });
+    if (orders.length > 24) return res.status(400).json({ ok: false, error: 'At most 24 purchase orders at a time.' });
+    const isoD = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+    const today = new Date().toISOString().slice(0, 10);
+    const payloads = [];
+    for (const o of orders) {
+      const qty = Math.round(Number(o.qty) * 1000) / 1000, due = isoD(o.deliveryDate), vendor = String(o.vendor || '').trim();
+      if (!(qty > 0) || !due || !vendor) return res.status(400).json({ ok: false, error: `Invalid order (qty ${o.qty}, delivery ${o.deliveryDate}, vendor ${o.vendor || 'missing'}).` });
+      payloads.push({
+        CardCode: vendor, DocDate: today, DocDueDate: due,
+        Comments: String(o.comments || `Forecast Dashboard — delivery ${due}`).slice(0, 254),
+        DocumentLines: [{ ItemCode: code, Quantity: qty, ShipDate: due, ...(o.warehouse ? { WarehouseCode: String(o.warehouse) } : {}) }],
+      });
+    }
+    if (dryRun) return res.json({ ok: true, dryRun: true, payloads });
+    const sap = getActiveSap(), created = [];
+    for (const p of payloads) {
+      try {
+        const r = await sap.post('/PurchaseOrders', p);
+        created.push({ ok: true, docEntry: r.DocEntry, docNum: r.DocNum, deliveryDate: p.DocDueDate, qty: p.DocumentLines[0].Quantity, vendor: p.CardCode });
+      } catch (e) {
+        created.push({ ok: false, error: e.message, deliveryDate: p.DocDueDate, qty: p.DocumentLines[0].Quantity, vendor: p.CardCode });
+      }
+    }
+    console.log(`[ForecastDashboard] create-po by ${req.user?.username || '?'} item ${code}:`, created.map(c => c.ok ? `PO ${c.docNum}` : `FAILED ${c.error}`).join(', '));
+    res.json({ ok: created.some(c => c.ok), created });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // ── Forecast Dashboard: Open Sales Orders ────────────────────────────────────
@@ -5918,6 +6472,7 @@ app.get("/api/forecast/open-sos", requireAuth, async (req, res) => {
         return fdLoadDocumentLines(sap, "Orders", soData.value || [], itemCode);
       },
     );
+    const dsWhs = await fdDropShipWhs();
     const result = soRows.map(so => {
       const matchedLines = fdDocLinesForItem(so, itemCode);
       if (itemCode && !matchedLines.length) return null;
@@ -5931,6 +6486,8 @@ app.get("/api/forecast/open-sos", requireAuth, async (req, res) => {
         month: new Date(so.DocDate).getMonth(), customerRef: so.NumAtCard,
         quantity: matchedLines.reduce((sum, line) => sum + fdLineQty(line), 0),
         openQty: matchedLines.reduce((sum, line) => sum + fdLineOpenQty(line), 0),
+        dropShipOpenQty: matchedLines.filter(l => dsWhs.has(l.WarehouseCode)).reduce((sum, line) => sum + fdLineOpenQty(line), 0),
+        warehouses: [...new Set(matchedLines.map(l => l.WarehouseCode).filter(Boolean))],
         lines: fdLineRows(itemCode ? matchedLines : (so.DocumentLines || [])),
       };
     }).filter(Boolean);
@@ -6019,23 +6576,70 @@ app.get("/api/forecast/supply-demand", requireAuth, async (req, res) => {
   try {
     let year = parseInt(req.query.year) || new Date().getFullYear();
     const itemCode = (req.query.itemCode || "").trim();
+    const basis = ['so-delivery', 'so-order', 'invoice'].includes(req.query.basis) ? req.query.basis : 'so-delivery';
     const sap = getActiveSap();
+    let demandSource = 'invoice';
+
+    // DB Direct, one item: same rules as the Standard Forecast (cancelled
+    // documents excluded, returns subtracted, every line of the year counted).
+    // Open POs: all currently open lines, by PO month (unchanged behaviour).
+    // Demand basis (?basis=):
+    //   'so-delivery' (default) — sales-order qty by line delivery date (RDR1.ShipDate)
+    //   'so-order'              — sales-order qty by order date (ORDR.DocDate)
+    //   'invoice'               — net invoiced qty (A/R invoices − credit memos)
+    // Sales-order qty = what the customer still wants: open lines count in full,
+    // closed lines only what was delivered (a part closed without delivery was
+    // cancelled demand). Open PO = open qty by DUE date (POR1.ShipDate, else
+    // DocDueDate) in the selected year; in the current year, lines already due
+    // in an earlier year count in the current month.
+    async function loadSDDb(y) {
+      const r = await fdItemDemandSupplyDb(itemCode, y, 'auto');
+      const cfg = getActiveConfig(), h = getActiveType() === 'hana', q = c => qcol(c, h);
+      const it = itemCode.replace(/'/g, "''"), from = `${y}-01-01`, to = `${y}-12-31`;
+      const due = `COALESCE(T1.${q('ShipDate')}, T0.${q('DocDueDate')})`;
+      const rows = await executeSQL(`
+        SELECT MONTH(${due}) AS ${q('M')}, YEAR(${due}) AS ${q('Y')}, SUM(T1.${q('OpenQty')}) AS ${q('Qty')}
+        FROM ${tableRef('OPOR', cfg)} T0 INNER JOIN ${tableRef('POR1', cfg)} T1 ON T0.${q('DocEntry')} = T1.${q('DocEntry')}
+        LEFT JOIN ${tableRef('OWHS', cfg)} W ON W.${q('WhsCode')} = T1.${q('WhsCode')}
+        WHERE T1.${q('ItemCode')} = '${it}' AND T0.${q('DocStatus')} = 'O' AND T1.${q('LineStatus')} = 'O' AND T0.${q('CANCELED')} = 'N'
+          AND ${due} <= '${to}'${fdWhsScopeSql('stock', q)}
+        GROUP BY MONTH(${due}), YEAR(${due})`);
+      const openPO = Array(12).fill(0);
+      const nowY = new Date().getFullYear(), nowM = new Date().getMonth();
+      for (const row of rows) {
+        if (Number(row.Y) === y) openPO[Number(row.M) - 1] += Number(row.Qty || 0);
+        else if (y === nowY && Number(row.Y) < y) openPO[nowM] += Number(row.Qty || 0);   // overdue from earlier years
+      }
+      let demand = r.demand, source = r.demandSource;
+      if (basis !== 'invoice') {
+        demand = fdYearArr(await fdSoMonthlyDb(itemCode, from, to, { dateMode: basis === 'so-order' ? 'order' : 'delivery' }), y);
+        source = basis;
+      }
+      const total = fdSum(demand.map(Math.abs)) + fdSum(r.supply.map(Math.abs)) + fdSum(openPO);
+      return { demand, supply: r.supply, openPO, total, demandSource: source, dropShipDemand: r.dropShipDemand };
+    }
 
     async function loadSD(y) {
+      if (itemCode && isConnected()) {
+        try { return await loadSDDb(y); }
+        catch (e) { console.warn(`[ForecastDashboard] DB supply-demand failed for ${y}, falling back:`, e.message); }
+      }
       const from = `${y}-01-01`, to = `${y}-12-31`;
       const demand = Array(12).fill(0), supply = Array(12).fill(0), openPO = Array(12).fill(0);
+      const dsW = await fdDropShipWhs();
+      const stockLines = lines => lines.filter(l => !dsW.has(l.WarehouseCode));
       const [{ docs: invDocs }, { docs: grpoDocs }, { docs: poDocs }, { docs: soDocs }] = await Promise.all([
         fdLoadDocsPreferHana(
           { hdrTable: 'OINV', lineTable: 'INV1', itemCode, from, to, openOnly: false, top: 1000 },
           async () => {
-            const r = await sap.get("/Invoices", { $filter:`DocDate ge '${from}' and DocDate le '${to}'`, $select:"DocEntry,DocDate,DocTotal", $top:1000 }).catch(() => ({ value: [] }));
+            const r = await sap.get("/Invoices", { $filter:`DocDate ge '${from}' and DocDate le '${to}' and Cancelled eq 'tNO'`, $select:"DocEntry,DocDate,DocTotal", $top:1000 }).catch(() => ({ value: [] }));
             return fdLoadDocumentLines(sap, "Invoices", r.value || [], itemCode);
           },
         ),
         fdLoadDocsPreferHana(
           { hdrTable: 'OPDN', lineTable: 'PDN1', itemCode, from, to, openOnly: false, top: 1000 },
           async () => {
-            const r = await sap.get("/GoodsReceiptsPO", { $filter:`DocDate ge '${from}' and DocDate le '${to}'`, $select:"DocEntry,DocDate,DocTotal", $top:1000 }).catch(() => ({ value: [] }));
+            const r = await sap.get("/GoodsReceiptsPO", { $filter:`DocDate ge '${from}' and DocDate le '${to}' and Cancelled eq 'tNO'`, $select:"DocEntry,DocDate,DocTotal", $top:1000 }).catch(() => ({ value: [] }));
             return fdLoadDocumentLines(sap, "GoodsReceiptsPO", r.value || [], itemCode);
           },
         ),
@@ -6052,53 +6656,59 @@ app.get("/api/forecast/supply-demand", requireAuth, async (req, res) => {
         fdLoadDocsPreferHana(
           { hdrTable: 'ORDR', lineTable: 'RDR1', itemCode, from, to, openOnly: false, top: 1000 },
           async () => {
-            const r = await sap.get("/Orders", { $filter:`DocDate ge '${from}' and DocDate le '${to}'`, $select:"DocEntry,DocDate,DocTotal", $top:1000 }).catch(() => ({ value: [] }));
+            const r = await sap.get("/Orders", { $filter:`DocDate ge '${from}' and DocDate le '${to}' and Cancelled eq 'tNO'`, $select:"DocEntry,DocDate,DocTotal", $top:1000 }).catch(() => ({ value: [] }));
             return fdLoadDocumentLines(sap, "Orders", r.value || [], itemCode);
           },
         ),
       ]);
-      // Invoices = actual fulfilled demand
+      // Invoices = actual fulfilled demand (posted: closed lines still count)
       for (const doc of invDocs) {
-        const lines = fdDocLinesForItem(doc, itemCode);
+        const lines = stockLines(fdPostedLinesForItem(doc, itemCode));
         if (itemCode && !lines.length) continue;
         demand[new Date(doc.DocDate).getMonth()] += itemCode ? lines.reduce((s,l)=>s+fdLineQty(l),0) : Number(doc.DocTotal||0);
       }
       // If no invoice demand, use Sales Orders as demand proxy
       const invDemand = demand.reduce((s,v)=>s+v,0);
-      if (invDemand === 0) {
+      let src = 'invoice';
+      // Service Layer fallback: sales orders by order date (line delivery dates need full lines per doc)
+      if (basis !== 'invoice' || invDemand === 0) {
+        src = basis === 'invoice' ? 'order' : 'so-order';
+        demand.fill(0);
         for (const doc of soDocs) {
-          const lines = fdDocLinesForItem(doc, itemCode);
+          const lines = stockLines(fdDocLinesForItem(doc, itemCode));
           if (itemCode && !lines.length) continue;
           demand[new Date(doc.DocDate).getMonth()] += itemCode ? lines.reduce((s,l)=>s+fdLineQty(l),0) : Number(doc.DocTotal||0);
         }
       }
       for (const doc of grpoDocs) {
-        const lines = fdDocLinesForItem(doc, itemCode);
+        const lines = stockLines(fdPostedLinesForItem(doc, itemCode));
         if (itemCode && !lines.length) continue;
         supply[new Date(doc.DocDate).getMonth()] += itemCode ? lines.reduce((s,l)=>s+fdLineQty(l),0) : Number(doc.DocTotal||0);
       }
       for (const doc of poDocs) {
         const poDate = doc.TaxDate || doc.DocDate;
         if (!poDate) continue;
-        const lines = fdDocLinesForItem(doc, itemCode);
+        const lines = stockLines(fdDocLinesForItem(doc, itemCode));
         if (itemCode && !lines.length) continue;
         openPO[new Date(poDate).getMonth()] += itemCode ? lines.reduce((s,l)=>s+fdLineOpenQty(l),0) : Number(doc.DocTotal||0);
       }
       const total = demand.reduce((s,v)=>s+v,0) + supply.reduce((s,v)=>s+v,0);
-      return { demand, supply, openPO, total };
+      return { demand, supply, openPO, total, demandSource: src };
     }
 
-    let { demand, supply, openPO, total } = await loadSD(year);
+    let { demand, supply, openPO, total, demandSource: ds, dropShipDemand } = await loadSD(year);
+    demandSource = ds;
     // Auto-fallback to previous years if selected year has no data
     if (total === 0 && itemCode) {
       for (let offset=1; offset<=15; offset++) {
         const tryY = year - offset;
         if (tryY < 1990) break;
         const r = await loadSD(tryY);
-        if (r.total > 0) { ({ demand, supply, openPO } = r); year = tryY; break; }
+        if (r.total > 0) { ({ demand, supply, openPO, dropShipDemand } = r); demandSource = r.demandSource; year = tryY; break; }
       }
     }
-    res.json({ ok:true, year, itemCode:itemCode||'ALL', demand, supply, openPO, unit:itemCode?'quantity':'amount' });
+    res.json({ ok:true, year, itemCode:itemCode||'ALL', demand, supply, openPO, demandSource, basis, scope: itemCode ? 'stock' : 'all',
+      dropShipDemand: dropShipDemand || Array(12).fill(0), unit:itemCode?'quantity':'amount' });
   } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
@@ -6400,6 +7010,11 @@ app.use('/api/vendor-payment-aging', createVendorPaymentAgingRouter({
   app.use('/api/month-end-agent',              createMonthEndClosingAgentRouter(insightDeps));
   app.use('/api/demand-forecast-agent',        createDemandForecastAgentRouter(insightDeps));
 }
+
+// ── Forecast Dashboard: AI insight + chat over the dashboard's own snapshot ──
+app.use('/api/forecast/ai', createForecastDashboardAiRouter({
+  requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+}));
 
 // ── Product Forecasting Agent routes ──────────────────────────────────────
 app.use('/api/forecasting', createForecastingRouter({

@@ -96,14 +96,15 @@ html[data-ui="fiori"] .aa-foot button{height:36px;border-radius:8px;font-size:14
             '**Management / Audit** — approvals and a complete history of automated orders.',
           ] },
           { title: 'How it works (SAP Business One data)', items: [
-            '**Items** — minimum / maximum stock, lead time, preferred vendor, available, on order.',
+            '**Items** — minimum / maximum stock, lead time, preferred vendor, available, on order, minimum order qty, order multiple, items per purchase unit.',
+            '**Scope as in SAP MRP** — active inventory purchase items with a minimum level; Make items are left to production planning.',
             '**Vendors, last purchase prices and payment terms.**',
-            '**Reorder qty** = max stock − (available + on order); if no max is set, 2 × the gap.',
+            '**Reorder qty** = max stock − (available + on order); if no max is set, back to the minimum (SAP MRP). Then at least the minimum order qty, rounded up to the order multiple, and converted to purchasing units.',
             '**Urgency:** Critical = no stock left, High = gap ≥ 70% of minimum, otherwise Medium.',
           ] },
           { title: 'What you see on the screen', items: [
             '**8-step progress bar** — MRP Trigger → Threshold → AI Analysis → Draft PO → Approval → Manager ✓ → Auto PO → Email Vendor.',
-            '**KPI tiles** — Critical Items, High Priority, Total Items, Draft POs, Pending Approval, POs Posted.',
+            '**KPI tiles** — Critical Items, High Priority, Medium, Total Items, Reorder Value, No Vendor, Draft POs, Pending Approval, POs Posted. Click a tile for its breakdown, chart, item list and AI insight.',
             '**Items & Vendors** — gap, reorder qty, vendor, price, estimated total; **Build Draft POs**.',
             '**Draft POs** — one card per vendor: **Post to SAP**, **Email Vendor**, **Check Approval**.',
             '**Approval** and **Audit Log** tabs, and **MRP Auto-PO AI** chat.',
@@ -118,7 +119,7 @@ html[data-ui="fiori"] .aa-foot button{height:36px;border-radius:8px;font-size:14
       } },
     { nav: 'nav-procurement-agent', panel: 'procurement-agent-panel', title: 'Stock Reorder Monitor', name: 'Stock Reorder Monitor', color: '#E9730C',
       about: {
-        summary: 'A live list of every item below its minimum stock level, shown together with open sales orders and open purchase orders. Select the items, adjust quantities, and generate draft POs grouped by preferred vendor — then post them to SAP — or raise a Purchase Request through AI.',
+        summary: 'A live list of every item below its minimum stock level, shown together with open sales orders and open purchase orders. Select the items, adjust quantities, and generate draft POs or draft Purchase Requests grouped by preferred vendor, review them, then post them to SAP. Posted drafts drop off the draft list automatically.',
         sections: [
           { title: 'Why use this agent', items: [
             '**See shortages instantly** — no need to run stock reports.',
@@ -134,7 +135,7 @@ html[data-ui="fiori"] .aa-foot button{height:36px;border-radius:8px;font-size:14
             '**Items** — available stock, minimum / maximum, lead time, preferred vendor.',
             '**Open sales orders** and **open purchase orders**.',
             '**Priority:** Critical = no stock, High = gap ≥ 70% of minimum, otherwise Medium.',
-            '**Creates:** SAP **Purchase Orders** (or Purchase Requests via AI).',
+            '**Creates:** SAP **Purchase Orders** and **Purchase Requests** (from reviewed drafts).',
           ] },
           { title: 'What you see on the screen', items: [
             '**KPI tiles** — Critical Stock, High Priority, Medium Priority, Open Sales Orders, Open Purchase Orders.',
@@ -203,7 +204,7 @@ html[data-ui="fiori"] .aa-foot button{height:36px;border-radius:8px;font-size:14
             '**Risk:** Critical = a component has no stock, High = a component under 50% covered, Medium = any shortage, otherwise On Track.',
           ] },
           { title: 'What you see on the screen', items: [
-            '**KPI tiles** — Total Open, Critical Risk, High Risk, Medium Risk, Due This Week, Overdue.',
+            '**KPI tiles** — Total Open, Critical Risk, High Risk, Medium Risk, Due This Week, Overdue, Ready to Produce, Shortage Value. Click any tile for its data summary, chart, formula and AI insight.',
             '**Production Orders** — product, planned / completed qty, due date, days left, risk, shortages.',
             '**Component Shortage** — needed, available, shortage, affected orders, severity.',
             '**Timeline**, order detail (components, stock, costing) and **Production AI** chat.',
@@ -251,35 +252,72 @@ html[data-ui="fiori"] .aa-foot button{height:36px;border-radius:8px;font-size:14
       } },
     { nav: 'nav-rush-orders', panel: 'rush-orders-panel', title: 'Rush Order Prioritisation Agent', name: 'Rush Orders', color: '#991B1B',
       about: {
-        summary: 'Scores every open sales order 0–100 for urgency, compares the cost of expediting with the revenue at risk, and recommends whether to approve expediting, hold, or escalate — with optional SAP Activity alerts.',
+        summary: 'Finds the open sales orders that need attention first. Every order due soon gets an urgency score from 0 to 100, urgent orders are checked for stock and the cost of express shipping, and you decide per order: approve expediting (a task is created in SAP for follow-up) or hold and monitor. Decisions are saved and shown every time you scan again.',
         sections: [
           { title: 'Why use this agent', items: [
-            '**Handle the right orders first** — a clear, objective urgency ranking.',
-            '**Spend expedite money wisely** — cost vs revenue at risk for each order.',
-            '**Fast escalation** — high-value urgent orders go to the right manager.',
+            '**Work on the right orders first** — one objective ranking instead of chasing whoever shouts loudest.',
+            '**Spend express-shipping money wisely** — expedite cost is compared with the order value it protects.',
+            '**Catch stock problems early** — urgent orders that cannot ship because stock is short are flagged as Stock Hold.',
+            '**Clear follow-up** — an approved expedite becomes a High-priority SAP task linked to the sales order, with the reason and next steps.',
           ] },
           { title: 'How it helps the organisation', items: [
-            '**Operations / Logistics** — a daily priority list.',
-            '**Sales** — key customers and big orders protected.',
-            '**Management** — controlled expedite cost and revenue protected.',
+            '**Operations / Logistics** — a daily priority list with what to ship first and what to expedite.',
+            '**Sales / Customer service** — key customers and large orders are protected; overdue orders are visible at once.',
+            '**Purchasing** — Stock Hold shows which urgent orders are waiting for material.',
+            '**Management** — expedite cost vs revenue protected, and who approved what and when.',
           ] },
-          { title: 'How the score is built (SAP Business One data)', items: [
-            '**Days to due date** (up to 40 points), **order priority** (20, from a priority field such as U_Priority — if there is none its points are spread over the other factors), **order value** (20), **customer tier** (20: VIP 20, high-tier group 15, others 5).',
-            '**Tags:** CRITICAL ≥ 75, URGENT ≥ 55, MONITOR ≥ 35, otherwise NORMAL.',
-            '**Expedite** auto-approved when cost is within your limit; otherwise escalated (Sales Director for score ≥ 85, else Operations Manager).',
+          { title: 'How to use it — step by step', ordered: true, items: [
+            '**Set the window:** choose **Urgent within** (3 / 7 / 14 / 30 days). Only open orders due within that window (and overdue ones) are scanned.',
+            '**Set the cost limit:** **Max expedite cost** is the most an order may cost to expedite and still be auto-approved.',
+            '**Optional — ★ Customer tiers:** mark VIP customers and high-tier customer groups; they score higher.',
+            '**Keep Dry Run on** while you try it. With Dry Run on nothing is written to SAP.',
+            'Click **Scan Orders**. The tiles, tabs and table fill in, most urgent first.',
+            'Click any **KPI tile** for its data summary, chart, calculation and AI insight.',
+            'Use the tabs **All / Critical / Urgent / Monitor / Normal** and the search box to narrow the list.',
+            'For a Critical or Urgent order click **Decide** in the Actions column, read the recommendation and choose **Approve** or **Hold** (see below).',
+            'Optional: click **AI Insight** for an AI review of the top orders, or ask the **Rush Order AI** chat (bottom right).',
+          ] },
+          { title: 'The two decision buttons', items: [
+            '**✅ Approve Expedite + Alert** — use it when the order should be expedited. It creates a **High-priority task in SAP** (Activities), linked to the sales order, with the score, recommendation, expedite cost, who to escalate to, the priority actions and your note. You can also tick **Also add a line to the sales order Remarks**. The decision is saved as **APPROVED**.',
+            '**⏸ Hold / Monitor** — use it when you will not expedite now (e.g. waiting for stock or the customer). **Nothing is written to SAP**; the decision and your note are saved as **HOLD**.',
+            '**With Dry Run on**, Approve only saves the decision (marked "dry run") — no SAP task, no Remarks change. Untick Dry Run to write to SAP; you are asked to confirm first.',
+            '**Decision column** — shows ✓ APPROVED or ⏸ HOLD with the date; hover for who decided, the note and the SAP activity number. Decisions stay after every rescan (kept 180 days). Use **Change** to update a decision or **Clear decision** to remove it.',
+            'If SAP rejects the task, the status bar shows the real SAP error and the decision is not saved, so you can fix it and try again.',
+          ] },
+          { title: 'How the urgency score is built (0–100)', items: [
+            '**Days to due date** (max 40): overdue or due today 40 · 1 day 38 · ≤ 3 days 30 · ≤ 7 days 20 · ≤ 14 days 10.',
+            '**Order priority** (max 20): from a priority field on the sales order such as U_Priority (Emergency / High / Medium). If the company has no such field, its points are spread over the other factors.',
+            '**Order value** (max 20): ≥ 100,000 → 20 · ≥ 50,000 → 16 · ≥ 20,000 → 12 · ≥ 5,000 → 7 · ≥ 1,000 → 3.',
+            '**Customer tier** (max 20): VIP 20 · high-tier group 15 · everyone else 5.',
+            '**Tags:** CRITICAL ≥ 75 · URGENT ≥ 55 · MONITOR ≥ 35 · NORMAL below 35. Click a Score or Tag in the table to see the exact points.',
+          ] },
+          { title: 'How the recommendation is made (Critical and Urgent orders)', items: [
+            '**Stock check:** free stock = In stock − Committed (OITM). If any line has less free stock than its open quantity → **HOLD** (Stock Hold tile).',
+            '**Expedite cost** = order value × 2.5% + 150, capped at 10 × your Max expedite cost (an estimate — replace with carrier quotes for big orders).',
+            '**Auto-approved** when in stock and the expedite cost is within Max expedite cost; otherwise **REVIEW**. Score ≥ 75 and in stock → **APPROVE_EXPEDITE**.',
+            '**Escalate to:** Sales Director when the score is 85 or more, otherwise Operations Manager.',
+            '**AI Insight** (optional) lets the AI review the top 8 Critical/Urgent orders and may refine the recommendation, cost and escalation; the tiles are not recalculated.',
           ] },
           { title: 'What you see on the screen', items: [
-            '**Settings** — Urgent within (days), Max expedite cost, Create SAP Alerts, Dry Run, and **★ Customer tiers** (VIP customers and high-tier customer groups).',
-            '**KPI tiles** — Scanned, Critical, Urgent, Auto-Approved, Expedite Cost, Revenue Protected.',
-            '**Orders table** — score, tag, AI recommendation, expedite cost, escalate to; click score to see how it was calculated.',
-            '**Action** (Critical/Urgent) — revenue at risk, margin impact, **Approve Expedite + Alert** or **Hold / Monitor**.',
-            '**AI Escalation Report** and **Rush Order AI** chat.',
+            '**Toolbar** — Urgent within, Max expedite cost, Create SAP Alerts, Dry Run, ★ Customer tiers, Scan Orders, AI Insight.',
+            '**KPI tiles** (S/4HANA style) — Orders Scanned, Critical, Urgent, Overdue, Stock Hold, Auto-Approved, Expedite Cost, Revenue Protected, each with a micro-chart. Click a tile for its breakdown.',
+            '**Tabs and table** — order, customer, due date, value, score, tag, recommendation, expedite cost, escalate to, **Decision**, and **Decide / Change**.',
+            '**Create SAP Alerts** (toolbar) — when ticked and Dry Run is off, the scan itself creates a SAP task for every analysed Critical/Urgent order. Leave it off if you prefer to approve order by order.',
+            '**AI Escalation Report** and the **Rush Order AI** chat for questions such as "Which critical orders need escalation?".',
+          ] },
+          { title: 'Where the data comes from (SAP Business One)', items: [
+            '**Sales orders (ORDR / RDR1)** — open orders, due date, value, open quantities and the priority field. Read through DB Direct when connected.',
+            '**Items (OITM)** — in stock and committed quantities for the stock check.',
+            '**Customers (OCRD / OCRG)** — customer group for the customer tier.',
+            '**Activities (OCLG)** and **sales order Remarks** — written only when you approve with Dry Run off.',
           ] },
           { title: 'Suggested demo flow', ordered: true, items: [
-            'Keep **Dry Run** on, click **Scan Orders**.',
-            'Show the **Critical** tile and top orders; click a score to explain it.',
-            'Open **Action** on one order and show cost vs revenue at risk.',
-            'Show the **AI Escalation Report**.',
+            'Keep **Dry Run** on and click **Scan Orders**.',
+            'Click the **Critical** tile — show what drives the score; then the **Stock Hold** tile.',
+            'Click a Score in the table to explain the points.',
+            'Click **Decide** on a critical order, add a note and **Approve (dry run)** — show the Decision column.',
+            'Put another order on **Hold**, rescan, and show that both decisions are still there.',
+            'Show the **AI Escalation Report** and ask the chat a question.',
           ] },
         ],
       } },
@@ -568,6 +606,54 @@ html[data-ui="fiori"] .aa-foot button{height:36px;border-radius:8px;font-size:14
           ] },
         ],
       } },
+    { nav: 'nav-sales-analysis', panel: 'sales-analysis-panel', title: 'Sales Analysis', name: 'Sales Analysis', color: '#0A6ED1',
+      about: {
+        summary: 'Analyses sales, margins, average selling prices, back orders, customer balances and on-time delivery straight from the SAP Business One analytics views, with filters by customer, item, sales person, brand, territory and branch, and an AI analyst.',
+        sections: [
+          { title: 'Why use this agent', items: [
+            '**One correct sales figure** — Net Sales = A/R invoices − credit memos by default; orders, deliveries and invoices are never added together.',
+            '**Margin visibility** — gross profit and GP % by customer, item, brand and month.',
+            '**Service level** — back orders and delivery delays per customer.',
+            '**Credit risk** — open orders + deliveries + A/R balance against the credit limit.',
+          ] },
+          { title: 'Where the data comes from (SAP Business One)', items: [
+            '**Sales** — SalesAnalysisQuery (document lines). **Avg Selling Price** — AverageSellingPriceQuery. **Back Orders** — BackOrderStatusQuery.',
+            '**Customer Balance** — CustomerOpenBalanceVSCreditLimitQuery (today\'s balances; dates do not apply). **On-Time** — OnTimeDeliveryStatisticsQuery. **By Document** — SalesAnalysisByDocumentQuery.',
+            '**Documents** selector: Net Sales (invoices − credit memos), A/R Invoices, Credit Memos, Deliveries − Returns or Sales Orders. Cancelled documents are excluded.',
+            '**Percentages and averages** are recalculated from summed amounts (e.g. GP % = Σ GP ÷ Σ Net Sales), never added up.',
+          ] },
+          { title: 'What you see on the screen', items: [
+            '**KPI tiles** — four per view; click a tile for the data summary, chart, calculation and AI insight.',
+            '**Charts** — top analysis, brand dimensions, monthly trend and sales person / territory / branch ranking.',
+            '**Table** — by Customer, Item, Period or Brand. **ⓘ Column guide** explains each column; click any value for its calculation.',
+          ] },
+          { title: 'Suggested demo flow', ordered: true, items: [
+            'Pick the date range and click **Analyze**.',
+            'Click the **Gross Profit** tile and show the calculation and top customers.',
+            'Switch to **Customer Balance** and open **Credit Limit** to show over-limit customers.',
+            'Ask the AI analyst "Which customers are declining?"',
+          ] },
+        ],
+      } },
+    { nav: 'nav-soc', panel: 'soc-panel', title: 'Sales Order Confirmation', name: 'Order Confirmation', color: '#107E3E',
+      about: {
+        summary: 'Lists open sales orders that are waiting for confirmation, shows each order\'s lines and the customer\'s credit position, and confirms one or many orders in SAP by setting the order\'s Confirmed flag.',
+        sections: [
+          { title: 'Why use this agent', items: [
+            '**Faster order release** — review and confirm orders in bulk instead of opening each one in SAP.',
+            '**Credit check first** — the detail shows balance and credit limit before you confirm.',
+            '**Prioritise** — the KPI popups show which pending orders are already past their delivery date.',
+          ] },
+          { title: 'Where the data comes from (SAP Business One)', items: [
+            '**Sales Orders (ORDR / RDR1)** — open, not cancelled; filtered by status, search and posting date (max 1,000).',
+            '**Confirming** sets ORDR **Confirmed = Yes** through the Service Layer.',
+          ] },
+          { title: 'What you see on the screen', items: [
+            '**KPI tiles** — Awaiting Confirmation, Pending Value (LC), Customers, Selected; click a tile for details.',
+            '**Table** — SO #, customer, reference, dates, sales employee, total and status; click a row for lines and credit.',
+          ] },
+        ],
+      } },
     { nav: 'nav-order-intelligence', panel: 'order-intelligence-panel', title: 'Order Intelligence', name: 'Order Intelligence', color: '#C2410C',
       about: {
         summary: 'Checks every open sales order due in the next 60 days against available stock and flags the orders that may not be delivered on time because items are short. Orders are ranked by severity with an AI advisory on what to do.',
@@ -781,7 +867,9 @@ html[data-ui="fiori"] .aa-foot button{height:36px;border-radius:8px;font-size:14
     btn.title = 'What this agent does and how to read it';
     btn.innerHTML = `${INFO_SVG}About`;
     btn.onclick = e => { e.stopPropagation(); open(cfg.name, cfg.about, cfg.color); };
-    const leaf = [...hdr.querySelectorAll('*')].find(el => !el.children.length && el.textContent.trim() === cfg.title);
+    // Fiori headers put a badge inside the title ("Sales Analysis AI"), so also accept the .saf-title block.
+    const leaf = [...hdr.querySelectorAll('*')].find(el => !el.children.length && el.textContent.trim() === cfg.title)
+      || hdr.querySelector('.saf-title');
     let anchor = leaf;
     while (anchor && anchor.parentElement !== hdr) anchor = anchor.parentElement;
     if (anchor) anchor.after(btn);

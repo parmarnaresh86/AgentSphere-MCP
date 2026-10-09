@@ -202,6 +202,31 @@ async function fetchView(sap, dbDeps, getNamespace, viewKey, fromDate, toDate, d
   return applyDocSet(viewKey, all, docSet);
 }
 
+// CustomerOpenBalanceVSCreditLimitQuery converts a foreign-currency customer's
+// open-order balance to local currency TWICE (verified on STTL_SD 2026-10-09:
+// GBP customer C00478 showed 517,732.60 = OCRD.OrdersBal 385,763.06 × 1.3421).
+// AR / delivery / credit limit in the view tie to OCRD, so only the SO balance
+// is replaced with the open sales-order amount — Σ (DocTotal − PaidToDate), local
+// currency, of open, non-cancelled orders — and the total recomputed. This ties to
+// OCRD.OrdersBal per customer (STTL_SD: 21,330,707.02, 0 mismatches).
+async function fixCustBalance(dbDeps, rows) {
+  if (!dbDeps?.isConnected?.() || !rows.length) return rows;
+  try {
+    const ordr = dbDeps.tableRef('ORDR', dbDeps.getActiveConfig());
+    const open = await dbDeps.executeSQL(
+      `SELECT "CardCode", SUM("DocTotal" - "PaidToDate") AS "OpenAmt" FROM ${ordr} ` +
+      `WHERE "DocStatus" = 'O' AND "CANCELED" = 'N' GROUP BY "CardCode"`);
+    const so = new Map(open.map(b => [b.CardCode, Number(b.OpenAmt || 0)]));
+    for (const r of rows) {
+      r.OpenSalesOrderBalance = so.get(r.BusinessPartnerCode) || 0;
+      r.CustomerBalanceTotal  = Number(r.AccountReceivableBalance || 0) + Number(r.OpenDeliveryBalance || 0) + r.OpenSalesOrderBalance;
+    }
+  } catch (e) {
+    console.warn('[SalesAnalysis] open SO amount correction failed:', e.message);
+  }
+  return rows;
+}
+
 // Same document-set / cancellation filter as the HANA SQL, for the Service Layer path.
 function applyDocSet(viewKey, rows, docSet) {
   const cfg = VIEWS[viewKey];
@@ -352,7 +377,8 @@ export function createSalesAnalysisRouter(deps) {
       if (!VIEWS[view]) return res.json({ ok:false, error:`Unknown view: ${view}` });
 
       const docSet   = resolveDocSet(view, docSetKey);
-      const allRows  = await fetchView(sap, _dbDeps, getNamespace, view, fromDate, toDate, docSet);
+      let allRows    = await fetchView(sap, _dbDeps, getNamespace, view, fromDate, toDate, docSet);
+      if (view === 'custbalance') allRows = await fixCustBalance(_dbDeps, allRows);
       const filtered = applyFilters(allRows, filters);
       const measures = VIEW_MEASURES[view]||[];
       const totals   = finalizeMeasures(view, calcTotals(filtered, measures), filtered.length);

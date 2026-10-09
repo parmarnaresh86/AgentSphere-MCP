@@ -244,15 +244,24 @@ async function getProductionOrdersWithRisk(sap) {
         const batch = codes.slice(i, i + BATCH);
         const filter = batch.map(c => `ItemCode eq '${c.replace(/'/g,"''")}'`).join(' or ');
         try {
-          const r = await sap.get("/Items", {
-            $filter: filter,
-            $select: "ItemCode,ItemName,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,AvgPrice,LastPurchasePrice,StdPrice",
-            $top: BATCH,
-          });
+          // Service Layer names the average price AvgStdPrice; if this $select is
+          // rejected, retry without it (same as /order/:docEntry/lines) so stock and
+          // prices are not silently lost for the whole batch.
+          let r;
+          try {
+            r = await sap.get("/Items", {
+              $filter: filter,
+              $select: "ItemCode,ItemName,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,AvgStdPrice,LastPurchasePrice",
+              $top: BATCH,
+            });
+          } catch (selErr) {
+            console.log(`[PROD] Items $select failed, retrying without: ${selErr.message.slice(0,120)}`);
+            r = await sap.get("/Items", { $filter: filter, $top: BATCH });
+          }
           for (const it of (r.value || [])) {
             const onHand = Number(it.QuantityOnStock || 0);
             const committed = Number(it.QuantityOrderedByCustomers || 0);
-            const avgPrice = Number(it.AvgPrice || it.StdPrice || it.LastPurchasePrice || 0);
+            const avgPrice = Number(it.AvgStdPrice || it.AvgPrice || it.LastPurchasePrice || it.StdPrice || 0);
             stockMap.set(it.ItemCode, {
               onHand, committed,
               available: onHand - committed,
@@ -355,6 +364,17 @@ async function getProductionOrdersWithRisk(sap) {
     dueThisWeek: orders.filter(o => o.daysUntilDue !== null && o.daysUntilDue >= 0 && o.daysUntilDue <= 7).length,
     overdue:  orders.filter(o => o.daysUntilDue !== null && o.daysUntilDue < 0).length,
   };
+  // Shortage value = Σ (per-order shortage × component average price), the same
+  // per-component totals as the Component Shortage tab.
+  const shortMap = new Map();
+  for (const o of orders) for (const c of o.components) {
+    if (c.shortage <= 0) continue;
+    const r = shortMap.get(c.itemCode) || { shortage: 0, unitCost: c.unitCost || 0 };
+    r.shortage += c.shortage;
+    shortMap.set(c.itemCode, r);
+  }
+  summary.shortItems = shortMap.size;
+  summary.shortageValue = Math.round([...shortMap.values()].reduce((t, r) => t + r.shortage * r.unitCost, 0));
 
   return { orders, summary, source };
 }
@@ -594,7 +614,7 @@ export function createProductionAgentRouter(deps) {
 
   router.post('/chat', requireAuth, async (req, res) => {
     try {
-      const { message, sessionId = `prod_${Date.now()}` } = req.body;
+      const { message, sessionId = `prod_${Date.now()}`, context } = req.body;
       if (!message?.trim()) return res.status(400).json({ ok:false, error:'message required' });
       const sap = getActiveSap();
       const today = new Date().toISOString().slice(0,10);
@@ -620,7 +640,7 @@ When recommending actions:
 - MEDIUM: Monitor closely; prepare contingency sourcing plan
 - Always name the specific short components and their shortage quantities
 
-After any analysis, give a concise, action-oriented summary.`;
+After any analysis, give a concise, action-oriented summary.${context ? `\n\nCurrent Dashboard Context (already loaded from SAP — use these figures, no tool call needed):\n${JSON.stringify(context, null, 2)}` : ''}`;
 
       const messages = [{ role:"system", content: systemPrompt }, ...history];
       let response = null;
