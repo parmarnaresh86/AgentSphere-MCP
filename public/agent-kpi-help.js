@@ -1458,6 +1458,41 @@
         source: ['Stock projection table on this card; preferred vendor from OITM.CardCode.'],
         action: ['Create the PO with the preferred vendor by the order-by date; if late, ask for expedited delivery.'],
       },
+      'fd-sim-kpi-low': {
+        label: 'Lowest Stock (simulation)',
+        means: 'The lowest month-end stock in the simulated horizon **if no new orders are placed**, with your sales, purchase and parameter changes.',
+        calc: ['Month by month: **stock = previous + purchase + what-if PO − sales**; the lowest value is shown with its month.', 'Sales = your value, else max(booked SO, forecast × demand change). Purchase = your value, else open POs expected + open PRs.'],
+        source: ['Simulator inputs on top of SAP stock (OITM), open SO/PO/PR and the simulator forecast — nothing is saved to SAP.'],
+        action: ['Red = stockout, amber = below the safety floor: look at the planned orders below.'],
+      },
+      'fd-sim-kpi-out': {
+        label: 'Stockout (simulation)',
+        means: 'First month in which the simulated stock goes below zero without new orders.',
+        calc: ['First month with "Stock if no new orders" < 0.'],
+        source: ['Simulator — not saved.'],
+        action: ['Place the planned orders before their order-by dates to avoid it.'],
+      },
+      'fd-sim-kpi-short': {
+        label: 'Shortfall with plan (simulation)',
+        means: 'First month that is still short **even with the planned POs** — because an order-by date has already passed and that PO arrives too late.',
+        calc: ['Planned POs whose order-by date is in the past only count from their tentative delivery date.', 'Shortfall = stock with planned POs < 0 in that month.'],
+        source: ['Simulator — not saved.'],
+        action: ['Order now and ask for expedited delivery, reduce or move the sales, or add a what-if PO with an earlier arrival.'],
+      },
+      'fd-sim-kpi-orders': {
+        label: 'Orders Needed (simulation)',
+        means: 'Number and total quantity of planned purchase orders that keep stock at or above the safety floor in this scenario.',
+        calc: ['When projected stock < safety floor: order qty = floor − stock, rounded up to the PO lot; order-by = need-by − (lead time + vendor lateness).'],
+        source: ['Simulator parameters: lead time, vendor lateness, safety floor, PO lot.'],
+        action: ['Generate them as PR or PO from the last table (preview + confirm).'],
+      },
+      'fd-sim-kpi-first': {
+        label: 'First Order By (simulation)',
+        means: 'Order-by date of the first planned purchase order in the scenario, and when it would arrive.',
+        calc: ['Order by = need-by − (lead time + vendor lateness). Tentative delivery = max(order-by, today) + lead time + lateness. Red = already late.'],
+        source: ['Simulator — not saved.'],
+        action: ['Place this order by the date shown.'],
+      },
     },
     tables: [
       {
@@ -1498,6 +1533,97 @@
         },
       },
       {
+        tbody: 'fd-pp-tbody', title: 'Purchase Plan (forecast-based)',
+        summary: 'Planned purchase orders that keep stock above the safety floor, from the forecast + booked orders, open POs (expected arrival), open PRs and actual lead times.',
+        cols: {
+          'Need By': 'First day of the month in which stock would fall below the safety floor without this order.',
+          'Order By': 'Need-by − (actual lead time + vendor lateness). Red = already passed.',
+          'Vendor': 'Preferred vendor (OITM.CardCode), else the vendor with the most deliveries.',
+          'Warehouse': 'Receiving stock warehouse — the one carrying the open sales orders / sales.',
+          'Tentative Delivery': 'max(order-by, today) + lead time + lateness. ⚠ = arrives after it is needed.',
+          'Status': 'Order now (late) · Order by date (within 30 days) · Upcoming. Click for the full reasoning.',
+        },
+        notes: ['Quantity = shortfall rounded up to the usual PO lot (tick box above the table).', '**Create PR** posts a Purchase Request to SAP after a preview and your confirmation.'],
+      },
+      {
+        tbody: 'fd-fc-period-tbody', title: 'Period-by-Period Forecast',
+        summary: 'Each future month with the forecast of every model; Best ★ is the model with the lowest MAPE.',
+        cols: {
+          'Period': 'Forecast month (the current month is forecast separately and used for its remaining days).',
+          'SMA 3': 'Average of the last 3 months.', 'SMA 6': 'Average of the last 6 months.', 'WMA': 'Weighted average of the last 6 months (weights 1…6).',
+          'EWMA': 'Exponential smoothing, α 0.3.', 'Linear': 'Least-squares trend line.', 'Drift': 'Last value + average monthly change.',
+          'Holt': 'Level + trend smoothing (α 0.3, β 0.1).', 'Seasonal': '12-month seasonal index × trend.', 'Median': 'Median of the history.',
+          'Best ★': 'Forecast of the best model — used by the Reorder Plan and Purchase Plan.',
+        },
+      },
+      {
+        tbody: 'fd-matrix-body', title: 'Order Matrix',
+        summary: 'Open sales and purchase orders of the item per month of the document date. Click a value for the documents.',
+        cols: { 'Month': 'Month of the document date.', '# Orders': 'Number of open documents.', 'Quantity': 'Σ line quantity of the item.', 'Amount': 'Σ line totals of the item.', 'SO−PO Amt': 'SO amount − PO amount.' },
+      },
+      {
+        tbody: 'fd-rp-whs-tbody', title: 'Planning Report — By Warehouse',
+        summary: 'SAP stock figures per warehouse (OITW) and a booked-orders projection per warehouse.',
+        cols: {
+          'Warehouse': 'Warehouse code and name.', 'In Stock': 'OITW.OnHand.', 'Committed': 'OITW.IsCommited.', 'Ordered': 'OITW.OnOrder.',
+          'SAP Available': 'In Stock − Committed + Ordered.', 'Free': 'In Stock − Committed.', 'Open SO': 'Open sales-order qty (red = overdue).', 'Open PO': 'Open PO qty (red = overdue).',
+          'Transfer Req. Out / In': 'Open inventory transfer requests out of / into this warehouse.',
+          'Committed Check': '✓ = Committed equals open SOs + transfer requests out; otherwise reserved by other documents (e.g. production).',
+          'Sales Share 12m': 'Share of the last 12 months\' net invoiced qty.', 'Booked Projection': 'Covered / Short from … / Stock, no open orders — click for the month-by-month calculation.',
+        },
+      },
+      {
+        tbody: 'fd-rp-lines-tbody', title: 'Planning Report — Order Lines',
+        summary: 'Sales-order lines by delivery date or purchase-order lines by promised date (last 12 / next 12 months + all open lines). Cancelled documents excluded.',
+        cols: {
+          'Delivery Date': 'Requested delivery date of the SO line (RDR1.ShipDate).', 'Due Date (promised)': 'Promised date of the PO line (POR1.ShipDate, else DocDueDate).',
+          'SO #': 'Sales order number.', 'PO #': 'Purchase order number.', 'Customer': 'Customer code and name.', 'Vendor': 'Vendor code and name.',
+          'Order Date': 'SO document date.', 'PO Date': 'PO document date.', 'Planned Lead': 'Promised − PO date.', 'Expected Arrival': 'Promised + vendor lateness.',
+          'Warehouse': 'Line warehouse; drop-ship warehouses are tagged.', 'Qty': 'Line quantity.', 'Delivered': 'Delivered qty (RDR1.DelivrdQty).', 'Received': 'Received qty.',
+          'Open': 'Still open qty.', 'Status': 'Open · Open N d late · Delivered/Received · Closed short (closed without full delivery).',
+        },
+      },
+      {
+        tbody: 'fd-rp-ltv-tbody', title: 'Lead Time History — Vendors',
+        summary: 'Lead-time statistics per vendor from goods receipts traced to their PO (directly or via an A/P reserve invoice).',
+        cols: {
+          'Vendor': 'Vendor code and name.', 'History': 'This item, or all items (fallback for vendors with < 3 deliveries of this item).', 'Deliveries': 'Deliveries measured.',
+          'Planned Lead': 'Average promised − PO date.', 'Actual Lead': 'Average receipt − PO date.', 'Median / p90': 'Median and 90th percentile of the actual lead.',
+          'σ': 'Robust spread of the actual lead (MAD-based).', 'Avg Delay': 'Average receipt − promised (negative = early).', 'Plan Delay': 'Average of max(0, delay) — added to open POs.',
+          'On Time': 'Share received on or before the promised date.', 'Last': 'Most recent receipt.',
+        },
+      },
+      {
+        tbody: 'fd-rp-ltr-tbody', title: 'Lead Time History — Deliveries',
+        summary: 'Every goods receipt of the item compared with its PO (several receipts of one PO on the same day count as one).',
+        cols: { 'Received': 'Goods receipt date.', 'GRPO #': 'Goods receipt number.', 'Vendor': 'Vendor code.', 'PO #': 'Purchase order number.', 'PO Date': 'PO document date.',
+          'Promised': 'PO line ship date, else PO due date.', 'Qty': 'Received qty.', 'Planned Lead': 'Promised − PO date.', 'Actual Lead': 'Received − PO date.', 'Delay': 'Received − promised (positive = late).' },
+      },
+      {
+        tbody: 'fd-sim-tbody', title: 'Simulator — Monthly grid',
+        summary: 'Next N months of the simulation. Yellow cells are your values; blank uses SAP + forecast. Nothing is saved to SAP.',
+        cols: {
+          'Month': 'Plan month (the current month = the rest of the month).', 'Booked SO': 'Open sales orders due that month.', 'Forecast': 'Simulator forecast (its own history / horizon).',
+          'Sales (edit)': 'Your sales qty; blank = max(booked SO, forecast × demand change).',
+          '📝 SO to be booked': 'Sales not on a sales order yet, expected to be ordered this month (requested date − customer order lead).',
+          '🚚 Delivery out (pred.)': 'Qty expected to physically leave the warehouse this month (requested date + typical delivery delay).',
+          'Open PO': 'Open POs expected this month + open purchase requests.', 'Purchase (edit)': 'Your receipts for the month; blank = Open PO.',
+          'What-if PO': 'Your what-if POs arriving this month (+ add = a PO arriving this month).',
+          '🛒 Place Order': 'Planned POs to create this month: qty, order-by date, arrival date.', '📦 Planned Arrival': 'Planned POs arriving this month, vendor → warehouse.',
+          'Projected Supply': 'Purchase + what-if + planned POs.', 'Stock if no new orders': 'Month-end stock without the planned POs.', 'Stock with planned POs': 'Month-end stock including the planned POs.',
+          'Status': 'OK · Covered by plan · Shortfall (planned POs arrive too late).',
+        },
+      },
+      {
+        tbody: 'fd-sim-orders-tbody', title: 'Simulator — Purchase orders required',
+        summary: 'Planned purchase orders in the scenario. Tick rows and create them as PR or PO in SAP — a preview is shown first.',
+        cols: {
+          '#': 'Order number in the scenario.', 'Need By': 'Month the stock would fall below the safety floor.', 'Order By': 'Need-by − (lead time + lateness).',
+          'Tentative Delivery': 'max(order-by, today) + lead time + lateness; ⚠ late = after need-by.', 'From Vendor': 'Vendor used for the PO.', 'Arrives At': 'Receiving warehouse.',
+          'Status': 'Order now (late) · Order within 30 days · Upcoming.', 'Generate in SAP': 'PR = Purchase Request (required date = need-by) · PO = Purchase Order (delivery = tentative delivery, price from SAP).',
+        },
+      },
+      {
         tbody: 'fd-lt-tbody', title: 'Vendor Delivery Performance',
         summary: 'Every goods receipt of the item in the last 24 months that was copied from a purchase order, compared with that PO. Several receipts of the same PO on the same day count as one delivery.',
         cols: {
@@ -1522,16 +1648,6 @@
           'Open PO': 'Open PO quantity by **due date** (POR1.ShipDate, else OPOR.DocDueDate) in the selected year; in the current year, lines due in an earlier year count in the current month.',
           'Gap': 'Demand − Supply − Open PO.',
           'Status': 'Shortage (gap > 0) · Surplus (gap < 0) · Balanced · No data.',
-        },
-      },
-      {
-        tbody: 'fd-fc-acc-tbody', title: 'Model Accuracy',
-        summary: 'One-step-ahead back-test of the 9 models, best (lowest MAPE) first.',
-        cols: {
-          'Model': 'SMA 3/6 = simple moving average · WMA = weighted · EWMA = exponential (α 0.3) · Linear = regression · Drift = last value + average change · Holt = trend smoothing · Seasonal = 12-month index × trend · Median.',
-          'MAPE': 'Mean absolute % error (lower is better).',
-          'MAE': 'Mean absolute error, in units.',
-          'RMSE': 'Root mean squared error — penalises big misses.',
         },
       },
     ],
@@ -2993,7 +3109,7 @@ html[data-ui="fiori"] .akh-colbtn{color:#0064d9;font-size:12px}
       const stats = [{ label: 'Safety stock', value: sp.safetyStock, fmt: 'int' }, { label: 'Reorder point', value: sp.reorderPoint, fmt: 'int' },
         { label: 'Inventory position', value: sp.inventoryPosition, fmt: 'int' }, { label: 'Avg monthly demand', value: sp.avgMonthlyDemand, fmt: 'int' },
         { label: 'Demand σ', value: sp.demandStdDev, fmt: 'int' }, { label: 'Lead time (days)', value: sp.leadTimeDays, fmt: 'int' },
-        { label: 'Lead time source', value: sp.leadTimeSource || '—' }, { label: 'PO qty arriving later than promised', value: sp.openPoQtyDelayedByVendorHistory || 0, fmt: 'int' },
+        { label: 'Lead time source', value: sp.leadTimeSource || '—' }, { label: 'Late PO qty (vendor history)', value: sp.openPoQtyDelayedByVendorHistory || 0, fmt: 'int' },
         { label: 'Lead time σ (days)', value: sp.leadTimeStdDevDays || 0, fmt: 'num' }, { label: 'Safety stock, demand only', value: sp.safetyStockDemandOnly, fmt: 'int' },
         { label: 'Service level', value: sp.serviceLevelPct, fmt: 'pct' }, { label: 'What-if demand', value: sp.whatIfDemandPct, fmt: 'pct' }];
       const bad = sp.firstStockoutMonth || sp.firstBelowSafetyMonth;

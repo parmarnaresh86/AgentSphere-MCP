@@ -2422,6 +2422,29 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
     </div>
   </div>
 
+  <!-- ══ AP INVOICE PROCESSING (folder / mail / upload → OCR → approval → SAP A/P Invoice) ══ -->
+  <div class="nav-section">
+    <div class="nav-section-label" data-fi="document-text"><span class="sec-title">AP Invoice Processing</span></div>
+    <div class="nav-group">
+      <div class="nav-group-header" data-group="apip" data-fi="pdf-attachment">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+          AP Invoice Processing
+        </span>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="nav-group-body" id="grp-apip">
+        <div class="nav-subitem" onclick="showApipPanel('dashboard')" id="nav-apip-dashboard" data-perm="apip.dashboard" style="cursor:pointer"><span class="dot-icon" data-fi="kpi-managing-my-area" style="background:#7c3aed"></span>Processing Dashboard</div>
+        <div class="nav-subitem" onclick="showApipPanel('queue')" id="nav-apip-queue" data-perm="apip.queue" style="cursor:pointer"><span class="dot-icon" data-fi="inbox" style="background:#4f46e5"></span>Invoice Queue</div>
+        <div class="nav-subitem" onclick="showApipPanel('approvals')" id="nav-apip-approvals" data-perm="apip.approvals" style="cursor:pointer"><span class="dot-icon" data-fi="payment-approval" style="background:#16a34a"></span>Invoice Approval</div>
+        <div class="nav-subitem" onclick="showApipPanel('stages')" id="nav-apip-stages" data-perm="apip.stages" style="cursor:pointer"><span class="dot-icon" data-fi="process" style="background:#0891b2"></span>Approval Stage</div>
+        <div class="nav-subitem" onclick="showApipPanel('master')" id="nav-apip-master" data-perm="apip.master" style="cursor:pointer"><span class="dot-icon" data-fi="key-user-settings" style="background:#E9730C"></span>Approval Master</div>
+        <div class="nav-subitem" onclick="showApipPanel('mail')" id="nav-apip-mail" data-perm="apip.mail" style="cursor:pointer"><span class="dot-icon" data-fi="email" style="background:#1d4ed8"></span>Mail Configuration</div>
+        <div class="nav-subitem" onclick="showApipPanel('settings')" id="nav-apip-settings" data-perm="apip.settings" style="cursor:pointer"><span class="dot-icon" data-fi="settings" style="background:#64748b"></span>Settings</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ 5. FINANCE ══════════════════════════════════════════════ -->
   <div class="nav-section">
     <div class="nav-section-label" data-fi="money-bills"><span class="sec-title">Finance</span></div>
@@ -9807,7 +9830,7 @@ function showChatPanel() {
   const ALL_PANELS = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -9836,7 +9859,7 @@ document.addEventListener('keydown', e => {
   const anyOpen = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -12894,13 +12917,14 @@ setInterval(() => {
       <div class="fda-hdr-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="11"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></div>
       <div>
         <div class="fda-title" id="fd-about-title">About Forecast Dashboard</div>
-        <div class="fda-sub">How every KPI, table column and recommendation is calculated from SAP Business One data</div>
+        <div class="fda-sub">How every KPI, table, plan and simulation is calculated from SAP Business One data</div>
       </div>
       <button class="fda-x" onclick="fdCloseAbout()" title="Close">&times;</button>
     </div>
     <div class="fda-tabs">
       <button class="fda-tab active" data-t="kpi"     onclick="fdAboutTab('kpi')">KPI Details</button>
       <button class="fda-tab"        data-t="formula" onclick="fdAboutTab('formula')">Table Formulas</button>
+      <button class="fda-tab"        data-t="logic"   onclick="fdAboutTab('logic')">Planning &amp; Simulation</button>
       <button class="fda-tab"        data-t="suggest" onclick="fdAboutTab('suggest')">Suggestions</button>
       <button class="fda-tab"        data-t="general" onclick="fdAboutTab('general')">General</button>
     </div>
@@ -12910,40 +12934,53 @@ setInterval(() => {
       <div data-p="kpi">
         <div class="fda-sec"><h4>Item Header Chips (after Load Item)</h4>
           <table><thead><tr><th>Chip</th><th>Formula</th><th>SAP Source</th></tr></thead><tbody>
-            <tr><td class="fda-k">Stock</td><td>Total in stock across all warehouses</td><td><code>OITM.OnHand</code></td></tr>
-            <tr><td class="fda-k">Committed</td><td>Quantity reserved by open Sales Orders</td><td><code>OITM.IsCommited</code></td></tr>
-            <tr><td class="fda-k">On Order</td><td>Quantity ordered on open Purchase Orders</td><td><code>OITM.OnOrder</code></td></tr>
-            <tr><td class="fda-k">Available</td><td><code>Stock − Committed + On Order</code> — same as the SAP item master (all warehouses together)</td><td>calculated</td></tr>
-            <tr><td class="fda-k">Free</td><td><code>Stock − Committed</code> — on the shelf and not yet promised; the Reorder Plan starts from this</td><td>calculated</td></tr>
-            <tr><td class="fda-k">Lead</td><td>Item master purchasing lead time, in days</td><td><code>OITM.LeadTime</code></td></tr>
+            <tr><td class="fda-k">Stock</td><td>In stock, all warehouses</td><td><code>OITM.OnHand</code></td></tr>
+            <tr><td class="fda-k">Committed</td><td>Open customer demand not yet delivered: open sales orders + open transfer requests out (drop-ship excluded)</td><td><code>OITM.IsCommited</code></td></tr>
+            <tr><td class="fda-k">On Order</td><td>Open purchase-order quantity for stock warehouses</td><td><code>OITM.OnOrder</code></td></tr>
+            <tr><td class="fda-k">Available</td><td><code>Stock − Committed + On Order</code> — exactly the SAP item master figure</td><td>calculated</td></tr>
+            <tr><td class="fda-k">Free</td><td><code>Stock − Committed</code> — on the shelf and not yet promised</td><td>calculated</td></tr>
+            <tr><td class="fda-k">Lead</td><td>Item master purchasing lead time (the plans use the <b>actual</b> lead time from deliveries when available)</td><td><code>OITM.LeadTime</code></td></tr>
           </tbody></table>
         </div>
         <div class="fda-sec"><h4>Overview Tab</h4>
           <table><thead><tr><th>KPI</th><th>Formula</th><th>Notes</th></tr></thead><tbody>
-            <tr><td class="fda-k">Open Sales Orders</td><td>Count of open SOs · sub-line = Σ DocTotal (or Σ matching line totals when an item is loaded)</td><td><code>ORDR</code> with DocStatus = Open; all items: DocDate within the selected Year</td></tr>
-            <tr><td class="fda-k">Open Purchase Orders</td><td>Count of open POs · sub-line = Σ DocTotal (or Σ matching line totals)</td><td><code>OPOR</code> with DocStatus = Open</td></tr>
-            <tr><td class="fda-k">Avg PO Lead Time</td><td><code>avg( DocDueDate − DocDate )</code> in days over open POs</td><td>Negative and blank values are excluded. A result of 0 is shown as —</td></tr>
-            <tr><td class="fda-k">Advance Payments</td><td>Count of POs whose vendor has an open A/P Down Payment · sub-line = Σ down-payment amount</td><td><code>ODPO</code> open, matched by vendor (CardCode), not by PO</td></tr>
-            <tr><td class="fda-k">Overdue Deliveries</td><td>Count of open POs where <code>Delivery Date &lt; Today</code></td><td>Delivery Date = PO DocDueDate</td></tr>
+            <tr><td class="fda-k">Open Sales Orders</td><td>Count of open SOs with the item · sub-line = Σ the item's line totals</td><td><code>ORDR/RDR1</code> DocStatus = Open</td></tr>
+            <tr><td class="fda-k">Open Purchase Orders</td><td>Count of open POs with the item · sub-line = Σ line totals</td><td><code>OPOR/POR1</code> DocStatus = Open</td></tr>
+            <tr><td class="fda-k">Avg PO Lead Time</td><td><code>avg(DocDueDate − DocDate)</code> over open POs (planned lead)</td><td>Actual lead from deliveries: Purchase Tracking → Vendor Delivery Performance</td></tr>
+            <tr><td class="fda-k">Advance Payments</td><td>Open POs whose vendor has an open A/P down payment</td><td><code>ODPO</code>, matched by vendor</td></tr>
+            <tr><td class="fda-k">Overdue Deliveries</td><td>Open POs with promised date &lt; today</td><td><code>OPOR.DocDueDate</code></td></tr>
           </tbody></table>
         </div>
-        <div class="fda-sec"><h4>Supply vs Demand Tab</h4>
+        <div class="fda-sec"><h4>Supply vs Demand Tab — actual &amp; booked data only (no forecast)</h4>
           <table><thead><tr><th>KPI</th><th>Formula</th><th>Notes</th></tr></thead><tbody>
-            <tr><td class="fda-k">Total Demand</td><td>Σ invoiced quantity in the year (<code>OINV/INV1</code>)</td><td>If the item has no invoices, Sales Order quantity (<code>ORDR</code>) is used as a proxy</td></tr>
-            <tr><td class="fda-k">Total Supply</td><td>Σ received quantity on Goods Receipt POs (<code>OPDN/PDN1</code>)</td><td>By GRPO posting month</td></tr>
-            <tr><td class="fda-k">Open PO (Pending)</td><td>Σ open (not yet received) quantity on all open POs</td><td>Open POs from any year count as pipeline supply</td></tr>
-            <tr><td class="fda-k">Net Gap</td><td><code>Demand − (Supply + Open PO)</code></td><td><span class="fda-tag t-neg">Red</span> when &gt; 0 (shortage), <span class="fda-tag t-pos">Green</span> when ≤ 0</td></tr>
+            <tr><td class="fda-k">In Stock</td><td><code>OITM.OnHand</code></td><td rowspan="4"><b>📦 Current position</b> — the same four numbers as the SAP item master</td></tr>
+            <tr><td class="fda-k">Committed (demand)</td><td><code>OITM.IsCommited</code> = open SOs + transfer requests out</td></tr>
+            <tr><td class="fda-k">Ordered (supply)</td><td><code>OITM.OnOrder</code> = open POs (PRs shown apart, not ordered yet)</td></tr>
+            <tr><td class="fda-k">Available</td><td><code>In Stock − Committed + Ordered</code></td></tr>
+            <tr><td class="fda-k">Booked Demand</td><td>Open SO qty by delivery date, current month → outlook end</td><td rowspan="4"><b>📋 Booked outlook</b> — open orders only, never the forecast</td></tr>
+            <tr><td class="fda-k">Expected Supply</td><td>Open PO qty by <i>expected</i> arrival + open purchase requests</td></tr>
+            <tr><td class="fda-k">Order Needed (booked)</td><td>Extra supply needed so stock covers the booked orders (above item min stock)</td></tr>
+            <tr><td class="fda-k">Lowest Projected Stock</td><td>Lowest month-end of <code>stock + expected supply − open SO</code></td></tr>
           </tbody></table>
-          <p style="margin-top:8px;color:#556b82">If the selected year has no data for the item, the server automatically falls back to the most recent earlier year that does.</p>
         </div>
         <div class="fda-sec"><h4>Standard Forecast Tab</h4>
           <table><thead><tr><th>KPI</th><th>Formula</th></tr></thead><tbody>
-            <tr><td class="fda-k">Best Model</td><td>The model with the lowest MAPE of the 9 models</td></tr>
-            <tr><td class="fda-k">MAPE Accuracy</td><td><code>mean( |Actual − Forecast| ÷ Actual ) × 100</code> as a one-step-ahead back-test (months with Actual = 0 are skipped)</td></tr>
-            <tr><td class="fda-k">Forecast Total</td><td>Σ of the best model's forecast over the selected horizon</td></tr>
-            <tr><td class="fda-k">Trend</td><td>Compares avg(second half of history) with avg(first half): above +5% = <b>↑ Upward</b>, below −5% = <b>↓ Downward</b>, otherwise <b>→ Stable</b></td></tr>
-            <tr><td class="fda-k">Growth Rate</td><td><code>(avg second half − avg first half) ÷ avg first half × 100</code></td></tr>
+            <tr><td class="fda-k">Best Model</td><td>The model (of 9) with the lowest MAPE in a one-step-ahead back-test</td></tr>
+            <tr><td class="fda-k">MAPE Accuracy</td><td><code>mean(|Actual − Forecast| ÷ Actual) × 100</code> (months with Actual = 0 skipped)</td></tr>
+            <tr><td class="fda-k">Forecast Total</td><td>Σ best-model forecast over the horizon</td></tr>
+            <tr><td class="fda-k">Trend / Growth</td><td>avg(second half of history) vs avg(first half): &gt; +5% ↑, &lt; −5% ↓, else →</td></tr>
+            <tr><td class="fda-k">Reorder Plan tiles</td><td>Safety Stock <code>z × √(LT·σd² + d²·σLT²)</code> · Reorder Point <code>d × LT + SS</code> · Inventory Position <code>= SAP Available</code> · Stockout Month · Suggested Order</td></tr>
           </tbody></table>
+        </div>
+        <div class="fda-sec"><h4>Simulator Tab</h4>
+          <table><thead><tr><th>KPI</th><th>Meaning</th></tr></thead><tbody>
+            <tr><td class="fda-k">Lowest Stock</td><td>Lowest month-end stock with your numbers if no new orders are placed</td></tr>
+            <tr><td class="fda-k">Stockout</td><td>First month that stock goes below zero without new orders</td></tr>
+            <tr><td class="fda-k">Shortfall with plan</td><td>First month still short even with the planned POs (an order-by date has passed)</td></tr>
+            <tr><td class="fda-k">Orders Needed</td><td>Number and total qty of planned POs that keep stock above the safety floor</td></tr>
+            <tr><td class="fda-k">First Order By</td><td>Order-by date of the first planned PO and when it arrives</td></tr>
+          </tbody></table>
+          <p style="margin-top:8px;color:#556b82">Click any KPI tile on the dashboard for its data, chart, calculation and an AI explanation.</p>
         </div>
       </div>
 
@@ -12951,51 +12988,84 @@ setInterval(() => {
       <div data-p="formula" style="display:none">
         <div class="fda-sec"><h4>Order Matrix</h4>
           <table><thead><tr><th>Column</th><th>Formula</th></tr></thead><tbody>
-            <tr><td class="fda-k">Month</td><td>Month of the document's <code>DocDate</code></td></tr>
-            <tr><td class="fda-k"># Orders</td><td>Count of open SOs / POs posted in that month</td></tr>
-            <tr><td class="fda-k">Quantity</td><td>Σ line quantity (only the loaded item's lines when an item is selected)</td></tr>
-            <tr><td class="fda-k">Amount</td><td>All items: Σ <code>DocTotal</code>. Item loaded: Σ matching line totals</td></tr>
-            <tr><td class="fda-k">Balance (SO−PO Amt)</td><td><code>SO Amount − PO Amount</code>. <span class="fda-tag t-pos">+ Green</span> means sales exceed purchases. <span class="fda-tag t-neg">− Red</span> means purchases exceed sales</td></tr>
-            <tr><td class="fda-k">TOTAL row</td><td>Column sums across all 12 months</td></tr>
+            <tr><td class="fda-k">Month</td><td>Month of the document date</td></tr>
+            <tr><td class="fda-k"># Orders / Quantity / Amount</td><td>Open SOs / POs of that month — count, Σ line qty, Σ line totals of the item</td></tr>
+            <tr><td class="fda-k">Balance (SO−PO Amt)</td><td><code>SO Amount − PO Amount</code></td></tr>
           </tbody></table>
-          <p style="margin-top:8px;color:#556b82">Click any underlined value to see the documents behind it.</p>
         </div>
         <div class="fda-sec"><h4>Purchase Tracking</h4>
           <table><thead><tr><th>Column</th><th>Formula / Rule</th></tr></thead><tbody>
-            <tr><td class="fda-k">Lead Days</td><td><code>DocDueDate − DocDate</code>: <span class="fda-tag t-pos">≤ 7d</span> <span class="fda-tag t-crit">8–30d</span> <span class="fda-tag t-neg">&gt; 30d</span></td></tr>
-            <tr><td class="fda-k">PO Amount</td><td><code>DocTotal</code> in document currency (matching line totals when an item is loaded)</td></tr>
-            <tr><td class="fda-k">Adv. Payment</td><td><b>Paid</b>: the vendor has an open A/P Down Payment, with <code>Paid % = Down-payment amount ÷ PO Amount × 100</code>. <b>Required</b>: the PO has a <code>DownPayment</code> % set but nothing has been paid yet. <b>None</b>: no down payment</td></tr>
-            <tr><td class="fda-k">Pay Code</td><td>Payment terms group (<code>PaymentGroupCode</code>)</td></tr>
-            <tr><td class="fda-k">Status</td><td><code>Days = Delivery Date − Today</code>: <span class="fda-tag t-neg">Overdue</span> when &lt; 0, <span class="fda-tag t-crit">Due in Nd</span> when 0–7, <span class="fda-tag t-pos">On Track</span> when &gt; 7</td></tr>
+            <tr><td class="fda-k">Delivery Date</td><td>Promised date (<code>DocDueDate</code>). Orange <b>Expected</b> = promised + the vendor's expected lateness</td></tr>
+            <tr><td class="fda-k">Lead Days</td><td><code>DocDueDate − DocDate</code></td></tr>
+            <tr><td class="fda-k">Status</td><td>Overdue / Due in N days (≤ 7) / On Track</td></tr>
+            <tr><td class="fda-k">Vendor Delivery Performance</td><td>Past goods receipts vs their PO: <b>actual lead</b> = receipt − PO date · <b>delay</b> = receipt − promised · <b>plan delay</b> = avg of max(0, delay) · on-time %. Receipts are traced to the PO directly or via an A/P reserve invoice</td></tr>
           </tbody></table>
         </div>
         <div class="fda-sec"><h4>Supply vs Demand Monthly Table</h4>
           <table><thead><tr><th>Column</th><th>Formula / Rule</th></tr></thead><tbody>
-            <tr><td class="fda-k">Demand / Supply / Open PO</td><td>Monthly figures as described in KPI Details. Quantities when an item is loaded, amounts otherwise</td></tr>
-            <tr><td class="fda-k">Gap</td><td><code>Demand − Supply − Open PO</code></td></tr>
-            <tr><td class="fda-k">Status</td><td><span class="fda-tag t-neg">Shortage</span> Gap &gt; 0 · <span class="fda-tag t-info">Surplus</span> Gap &lt; 0 · <span class="fda-tag t-pos">Balanced</span> Gap = 0 · <i>No data</i> when all values are 0</td></tr>
+            <tr><td class="fda-k">Demand</td><td><b>Demand based on</b>: SO qty by delivery date (default) · SO qty by order date · net invoices (invoices − credit memos). SO qty = open lines in full, closed lines only the delivered qty</td></tr>
+            <tr><td class="fda-k">Supply (GRPO)</td><td>Goods receipts − goods returns</td></tr>
+            <tr><td class="fda-k">Open PO</td><td>Open PO qty by due date</td></tr>
+            <tr><td class="fda-k">Order Needed</td><td>Extra supply needed for booked orders (no forecast)</td></tr>
+            <tr><td class="fda-k">Gap</td><td><code>Demand − Supply − Open PO</code> (that month only)</td></tr>
+            <tr><td class="fda-k">Running Balance</td><td><code>stock now + expected supply − open SO due</code>, month by month — from the current month</td></tr>
           </tbody></table>
         </div>
-        <div class="fda-sec"><h4>Forecast Models (Standard Forecast)</h4>
+        <div class="fda-sec"><h4>Planning Report</h4>
+          <table><thead><tr><th>View</th><th>What it shows</th></tr></thead><tbody>
+            <tr><td class="fda-k">Monthly Report</td><td>12 months back + plan months: SO qty by delivery date (delivered / open / closed short), actual demand, forecast, PO qty by due date, actual supply, expected arrival, projected stock; drop-ship in separate info columns</td></tr>
+            <tr><td class="fda-k">Sales / Purchase Orders</td><td>Every line by delivery / promised date with status (open, late, delivered, closed short) and expected arrival</td></tr>
+            <tr><td class="fda-k">By Warehouse</td><td>SAP stock per warehouse, Committed check (✓ = explained by SOs + transfer requests), sales share, booked projection per warehouse</td></tr>
+            <tr><td class="fda-k">Lead Time History</td><td>Item and vendor lead-time statistics and every delivery: PO date → promised → received</td></tr>
+          </tbody></table>
+        </div>
+        <div class="fda-sec"><h4>Forecast Models</h4>
           <table><thead><tr><th>Model</th><th>Formula</th></tr></thead><tbody>
-            <tr><td class="fda-k">SMA 3 / SMA 6</td><td>Simple moving average of the last 3 or 6 months. Each forecast is fed back in to project further months</td></tr>
-            <tr><td class="fda-k">WMA</td><td>Weighted average of the last 6 months with weights 1…6 (the newest month counts most)</td></tr>
-            <tr><td class="fda-k">EWMA</td><td><code>Lₜ = α·Yₜ + (1−α)·Lₜ₋₁</code>, α = 0.3. Every future month = the final level L</td></tr>
-            <tr><td class="fda-k">Linear</td><td>Least-squares trend line <code>Y = a + b·t</code>, extended forward (floored at 0)</td></tr>
-            <tr><td class="fda-k">Drift</td><td><code>Last + h × (Last − First) ÷ (n − 1)</code></td></tr>
-            <tr><td class="fda-k">Holt</td><td>Double exponential smoothing, level α = 0.3 and trend β = 0.1: <code>F = L + h·b</code></td></tr>
-            <tr><td class="fda-k">Seasonal</td><td>Linear trend × a 12-month seasonal index (<code>month avg ÷ overall avg</code>). Falls back to SMA 3 when there are fewer than 12 months of history</td></tr>
-            <tr><td class="fda-k">Median</td><td>Median of the full history, held flat</td></tr>
+            <tr><td class="fda-k">SMA 3 / SMA 6</td><td>Simple moving average of the last 3 / 6 months</td></tr>
+            <tr><td class="fda-k">WMA</td><td>Weighted average of the last 6 months (weights 1…6)</td></tr>
+            <tr><td class="fda-k">EWMA</td><td><code>Lₜ = α·Yₜ + (1−α)·Lₜ₋₁</code>, α = 0.3</td></tr>
+            <tr><td class="fda-k">Linear / Drift</td><td>Least-squares trend line · last value + average change</td></tr>
+            <tr><td class="fda-k">Holt</td><td>Level α = 0.3 + trend β = 0.1: <code>F = L + h·b</code></td></tr>
+            <tr><td class="fda-k">Seasonal</td><td>Linear trend × 12-month seasonal index (needs 12+ months)</td></tr>
+            <tr><td class="fda-k">Median</td><td>Median of the history, held flat</td></tr>
+          </tbody></table>
+          <p style="margin-top:8px;color:#556b82">Period-by-Period table: each future month with every model's forecast and the <b>Best ★</b> column. Model accuracy (MAPE/MAE) is in the Best Model and MAPE tile pop-ups.</p>
+        </div>
+      </div>
+
+      <!-- PLANNING & SIMULATION -->
+      <div data-p="logic" style="display:none">
+        <div class="fda-sec"><h4>Demand used for planning</h4>
+          <table><tbody>
+            <tr><td class="fda-k">History basis</td><td>Sales orders by <b>requested delivery date</b> (default) or net invoices — set in <b>History based on</b>. Stock warehouses only; cancelled documents excluded</td></tr>
+            <tr><td class="fda-k">Current month</td><td>Incomplete, so it is left out of the history and forecast instead</td></tr>
+            <tr><td class="fda-k">Outlier correction</td><td>A month above <code>median + 3 × 1.4826 × MAD</code> (and &gt; 1.5 × median) is a one-off spike — capped for the models only</td></tr>
+            <tr><td class="fda-k">Data cut-off</td><td>If company-wide activity collapses (a test database that stopped receiving documents) the history ends at the last month with normal activity</td></tr>
+            <tr><td class="fda-k">Forecast consumption</td><td>Each future month plans <code>max(open SO due, forecast)</code> — booked orders replace the forecast, as in SAP MRP</td></tr>
+            <tr><td class="fda-k">Drop-ship</td><td>Warehouses flagged Drop Ship (vendor → customer) never touch stock and are excluded from all stock planning; shown apart for information</td></tr>
           </tbody></table>
         </div>
-        <div class="fda-sec"><h4>Model Accuracy Table</h4>
-          <p>Each model is back-tested one step ahead: for each month <i>i</i> from the 4th onward, the model forecasts month <i>i</i> using only months 1…<i>i</i>−1.</p>
-          <table><thead><tr><th>Metric</th><th>Formula</th><th>Reads as</th></tr></thead><tbody>
-            <tr><td class="fda-k">MAPE</td><td><code>mean(|A − F| ÷ A) × 100</code></td><td>Average % error. Lower is better</td></tr>
-            <tr><td class="fda-k">MAE</td><td><code>mean(|A − F|)</code></td><td>Average error in units</td></tr>
-            <tr><td class="fda-k">RMSE</td><td><code>√ mean((A − F)²)</code></td><td>Like MAE, but penalises large misses more</td></tr>
+        <div class="fda-sec"><h4>Supply timing</h4>
+          <table><tbody>
+            <tr><td class="fda-k">Actual lead time</td><td>From past goods receipts (preferred vendor → all vendors → item master → open POs → 30 days)</td></tr>
+            <tr><td class="fda-k">Vendor lateness</td><td>Average of <code>max(0, receipt − promised)</code> — early deliveries do not cancel late ones</td></tr>
+            <tr><td class="fda-k">Expected arrival</td><td><code>Promised date + vendor lateness</code>; overdue open POs count in the current month</td></tr>
+            <tr><td class="fda-k">Safety stock</td><td><code>z × √(LT·σd² + d²·σLT²)</code>, σLT robust (MAD); z from the service level (90% 1.28 · 95% 1.65 · 98% 2.05 · 99% 2.33)</td></tr>
           </tbody></table>
-          <p style="margin-top:8px;color:#556b82">Period-by-Period table: each row is one future month, with every model's forecast and the <b>Best ★</b> column (the lowest-MAPE model). History = the last N months of invoiced demand across the selected and previous year.</p>
+        </div>
+        <div class="fda-sec"><h4>🛒 Purchase Plan (Standard Forecast tab)</h4>
+          <p>Month by month: <code>stock + expected supply + open PRs − max(open SO, forecast)</code>. When stock would fall below the safety floor a PO is planned: <b>qty</b> = shortfall rounded up to the usual PO lot · <b>order by</b> = need-by − (lead time + lateness) · <b>tentative delivery</b> = max(order-by, today) + lead time + lateness. <b>Create PR</b> posts a Purchase Request to SAP after a preview and your confirmation; created PRs count as supply.</p>
+        </div>
+        <div class="fda-sec"><h4>🧪 Simulator (what-if — never saved to SAP unless you create a PR/PO)</h4>
+          <table><tbody>
+            <tr><td class="fda-k">Settings</td><td>History (12–36 months) and forecast horizon (3–24 months) — its own forecast; the Standard Forecast tab is not changed</td></tr>
+            <tr><td class="fda-k">Edit</td><td>Sales and purchase quantity per month, lead time, lateness, safety floor, PO lot, starting stock, demand change %, and what-if POs (order date → arrival)</td></tr>
+            <tr><td class="fda-k">Sales side</td><td><b>SO to be booked</b> = unbooked sales expected to be ordered (requested date − customer order lead) · <b>Delivery out</b> = requested date + typical delivery delay</td></tr>
+            <tr><td class="fda-k">Purchase side</td><td><b>Place Order</b> (PO creation month) · <b>Planned Arrival</b> (vendor → warehouse) · Projected Supply · stock with and without the planned POs</td></tr>
+            <tr><td class="fda-k">Status</td><td>OK · Covered by plan (short without, fine with the planned POs) · Shortfall (planned POs arrive too late)</td></tr>
+            <tr><td class="fda-k">Scenarios</td><td>Save / load / delete named scenarios (per company and item); SAP data is re-read on load</td></tr>
+            <tr><td class="fda-k">Generate</td><td><b>PR</b> or <b>PO</b> per row or for the ticked rows — preview first, posted only on <b>Confirm</b>. PO price comes from the SAP price list</td></tr>
+          </tbody></table>
         </div>
       </div>
 
@@ -13006,44 +13076,54 @@ setInterval(() => {
         </div>
         <div class="fda-sec"><h4>Suggestion Rules</h4>
           <table><thead><tr><th>Signal</th><th>Condition</th><th>Suggested Action</th></tr></thead><tbody>
-            <tr><td class="fda-k">Shortage</td><td>Net Gap &gt; 0</td><td>Raise a Purchase Request for at least the gap quantity plus safety stock, using the Procurement agent</td></tr>
-            <tr><td class="fda-k">Surplus</td><td>Net Gap &lt; 0</td><td>Hold or reschedule open POs, and consider promotions to reduce excess stock</td></tr>
-            <tr><td class="fda-k">Overdue PO</td><td>Delivery Date &lt; Today</td><td>Expedite with the vendor and update DocDueDate in SAP if the date has changed</td></tr>
-            <tr><td class="fda-k">Due ≤ 7 days</td><td>0–7 days left</td><td>Plan receiving and warehouse capacity, and confirm the shipment</td></tr>
-            <tr><td class="fda-k">Advance Required</td><td>PO has a down payment % set but nothing paid</td><td>Ask Finance to post the A/P Down Payment so delivery isn't delayed</td></tr>
-            <tr><td class="fda-k">Long lead time</td><td>Lead Days &gt; 30</td><td>Order earlier, using <code>Reorder Point = Avg daily demand × Lead days + Safety stock</code></td></tr>
-            <tr><td class="fda-k">Growing demand</td><td>Growth &gt; +5%</td><td>Raise safety stock and place POs ahead of time</td></tr>
-            <tr><td class="fda-k">Declining demand</td><td>Growth &lt; −5%</td><td>Reduce order quantities and review slow-moving stock</td></tr>
-            <tr><td class="fda-k">Stable demand</td><td>Growth within ±5%</td><td>Keep the current replenishment policy and monitor monthly</td></tr>
+            <tr><td class="fda-k">Order now</td><td>A planned PO's order-by date has passed</td><td>Create the PR/PO today and ask the vendor for expedited delivery</td></tr>
+            <tr><td class="fda-k">Stockout / Below safety</td><td>Projected stock &lt; 0 / &lt; safety floor</td><td>Follow the Purchase Plan; expedite open POs</td></tr>
+            <tr><td class="fda-k">Overdue PO</td><td>Promised date &lt; today, PO still open</td><td>Chase the vendor; the plan counts it in the current month</td></tr>
+            <tr><td class="fda-k">Demand break</td><td>Last 2 months &lt; 40% or &gt; 250% of the 6 before</td><td>Confirm with sales before ordering (phase-out, lost/new customer, data not entered)</td></tr>
+            <tr><td class="fda-k">Stock, no open orders</td><td>A warehouse holds stock that nothing needs</td><td>Transfer it to the warehouse with the demand before buying more</td></tr>
+            <tr><td class="fda-k">Committed ≠ open SO</td><td>Difference in the Committed check</td><td>Transfer requests or production orders reserve stock too</td></tr>
+            <tr><td class="fda-k">Growing / declining demand</td><td>Growth &gt; +5% / &lt; −5%</td><td>Raise / lower safety stock and order quantities</td></tr>
           </tbody></table>
+          <p style="margin-top:8px;color:#556b82">Every status chip and suggestion on the dashboard can be clicked: the <b>Why is this shown?</b> pop-up gives the rule, the values used, the calculation and the SAP source.</p>
         </div>
         <div class="fda-sec"><h4>How Reliable Is the Forecast?</h4>
           <table><thead><tr><th>Best-model MAPE</th><th>Rating</th><th>Guidance</th></tr></thead><tbody>
             <tr><td>&lt; 10%</td><td><span class="fda-tag t-pos">Highly accurate</span></td><td>Safe to use directly for purchase planning</td></tr>
-            <tr><td>10 – 20%</td><td><span class="fda-tag t-pos">Good</span></td><td>Use it, with a modest safety-stock buffer</td></tr>
-            <tr><td>20 – 50%</td><td><span class="fda-tag t-crit">Reasonable</span></td><td>Treat it as directional and confirm with the sales team</td></tr>
-            <tr><td>&gt; 50%</td><td><span class="fda-tag t-neg">Inaccurate</span></td><td>Demand is erratic or sparse, so use min/max planning instead</td></tr>
+            <tr><td>10 – 20%</td><td><span class="fda-tag t-pos">Good</span></td><td>Use it with a modest safety-stock buffer</td></tr>
+            <tr><td>20 – 50%</td><td><span class="fda-tag t-crit">Reasonable</span></td><td>Directional — confirm with the sales team</td></tr>
+            <tr><td>&gt; 50%</td><td><span class="fda-tag t-neg">Inaccurate</span></td><td>Erratic or sparse demand — plan from booked orders / min-max</td></tr>
           </tbody></table>
-          <p style="margin-top:8px;color:#556b82">Tip: use 24–36 months of history so the Seasonal model can detect yearly patterns.</p>
+          <p style="margin-top:8px;color:#556b82">Longer history is not always better: if the item sold little in early years, 24 months often beats 36.</p>
         </div>
       </div>
 
       <!-- GENERAL -->
       <div data-p="general" style="display:none">
         <div class="fda-sec"><h4>Purpose</h4>
-          <p>One screen for demand and supply planning per item: open orders, purchase pipeline, advance payments, supply/demand gaps and a statistical demand forecast, all read live from SAP Business One (HANA ODBC when available, otherwise the Service Layer).</p>
+          <p>One screen for demand and supply planning per item: SAP stock position, open orders, purchase pipeline with real vendor lead times, a statistical demand forecast, a purchase plan with Create PR, a month-by-month planning report and a what-if simulator — all read live from SAP Business One (DB Direct when available).</p>
+        </div>
+        <div class="fda-sec"><h4>Tabs</h4>
+          <table><tbody>
+            <tr><td class="fda-k">📊 Overview</td><td>Open SO/PO, lead time, advances, overdue deliveries, upcoming deliveries</td></tr>
+            <tr><td class="fda-k">🗂 Order Matrix</td><td>Open SO vs PO by month; click a value for the documents</td></tr>
+            <tr><td class="fda-k">🏭 Purchase Tracking</td><td>Open POs with expected arrival + vendor delivery performance</td></tr>
+            <tr><td class="fda-k">⚖ Supply vs Demand</td><td>SAP current position + booked outlook (no forecast)</td></tr>
+            <tr><td class="fda-k">🔮 Standard Forecast</td><td>9 models, Reorder Plan, Purchase Plan with Create PR</td></tr>
+            <tr><td class="fda-k">📋 Planning Report</td><td>Monthly report, SO/PO lines, by warehouse, lead time history (CSV export)</td></tr>
+            <tr><td class="fda-k">🧪 Simulator</td><td>What-if planning, scenarios, generate PR / PO</td></tr>
+          </tbody></table>
         </div>
         <div class="fda-sec"><h4>How to Use</h4>
           <table><tbody>
-            <tr><td class="fda-k">1. Company &amp; Year</td><td>Pick them in the header. Overview, Order Matrix and Purchase Tracking are filtered by document year</td></tr>
-            <tr><td class="fda-k">2. Item Filter</td><td>Type a code or name, pick it from the list and click <b>Load Item</b>. Every tab then switches to item-level quantities</td></tr>
-            <tr><td class="fda-k">3. Drill down</td><td>Click Order Matrix cells or Purchase Tracking <i>details</i> to see the documents and lines</td></tr>
-            <tr><td class="fda-k">4. Forecast</td><td>On Standard Forecast, choose the horizon and history, then click <b>▶ Run Forecast</b></td></tr>
-            <tr><td class="fda-k">Refresh</td><td>Reloads all tabs from SAP</td></tr>
+            <tr><td class="fda-k">1. Company &amp; Year</td><td>Pick them in the header</td></tr>
+            <tr><td class="fda-k">2. Item</td><td>Type a code or name in Item Filter, pick it and click <b>Load Item</b></td></tr>
+            <tr><td class="fda-k">3. Forecast</td><td>Standard Forecast → choose horizon, history and basis → <b>▶ Run Forecast</b>; the Purchase Plan appears below</td></tr>
+            <tr><td class="fda-k">4. Act</td><td>Create PRs from the Purchase Plan, or test scenarios in the Simulator and generate PR / PO there</td></tr>
+            <tr><td class="fda-k">Help</td><td>Click any KPI tile, any column header (ⓘ Column guide) or any status chip; <b>AI Assistant</b> answers questions about the loaded item</td></tr>
           </tbody></table>
         </div>
-        <div class="fda-sec"><h4>Data Sources</h4>
-          <p><code>ORDR/RDR1</code> Sales Orders · <code>OPOR/POR1</code> Purchase Orders · <code>OINV/INV1</code> A/R Invoices · <code>OPDN/PDN1</code> Goods Receipt PO · <code>ODPO</code> A/P Down Payments · <code>OITM</code> Item master and stock totals</p>
+        <div class="fda-sec"><h4>Data Sources (SAP Business One)</h4>
+          <p><code>OITM/OITW</code> item &amp; stock per warehouse · <code>OWHS</code> warehouses (drop-ship flag) · <code>ORDR/RDR1</code> sales orders · <code>ODLN/DLN1</code> deliveries · <code>OINV/INV1</code> A/R invoices · <code>ORIN/RIN1</code> A/R credit memos · <code>OPRQ/PRQ1</code> purchase requests · <code>OPOR/POR1</code> purchase orders · <code>OPCH/PCH1</code> A/P (reserve) invoices · <code>OPDN/PDN1</code> goods receipts PO · <code>ORPD/RPD1</code> goods returns · <code>OWTQ/WTQ1</code> transfer requests · <code>ODPO</code> A/P down payments</p>
         </div>
       </div>
 
@@ -18113,7 +18193,7 @@ setInterval(() => {
     document.getElementById('fd-rp-body').innerHTML = `<table class="rp"><thead><tr>
         <th class="l">${isSo ? 'Delivery Date' : 'Due Date (promised)'}</th><th class="l">${isSo ? 'SO #' : 'PO #'}</th><th class="l">${isSo ? 'Customer' : 'Vendor'}</th>
         <th class="l">${isSo ? 'Order Date' : 'PO Date'}</th>${isSo ? '' : '<th>Planned Lead</th><th class="l">Expected Arrival</th>'}<th class="l">Warehouse</th>
-        <th>Qty</th><th>${isSo ? 'Delivered' : 'Received'}</th><th>Open</th><th class="l">Status</th></tr></thead><tbody>
+        <th>Qty</th><th>${isSo ? 'Delivered' : 'Received'}</th><th>Open</th><th class="l">Status</th></tr></thead><tbody id="fd-rp-lines-tbody">
       ${shown.map(l => `<tr><td class="l" style="font-weight:600">${_fdEsc(l.dueDate || '—')}</td><td class="l" style="color:#0070F2;font-weight:600">${_fdEsc(l.docNum)}</td>
         <td class="l"><div style="font-weight:600">${_fdEsc(l.cardCode)}</div><div style="font-size:10px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis">${_fdEsc(l.cardName || '')}</div></td>
         <td class="l">${_fdEsc(l.docDate || '')}</td>${isSo ? '' : `<td>${plan(l)}</td><td class="l">${exp(l)}</td>`}<td class="l">${typ(l)}</td>
@@ -18140,7 +18220,7 @@ setInterval(() => {
         <b>Item ${_fdEsc(lt.itemCode)}</b>: item master lead time <b>${info.leadTime ? info.leadTime + ' d' : 'not set'}</b> · planned on POs <b>${o.avgPlannedLeadDays} d</b> ·
         actual <b>${o.avgLeadDays} d</b> (median ${o.medianLeadDays} d, 90% within ${o.p90LeadDays} d, σ ${o.sdLeadDays} d) · on time <b>${o.onTimePct}%</b> ·
         expected lateness <b>+${Math.round(o.expectedLateDays)} d</b> · ${o.receipts} deliveries since ${_fdEsc(lt.from)}</div>` : ''}
-      <table class="rp"><thead><tr><th class="l">Vendor</th><th class="l">History</th><th>Deliveries</th><th>Planned Lead</th><th>Actual Lead</th><th>Median / p90</th><th>σ</th><th>Avg Delay</th><th>Plan Delay</th><th>On Time</th><th class="l">Last</th></tr></thead><tbody>
+      <table class="rp"><thead><tr><th class="l">Vendor</th><th class="l">History</th><th>Deliveries</th><th>Planned Lead</th><th>Actual Lead</th><th>Median / p90</th><th>σ</th><th>Avg Delay</th><th>Plan Delay</th><th>On Time</th><th class="l">Last</th></tr></thead><tbody id="fd-rp-ltv-tbody">
       ${vRows.map(v => `<tr><td class="l"><b>${_fdEsc(v.vendorCode)}</b> <span style="font-size:10px;color:var(--muted)">${_fdEsc(v.vendorName || '')}</span></td><td class="l">${v.scope}</td>
         <td>${v.receipts}</td><td>${v.avgPlannedLeadDays} d</td><td style="font-weight:700">${v.avgLeadDays} d</td><td>${v.medianLeadDays} / ${v.p90LeadDays} d</td><td>${v.sdLeadDays} d</td>
         <td>${dCell(v.avgDelayDays)}</td><td><span ${fdWhy({ tone: v.expectedLateDays >= 1 ? 'warning' : 'success', title: `Plan delay +${Math.round(v.expectedLateDays || 0)} days`, subtitle: `${v.vendorCode} · ${v.scope}`,
@@ -18150,7 +18230,7 @@ setInterval(() => {
           calc: `${Math.round(100 - v.onTimePct)}% × ${v.avgLateDaysWhenLate || 0} days ≈ ${v.expectedLateDays || 0} days`, source: 'OPDN/PDN1 traced to OPOR/POR1 (direct or via A/P reserve invoice)' })} style="font-weight:700;color:#E9730C">+${Math.round(v.expectedLateDays || 0)} d</span></td><td>${v.onTimePct}%</td><td class="l">${_fdEsc(v.lastReceipt || '')}</td></tr>`).join('')}
       </tbody></table>
       ${(lt.receipts || []).length ? `<div style="padding:10px 12px 4px;font-weight:700;color:var(--text)">Every delivery (newest first)</div>
-      <table class="rp"><thead><tr><th class="l">Received</th><th class="l">GRPO #</th><th class="l">Vendor</th><th class="l">PO #</th><th class="l">PO Date</th><th class="l">Promised</th><th>Qty</th><th>Planned Lead</th><th>Actual Lead</th><th>Delay</th></tr></thead><tbody>
+      <table class="rp"><thead><tr><th class="l">Received</th><th class="l">GRPO #</th><th class="l">Vendor</th><th class="l">PO #</th><th class="l">PO Date</th><th class="l">Promised</th><th>Qty</th><th>Planned Lead</th><th>Actual Lead</th><th>Delay</th></tr></thead><tbody id="fd-rp-ltr-tbody">
       ${lt.receipts.map(r => `<tr><td class="l" style="font-weight:600">${_fdEsc(r.receiptDate)}</td><td class="l">${_fdEsc(r.grNum)}</td><td class="l">${_fdEsc(r.vendorCode)}</td>
         <td class="l" style="color:#0070F2">${_fdEsc(r.poNum)}</td><td class="l">${_fdEsc(r.poDate)}</td><td class="l">${_fdEsc(r.promisedDate)}</td><td>${fmtN(r.qty)}</td>
         <td>${r.plannedLeadDays} d</td><td style="font-weight:700">${r.leadDays} d</td><td><span ${fdWhy({ tone: r.delayDays > 7 ? 'error' : r.delayDays > 0 ? 'warning' : 'success',
@@ -18736,7 +18816,7 @@ setInterval(() => {
           <th style="padding:6px 8px;text-align:right;border-left:2px solid var(--border)" title="Month-end stock with your numbers if NO new orders are placed">Stock if no new orders</th>
           <th style="padding:6px 8px;text-align:right" title="Month-end stock including the planned purchase orders">Stock with planned POs</th>
           <th style="padding:6px 8px;text-align:center">Status</th></tr></thead>
-          <tbody>${B.months.map((m, i) => `<tr style="border-bottom:1px solid #F0F0F0">
+          <tbody id="fd-sim-tbody">${B.months.map((m, i) => `<tr style="border-bottom:1px solid #F0F0F0">
             <td style="padding:5px 8px;font-weight:600;white-space:nowrap">${rpYmLbl(m.key)}${i === 0 ? ' <span style="font-size:10px;color:var(--muted)">(rest of month)</span>' : ''}</td>
             <td style="padding:5px 8px;text-align:right;color:var(--muted)">${fmtN(m.booked)}</td>
             <td style="padding:5px 8px;text-align:right;color:var(--muted)">${m.fc == null ? '—' : fmtN(m.fc)}</td>
@@ -18819,22 +18899,22 @@ setInterval(() => {
         <button type="button" onclick="fdSimDelPo(${po.idx})" title="Remove" style="margin-left:auto;border:none;background:none;color:#BB0000;cursor:pointer;font-size:14px">×</button></div>`).join('')
       : `<span style="color:var(--muted)">No what-if POs yet. Add one here, or click <b>+ add</b> in the What-if PO column of any month. Arrival = order date + ${R.LT} days (lead time + vendor lateness).</span>`;
     // tiles
-    const T = (lbl, v, sub, c) => `<div class="fd-kpi" style="border-left-color:${c}"><div class="fd-kpi-label">${lbl}</div><div class="fd-kpi-val" style="font-size:18px;color:${c}">${v}</div><div class="fd-kpi-sub">${sub}</div></div>`;
+    const T = (id, lbl, v, sub, c) => `<div class="fd-kpi" style="border-left-color:${c}"><div class="fd-kpi-label">${lbl}</div><div class="fd-kpi-val" id="${id}" style="font-size:18px;color:${c}">${v}</div><div class="fd-kpi-sub">${sub}</div></div>`;
     const totOrd = R.orders.reduce((t, o) => t + o.qty, 0), lateN = R.orders.filter(o => o.status === 'late').length;
     const tiles = document.getElementById('fd-sim-tiles');
     if (tiles) tiles.innerHTML = [
-      T('Lowest Stock', fmtN(R.low.balance), `${rpYmLbl(R.low.key)} · safety ${fmtN(R.floor)}`, R.low.balance < 0 ? '#BB0000' : R.low.balance < R.floor ? '#B45309' : '#107E3E'),
-      T('Stockout', R.firstOut ? rpYmLbl(R.firstOut.key) : 'None', R.firstOut ? 'first month below zero' : `in the next ${S.h} months`, R.firstOut ? '#BB0000' : '#107E3E'),
-      T('Shortfall with plan', R.rows.some(r => r.planStatus === 'Shortfall') ? rpYmLbl(R.rows.find(r => r.planStatus === 'Shortfall').key) : 'None',
+      T('fd-sim-kpi-low', 'Lowest Stock', fmtN(R.low.balance), `${rpYmLbl(R.low.key)} · safety ${fmtN(R.floor)}`, R.low.balance < 0 ? '#BB0000' : R.low.balance < R.floor ? '#B45309' : '#107E3E'),
+      T('fd-sim-kpi-out', 'Stockout', R.firstOut ? rpYmLbl(R.firstOut.key) : 'None', R.firstOut ? 'first month below zero' : `in the next ${S.h} months`, R.firstOut ? '#BB0000' : '#107E3E'),
+      T('fd-sim-kpi-short', 'Shortfall with plan', R.rows.some(r => r.planStatus === 'Shortfall') ? rpYmLbl(R.rows.find(r => r.planStatus === 'Shortfall').key) : 'None',
         R.rows.some(r => r.planStatus === 'Shortfall') ? 'late orders cannot arrive in time' : 'planned POs avoid every shortfall', R.rows.some(r => r.planStatus === 'Shortfall') ? '#BB0000' : '#107E3E'),
-      T('Orders Needed', String(R.orders.length), totOrd ? `${fmtN(totOrd)} ${uom} in total` : 'none in this scenario', R.orders.length ? '#B45309' : '#107E3E'),
-      T('First Order By', R.orders[0] ? R.orders[0].orderBy : '—', R.orders[0] ? (lateN ? `${lateN} already late` : `arrives ${R.orders[0].delivery}`) : '', lateN ? '#BB0000' : '#6366F1'),
+      T('fd-sim-kpi-orders', 'Orders Needed', String(R.orders.length), totOrd ? `${fmtN(totOrd)} ${uom} in total` : 'none in this scenario', R.orders.length ? '#B45309' : '#107E3E'),
+      T('fd-sim-kpi-first', 'First Order By', R.orders[0] ? R.orders[0].orderBy : '—', R.orders[0] ? (lateN ? `${lateN} already late` : `arrives ${R.orders[0].delivery}`) : '', lateN ? '#BB0000' : '#6366F1'),
     ].join('');
     // orders table
     const ob = document.getElementById('fd-sim-orders');
     if (ob) ob.innerHTML = R.orders.length ? `<table class="rp" style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#F5F6F7">
         <th style="padding:6px 8px;text-align:left"><input type="checkbox" onchange="document.querySelectorAll('.fd-sim-sel').forEach(c => c.checked = this.checked)"></th><th style="padding:6px 8px;text-align:left">#</th><th style="padding:6px 8px;text-align:left">Need By</th><th style="padding:6px 8px;text-align:left">Order By</th>
-        <th style="padding:6px 8px;text-align:right">Qty (${uom})</th><th style="padding:6px 8px;text-align:left">Tentative Delivery</th><th style="padding:6px 8px;text-align:left">From Vendor</th><th style="padding:6px 8px;text-align:left">Arrives At</th><th style="padding:6px 8px;text-align:left">Status</th><th style="padding:6px 8px;text-align:left">Generate in SAP</th></tr></thead><tbody>
+        <th style="padding:6px 8px;text-align:right">Qty (${uom})</th><th style="padding:6px 8px;text-align:left">Tentative Delivery</th><th style="padding:6px 8px;text-align:left">From Vendor</th><th style="padding:6px 8px;text-align:left">Arrives At</th><th style="padding:6px 8px;text-align:left">Status</th><th style="padding:6px 8px;text-align:left">Generate in SAP</th></tr></thead><tbody id="fd-sim-orders-tbody">
       ${R.orders.map((o, n) => `<tr style="border-bottom:1px solid #F0F0F0"><td style="padding:6px 8px"><input type="checkbox" class="fd-sim-sel" data-i="${n}" ${o.status !== 'upcoming' ? 'checked' : ''}></td><td style="padding:6px 8px">${n + 1}</td><td style="padding:6px 8px;font-weight:600">${o.needBy}</td>
         <td style="padding:6px 8px;font-weight:700;color:${o.status === 'late' ? '#BB0000' : o.status === 'now' ? '#B45309' : 'inherit'}">${o.orderBy}</td><td style="padding:6px 8px;text-align:right;font-weight:700">${fmtN(o.qty)}</td>
         <td style="padding:6px 8px">${o.delivery}${o.delivery > o.needBy ? ' <span style="color:#BB0000" title="Arrives after it is needed">⚠ late</span>' : ''}</td><td style="padding:6px 8px">${_fdEsc(S.base.vendor || '—')}</td><td style="padding:6px 8px">${_fdEsc(S.base.whs || '—')}</td>
@@ -33007,6 +33087,14 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
         <label style="font-size:12px;color:#556b82;display:flex;flex-direction:column;gap:4px">Decision note <span style="font-size:11px">(optional — e.g. "customer agreed to pay express", "wait for PO 4512")</span>
           <textarea id="ro-modal-note" rows="2" maxlength="500" style="font:12px/1.4 inherit;padding:6px 8px;border:1px solid #bcc3ca;border-radius:8px;resize:vertical"></textarea></label>
         <label style="font-size:12px;color:#1d2d3e;display:flex;align-items:center;gap:6px"><input type="checkbox" id="ro-modal-ordernote"> Also add a line to the sales order <b>Remarks</b> in SAP (on Approve)</label>
+        <div style="border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px">
+          <label style="font-size:12px;color:#1d2d3e;display:flex;align-items:center;gap:6px"><input type="checkbox" id="ro-modal-msg" onchange="roMsgToggle()"> Send an <b>SAP inbox alert</b> (internal message with a link to the order) to:</label>
+          <div id="ro-modal-msg-box" style="display:none;margin-top:6px">
+            <input id="ro-modal-msg-search" type="text" placeholder="Search SAP user…" oninput="roMsgFilter(this.value)" style="width:100%;padding:5px 8px;font-size:12px;border:1px solid #bcc3ca;border-radius:6px;box-sizing:border-box">
+            <div id="ro-modal-msg-users" style="max-height:120px;overflow:auto;margin-top:4px;font-size:12px"></div>
+            <div id="ro-modal-msg-sel" style="font-size:11px;color:#556b82;margin-top:4px"></div>
+          </div>
+        </div>
         <div id="ro-modal-dryrun" style="display:none;font-size:12px;color:#e76500;background:#fff8d6;border-radius:8px;padding:6px 10px">Dry Run is on — Approve only records the decision here; nothing is written to SAP. Untick <b>Dry Run</b> in the toolbar to create the SAP activity.</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
@@ -33068,7 +33156,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
     ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
      'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
      'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-     'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+     'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar'), ia = document.querySelector('.input-area');
@@ -33625,15 +33713,53 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       decBox.style.color = ok ? '#256f3a' : '#a93e00';
       decBox.innerHTML = `<b>${ok ? '✅ Approved' : '⏸ On hold'}</b> on ${escHtml(String(dec.at || '').slice(0, 16).replace('T', ' '))} by ${escHtml(dec.by || '—')}` +
         (dec.dryRun ? ' · dry run (not written to SAP)' : dec.activityCode ? ` · SAP activity #${escHtml(dec.activityCode)}` : '') +
-        (dec.orderNote ? ' · note added to order' : '') + (dec.note ? `<div style="margin-top:3px;color:#1d2d3e">“${escHtml(dec.note)}”</div>` : '');
+        (dec.orderNote ? ' · note added to order' : '') +
+        (dec.messageSent ? ` · SAP inbox alert sent to ${escHtml((dec.messageTo || []).join(', '))}` : dec.messageError ? ` · inbox alert failed: ${escHtml(dec.messageError)}` : '') + (dec.note ? `<div style="margin-top:3px;color:#1d2d3e">“${escHtml(dec.note)}”</div>` : '');
     } else decBox.style.display = 'none';
     document.getElementById('ro-modal-note').value = '';
-    document.getElementById('ro-modal-ordernote').checked = false;
+    document.getElementById('ro-modal-ordernote').checked = !dry;   // update SO Remarks by default
     document.getElementById('ro-modal-ordernote').disabled = dry;
+    const msgCb = document.getElementById('ro-modal-msg');
+    msgCb.disabled = dry;
+    msgCb.checked = !dry && roMsgSaved().length > 0;   // last used recipients, if any
+    document.getElementById('ro-modal-msg-search').value = '';
+    roMsgToggle();
     document.getElementById('ro-modal-dryrun').style.display = dry ? 'block' : 'none';
     document.getElementById('ro-modal-clear').style.display = dec ? 'inline-block' : 'none';
     document.getElementById('ro-modal-approve').textContent = dry ? '✅ Approve (dry run)' : '✅ Approve Expedite + Alert';
     document.getElementById('ro-action-modal').style.display = 'flex';
+  };
+
+  // ── SAP inbox alert recipients (remembered per browser) ──
+  const roMsgSaved = () => { try { return JSON.parse(localStorage.getItem('ro_notify_users') || '[]'); } catch { return []; } };
+  const roMsgStore = list => { try { localStorage.setItem('ro_notify_users', JSON.stringify(list)); } catch {} };
+  let roSapUsers = null;
+  window.roMsgToggle = async function() {
+    const on = document.getElementById('ro-modal-msg').checked;
+    document.getElementById('ro-modal-msg-box').style.display = on ? 'block' : 'none';
+    if (on && !roSapUsers) {
+      document.getElementById('ro-modal-msg-users').textContent = 'Loading SAP users…';
+      try { const r = await apiGet('/api/rush-orders/sap-users'); if (r.ok === false) throw new Error(r.error || 'failed'); roSapUsers = r.users || []; }
+      catch (e) { document.getElementById('ro-modal-msg-users').textContent = 'Could not load SAP users: ' + e.message; return; }
+    }
+    if (on) roMsgFilter(document.getElementById('ro-modal-msg-search').value);
+  };
+  window.roMsgFilter = function(q) {
+    const box = document.getElementById('ro-modal-msg-users'); if (!roSapUsers) return;
+    const sel = new Set(roMsgSaved()), ql = String(q || '').toLowerCase();
+    const list = roSapUsers.filter(u => !ql || u.code.toLowerCase().includes(ql) || String(u.name).toLowerCase().includes(ql));
+    // selected users first, then matches
+    list.sort((a, b) => (sel.has(b.code) - sel.has(a.code)) || String(a.name).localeCompare(String(b.name)));
+    box.innerHTML = list.slice(0, 60).map(u => `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer">
+        <input type="checkbox" data-u="${escHtml(u.code)}" ${sel.has(u.code) ? 'checked' : ''} onchange="roMsgPick(this)"> ${escHtml(u.name)} <span style="color:#8396a8">(${escHtml(u.code)})</span></label>`).join('')
+      || '<span style="color:#8396a8">No matching user</span>';
+    document.getElementById('ro-modal-msg-sel').textContent = sel.size ? `Selected: ${[...sel].join(', ')}` : 'No recipient selected';
+  };
+  window.roMsgPick = function(cb) {
+    const sel = new Set(roMsgSaved());
+    if (cb.checked) sel.add(cb.dataset.u); else sel.delete(cb.dataset.u);
+    roMsgStore([...sel].slice(0, 10));
+    document.getElementById('ro-modal-msg-sel').textContent = sel.size ? `Selected: ${[...sel].join(', ')}` : 'No recipient selected';
   };
 
   window.roActionDo = async function(action) {
@@ -33642,13 +33768,15 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
     const dryRun = !!document.getElementById('ro-dry-run')?.checked;
     const note = document.getElementById('ro-modal-note').value.trim();
     const addOrderNote = !dryRun && document.getElementById('ro-modal-ordernote').checked;
+    const notifyUsers = !dryRun && document.getElementById('ro-modal-msg').checked ? roMsgSaved() : [];
     const status = document.getElementById('ro-status');
-    if (action === 'APPROVE' && !dryRun && !confirm(`Approve expediting order #${o.DocNum}?\n\nThis creates a High-priority task in SAP linked to the sales order${addOrderNote ? ' and adds a line to its Remarks' : ''}.`)) return;
+    if (action === 'APPROVE' && !dryRun && document.getElementById('ro-modal-msg').checked && !notifyUsers.length) { alert('Pick at least one SAP user for the inbox alert, or untick it.'); return; }
+    if (action === 'APPROVE' && !dryRun && !confirm(`Approve expediting order #${o.DocNum}?\n\nThis will, in SAP:\n• create a High-priority task linked to the sales order${addOrderNote ? '\n• add a line to the sales order Remarks' : ''}${notifyUsers.length ? `\n• send an inbox alert to: ${notifyUsers.join(', ')}` : ''}`)) return;
     document.getElementById('ro-action-modal').style.display = 'none';
     status.textContent = action === 'APPROVE' && !dryRun ? `Creating SAP activity for order #${o.DocNum}…` : `Saving decision for order #${o.DocNum}…`;
     try {
       const r = await apiPost(`/api/rush-orders/approve/${o.DocEntry || o.DocNum}`, {
-        action, note, dryRun, addOrderNote,
+        action, note, dryRun, addOrderNote, notifyUsers,
         order: { DocNum: o.DocNum, CardCode: o.CardCode, CardName: o.CardName,
           DocDueDate: o.DocDueDate, DocTotal: o.DocTotal, _score: o._score, _tag: o._tag, _daysLeft: o._daysLeft },
         aiRec: o._aiRec,
@@ -33659,7 +33787,8 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
       status.textContent = action === 'CLEAR' ? `Decision cleared — order #${o.DocNum}`
         : action === 'HOLD' ? `⏸ Order #${o.DocNum} on hold — saved (no SAP change)${note ? ': ' + note : ''}`
         : d?.dryRun ? `✅ Order #${o.DocNum} approved — dry run, nothing written to SAP`
-        : `✅ Order #${o.DocNum} approved — SAP activity ${d?.activityCode ? '#' + d.activityCode + ' ' : ''}created${d?.orderNote ? ', note added to the order Remarks' : d?.orderNoteError ? ` (Remarks not updated: ${d.orderNoteError})` : ''}`;
+        : `✅ Order #${o.DocNum} approved — SAP activity ${d?.activityCode ? '#' + d.activityCode + ' ' : ''}created${d?.orderNote ? ', note added to the order Remarks' : d?.orderNoteError ? ` (Remarks not updated: ${d.orderNoteError})` : ''}` +
+          (d?.messageSent ? `, inbox alert sent to ${d.messageTo.join(', ')}` : d?.messageError ? ` (inbox alert NOT sent: ${d.messageError})` : '');
       roApplyFilter(true);
     } catch (e) {
       status.textContent = `❌ ${action === 'APPROVE' ? 'Approve' : 'Action'} failed for order #${o.DocNum}: ${e.message}`;
@@ -33769,7 +33898,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -34241,7 +34370,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -35412,7 +35541,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
@@ -35652,7 +35781,7 @@ window.roAskFollowUp = function() {
     const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -36298,7 +36427,7 @@ window.roAskFollowUp = function() {
     const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -37228,7 +37357,7 @@ window.roAskFollowUp = function() {
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
       'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel',
-      'po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+      'po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
       'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
@@ -37659,7 +37788,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -37894,7 +38023,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
       'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -38056,7 +38185,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
       'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -38112,7 +38241,7 @@ window.roAskFollowUp = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
     'product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -38772,7 +38901,7 @@ window.roAskFollowUp = function() {
     'messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel',
@@ -38844,7 +38973,7 @@ window.roAskFollowUp = function() {
     'demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel',
     'dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -39121,7 +39250,7 @@ window.roAskFollowUp = function() {
 
   window.showSQPanel = function(){
     ['messages','product-forecast-panel','rush-orders-panel','soa-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
+     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
      'qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
     const bb=document.querySelector('.bottom-bar'); const ia=document.querySelector('.input-area');
@@ -39672,7 +39801,7 @@ window.roAskFollowUp = function() {
 
   window.showQCompPanel = function(){
     ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
+     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
      'soa-panel','sq-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
     const bb=document.querySelector('.bottom-bar'); const ia=document.querySelector('.input-area');
@@ -39974,7 +40103,7 @@ window.roAskFollowUp = function() {
   const STEP_LABEL = { INIT:'READY', SELECT_CUSTOMER:'CUSTOMER', SELECT_SOURCE:'DOCUMENT', REVIEW_LINES:'REVIEW', DONE:'DONE' };
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel',
@@ -40880,7 +41009,7 @@ window.roAskFollowUp = function() {
   function el(id){ return document.getElementById(id); }
 
   const ALL_PANELS = ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
 
   window.showInPayPanel = function(){
@@ -41187,7 +41316,7 @@ window.roAskFollowUp = function() {
   function el(id){ return document.getElementById(id); }
 
   const ALL_PANELS = ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel'];
 
   window.showOutPayPanel=function(){
@@ -41821,7 +41950,7 @@ window.showUserRightsPanel = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -42080,7 +42209,7 @@ window.showDataSyncPanel = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','financial-dashboard-panel','customer-aging-panel'];
@@ -42108,7 +42237,7 @@ window.showFinancialDashboard = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel',
@@ -42132,7 +42261,7 @@ window.showCustomerAgingDashboard = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel',
@@ -43622,7 +43751,7 @@ window.showPromptActivity = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -43831,7 +43960,7 @@ window.showActivityAgent = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -44942,6 +45071,7 @@ window.almReset = almReset;
 <script src="/agent-about.js"></script>
 <script src="/agent-kpi-help.js"></script>
 <script src="/ocr-workbench.js"></script>
+<script src="/ap-invoice-processing.js"></script>
 <script>
 // ── Launchpad deep link ──────────────────────────────────────
 // /?open=<sidebar item id> | form=<data-form> | prompt=<data-prompt> |

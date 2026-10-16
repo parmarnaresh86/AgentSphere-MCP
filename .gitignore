@@ -35,3 +35,9 @@ exports/
 .env.*
 !.env.example
 hana-gateway-mcp/
+
+# AP Invoice Processing — uploaded / scanned invoice PDFs (runtime data)
+data/apip/
+
+# Redirected stderr logs
+*.log.err

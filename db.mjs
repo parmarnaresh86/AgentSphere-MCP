@@ -679,6 +679,15 @@ export const ALL_PERMISSIONS = [
   { key: 'ai.ocr.gatepass', label: 'Scan Gate Pass',       section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.document', label: 'Scan Document Mode',  section: 'AI Agents', group: 'OCR Processing' },
 
+  // AP Invoice Processing (folder / mail / upload intake → OCR → approval → SAP A/P Invoice)
+  { key: 'apip.dashboard', label: 'Processing Dashboard', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.queue', label: 'Invoice Queue', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.approvals', label: 'Invoice Approval', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.stages', label: 'Approval Stage', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.master', label: 'Approval Master', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.mail', label: 'Mail Configuration', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.settings', label: 'Settings', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+
   // AI Agents : Sales & Pricing
   { key: 'ai.sales.dynamic_pricing',    label: 'Dynamic Pricing',       section: 'AI Agents', group: 'Sales & Pricing' },
   { key: 'ai.sales.order_intelligence', label: 'Order Intelligence',    section: 'AI Agents', group: 'Sales & Pricing' },
@@ -982,6 +991,9 @@ const ONE_TIME_GRANTS = [
   // A/P Service Invoice agent → whoever can already post A/P invoices from GRPOs.
   { name: 'purchase.workflow.apinv_service.v1', trigger: ['purchase.workflow.grpo_to_apinv'],
     keys: ['purchase.workflow.apinv_service'] },
+  // AP Invoice Processing menu → admins and whoever can already scan A/P invoices.
+  { name: 'apip.v1', trigger: ['admin.roles','ai.ocr.apinv'],
+    keys: ['apip.dashboard','apip.queue','apip.approvals','apip.stages','apip.master','apip.mail','apip.settings'] },
   // Home Insights → whoever held any permission in that module, which is
   // exactly who saw those insight cards before they had keys of their own.
   ...['finance', 'sales', 'purchase', 'inventory'].map(area => ({

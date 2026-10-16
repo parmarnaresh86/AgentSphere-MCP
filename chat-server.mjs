@@ -40,6 +40,7 @@ import { createGRPOtoAPInvAgentRouter } from './controllers/grpo-to-apinv-agent.
 import { createScanAPInvAgentRouter } from './controllers/scan-apinv-agent.mjs';
 import { createAPInvServiceAgentRouter } from './controllers/apinv-service-agent.mjs';
 import { createOcrPoScanAgentRouter }   from './controllers/ocr-po-scan-agent.mjs';
+import { createApipRouter, startApipIntake } from './controllers/ap-invoice-processing-agent.mjs';
 import { createOcrExpenseAgentRouter }  from './controllers/ocr-expense-agent.mjs';
 import { createOcrInwardAgentRouter }   from './controllers/ocr-inward-agent.mjs';
 import { createOcrGatePassAgentRouter } from './controllers/ocr-gatepass-agent.mjs';
@@ -2533,9 +2534,14 @@ async function demoReply(message) {
 // ---------------------------------------------------------------------------
 const _azureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
+// Debug trace only — a missing log folder (e.g. no D: drive) must never fail the AI call.
+function _azureDebugLog(line) {
+  try { appendFileSync("d:/akhshat/MCP/debug.log", line); } catch {}
+}
+
 async function azureMessagesCreate(body) {
   const url = `${process.env.AZURE_OPENAI_ENDPOINT}/v1/messages`;
-  appendFileSync("d:/akhshat/MCP/debug.log", `[Azure] POST ${url} model=${body.model}\n`);
+  _azureDebugLog(`[Azure] POST ${url} model=${body.model}\n`);
   const r = await axios.post(url, body, {
     headers: {
       "Authorization": `Bearer ${process.env.AZURE_OPENAI_API_KEY}`,
@@ -2545,7 +2551,7 @@ async function azureMessagesCreate(body) {
     httpsAgent: _azureHttpsAgent,
     validateStatus: () => true,
   });
-  appendFileSync("d:/akhshat/MCP/debug.log", `[Azure] response ${r.status} ${JSON.stringify(r.data).slice(0,200)}\n`);
+  _azureDebugLog(`[Azure] response ${r.status} ${JSON.stringify(r.data).slice(0,200)}\n`);
   if (r.status < 200 || r.status >= 300) {
     const errBody = r.data?.error || r.data;
     if (r.status === 404 && errBody?.code === "DeploymentNotFound") {
@@ -6852,6 +6858,14 @@ app.use('/api/ocr-gatepass', createOcrGatePassAgentRouter({
 app.use('/api/ocr-document', createOcrDocumentAgentRouter({
   requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, ocrDocumentsRepo, getActiveCompanyId,
 }));
+// ── AP Invoice Processing (folder / mail / upload intake → OCR → approval → SAP A/P Invoice) ──
+// OCR runs on Azure Anthropic (Claude via AZURE_OPENAI_ENDPOINT /v1/messages — reads the PDF natively),
+// whatever the global AI_PROVIDER; falls back to the global provider when Azure isn't configured.
+const APIP_AZURE = !!(process.env.DEMO_MODE !== "true" && process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY);
+const apipDeps = { requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate,
+  AI_PROVIDER: APIP_AZURE ? 'azure' : AI_PROVIDER, USE_AI: APIP_AZURE || USE_AI, cacheRepo, getActiveCompanyId, db };
+app.use('/api/apip', createApipRouter(apipDeps));
+startApipIntake(apipDeps);
 app.use('/api/custom-agents', createCustomAgentsRouter({
   requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, customAgentsRepo, getActiveSap,
   SAP_B1_SCHEMA, executeSQL, isConnected, schemaRepo, getActiveCompanyId, localTablesRepo,

@@ -930,8 +930,9 @@
 .ia-modal.ia-kd button.ia-kd-tab.on{border-bottom-color:#0070F2;color:#0070F2}
 .ia-kd .ia-kd-body{display:flex;flex-direction:column;gap:12px;min-height:260px}
 .ia-kd .ia-kd-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.ia-kd .ia-kd-stat{border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px}
-.ia-kd .ia-kd-stat .l{font-size:11px;color:#64748B}.ia-kd .ia-kd-stat .v{font-size:17px;font-weight:700;margin-top:2px;white-space:nowrap}
+.ia-kd .ia-kd-stat{border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;min-width:0;overflow:hidden}
+.ia-kd .ia-kd-stat .l{font-size:11px;line-height:1.3;color:#64748B}.ia-kd .ia-kd-stat .v{font-size:17px;line-height:1.25;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ia-kd .ia-kd-stat .v.txt{font-size:13px;white-space:normal;overflow-wrap:anywhere}
 .ia-kd .ia-kd-box{border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px}
 .ia-kd .ia-kd-h{font-size:12px;font-weight:700;color:#334155;margin-bottom:6px}
 .ia-kd .ia-kd-formula{font:13px/1.5 ui-monospace,Consolas,monospace;background:#F8FAFC;border-radius:6px;padding:8px 10px}
@@ -1760,7 +1761,7 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
     const tabsHtml = () => [['summary', 'Data summary'], ['calc', 'How it’s calculated'], ['ai', '✦ AI insight']]
       .map(([v, l]) => `<button class="ia-kd-tab ${v === view ? 'on' : ''}" data-v="${v}">${l}</button>`).join('');
     const summaryHtml = () => `
-      ${(d.stats || []).length ? `<div class="ia-kd-stats">${d.stats.map(x => `<div class="ia-kd-stat"><div class="l">${esc(x.label)}</div><div class="v">${fmt(x.value, x.fmt)}</div></div>`).join('')}</div>` : ''}
+      ${(d.stats || []).length ? `<div class="ia-kd-stats">${d.stats.map(x => `<div class="ia-kd-stat"><div class="l">${esc(x.label)}</div><div class="v${typeof x.value === 'string' && !x.fmt ? ' txt' : ''}" title="${esc(String(x.value ?? ''))}">${fmt(x.value, x.fmt)}</div></div>`).join('')}</div>` : ''}
       ${d.chart ? `<div class="ia-kd-box"><div class="ia-kd-h">${esc(d.chart.title || '')}</div><div style="height:220px"><canvas></canvas></div></div>` : ''}
       ${d.table?.rows?.length ? `<div class="ia-kd-box"><div class="ia-kd-h">${esc(d.table.title || 'Contributors')} <span class="ia-m-hint">(${d.table.rows.length})</span></div>
         <div style="overflow:auto;max-height:300px"><table class="ia-grid"><thead><tr>${d.table.columns.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>

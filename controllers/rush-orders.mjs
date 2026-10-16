@@ -452,6 +452,28 @@ async function appendOrderRemark(sap, docEntry, line) {
   }
 }
 
+// Sends an SAP internal message (Messages / Alerts inbox of each recipient),
+// with a clickable link to the sales order. Retries without the link if this
+// Service Layer version rejects MessageDataColumns.
+async function sendSapMessage(sap, users, order, { subject, lines }) {
+  const base = {
+    Subject: String(subject).slice(0, 50),
+    Text: lines.join('\n').slice(0, 4000),
+    RecipientCollection: users.map(u => ({ SendInternal: 'tYES', UserCode: String(u) })),
+  };
+  const withLink = order.DocEntry ? { ...base, MessageDataColumns: [{ ColumnName: 'Sales Order', Link: 'tYES',
+    MessageDataLines: [{ Value: String(order.DocNum), Object: '17', ObjectKey: String(order.DocEntry) }] }] } : null;
+  let lastErr = '';
+  for (const body of withLink ? [withLink, base] : [base]) {
+    try {
+      const r = await sap.post('/Messages', body);
+      return { ok: true, code: r?.Code ?? null, linked: !!body.MessageDataColumns };
+    } catch (e) { lastErr = e.message; }
+  }
+  console.warn('[RushOrders/SAP] Message failed:', lastErr);
+  return { ok: false, error: lastErr };
+}
+
 // ── Report generator ──────────────────────────────────────────────────────────
 function saveReport(orders, cfg, dryRun = false) {
   const ts  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -687,6 +709,27 @@ export function createRushOrderRouter(deps) {
     res.json({ ok: true, config: DEFAULT_CFG });
   });
 
+  // GET /api/rush-orders/sap-users — active SAP users for the inbox-alert recipients
+  // (system/service accounts and locked users are left out).
+  router.get('/sap-users', requireAuth, async (_req, res) => {
+    const SYSTEM = /^(_|b1i$|alertsvc$|workflow$|edsuser$|b1ws|b1if|dtw$)/i;
+    try {
+      let users = null;
+      if (_dbDeps?.isConnected?.()) {
+        try {
+          const { q, t } = dbCtx(_dbDeps);
+          const rows = await _dbDeps.executeSQL(`SELECT ${q('USER_CODE')} AS ${q('code')}, ${q('U_NAME')} AS ${q('name')}, ${q('Locked')} AS ${q('locked')} FROM ${t('OUSR')} ORDER BY ${q('U_NAME')}`);
+          users = rows.filter(r => r.locked !== 'Y').map(r => ({ code: String(r.code), name: r.name || r.code }));
+        } catch (e) { console.warn('[RushOrders] OUSR via DB failed:', e.message); }
+      }
+      if (!users) {
+        const rows = await fetchAllPaginated(getActiveSap(), '/Users', { $select: 'UserCode,UserName,Locked' }, { pageSize: 100, maxItems: 2000 });
+        users = rows.filter(r => r.Locked !== 'tYES').map(r => ({ code: String(r.UserCode), name: r.UserName || r.UserCode }));
+      }
+      res.json({ ok: true, users: users.filter(u => !SYSTEM.test(u.code) && /^[\w.@-]{1,30}$/.test(u.code)) });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
   // GET /api/rush-orders/customer-groups — customer groups for the "Customer tiers" setting.
   router.get('/customer-groups', requireAuth, async (_req, res) => {
     try {
@@ -797,7 +840,8 @@ Write a short markdown insight (max 150 words): 1) the biggest risk, 2) the top 
   //   CLEAR   — removes the saved decision.
   router.post('/approve/:docEntry', requireAuth, async (req, res) => {
     try {
-      const { action = 'APPROVE', order = {}, aiRec, note = '', dryRun = false, addOrderNote = false } = req.body || {};
+      const { action = 'APPROVE', order = {}, aiRec, note = '', dryRun = false, addOrderNote = false, notifyUsers = [] } = req.body || {};
+      const recipients = (Array.isArray(notifyUsers) ? notifyUsers : []).map(String).filter(u => /^[\w.@-]{1,30}$/.test(u)).slice(0, 10);
       const docEntry = Number(req.params.docEntry);
       if (!docEntry) return res.status(400).json({ ok: false, error: 'docEntry required' });
       const by = String(req.user?.username || req.user?.name || req.user?.id || 'user');
@@ -823,6 +867,26 @@ Write a short markdown insight (max 150 words): 1) the biggest risk, 2) the top 
           const r = await appendOrderRemark(sap, docEntry, line);
           decision.orderNote = r.ok;
           if (!r.ok) decision.orderNoteError = r.error;
+        }
+        if (recipients.length) {
+          const rec = aiRec || {};
+          const m = await sendSapMessage(sap, recipients, { DocEntry: docEntry, DocNum: order.DocNum }, {
+            subject: `RUSH ${order._tag || ''} #${order.DocNum} approved`,
+            lines: [
+              `Rush order #${order.DocNum} was approved for expediting by ${by} on ${decision.at.slice(0, 10)}.`,
+              ``,
+              `Customer: ${order.CardName || ''} (${order.CardCode || ''})`,
+              `Due date: ${String(order.DocDueDate || '').slice(0, 10)} | Value: ${Number(order.DocTotal || 0).toFixed(2)}`,
+              `Urgency: ${order._score ?? '?'}/100 ${order._tag || ''} | Recommendation: ${rec.recommendation || '—'} | Stock: ${rec.stockStatus || '—'}`,
+              ...(cleanNote ? [``, `Decision note: ${cleanNote}`] : []),
+              ...(rec.priorityActions?.length ? [``, `Priority actions:`, ...rec.priorityActions.map((a, i) => `${i + 1}. ${a}`)] : []),
+              ``,
+              `SAP activity #${decision.activityCode ?? '—'} (Task, High) is linked to the sales order.`,
+            ],
+          });
+          decision.messageTo = recipients;
+          decision.messageSent = m.ok;
+          if (m.ok) decision.messageCode = m.code; else decision.messageError = m.error;
         }
       }
 
