@@ -1,0 +1,605 @@
+<title>AgentSphere Server Requirements</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: spec-sheet document — sticky section index on the left, single reading column on the right; tables scroll in their own frames */
+:root {
+  --bg: #f6f7f9;
+  --paper: #ffffff;
+  --ink: #17202b;
+  --muted: #566273;
+  --rule: #dde2e9;
+  --accent: #0a62b8;
+  --accent-soft: #e6f0fa;
+  --ok: #1f7a4d;
+  --ok-soft: #e5f4ec;
+  --warn: #9a5b00;
+  --warn-soft: #fbf0dc;
+  --no: #a8322d;
+  --no-soft: #fae6e4;
+  --code-bg: #eef1f5;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --paper: #161d26; --ink: #e4e9f0; --muted: #9aa6b5; --rule: #2a3442;
+    --accent: #6cb1f5; --accent-soft: #15283d; --ok: #6fd3a0; --ok-soft: #13291e;
+    --warn: #f0b860; --warn-soft: #2d2412; --no: #f08f88; --no-soft: #321918; --code-bg: #1d2632;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --paper: #161d26; --ink: #e4e9f0; --muted: #9aa6b5; --rule: #2a3442;
+  --accent: #6cb1f5; --accent-soft: #15283d; --ok: #6fd3a0; --ok-soft: #13291e;
+  --warn: #f0b860; --warn-soft: #2d2412; --no: #f08f88; --no-soft: #321918; --code-bg: #1d2632;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 32px; }
+@media (max-width: 880px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 16px; } nav.toc { position: static !important; max-height: none !important; } }
+
+/* index */
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; max-height: calc(100vh - 40px); overflow-y: auto; font-size: 13.5px; }
+nav.toc .lbl { font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s; }
+nav.toc a { display: flex; gap: 8px; padding: 5px 8px; border-radius: 4px; color: var(--ink); text-decoration: none; }
+nav.toc a span { font-family: var(--mono); color: var(--muted); min-width: 1.6em; }
+nav.toc a:hover, nav.toc a:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+.tools { margin-top: 16px; display: grid; gap: 8px; }
+button.copy { font: 600 13px var(--body); padding: 9px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--paper); cursor: pointer; }
+button.copy:hover { filter: brightness(1.08); }
+button.copy:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+.tools small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+/* document */
+main { background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: clamp(20px, 4vw, 48px); min-width: 0; }
+header.doc { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 8px; }
+.eyebrow { font-family: var(--display); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4.2vw, 40px); line-height: 1.12; margin: 6px 0 10px; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 68ch; margin: 0 0 18px; }
+dl.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 24px; margin: 0; }
+dl.meta div { border-left: 2px solid var(--rule); padding-left: 10px; }
+dl.meta dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+dl.meta dd { margin: 0; font-weight: 500; font-size: 14px; }
+
+section { padding-top: 34px; scroll-margin-top: 16px; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 24px; line-height: 1.2; margin: 0 0 12px; display: flex; gap: 12px; align-items: baseline; text-wrap: balance; }
+h2 .n { font-family: var(--mono); font-size: 15px; color: var(--accent); font-weight: 500; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 17.5px; margin: 24px 0 8px; }
+p, li { max-width: 72ch; }
+ul, ol { padding-left: 1.3em; }
+li + li { margin-top: 4px; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+pre { font-family: var(--mono); font-size: 13px; line-height: 1.55; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; font-size: inherit; }
+
+.tbl { overflow-x: auto; margin: 10px 0 18px; border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--display); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--bg); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.port { font-family: var(--mono); font-weight: 500; white-space: nowrap; color: var(--accent); }
+td:first-child { font-weight: 500; }
+
+.tag { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: .03em; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+.t-req { background: var(--accent-soft); color: var(--accent); }
+.t-opt { background: var(--code-bg); color: var(--muted); }
+.t-ok { background: var(--ok-soft); color: var(--ok); }
+.t-warn { background: var(--warn-soft); color: var(--warn); }
+.t-no { background: var(--no-soft); color: var(--no); }
+
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; max-width: 78ch; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note.ok { border-color: var(--ok); background: var(--ok-soft); }
+.note strong:first-child { display: block; margin-bottom: 2px; }
+
+.verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0 18px; }
+.verdict div { border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; }
+.verdict b { font-family: var(--display); font-size: 16px; }
+.verdict p { margin: 0; font-size: 14px; color: var(--muted); }
+
+.diagram { overflow-x: auto; margin: 10px 0 6px; }
+.diagram svg { display: block; min-width: 720px; width: 100%; height: auto; }
+.diagram text { font-family: var(--body); fill: var(--ink); }
+.diagram .sub { fill: var(--muted); font-size: 11px; }
+.diagram .box { fill: var(--paper); stroke: var(--rule); stroke-width: 1.5; }
+.diagram .boxa { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.diagram .ln { stroke: var(--accent); stroke-width: 1.6; fill: none; }
+.diagram .lnd { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+.diagram .pt { font-family: var(--mono); font-size: 11px; fill: var(--accent); }
+.diagram .ah { fill: var(--accent); }
+.diagram .ahd { fill: var(--muted); }
+
+ol.check { list-style: none; padding: 0; counter-reset: c; display: grid; gap: 6px; }
+ol.check li { counter-increment: c; display: grid; grid-template-columns: 22px 2.2em minmax(0, 1fr); gap: 6px; align-items: baseline; max-width: none; }
+ol.check li::before { content: ""; width: 14px; height: 14px; border: 1.5px solid var(--muted); border-radius: 3px; transform: translateY(2px); }
+ol.check li::after { content: counter(c, decimal-leading-zero); order: -1; display: none; }
+ol.check .k { font-family: var(--mono); color: var(--muted); font-size: 13px; }
+
+footer.doc { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Sections">
+    <div class="lbl">Contents</div>
+    <ol>
+      <li><a href="#overview"><span>1</span>Architecture</a></li>
+      <li><a href="#hardware"><span>2</span>Server hardware</a></li>
+      <li><a href="#os"><span>3</span>Windows Server</a></li>
+      <li><a href="#software"><span>4</span>Software &amp; Node.js</a></li>
+      <li><a href="#sap"><span>5</span>SAP B1, Service Layer, HANA</a></li>
+      <li><a href="#ports"><span>6</span>Ports &amp; firewall</a></li>
+      <li><a href="#ssl"><span>7</span>SSL / HTTPS</a></li>
+      <li><a href="#database"><span>8</span>SQLite vs PostgreSQL</a></li>
+      <li><a href="#docker"><span>9</span>Docker deployment</a></li>
+      <li><a href="#inputs"><span>10</span>What the customer provides</a></li>
+      <li><a href="#clients"><span>11</span>User PCs</a></li>
+      <li><a href="#checklist"><span>12</span>Install checklist</a></li>
+      <li><a href="#changes"><span>13</span>Changes from old docs</a></li>
+    </ol>
+    <div class="tools">
+      <button class="copy" id="copyAll" type="button">Copy document text</button>
+      <small id="copyMsg">Copies the whole document as plain text for e-mail or Word.</small>
+    </div>
+  </nav>
+
+  <main id="doc">
+    <header class="doc">
+      <div class="eyebrow">Silver Touch Technologies · Deployment specification</div>
+      <h1>AgentSphere AI for SAP Business One: System &amp; Server Requirements</h1>
+      <p class="lede">What the customer's IT team needs to prepare before installing AgentSphere AI on premise for 5–10 users: server sizing, software, SAP and HANA access, firewall ports, SSL, database choice and an optional Docker setup.</p>
+      <dl class="meta">
+        <div><dt>Version</dt><dd>2.0</dd></div>
+        <div><dt>Date</dt><dd>19 October 2026</dd></div>
+        <div><dt>Sizing basis</dt><dd>5–10 users, 1–3 SAP companies</dd></div>
+        <div><dt>Default deployment</dt><dd>Windows Server, Windows Service</dd></div>
+      </dl>
+    </header>
+
+    <!-- 1 -->
+    <section id="overview">
+      <h2><span class="n">1</span>Architecture</h2>
+      <p>AgentSphere runs as one Node.js application on a Windows server inside the customer network. Users open it in a browser. It reads and posts SAP documents through the SAP Business One <strong>Service Layer</strong>. It can also read the HANA database directly, read-only, for analytics. AI features call the chosen AI provider over the internet.</p>
+      <div class="diagram" role="img" aria-label="Browsers connect to the AgentSphere app server on ports 3000 or 3443. The app server connects to the SAP Service Layer on port 50000 and optionally to HANA SQL on port 30041 or 30015, and to internet services on port 443, 993 and 587.">
+        <svg viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahd" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="10" y="80" width="150" height="76" rx="6"/>
+          <text x="85" y="112" text-anchor="middle" font-weight="600" font-size="14">User browsers</text>
+          <text class="sub" x="85" y="132" text-anchor="middle">Chrome / Edge, LAN or VPN</text>
+
+          <rect class="boxa" x="250" y="50" width="230" height="136" rx="6"/>
+          <text x="365" y="78" text-anchor="middle" font-weight="600" font-size="14">AgentSphere app server</text>
+          <text class="sub" x="365" y="98" text-anchor="middle">Windows Server · service "AgentSphere AI"</text>
+          <text class="sub" x="365" y="120" text-anchor="middle">Node.js web app + MCP tool server</text>
+          <text class="sub" x="365" y="140" text-anchor="middle">hanny.db (SQLite) · data\ uploads</text>
+          <text class="sub" x="365" y="160" text-anchor="middle">no SAP data stored</text>
+
+          <rect class="box" x="580" y="20" width="170" height="78" rx="6"/>
+          <text x="665" y="48" text-anchor="middle" font-weight="600" font-size="14">SAP B1 on HANA</text>
+          <text class="sub" x="665" y="68" text-anchor="middle">Service Layer · HANA DB</text>
+          <text class="sub" x="665" y="86" text-anchor="middle">(Linux server)</text>
+
+          <rect class="box" x="580" y="140" width="170" height="90" rx="6"/>
+          <text x="665" y="168" text-anchor="middle" font-weight="600" font-size="14">Internet services</text>
+          <text class="sub" x="665" y="188" text-anchor="middle">AI provider · GSTIN API</text>
+          <text class="sub" x="665" y="206" text-anchor="middle">Mail server (IMAP / SMTP)</text>
+
+          <line class="ln" x1="160" y1="118" x2="246" y2="118" marker-end="url(#a)"/>
+          <text class="pt" x="203" y="108" text-anchor="middle">3000 / 3443</text>
+
+          <path class="ln" d="M480 80 L576 50" marker-end="url(#a)"/>
+          <text class="pt" x="520" y="52" text-anchor="middle">50000</text>
+          <path class="lnd" d="M480 100 L576 80" marker-end="url(#ad)"/>
+          <text class="pt" x="532" y="104" text-anchor="middle">30041 / 30015</text>
+
+          <path class="ln" d="M480 160 L576 185" marker-end="url(#a)"/>
+          <text class="pt" x="526" y="192" text-anchor="middle">443 · 993 · 587</text>
+        </svg>
+      </div>
+      <p style="font-size:13px;color:var(--muted)">Solid line: required. Dashed line: optional (direct read-only HANA access).</p>
+      <ul>
+        <li>The web UI, the APIs and the SAP tool server run in one Windows Service. The tool server is a child process over stdio and needs no extra port.</li>
+        <li>All SAP postings go through the Service Layer. Direct HANA access only runs <code>SELECT</code> statements.</li>
+        <li>The legacy Python FastAPI app in the project (port 8000) is <strong>not</strong> needed in production.</li>
+      </ul>
+    </section>
+
+    <!-- 2 -->
+    <section id="hardware">
+      <h2><span class="n">2</span>Application server hardware</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Resource</th><th>Minimum</th><th>Recommended for 5–10 users</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>CPU</td><td>2 vCPU</td><td><strong>4 vCPU</strong>, x64, 2.4 GHz or faster</td><td>Forecasting and analytics agents use CPU heavily while they run</td></tr>
+          <tr><td>RAM</td><td>8 GB</td><td><strong>16 GB</strong></td><td>The app uses 1–3 GB when it loads large item and document lists from SAP</td></tr>
+          <tr><td>System disk (C:)</td><td>80 GB</td><td><strong>120 GB SSD</strong></td><td>Keep at least 20% free. A full C: drive stops the app from saving data</td></tr>
+          <tr><td>App / data disk</td><td>—</td><td><strong>100 GB SSD (D:)</strong></td><td>App is about 2 GB. Grows with uploaded PDFs, the app database and logs</td></tr>
+          <tr><td>Network</td><td>100 Mbps</td><td><strong>1 Gbps</strong>, same data centre as SAP</td><td>Latency to the SAP server under 5 ms gives the best response times</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><strong>Placement</strong>A virtual machine is fine (Hyper-V, VMware, Azure, AWS). Do not install AgentSphere on the SAP HANA server itself. Install the app on the data drive, for example <code>D:\AgentSphere</code>, and clean up old logs and processed PDFs regularly.</div>
+    </section>
+
+    <!-- 3 -->
+    <section id="os">
+      <h2><span class="n">3</span>Windows Server</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Item</th><th>Requirement</th></tr></thead>
+        <tbody>
+          <tr><td>Operating system</td><td><strong>Windows Server 2022 Standard</strong> (recommended), or 2019 / 2025 Standard, 64-bit, fully patched</td></tr>
+          <tr><td>Edition</td><td>Desktop Experience (with GUI). The installer creates desktop shortcuts and opens a browser</td></tr>
+          <tr><td>PowerShell / .NET</td><td>PowerShell 5.1 and .NET Framework 4.7.2 or later (both built in from Server 2019)</td></tr>
+          <tr><td>Rights</td><td>Local <strong>Administrator</strong> for installation, Windows Service registration and the firewall rule</td></tr>
+          <tr><td>Time</td><td>Correct time zone (IST for India) and NTP time sync. Document dates and forecasts depend on it</td></tr>
+          <tr><td>Antivirus</td><td>Exclude the install folder (<code>node_modules</code>, <code>hanny.db*</code>, <code>data\</code>) from real-time scanning</td></tr>
+          <tr><td>Licensing</td><td>Windows Server licence and CALs per the customer's Microsoft agreement. Users work in a browser, so <strong>no RDS CALs</strong> are needed</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 4 -->
+    <section id="software">
+      <h2><span class="n">4</span>Software to install</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Software</th><th>Version</th><th>Status</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Node.js LTS (x64), includes npm</td><td><strong>22.x LTS</strong> recommended, 24.x supported, <strong>minimum 20.x</strong></td><td><span class="tag t-req">Required</span></td><td>Runs the application. <strong>Node 18 does not work</strong>: the SQLite driver (better-sqlite3 v12) needs Node 20 or later</td></tr>
+          <tr><td>Microsoft Visual C++ Redistributable 2015–2022 (x64)</td><td>Latest</td><td><span class="tag t-req">Required</span></td><td>Needed by the native modules (SQLite driver, chart rendering for Excel exports)</td></tr>
+          <tr><td>Google Chrome or Microsoft Edge</td><td>Latest</td><td><span class="tag t-req">Required</span></td><td>Admin access and testing on the server</td></tr>
+          <tr><td>OpenSSL (or the copy bundled with Git for Windows)</td><td>3.x</td><td><span class="tag t-req">For SSL</span></td><td>Converts the customer's PFX certificate into the PEM files the app reads</td></tr>
+          <tr><td>Git for Windows</td><td>2.40 or later</td><td><span class="tag t-opt">Optional</span></td><td>Pulling updates. ZIP-based updates also work</td></tr>
+          <tr><td>Visual Studio 2022 Build Tools ("Desktop development with C++") and Python 3.12</td><td>—</td><td><span class="tag t-opt">Only if needed</span></td><td>Only when <code>npm install</code> cannot download prebuilt native binaries and has to compile them</td></tr>
+          <tr><td>HANA Studio or DBeaver</td><td>—</td><td><span class="tag t-opt">Optional</span></td><td>Lets the DBA test the HANA read-only user and port</td></tr>
+          <tr><td>Claude Desktop</td><td>Latest</td><td><span class="tag t-opt">Optional</span></td><td>Use AgentSphere's SAP tools from Claude Desktop</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Installed automatically by the installer</h3>
+      <p><code>install.bat</code> runs <code>npm install</code> and <code>npm run build</code>. This installs: express, @modelcontextprotocol/sdk, @anthropic-ai/sdk, axios, better-sqlite3, hdb (HANA driver), mssql, exceljs, chart.js, chartjs-node-canvas, imap, mailparser, nodemailer, multer, pdf-parse, node-windows, dotenv, typescript and ts-node. No manual action is needed.</p>
+      <div class="note warn"><strong>Internet during installation</strong><code>npm install</code> downloads from <code>registry.npmjs.org</code>, <code>github.com</code> and <code>objects.githubusercontent.com</code>. If the server has no internet, build the package on a connected PC with the same Node.js version and copy the whole folder, including <code>node_modules</code>.</div>
+      <p><strong>Not required:</strong> Python (only for the legacy FastAPI app), IIS, pm2, Docker, or SQL Server on the app server.</p>
+    </section>
+
+    <!-- 5 -->
+    <section id="sap">
+      <h2><span class="n">5</span>SAP Business One, Service Layer and HANA</h2>
+      <h3>5.1 SAP Business One and Service Layer</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Item</th><th>Requirement</th></tr></thead>
+        <tbody>
+          <tr><td>SAP B1 version</td><td><strong>SAP Business One 10.0, version for SAP HANA</strong>. FP 2208 or later recommended. The SQL Server version also works, but the HANA analytic views are then not available and the app uses the Service Layer instead</td></tr>
+          <tr><td>Service Layer</td><td>Installed and running on the SAP HANA server, including the Service Layer load balancer</td></tr>
+          <tr><td>Service Layer URL</td><td><code>https://&lt;hana-server&gt;:50000/b1s/v1</code> (or <code>/b1s/v2</code>). Must be reachable from the app server</td></tr>
+          <tr><td>Analytics service</td><td><code>https://&lt;hana-server&gt;:50000/b1s/sml.svc</code>. Needs the SAP B1 <strong>Analytics Platform</strong> installed and the company <strong>initialized for analytics</strong></td></tr>
+          <tr><td>Session timeout</td><td>The default 30 minutes works because the app logs in again automatically. 60 minutes is recommended</td></tr>
+          <tr><td>SAP user</td><td>One <strong>dedicated integration user</strong> per company, for example <code>AGENTSPHERE</code>. Do not use <code>manager</code> in production</td></tr>
+          <tr><td>SAP licence</td><td>A licence type that covers the documents being posted (Professional, or the matching Limited licence). Confirm with the SAP partner</td></tr>
+          <tr><td>Authorizations</td><td>Full rights for the documents the agents create: purchase request, quotation and order; GRPO; A/P invoice and credit memo; sales quotation and order; delivery; A/R invoice and credit memo; incoming and outgoing payments; business partner master. Read rights on items, reports and master data</td></tr>
+          <tr><td>Company databases</td><td>List every company database to connect. Several companies are supported and users can switch between them</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>5.2 Direct HANA access (optional)</h3>
+      <p>Used for the DB SQL chat mode, Analytics V2, batch/serial/bin picking and financial reports.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Item</th><th>Requirement</th></tr></thead>
+        <tbody>
+          <tr><td>HANA version</td><td>SAP HANA 2.0 SPS05 or later</td></tr>
+          <tr><td>SQL port</td><td>Tenant database port <code>3&lt;NN&gt;41</code>, usually <strong>30041</strong> for instance 00 (multi-tenant HANA 2.0). Older single-container systems use <strong>30015</strong>. Confirm the exact port with the HANA administrator</td></tr>
+          <tr><td>HANA user</td><td>Dedicated <strong>read-only</strong> user, for example <code>AGENTSPHERE_RO</code>, with <code>SELECT</code> on each company schema and on <code>_SYS_BIC</code> (calculation views used by the financial reports)</td></tr>
+          <tr><td>Password storage</td><td>Stored encrypted (AES-256-GCM) in the app database. The installer generates the encryption key</td></tr>
+        </tbody>
+      </table></div>
+      <h3>5.3 SAP on SQL Server instead</h3>
+      <p>SQL Server 2017 or later, TCP port <strong>1433</strong> (or the named-instance port), and a SQL login with <code>db_datareader</code> on the company database.</p>
+    </section>
+
+    <!-- 6 -->
+    <section id="ports">
+      <h2><span class="n">6</span>Ports and firewall</h2>
+      <h3>6.1 Inbound to the AgentSphere server</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Port</th><th>Protocol</th><th>Allow from</th><th>Purpose</th><th>Who opens it</th></tr></thead>
+        <tbody>
+          <tr><td class="port">3000</td><td>TCP / HTTP</td><td>User LAN and VPN subnets</td><td>Web application</td><td>Installer opens it automatically</td></tr>
+          <tr><td class="port">3443</td><td>TCP / HTTPS</td><td>User LAN and VPN subnets</td><td>Web application over SSL</td><td>Open manually when SSL is enabled</td></tr>
+          <tr><td class="port">3389</td><td>TCP / RDP</td><td>Admin PCs only</td><td>Server administration</td><td>Customer IT</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note warn"><strong>No direct internet exposure</strong>Do not publish ports 3000 or 3443 to the internet. Remote users should come in over <strong>VPN</strong>, or through a reverse proxy (IIS ARR, nginx or Azure Application Gateway) on port 443 with a public certificate.</div>
+
+      <h3>6.2 Outbound from the AgentSphere server</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Port</th><th>Destination</th><th>Purpose</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="port">50000</td><td>SAP HANA server (Service Layer, HTTPS)</td><td>All SAP reads and postings, analytics service</td><td><span class="tag t-req">Required</span></td></tr>
+          <tr><td class="port">30041 / 30015</td><td>SAP HANA tenant database</td><td>Direct read-only SQL (see 5.2)</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td class="port">1433</td><td>SQL Server (SAP on SQL Server only)</td><td>Direct read-only SQL</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td class="port">443</td><td><code>api.anthropic.com</code></td><td>Claude AI (default provider), invoice OCR</td><td><span class="tag t-req">If AI used</span></td></tr>
+          <tr><td class="port">443</td><td><code>*.openai.azure.com</code>, <code>*.services.ai.azure.com</code></td><td>Azure GPT-4o or Claude on Azure</td><td><span class="tag t-opt">If Azure chosen</span></td></tr>
+          <tr><td class="port">443</td><td><code>www.gstinapi.in</code></td><td>Supplier GSTIN check</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td class="port">993</td><td>Mail server, for example <code>imap.gmail.com</code> or <code>outlook.office365.com</code></td><td>Mail PO → Sales Order (IMAP over SSL)</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td class="port">587 / 465</td><td>Mail server (SMTP)</td><td>Acknowledgement and MRP e-mails</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td class="port">443</td><td><code>registry.npmjs.org</code>, <code>github.com</code>, <code>objects.githubusercontent.com</code>, <code>nodejs.org</code></td><td>Installation and updates</td><td><span class="tag t-warn">Install time</span></td></tr>
+          <tr><td class="port">443</td><td><code>sql-gateway-mcp-server.onrender.com</code> (WebSocket)</td><td>ChatGPT SQL gateway connector</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td class="port">445</td><td>File server (SMB)</td><td>Network folder for automatic invoice OCR intake</td><td><span class="tag t-opt">Optional</span></td></tr>
+        </tbody>
+      </table></div>
+      <p>If the network requires an HTTP proxy, give us its address. Node.js does not pick up the Windows proxy settings by itself, so it has to be configured for the app.</p>
+    </section>
+
+    <!-- 7 -->
+    <section id="ssl">
+      <h2><span class="n">7</span>SSL / HTTPS</h2>
+      <h3>7.1 Users → AgentSphere</h3>
+      <p>The app always serves HTTP on port <strong>3000</strong>. It also serves HTTPS on port <strong>3443</strong> automatically when these two files exist in the install folder:</p>
+<pre><code>certs\localhost-key.pem     private key (PEM, no password)
+certs\localhost-cert.pem    certificate plus intermediate chain (PEM)</code></pre>
+      <p>Keep these file names even when the certificate is issued for a real server name.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Certificate option</th><th>When to use</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Internal CA (Active Directory Certificate Services)</td><td><span class="tag t-ok">Recommended</span> for LAN use</td><td>Subject / SAN must contain the name users type, for example <code>agentsphere.company.local</code>, and the IP if users use it. Domain PCs trust it automatically</td></tr>
+          <tr><td>Public certificate (DigiCert, Sectigo, Let's Encrypt)</td><td>Access through a public DNS name</td><td>Usually installed on the reverse proxy on port 443</td></tr>
+          <tr><td>Self-signed</td><td><span class="tag t-no">Testing only</span></td><td>Browsers show a security warning</td></tr>
+        </tbody>
+      </table></div>
+      <p>Converting a PFX file from IT:</p>
+<pre><code>openssl pkcs12 -in agentsphere.pfx -nocerts -nodes -out certs\localhost-key.pem
+openssl pkcs12 -in agentsphere.pfx -clcerts -nokeys -out certs\localhost-cert.pem</code></pre>
+      <p>Then add a firewall rule for TCP 3443, restart the <strong>AgentSphere AI</strong> service, and open <code>https://&lt;server-name&gt;:3443</code>. To force HTTPS, remove the port 3000 firewall rule once 3443 works. The app does not redirect HTTP to HTTPS by itself.</p>
+
+      <h3>7.2 AgentSphere → SAP Service Layer</h3>
+      <p>The Service Layer runs on HTTPS port 50000 and often uses a self-signed certificate. The installer sets <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> so the connection works anyway.</p>
+      <div class="note warn"><strong>Recommended for production</strong>That setting turns off certificate checks for <em>all</em> outbound HTTPS from the app, including the AI provider. Instead, install a CA-signed certificate on the Service Layer, or save the SAP certificate as <code>certs\sap-ca.pem</code>. Then set the system environment variable <code>NODE_EXTRA_CA_CERTS</code> to that file and set <code>NODE_TLS_REJECT_UNAUTHORIZED=1</code>.</div>
+    </section>
+
+    <!-- 8 -->
+    <section id="database">
+      <h2><span class="n">8</span>App database: SQLite or PostgreSQL</h2>
+      <div class="verdict">
+        <div><span class="tag t-ok">Use now</span><b>SQLite (hanny.db)</b><p>Built in. No database server, licence or port. Enough for 5–10 users.</p></div>
+        <div><span class="tag t-warn">Suggestion only</span><b>PostgreSQL 16 / 17</b><p>Only for more than about 25–30 users, high availability, or a policy that requires a managed database server.</p></div>
+      </div>
+      <h3>8.1 SQLite (current)</h3>
+      <ul>
+        <li>Created by the installer, runs in WAL mode, stored as <code>hanny.db</code> in the install folder.</li>
+        <li>Holds app users, sessions, SAP connection profiles, encrypted passwords, mail settings, prompt history, AI credit usage, the invoice OCR queue and local tables.</li>
+        <li><strong>SAP business data is not stored here.</strong> SAP stays the system of record.</li>
+      </ul>
+      <p><strong>Backup (required):</strong> back up <code>hanny.db</code> and <code>hanny.db-wal</code> every day. Either stop the service for a moment, or take an online copy with <code>sqlite3 hanny.db ".backup D:\Backup\hanny.db"</code>. Also back up <code>.env</code>, <code>certs\</code> and <code>data\</code>. Keep 14–30 days. <code>restore-db.bat</code> restores the database from an earlier install folder.</p>
+
+      <h3>8.2 PostgreSQL (if ever needed)</h3>
+      <ul>
+        <li><strong>Development work:</strong> the app uses the synchronous SQLite API in about <strong>316 places across 17 files</strong>. All of them must be rewritten for the PostgreSQL driver, and a data migration script written. It is not a setting that can be switched.</li>
+        <li><strong>Infrastructure:</strong> PostgreSQL 16 or 17 (Windows or a Linux VM), 2 vCPU, 4–8 GB RAM, 50 GB SSD. Inbound TCP <strong>5432</strong> from the app server only, a dedicated <code>agentsphere</code> user, and scheduled backups with <code>pg_dump</code> or pgBackRest.</li>
+      </ul>
+      <div class="note ok"><strong>Recommendation</strong>Keep SQLite for this 5–10 user rollout. Review the choice if the user count or a high-availability requirement changes.</div>
+    </section>
+
+    <!-- 9 -->
+    <section id="docker">
+      <h2><span class="n">9</span>Docker deployment</h2>
+      <p>Docker is <strong>not required</strong>. The standard install is a Windows Service. Use this section only if the customer's policy is to run applications in containers.</p>
+
+      <h3>9.1 Where Docker can run</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Host</th><th>Verdict</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>Linux VM: Ubuntu 22.04 / 24.04 LTS or RHEL 9</td><td><span class="tag t-ok">Recommended</span></td><td>Docker Engine runs natively. Linux images for Node.js are standard and well supported</td></tr>
+          <tr><td>Windows Server 2019 / 2022 with Docker</td><td><span class="tag t-no">Not supported</span></td><td>Windows Server runs only Windows containers in production. Linux containers need Docker Desktop / WSL2, which is not licensed or supported for production servers</td></tr>
+          <tr><td>Azure Container Apps, AWS ECS, Kubernetes</td><td><span class="tag t-warn">Possible</span></td><td>Needs persistent storage for the SQLite file and a private network path to the SAP server on port 50000</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>9.2 Docker host requirements</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Item</th><th>Requirement</th></tr></thead>
+        <tbody>
+          <tr><td>Server size</td><td>4 vCPU, 16 GB RAM, 40 GB OS disk plus 100 GB data disk (SSD)</td></tr>
+          <tr><td>Operating system</td><td>Ubuntu Server 24.04 LTS (recommended), 22.04 LTS or RHEL 9</td></tr>
+          <tr><td>Docker</td><td>Docker Engine 27.x or later, Docker Compose plugin v2</td></tr>
+          <tr><td>Base image</td><td><code>node:22-bookworm-slim</code> (Debian, glibc). Do not use Alpine: the native SQLite and chart modules need extra build steps on it</td></tr>
+          <tr><td>Image registry</td><td>Private registry (Azure Container Registry, Harbor, GitLab) or an offline <code>docker save</code> / <code>docker load</code> tar file</td></tr>
+          <tr><td>Time zone</td><td><code>TZ=Asia/Kolkata</code> in the container, otherwise dates follow UTC</td></tr>
+          <tr><td>DNS</td><td>The container must resolve the SAP server's host name. Add <code>extra_hosts</code> if the name is only in an internal DNS or hosts file</td></tr>
+          <tr><td>Firewall</td><td>Same outbound ports as section 6.2, from the Docker host. Inbound only the published port (443 via a proxy, or 3000/3443)</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>9.3 Persistent volumes</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Mount in container</th><th>Contents</th><th>Back up?</th></tr></thead>
+        <tbody>
+          <tr><td><code>/app/db</code></td><td>App database <code>hanny.db</code> and its <code>-wal</code> / <code>-shm</code> files</td><td><span class="tag t-req">Daily</span></td></tr>
+          <tr><td><code>/app/data</code></td><td>Uploaded PDFs, invoice OCR queue, processed / failed files</td><td><span class="tag t-req">Daily</span></td></tr>
+          <tr><td><code>/app/certs</code></td><td>SSL certificate and key (read-only mount)</td><td><span class="tag t-req">On change</span></td></tr>
+          <tr><td><code>/app/.env</code></td><td>SAP credentials, AI keys (read-only mount or Docker secret)</td><td><span class="tag t-req">On change</span></td></tr>
+          <tr><td><code>/app/logs</code></td><td>Application logs</td><td><span class="tag t-opt">Optional</span></td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>9.4 Changes needed in the project</h3>
+      <p>The project has no Dockerfile today. Running it in Docker needs this development work, estimated at 2–3 days including testing:</p>
+      <ol>
+        <li><strong>Database path setting.</strong> <code>db.mjs</code> always opens <code>hanny.db</code> in the app folder. Add a <code>DB_PATH</code> setting so the database lives on the <code>/app/db</code> volume. Mounting only the single file is not safe, because SQLite writes its <code>-wal</code> and <code>-shm</code> files next to it and they would be lost when the container is replaced.</li>
+        <li><strong>Add <code>Dockerfile</code>, <code>.dockerignore</code> and <code>docker-compose.yml</code></strong> (drafts below).</li>
+        <li><strong>Leave out the Windows-only parts.</strong> <code>node-windows</code>, the <code>.bat</code> / <code>.ps1</code> scripts and the Claude Desktop connector setup are not used in a container. Docker's restart policy replaces the Windows Service.</li>
+        <li><strong>Network folder for OCR intake.</strong> If invoices arrive in a Windows share, mount it on the Docker host (CIFS) and pass it into the container as a volume.</li>
+        <li><strong>Health check.</strong> Docker checks <code>GET /login.html</code> and restarts the container if it stops answering.</li>
+      </ol>
+
+      <h3>9.5 Draft Dockerfile</h3>
+<pre><code># ---- build stage ----
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+RUN apt-get update &amp;&amp; apt-get install -y --no-install-recommends \
+      python3 make g++ libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
+    &amp;&amp; rm -rf /var/lib/apt/lists/*
+COPY package*.json ./
+RUN npm ci --omit=optional
+COPY . .
+RUN npm run build &amp;&amp; npm prune --omit=dev
+
+# ---- runtime stage ----
+FROM node:22-bookworm-slim
+WORKDIR /app
+RUN apt-get update &amp;&amp; apt-get install -y --no-install-recommends \
+      libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 tzdata curl \
+    &amp;&amp; rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production TZ=Asia/Kolkata CHAT_PORT=3000 CHAT_HTTPS_PORT=3443 DB_PATH=/app/db/hanny.db
+COPY --from=build /app /app
+RUN mkdir -p /app/db /app/data /app/logs &amp;&amp; chown -R node:node /app
+USER node
+EXPOSE 3000 3443
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD curl -fs http://localhost:3000/login.html || exit 1
+CMD ["node", "chat-server.mjs"]</code></pre>
+
+      <h3>9.6 Draft docker-compose.yml</h3>
+<pre><code>services:
+  agentsphere:
+    image: registry.company.local/agentsphere:2.0
+    container_name: agentsphere
+    restart: unless-stopped
+    env_file: ./.env
+    environment:
+      TZ: Asia/Kolkata
+      DB_PATH: /app/db/hanny.db
+    ports:
+      - "3000:3000"        # remove once HTTPS is used
+      - "3443:3443"
+    volumes:
+      - ./volumes/db:/app/db
+      - ./volumes/data:/app/data
+      - ./volumes/logs:/app/logs
+      - ./certs:/app/certs:ro
+    # extra_hosts:
+    #   - "hana-server.company.local:192.168.1.10"
+    deploy:
+      resources:
+        limits: { cpus: "4", memory: 8g }</code></pre>
+      <p>Optional: put a reverse proxy container (nginx, Caddy or Traefik) in front on port 443 to handle the SSL certificate. The app container then only needs port 3000 on the internal Docker network.</p>
+
+      <h3>9.7 Docker operating rules</h3>
+      <ul>
+        <li>Run <strong>one container only</strong>. SQLite allows one writing server, so do not scale to several replicas. Several replicas would need PostgreSQL (section 8.2).</li>
+        <li>Update: <code>docker compose pull</code> then <code>docker compose up -d</code>. Data stays on the volumes.</li>
+        <li>Logs: <code>docker compose logs -f agentsphere</code>. Set Docker log rotation (<code>max-size</code> / <code>max-file</code>) so logs cannot fill the disk.</li>
+        <li>Backup: copy <code>volumes/db</code> (use the SQLite <code>.backup</code> command) and <code>volumes/data</code> every day.</li>
+      </ul>
+
+      <h3>9.8 Windows Service or Docker</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Topic</th><th>Windows Service (standard)</th><th>Docker on Linux</th></tr></thead>
+        <tbody>
+          <tr><td>Server</td><td>Windows Server 2019 / 2022</td><td>Ubuntu 24.04 / RHEL 9 VM</td></tr>
+          <tr><td>Installation</td><td>One-click <code>install.bat</code>, ready today</td><td>Needs Dockerfile and DB path change (2–3 days)</td></tr>
+          <tr><td>Updates</td><td><code>update.bat</code></td><td>New image, <code>docker compose up -d</code></td></tr>
+          <tr><td>Skills needed at customer</td><td>Windows admin</td><td>Linux and Docker admin</td></tr>
+          <tr><td>Rollback</td><td>Restore previous folder</td><td>Run the previous image tag</td></tr>
+          <tr><td>Best for</td><td><strong>Most SAP B1 customers</strong></td><td>Customers with a container platform policy</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 10 -->
+    <section id="inputs">
+      <h2><span class="n">10</span>What the customer provides</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Item</th><th>Used for</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Windows local administrator on the app server</td><td>Installation, service, firewall</td><td><span class="tag t-req">Required</span></td></tr>
+          <tr><td>Service Layer URL and company database name(s)</td><td>SAP connection</td><td><span class="tag t-req">Required</span></td></tr>
+          <tr><td>SAP B1 integration user and password, per company</td><td>Service Layer login</td><td><span class="tag t-req">Required</span></td></tr>
+          <tr><td>AI provider: Anthropic API key, or Azure OpenAI endpoint and key</td><td>AI chat, invoice OCR, insights. Without it the app runs in rule-based Standard mode</td><td><span class="tag t-req">Recommended</span></td></tr>
+          <tr><td>SSL certificate (PFX and password) for the server name</td><td>HTTPS</td><td><span class="tag t-req">Recommended</span></td></tr>
+          <tr><td>DNS record, for example <code>agentsphere.company.local</code></td><td>Friendly URL that matches the certificate</td><td><span class="tag t-req">Recommended</span></td></tr>
+          <tr><td>List of users (name, login, role)</td><td>Creating app users</td><td><span class="tag t-req">Required</span></td></tr>
+          <tr><td>HANA read-only user, host, SQL port, schema</td><td>Direct SQL and analytics</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td>Mailbox for Mail PO → SO: IMAP / SMTP server, port, user, app password</td><td>E-mail automation</td><td><span class="tag t-opt">Optional</span></td></tr>
+          <tr><td>GSTIN API key (gstinapi.in)</td><td>Supplier GSTIN validation</td><td><span class="tag t-opt">Optional</span></td></tr>
+        </tbody>
+      </table></div>
+      <div class="note warn"><strong>Security</strong>A new install creates the logins <code>admin</code> and <code>superadmin</code>, both with password <code>admin123</code>. Replace them before go-live. Make the <code>.env</code> file readable by Administrators only, because it holds the SAP password and API keys.</div>
+    </section>
+
+    <!-- 11 -->
+    <section id="clients">
+      <h2><span class="n">11</span>User PCs</h2>
+      <ul>
+        <li>Windows 10 / 11 or macOS with the latest <strong>Chrome or Edge</strong> (Firefox also works).</li>
+        <li>Screen resolution 1366 × 768 minimum, 1920 × 1080 recommended.</li>
+        <li>Network access to the server on port 3000 or 3443 (LAN or VPN). Nothing to install on user PCs.</li>
+        <li>Voice input needs HTTPS and microphone permission in the browser.</li>
+      </ul>
+    </section>
+
+    <!-- 12 -->
+    <section id="checklist">
+      <h2><span class="n">12</span>Installation checklist</h2>
+      <ol class="check">
+        <li><span class="k">01</span><span>Server ready per sections 2–3. Data drive created. Antivirus exclusions set.</span></li>
+        <li><span class="k">02</span><span>Node.js 22 LTS and the Visual C++ Redistributable installed. <code>node -v</code> shows v22.</span></li>
+        <li><span class="k">03</span><span>From the app server, <code>https://&lt;hana-server&gt;:50000/b1s/v1/Login</code> is reachable (port 50000 open).</span></li>
+        <li><span class="k">04</span><span>Optional: HANA SQL port reachable, tested with <code>Test-NetConnection &lt;hana-server&gt; -Port 30041</code>.</span></li>
+        <li><span class="k">05</span><span>Outbound port 443 to the AI provider tested.</span></li>
+        <li><span class="k">06</span><span>Release ZIP copied to <code>D:\AgentSphere</code>. Right-click <code>install.bat</code> and choose Run as administrator.</span></li>
+        <li><span class="k">07</span><span>SAP and AI details entered. The installer's SAP login test passes.</span></li>
+        <li><span class="k">08</span><span>Service "AgentSphere AI" is Running with startup type Automatic. <code>http://&lt;server&gt;:3000</code> opens.</span></li>
+        <li><span class="k">09</span><span>Certificate files in <code>certs\</code>. Port 3443 opened. <code>https://&lt;server-name&gt;:3443</code> works. Port 3000 closed if HTTPS is enforced.</span></li>
+        <li><span class="k">10</span><span>Default <code>admin</code> / <code>superadmin</code> logins replaced. User accounts created.</span></li>
+        <li><span class="k">11</span><span>Daily backup job set up for <code>hanny.db</code>, <code>.env</code>, <code>certs\</code> and <code>data\</code>.</span></li>
+        <li><span class="k">12</span><span><code>diagnose.bat</code> run. Its action plan shows no errors.</span></li>
+      </ol>
+    </section>
+
+    <!-- 13 -->
+    <section id="changes">
+      <h2><span class="n">13</span>Changes from the earlier project documents</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Topic</th><th>Earlier documents said</th><th>Correct now</th></tr></thead>
+        <tbody>
+          <tr><td>Node.js</td><td>Version 18 or later</td><td><strong>20 or later, 22 LTS recommended.</strong> Node 18 fails with the current SQLite driver</td></tr>
+          <tr><td>HTTPS</td><td>Not documented</td><td>Port 3443 with PEM files in <code>certs\</code>. Firewall rule added manually</td></tr>
+          <tr><td>Firewall</td><td>Port 3000 only</td><td>Inbound 3000 and 3443. Full outbound list in section 6.2</td></tr>
+          <tr><td>HANA port</td><td>30015 only</td><td>Depends on the HANA install. Multi-tenant systems usually use 30041</td></tr>
+          <tr><td>SSL to SAP</td><td>Turn certificate checks off</td><td>Trust the SAP certificate with <code>NODE_EXTRA_CA_CERTS</code> and keep checks on</td></tr>
+          <tr><td>Default logins</td><td><code>admin</code> / <code>admin123</code></td><td><code>admin</code> and <code>superadmin</code>, both <code>admin123</code></td></tr>
+          <tr><td>Database</td><td>SQLite only</td><td>SQLite confirmed for 5–10 users. PostgreSQL path described in section 8.2</td></tr>
+          <tr><td>Docker</td><td>Not covered</td><td>Optional Linux-based setup in section 9</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <footer class="doc">AgentSphere AI for SAP Business One · System &amp; Server Requirements v2.0 · Silver Touch Technologies · 19 October 2026</footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('copyAll');
+  var msg = document.getElementById('copyMsg');
+  var doc = document.getElementById('doc');
+  var original = msg.textContent;
+  function done(text) { msg.textContent = text; setTimeout(function () { msg.textContent = original; }, 3000); }
+  function selectDoc() {
+    var r = document.createRange(); r.selectNodeContents(doc);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  btn.addEventListener('click', function () {
+    var text = doc.innerText;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done('Copied. Paste into e-mail or Word.'); })
+        .catch(function () { selectDoc(); done('Document selected. Press Ctrl+C to copy.'); });
+    } else { selectDoc(); done('Document selected. Press Ctrl+C to copy.'); }
+  });
+})();
+</script>
