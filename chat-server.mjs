@@ -6766,6 +6766,36 @@ app.use('/api/workflow/po', createPoWorkflowAgentRouter({ requireAuth, getActive
   }
 })();
 
+// ── Seed direct DB connection (DB SQL mode) from .env HANA_* vars ─────────
+// Creates/updates a db_connections row named after the default company so the
+// DB SQL engine works without adding it by hand under Developer Tools → DB
+// Connection. Activated only when no other direct DB connection is active.
+(function seedEnvDbConnection() {
+  const host = (process.env.HANA_HOST || "").trim();
+  const user = (process.env.HANA_USER || "").trim();
+  const pass = process.env.HANA_PASSWORD || "";
+  if (!host || !user || !pass) return;
+  const company  = process.env.SL_COMPANY || process.env.SAP_B1_COMPANY || "HANA";
+  const name     = process.env.HANA_CONN_NAME || company;
+  const port     = Number(process.env.HANA_PORT) || 30015;
+  const database = (process.env.HANA_TENANT || "").trim() || company;
+  const schema   = (process.env.HANA_SCHEMA || "").trim() || company;
+  const encrypt  = !!process.env.DB_ENCRYPT_KEY;
+  const existing = dbConnRepo.list.all().find(r => r.name === name);
+  let id;
+  if (existing) {
+    dbConnRepo.update(existing.id, name, "hana", host, port, database, schema, existing.query_name || "", user, pass, encrypt);
+    id = existing.id;
+  } else {
+    id = dbConnRepo.create(name, "hana", host, port, database, schema, "", user, pass, encrypt).lastInsertRowid;
+  }
+  console.log(`[DBCONN] Synced HANA connection from .env: ${name} (${host}:${port}, schema ${schema})`);
+  if (!dbConnRepo.getActive()) {
+    dbConnRepo.activate(id);
+    console.log(`[DBCONN] Activated HANA connection from .env: ${name}`);
+  }
+})();
+
 // ── Load mail config from DB into process.env on startup ──────────────────
 (function seedMailConfig() {
   const cfg = mailConfigRepo.get();

@@ -45,13 +45,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "
     # Files and folders to include
     $include = @(
         'install.bat','install.ps1','Start.bat','Stop.bat','Status.bat','build-release.bat','restore-db.bat',
+        'One-Click-Install.bat','one-click-install.ps1','Restart.bat','.env.example',
         'service-install.mjs','service-uninstall.mjs',
         'chat-server.mjs','nlp-engine.mjs','db.mjs','db-connector.mjs','mail-po.mjs',
         'company-context.mjs','reports-engine.mjs','analytics-v2.mjs','query-templates.mjs',
         'check-sml-views.mjs','package.json','package-lock.json','tsconfig.json',
         'README.md','PROJECT_GUIDE.md'
     )
-    $includeDirs = @('controllers','src','dist','public','data')
+    $includeDirs = @('controllers','lib','scripts','src','dist','public','data')
 
     # Exclude patterns
     $excludeFiles = @('*.log','*.db','*.db-shm','*.db-wal','CLAUDE.md',
