@@ -487,7 +487,7 @@ export function createCustomAgentsRouter(deps) {
   // ── Table Creation: actually create the planned UDT(s) in SAP (admin only) ──
   router.post('/create-tables', requireAuth, async (req, res) => {
     try {
-      if (req.user?.role !== 'admin') return res.status(403).json({ ok: false, error: 'Only an admin can create tables in SAP.' });
+      if (req.user?.role !== 'admin' && req.user?.role !== 'superadmin') return res.status(403).json({ ok: false, error: 'Only an admin can create tables in SAP.' });
       if (!getActiveSap) return res.status(503).json({ ok: false, error: 'SAP connection is not available.' });
       const tables = Array.isArray(req.body?.tables) ? req.body.tables : [];
       if (!tables.length) return res.status(400).json({ ok: false, error: 'No tables to create.' });
@@ -642,7 +642,7 @@ export function createCustomAgentsRouter(deps) {
     if (!live) {
       return res.json({ ok: true, live: false, payload, message: 'Dry-run only — nothing was sent to SAP. Toggle "Go Live" to post for real.' });
     }
-    if (req.user?.role !== 'admin') return res.status(403).json({ ok: false, error: 'Only an admin can post live to SAP.' });
+    if (req.user?.role !== 'admin' && req.user?.role !== 'superadmin') return res.status(403).json({ ok: false, error: 'Only an admin can post live to SAP.' });
     if (!getActiveSap) return res.status(503).json({ ok: false, error: 'SAP connection is not available.' });
 
     const sap = getActiveSap();

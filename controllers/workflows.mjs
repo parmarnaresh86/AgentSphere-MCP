@@ -304,7 +304,7 @@ export function createWorkflowsRouter(deps) {
       if (node?.type === 'approval') {
         const assignTo = node.config?.assignTo;
         const isAssigned = !assignTo || assignTo === req.user?.username || assignTo === req.user?.role;
-        if (!isAssigned && req.user?.role !== 'admin') {
+        if (!isAssigned && req.user?.role !== 'admin' && req.user?.role !== 'superadmin') {
           return res.status(403).json({ ok: false, error: `Only ${assignTo || 'an admin'} can act on this approval.` });
         }
         instance._consumedApproval = node.id;
@@ -324,7 +324,7 @@ export function createWorkflowsRouter(deps) {
 
   router.post('/:key/instances/:id/cancel', requireAuth, (req, res) => {
     try {
-      if (req.user?.role !== 'admin') return res.status(403).json({ ok: false, error: 'Only an admin can cancel a running instance.' });
+      if (req.user?.role !== 'admin' && req.user?.role !== 'superadmin') return res.status(403).json({ ok: false, error: 'Only an admin can cancel a running instance.' });
       let instance = workflowInstancesRepo.getById(Number(req.params.id));
       if (!instance) return res.status(404).json({ ok: false, error: 'Instance not found.' });
       instance.status = 'cancelled';

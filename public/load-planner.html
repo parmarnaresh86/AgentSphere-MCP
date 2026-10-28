@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<script src="/app-locale.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Load Planner — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  if(!t){window.location.replace('/login.html');return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace('/login.html');}}).catch(()=>{});
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--green-bg:#EAF5EE;--red:#BB0000;--red-bg:#FDECEC;--orange:#E9730C;--orange-bg:#FEF3E8;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{height:100%;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);font-size:13px;display:flex;flex-direction:column}
+button,input,select{font-family:inherit}
+
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;flex:none}
+.shell-back{color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.2);white-space:nowrap}
+.shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:#0f4c81;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
+.shell-spacer{flex:1}
+.shell-btn{height:26px;padding:0 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;font-size:11.5px;cursor:pointer}
+.shell-btn:hover{background:rgba(255,255,255,.12)}
+.shell-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-weight:600;white-space:nowrap}
+.shell-badge.loading{background:rgba(233,115,12,.6)}
+.shell-badge.ready{background:rgba(16,126,62,.6)}
+.shell-badge.error{background:rgba(187,0,0,.6)}
+
+.layout{flex:1;display:grid;grid-template-columns:340px minmax(0,1fr);gap:12px;padding:12px;min-height:0}
+aside{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
+main{display:flex;flex-direction:column;gap:12px;min-width:0;overflow:auto}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px}
+.card-h{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.card-h h3{font-size:12.5px;font-weight:700}
+.step{width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.card-b{padding:10px 12px}
+.muted{color:var(--muted)}
+.small{font-size:11.5px}
+
+.inp{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);outline:none;width:100%}
+.inp:focus{border-color:var(--blue);background:var(--white)}
+.btn{height:30px;padding:0 12px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:12px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--blue-mid)}
+.btn.big{height:40px;font-size:14px;width:100%}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.sm{height:26px;padding:0 8px;font-size:11.5px}
+
+.so-list{max-height:300px;overflow:auto;margin-top:8px;border:1px solid var(--border);border-radius:var(--r)}
+.so{display:flex;gap:8px;padding:7px 9px;border-bottom:1px solid var(--border);cursor:pointer;align-items:flex-start}
+.so:last-child{border-bottom:none}
+.so:hover{background:var(--blue-light)}
+.so input{margin-top:2px}
+.so .n{font-weight:600}
+.so .c{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px}
+.notice{padding:8px 10px;border-radius:var(--r);font-size:12px;margin-top:8px;line-height:1.45}
+.notice.warn{background:var(--orange-bg);color:#8a4300}
+.notice.err{background:var(--red-bg);color:var(--red)}
+.notice.info{background:var(--blue-light);color:#0a4a94}
+
+.seg{display:flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.seg button{flex:1;height:32px;border:none;background:var(--white);font-size:11.5px;cursor:pointer;color:var(--text);border-right:1px solid var(--border)}
+.seg button:last-child{border-right:none}
+.seg button.on{background:var(--blue);color:#fff;font-weight:600}
+.fld{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.fld label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.chk{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;cursor:pointer}
+.totals{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.totals div{background:var(--bg);border-radius:var(--r);padding:7px 9px}
+.totals b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
+.totals span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+
+/* viewer */
+.viewer{position:relative;display:flex;flex-direction:column;min-height:460px;height:62vh;flex:none}
+.vbar{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.vbar .sp{flex:1}
+.vbar .seg button{flex:none;height:26px;padding:0 10px}
+.vbar select{height:26px;font-size:12px;border:1px solid var(--border);border-radius:var(--r);padding:0 6px;background:var(--white);max-width:260px}
+.canvas-wrap{position:relative;flex:1;min-height:0;background:linear-gradient(#eef2f6,#dfe5eb);overflow:hidden}
+.canvas-wrap canvas{display:block;width:100%;height:100%}
+.ov{position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:11.5px;line-height:1.55;pointer-events:none;min-width:200px}
+.ov b{font-variant-numeric:tabular-nums}
+.ov .t{font-weight:700;font-size:12.5px;margin-bottom:2px}
+.bar{height:5px;background:#e3e6ea;border-radius:3px;overflow:hidden;margin:2px 0 4px}
+.bar i{display:block;height:100%;background:var(--blue)}
+.bar i.w{background:#7c3aed}
+.legend{position:absolute;top:10px;right:10px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:11px;max-height:55%;overflow:auto;max-width:240px}
+.legend div{display:flex;align-items:center;gap:6px;padding:1px 0;white-space:nowrap}
+.sw{width:11px;height:11px;border-radius:2px;flex:none;border:1px solid rgba(0,0,0,.15)}
+.tip{position:absolute;pointer-events:none;background:#1f2933;color:#fff;font-size:11.5px;padding:6px 8px;border-radius:4px;line-height:1.45;display:none;z-index:5;max-width:260px}
+.empty{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;color:var(--muted);text-align:center;padding:10px 18px;background:rgba(255,255,255,.94);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);max-width:calc(100% - 32px);z-index:2}
+.empty b{color:var(--text);font-size:15px}
+.busy{position:absolute;inset:0;background:rgba(245,246,247,.75);display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;font-weight:600;z-index:6}
+.spin{width:28px;height:28px;border:3px solid #cfd8e3;border-top-color:var(--blue);border-radius:50%;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.play{display:flex;align-items:center;gap:10px;padding:8px 10px;border-top:1px solid var(--border)}
+.play input[type=range]{flex:1}
+.play .lbl{font-size:11.5px;min-width:250px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pbtn{width:32px;height:28px;border-radius:var(--r);border:1px solid var(--border);background:var(--white);cursor:pointer;font-size:13px}
+.pbtn:hover{border-color:var(--blue);color:var(--blue)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.kpi .l{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.kpi .v{font-size:21px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:11px;color:var(--muted);margin-top:1px}
+.kpi.bad .v{color:var(--red)}
+.kpi.good .v{color:var(--green)}
+
+.tabs{display:flex;border-bottom:1px solid var(--border);padding:0 6px;overflow-x:auto}
+.tabs button{border:none;background:none;padding:10px 12px;font-size:12.5px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button.on{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.pane{display:none;padding:10px 12px;overflow:auto;max-height:520px}
+.pane.on{display:block}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{position:sticky;top:0;background:#f2f4f6;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px;border-bottom:1px solid var(--border);white-space:nowrap;z-index:1}
+td{padding:4px 6px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.missing td{background:#fff6ec}
+tr.off td{opacity:.45}
+.cell{width:62px;height:26px;border:1px solid var(--border);border-radius:3px;padding:0 5px;font-size:12px;text-align:right;background:var(--white)}
+.cell.bad{border-color:var(--orange);background:#fff6ec}
+.cell:focus{outline:none;border-color:var(--blue)}
+.it-n{font-weight:600}
+.it-s{font-size:11px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:9px;font-weight:600}
+.chip.good{background:var(--green-bg);color:var(--green)}
+.chip.critical{background:var(--red-bg);color:var(--red)}
+.chip.serious{background:var(--orange-bg);color:#8a4300}
+.chip.info{background:var(--blue-light);color:#0a4a94}
+.check{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f0f0f0;line-height:1.45}
+.ai-md{line-height:1.55;margin-top:10px}
+.ai-md ul{padding-left:18px}
+.ai-md p{margin:6px 0}
+tr.best td{background:var(--green-bg)}
+.hint{font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.45}
+
+@media (max-width:1000px){
+  .layout{grid-template-columns:1fr;overflow:auto}
+  aside,main{overflow:visible}
+  .viewer{height:70vh}
+  .play .lbl{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="shell-bar">
+  <a class="shell-back" href="/" onclick="return goBack()" title="Back">← Back</a>
+  <div class="shell-icon">▦</div>
+  <div>
+    <div class="shell-title">Load Planner</div>
+    <div class="shell-subtitle">AI packing simulation · Sales Order cartons → pallets &amp; 20ft / 40ft / 40ft HC containers</div>
+  </div>
+  <div class="shell-spacer"></div>
+  <button class="shell-btn" id="btn-reset" title="Clear the selected orders, items and simulation">↺ Reset</button>
+  <button class="shell-btn" id="btn-sample" title="Load sample orders with an editable dimension table">Use sample orders</button>
+  <span class="shell-badge" id="status">…</span>
+</div>
+
+<div class="layout">
+  <aside>
+    <div class="card">
+      <div class="card-h"><span class="step">1</span><h3>Sales orders</h3><span class="sp" style="flex:1"></span><span class="muted small" id="so-src"></span></div>
+      <div class="card-b">
+        <div style="display:flex;gap:6px">
+          <input class="inp" id="so-search" placeholder="Customer, SO no. or reference…"/>
+          <button class="btn" id="so-go">Search</button>
+        </div>
+        <div id="so-notice"></div>
+        <div class="so-list" id="so-list"><div class="so muted">Loading open sales orders…</div></div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+          <label class="small muted" style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="so-all"/> Select all</label>
+          <span style="flex:1"></span>
+          <button class="btn primary" id="so-load" disabled>Load items</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><span class="step">2</span><h3>Load into</h3></div>
+      <div class="card-b">
+        <div class="seg" id="mode">
+          <button data-m="container" class="on">Container</button>
+          <button data-m="pallet">Pallets</button>
+          <button data-m="palletised">Pallets → Container</button>
+        </div>
+        <div class="fld" id="f-container">
+          <label>Container</label>
+          <select class="inp" id="container">
+            <option value="AUTO">Auto — let the agent choose</option>
+            <option value="20GP">20ft Standard · 5.89 × 2.35 × 2.39 m · 28.2 t</option>
+            <option value="40GP">40ft Standard · 12.03 × 2.35 × 2.39 m · 26.7 t</option>
+            <option value="40HC" selected>40ft High Cube · 12.03 × 2.35 × 2.69 m · 26.5 t</option>
+          </select>
+        </div>
+        <div class="fld" id="f-pallet" style="display:none">
+          <label>Pallet</label>
+          <select class="inp" id="pallet">
+            <option value="EUR">EUR 1200 × 800 · max 1.80 m · 1500 kg</option>
+            <option value="STD">Standard 1200 × 1000 · max 1.80 m · 1500 kg</option>
+            <option value="US">US 48 × 40 in · max 1.80 m · 1300 kg</option>
+            <optgroup label="Small pallets — stackable 2-high in a container">
+              <option value="HSTD">Half Standard 1000 × 600 · max 1.15 m · 600 kg</option>
+              <option value="HALF">Half EUR 800 × 600 · max 1.15 m · 500 kg</option>
+              <option value="QTR">Quarter EUR 600 × 400 · max 1.00 m · 250 kg</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="fld" id="f-pmaxh" style="display:none">
+          <label>Max pallet height incl. deck (cm)</label>
+          <div style="display:flex;gap:6px">
+            <input class="inp" id="pmaxh" type="number" min="30" max="300" step="1" style="flex:1"/>
+            <button class="btn sm" id="btn-fit2" type="button" title="Height at which two pallets stack inside the chosen container">Fit 2-high</button>
+          </div>
+          <div class="muted" id="pmaxh-hint" style="font-size:11px;margin-top:3px"></div>
+        </div>
+        <label class="chk" id="f-pstack" style="display:none"><input type="checkbox" id="pstack"/> Pallets may be stacked on pallets</label>
+        <div style="margin-top:12px"><button class="btn primary big" id="btn-sim" disabled>▶ Simulate loading</button></div>
+        <div class="muted small" style="margin-top:6px;line-height:1.45">The agent tries up to 45 combinations of carton order, turns and handling of non-stackable cartons, and keeps the plan that uses the fewest spaces and fills them most.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h3>Selected cargo</h3></div>
+      <div class="card-b">
+        <div class="totals">
+          <div><span>Cartons</span><b id="t-ctn">0</b></div>
+          <div><span>Volume</span><b id="t-m3">0 m³</b></div>
+          <div><span>Weight</span><b id="t-kg">0 kg</b></div>
+          <div><span>Missing dims</span><b id="t-miss">0</b></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="card viewer">
+      <div class="vbar">
+        <div class="seg" id="vkind" style="display:none">
+          <button data-k="containers" class="on">Containers</button>
+          <button data-k="pallets">Pallets</button>
+        </div>
+        <button class="pbtn" id="sp-prev" title="Previous">‹</button>
+        <select id="space"></select>
+        <button class="pbtn" id="sp-next" title="Next">›</button>
+        <span class="sp"></span>
+        <div class="seg" id="cam">
+          <button data-v="iso" class="on">3D</button><button data-v="top">Top</button><button data-v="side">Side</button><button data-v="door">Door</button>
+        </div>
+        <label class="small" style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="walls" checked/> Walls</label>
+      </div>
+      <div class="canvas-wrap" id="wrap">
+        <div class="empty" id="empty"><b>No simulation yet</b>Pick sales orders, check the item dimensions, then press <b style="font-size:13px">Simulate loading</b>.</div>
+        <div class="ov" id="ov" style="display:none"></div>
+        <div class="legend" id="legend" style="display:none"></div>
+        <div class="tip" id="tip"></div>
+        <div class="busy" id="busy"><div class="spin"></div><div id="busy-t">Simulating…</div></div>
+      </div>
+      <div class="play">
+        <button class="pbtn" id="p-play" title="Play / pause">▶</button>
+        <button class="pbtn" id="p-reset" title="Empty">⏮</button>
+        <button class="pbtn" id="p-end" title="Full">⏭</button>
+        <input type="range" id="p-step" min="0" max="0" value="0"/>
+        <select id="p-speed" class="small" style="height:26px;border:1px solid var(--border);border-radius:4px">
+          <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+        </select>
+        <div class="lbl" id="p-lbl">—</div>
+      </div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card">
+      <div class="tabs" id="tabs">
+        <button data-t="items" class="on">Items &amp; dimensions</button>
+        <button data-t="seq">Loading sequence</button>
+        <button data-t="unpacked">Not loaded</button>
+        <button data-t="compare">Container options</button>
+        <button data-t="ai">AI load brief</button>
+        <button data-t="tried">Strategies tried</button>
+      </div>
+      <div class="pane on" id="pane-items"><div class="muted">Load sales orders to see their items.</div></div>
+      <div class="pane" id="pane-seq"><div class="muted">Run a simulation first.</div></div>
+      <div class="pane" id="pane-unpacked"><div class="muted">Run a simulation first.</div></div>
+      <div class="pane" id="pane-compare"><div class="muted">Run a simulation first.</div></div>
+      <div class="pane" id="pane-ai"><div class="muted">Run a simulation first.</div></div>
+      <div class="pane" id="pane-tried"><div class="muted">Run a simulation first.</div></div>
+    </div>
+  </main>
+</div>
+
+<script>
+function goBack() {
+  try {
+    if (window.top !== window.self && typeof window.parent.showChatPanel === 'function') { window.parent.showChatPanel(); return false; }
+  } catch {}
+  return true;
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CONTAINERS, PALLETS, stackHeight } from '/load-packer.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (n, d = 0) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const TOKEN = () => localStorage.getItem('hanny_token') || '';
+const COLORS = ['#2a78d6', '#e8833a', '#2fa36b', '#c94f6d', '#8e6bd1', '#d4b13c', '#2aa6b8', '#a3653a', '#5d7fa3', '#7fb33a', '#d46fb7', '#4f5bd5', '#b8463a', '#3a9e8f'];
+
+const S = {
+  source: null, orders: [], selected: new Set(), lines: [],
+  mode: 'container', result: null, compare: null, chosen: null,
+  view: 'containers', idx: 0, step: 0, total: 0, playing: false,
+};
+
+function status(text, cls = '') { const b = $('status'); b.textContent = text; b.className = 'shell-badge ' + cls; }
+
+async function api(path, opts = {}) {
+  const r = await fetch('/api/load-planner' + path, { ...opts,
+    headers: { 'Content-Type': 'application/json', 'x-auth-token': TOKEN() }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 401) { localStorage.removeItem('hanny_token'); location.replace('/login.html'); throw new Error('Session expired'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+
+// ── Saved dimension overrides (per browser) ─────────────────────────────────
+const DIM_KEY = 'load_planner_dims_v1';
+function savedDims() { try { return JSON.parse(localStorage.getItem(DIM_KEY) || '{}'); } catch { return {}; } }
+function saveDims(line) {
+  try {
+    const all = savedDims();
+    all[line.itemCode] = { l: line.l, w: line.w, h: line.h, kg: line.kg, perCarton: line.perCarton, stackable: line.stackable, canTurn: line.canTurn };
+    localStorage.setItem(DIM_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+// ── Sample data ──────────────────────────────────────────────────────────────
+const SAMPLE_ORDERS = [
+  { docEntry: 9001, docNum: 50101, cardName: 'Sunrise Traders LLC', dueDate: '2026-11-04', shipTo: 'Jebel Ali, Dubai', total: 48250, currency: 'USD' },
+  { docEntry: 9002, docNum: 50102, cardName: 'Northwind Home Stores', dueDate: '2026-11-06', shipTo: 'Felixstowe, UK', total: 36120, currency: 'USD' },
+  { docEntry: 9003, docNum: 50103, cardName: 'Bluewave Distributors', dueDate: '2026-11-08', shipTo: 'Port Klang, Malaysia', total: 22870, currency: 'USD' },
+  { docEntry: 9004, docNum: 50104, cardName: 'Apex Office Supplies', dueDate: '2026-11-12', shipTo: 'Hamburg, Germany', total: 17400, currency: 'USD' },
+];
+const SAMPLE_ITEMS = {
+  'FG-1001': { itemName: 'Ceramic Wash Basin',       l: 65,  w: 50, h: 30, kg: 14, perCarton: 1,  stackable: true,  canTurn: false },
+  'FG-2002': { itemName: 'LED Panel Light 600×600',  l: 64,  w: 64, h: 22, kg: 9,  perCarton: 4,  stackable: true,  canTurn: true },
+  'FG-3003': { itemName: 'Mixer Grinder 750W',       l: 48,  w: 32, h: 36, kg: 11, perCarton: 2,  stackable: true,  canTurn: true },
+  'FG-4004': { itemName: 'Tempered Glass Table Top', l: 125, w: 75, h: 12, kg: 28, perCarton: 1,  stackable: false, canTurn: false },
+  'FG-5005': { itemName: 'Cotton Bath Towel',        l: 60,  w: 40, h: 40, kg: 15, perCarton: 24, stackable: true,  canTurn: true },
+  'FG-6006': { itemName: 'Water Heater 25 L',        l: 55,  w: 50, h: 70, kg: 16, perCarton: 1,  stackable: true,  canTurn: false },
+  'FG-7007': { itemName: 'Ergonomic Office Chair',   l: 70,  w: 65, h: 45, kg: 13, perCarton: 1,  stackable: true,  canTurn: true },
+  'FG-8008': { itemName: 'Steel Water Bottle 1 L',   l: 40,  w: 30, h: 28, kg: 9,  perCarton: 24, stackable: true,  canTurn: true },
+};
+const SAMPLE_LINES = {
+  9001: [['FG-1001', 180], ['FG-6006', 90], ['FG-4004', 24]],
+  9002: [['FG-5005', 2400], ['FG-2002', 320], ['FG-8008', 1200]],
+  9003: [['FG-3003', 260], ['FG-1001', 60], ['FG-8008', 720]],
+  9004: [['FG-7007', 110], ['FG-2002', 160]],
+};
+
+function useSample(note) {
+  S.source = 'sample';
+  S.orders = SAMPLE_ORDERS;
+  S.selected = new Set(SAMPLE_ORDERS.map(o => o.docEntry));
+  $('so-src').textContent = 'sample data';
+  $('so-notice').innerHTML = `<div class="notice info">${note || 'Sample orders — edit the dimension table freely to try your own cartons.'}</div>`;
+  renderOrders();
+  loadLines();
+}
+
+// ── Step 1: orders ───────────────────────────────────────────────────────────
+async function loadOrders() {
+  status('Loading…', 'loading');
+  $('so-list').innerHTML = '<div class="so muted">Loading open sales orders…</div>';
+  try {
+    const r = await api('/orders?search=' + encodeURIComponent($('so-search').value.trim()));
+    S.source = 'sap'; S.orders = r.orders; S.selected = new Set();
+    $('so-src').textContent = `${r.orders.length} open${r.truncated ? '+' : ''} in SAP`;
+    $('so-notice').innerHTML = r.orders.length ? '' : '<div class="notice warn">No open sales orders match. Try another search, or use the sample orders.</div>';
+    renderOrders();
+    status('SAP connected', 'ready');
+  } catch (e) {
+    status('No SAP data', 'error');
+    $('so-list').innerHTML = '';
+    $('so-notice').innerHTML = `<div class="notice err">${esc(e.message)}</div><div class="notice info">You can still try the planner with sample orders. <button class="btn sm" id="sample-inline">Use sample orders</button></div>`;
+    $('sample-inline').onclick = () => useSample();
+  }
+}
+
+function renderOrders() {
+  $('so-list').innerHTML = S.orders.map(o => `
+    <label class="so"><input type="checkbox" data-de="${o.docEntry}" ${S.selected.has(o.docEntry) ? 'checked' : ''}/>
+      <div style="min-width:0;flex:1"><div style="display:flex;justify-content:space-between;gap:6px"><span class="n">SO ${esc(o.docNum)}</span><span class="small muted">due ${esc(o.dueDate)}</span></div>
+      <div class="c">${esc(o.cardName)}${o.shipTo ? ' · ' + esc(o.shipTo) : ''}</div></div></label>`).join('') || '<div class="so muted">No orders.</div>';
+  $('so-list').querySelectorAll('input').forEach(cb => cb.onchange = () => {
+    const de = +cb.dataset.de;
+    cb.checked ? S.selected.add(de) : S.selected.delete(de);
+    syncOrderButtons();
+  });
+  syncOrderButtons();
+}
+function syncOrderButtons() {
+  $('so-load').disabled = !S.selected.size;
+  $('so-load').textContent = S.selected.size ? `Load items (${S.selected.size})` : 'Load items';
+  $('so-all').checked = S.orders.length > 0 && S.selected.size === S.orders.length;
+}
+
+async function loadLines() {
+  const des = [...S.selected];
+  if (!des.length) return;
+  status('Loading items…', 'loading');
+  const saved = savedDims();
+  let raw;
+  try {
+    if (S.source === 'sample') {
+      raw = des.flatMap(de => (SAMPLE_LINES[de] || []).map(([code, qty], i) => {
+        const o = SAMPLE_ORDERS.find(x => x.docEntry === de), it = SAMPLE_ITEMS[code];
+        return { docEntry: de, docNum: o.docNum, cardName: o.cardName, lineNum: i, itemCode: code, qty, uom: 'Ea', ...it, hasDims: true };
+      }));
+    } else {
+      const r = await api('/lines', { method: 'POST', body: { docEntries: des } });
+      raw = r.lines;
+      if (!r.unitsKnown) $('so-notice').innerHTML = '<div class="notice warn">SAP length/weight units could not be read — SAP dimensions are taken as cm and kg.</div>';
+    }
+  } catch (e) { status('Error', 'error'); $('so-notice').innerHTML = `<div class="notice err">${esc(e.message)}</div>`; return; }
+
+  const colorOf = new Map();
+  S.lines = raw.map(l => {
+    if (!colorOf.has(l.itemCode)) colorOf.set(l.itemCode, COLORS[colorOf.size % COLORS.length]);
+    const sv = saved[l.itemCode];
+    const base = { stackable: true, canTurn: false, ...l, perCarton: l.perCarton || 1 };
+    // A dimension the user typed earlier wins over SAP only when SAP has none for that item.
+    const merged = sv && (!l.hasDims || S.source === 'sample') ? { ...base, ...sv } : base;
+    return { ...merged, key: `${l.docEntry}-${l.lineNum}`, include: true, color: colorOf.get(l.itemCode) };
+  });
+  renderItems();
+  showTab('items');
+  status(`${S.lines.length} line(s)`, 'ready');
+}
+
+// ── Items & dimension table ─────────────────────────────────────────────────
+const cartonsOf = l => Math.ceil((+l.qty || 0) / Math.max(1, +l.perCarton || 1));
+const hasDims = l => +l.l > 0 && +l.w > 0 && +l.h > 0;
+
+function renderItems() {
+  if (!S.lines.length) { $('pane-items').innerHTML = '<div class="muted">The selected orders have no open item lines.</div>'; updateTotals(); return; }
+  const num = (l, f, step = 'any') => `<input class="cell ${(f !== 'kg' && !(+l[f] > 0)) ? 'bad' : ''}" type="number" min="0" step="${step}" data-k="${l.key}" data-f="${f}" value="${l[f] || ''}"/>`;
+  $('pane-items').innerHTML = `
+    <div class="hint">Carton size and weight come from the SAP Item Master (Sales Data → packaging). Edit any cell — your changes are kept in this browser for next time. Highlighted rows have no carton size and cannot be loaded.
+      <button class="btn sm" id="dims-restore" title="Forget your edits for these items and reload them">Restore default dimensions</button></div>
+    <table><thead><tr>
+      <th></th><th>Order</th><th>Item</th><th class="num">Qty</th><th class="num">Units / ctn</th><th class="num">Cartons</th>
+      <th class="num">L cm</th><th class="num">W cm</th><th class="num">H cm</th><th class="num">kg / ctn</th>
+      <th title="Other cartons may be placed on top">Stackable</th><th title="May be laid on its side or upside down">Can turn over</th>
+    </tr></thead><tbody>
+    ${S.lines.map(l => `<tr class="${!hasDims(l) ? 'missing' : ''} ${!l.include ? 'off' : ''}" data-row="${l.key}">
+      <td><input type="checkbox" data-k="${l.key}" data-f="include" ${l.include ? 'checked' : ''}/></td>
+      <td><div class="it-n">SO ${esc(l.docNum)}</div><div class="it-s">${esc(l.cardName)}</div></td>
+      <td><div style="display:flex;gap:6px;align-items:center"><span class="sw" style="background:${l.color}"></span><div><div class="it-n">${esc(l.itemCode)}</div><div class="it-s">${esc(l.itemName)}</div></div></div></td>
+      <td class="num">${fmt(l.qty, l.qty % 1 ? 2 : 0)} <span class="muted small">${esc(l.uom || '')}</span></td>
+      <td class="num">${num(l, 'perCarton', '1')}</td>
+      <td class="num"><b data-ctn="${l.key}">${fmt(cartonsOf(l))}</b></td>
+      <td class="num">${num(l, 'l')}</td><td class="num">${num(l, 'w')}</td><td class="num">${num(l, 'h')}</td><td class="num">${num(l, 'kg')}</td>
+      <td style="text-align:center"><input type="checkbox" data-k="${l.key}" data-f="stackable" ${l.stackable ? 'checked' : ''}/></td>
+      <td style="text-align:center"><input type="checkbox" data-k="${l.key}" data-f="canTurn" ${l.canTurn ? 'checked' : ''}/></td>
+    </tr>`).join('')}
+    </tbody></table>`;
+  $('dims-restore').onclick = restoreDims;
+  $('pane-items').querySelectorAll('[data-f]').forEach(inp => inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
+    const l = S.lines.find(x => x.key === inp.dataset.k), f = inp.dataset.f;
+    if (inp.type === 'checkbox') l[f] = inp.checked; else l[f] = inp.value === '' ? 0 : +inp.value;
+    if (f !== 'include') {
+      // Same item on other orders shares the carton spec.
+      S.lines.filter(x => x.itemCode === l.itemCode && x !== l).forEach(x => { x[f] = l[f]; });
+      saveDims(l);
+    }
+    if (inp.type === 'checkbox' && f !== 'include') renderItems();
+    else {
+      S.lines.filter(x => x.itemCode === l.itemCode).forEach(x => {
+        const c = document.querySelector(`[data-ctn="${x.key}"]`); if (c) c.textContent = fmt(cartonsOf(x));
+        const row = document.querySelector(`[data-row="${x.key}"]`);
+        if (row) { row.classList.toggle('missing', !hasDims(x)); row.classList.toggle('off', !x.include); }
+        if (x !== l && f !== 'include') { const o = document.querySelector(`[data-k="${x.key}"][data-f="${f}"]`); if (o) o.value = x[f] || ''; }
+      });
+      if (f !== 'kg' && f !== 'include') inp.classList.toggle('bad', !(+l[f] > 0));
+    }
+    updateTotals();
+  }));
+  updateTotals();
+}
+
+function restoreDims() {
+  const codes = new Set(S.lines.map(l => l.itemCode));
+  if (!confirm(`Forget your saved dimension edits for ${codes.size} item(s) and reload them from ${S.source === 'sample' ? 'the sample data' : 'SAP'}?`)) return;
+  try {
+    const all = savedDims();
+    codes.forEach(c => delete all[c]);
+    localStorage.setItem(DIM_KEY, JSON.stringify(all));
+  } catch {}
+  loadLines();
+}
+
+function simItems() {
+  return S.lines.filter(l => l.include && hasDims(l) && cartonsOf(l) > 0).map(l => ({
+    key: l.key, code: l.itemCode, name: l.itemName, ref: `SO ${l.docNum}`, color: l.color,
+    l: +l.l, w: +l.w, h: +l.h, kg: +l.kg || 0, cartons: cartonsOf(l), stackable: !!l.stackable, canTurn: !!l.canTurn,
+  }));
+}
+
+function updateTotals() {
+  const inc = S.lines.filter(l => l.include);
+  const ok = inc.filter(hasDims);
+  $('t-ctn').textContent = fmt(ok.reduce((s, l) => s + cartonsOf(l), 0));
+  $('t-m3').textContent = fmt(ok.reduce((s, l) => s + cartonsOf(l) * l.l * l.w * l.h, 0) / 1e6, 2) + ' m³';
+  $('t-kg').textContent = fmt(ok.reduce((s, l) => s + cartonsOf(l) * (+l.kg || 0), 0)) + ' kg';
+  const miss = inc.length - ok.length;
+  $('t-miss').textContent = miss; $('t-miss').style.color = miss ? 'var(--orange)' : '';
+  $('btn-sim').disabled = !ok.length;
+}
+
+// ── Step 2: mode ─────────────────────────────────────────────────────────────
+$('mode').querySelectorAll('button').forEach(b => b.onclick = () => {
+  S.mode = b.dataset.m;
+  $('mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  $('f-container').style.display = S.mode === 'pallet' ? 'none' : '';
+  $('f-pallet').style.display = S.mode === 'container' ? 'none' : '';
+  $('f-pstack').style.display = S.mode === 'palletised' ? '' : 'none';
+  $('f-pmaxh').style.display = S.mode === 'container' ? 'none' : '';
+  palletHint();
+});
+
+// ── Pallet height: default per pallet type; "Fit 2-high" sizes it to stack in the container ──
+const SMALL_PALLETS = new Set(['HSTD', 'HALF', 'QTR']);
+const containerH = () => { const c = $('container').value; return c === 'AUTO' ? CONTAINERS['20GP'].H : CONTAINERS[c].H; };
+function palletHint() {
+  const h = +$('pmaxh').value || PALLETS[$('pallet').value].maxH, cH = containerH();
+  const fits = Math.floor((cH - 5) / h);
+  $('pmaxh-hint').textContent = S.mode === 'pallet' ? `Loads are built up to ${h} cm.`
+    : `${fits >= 2 ? `✓ ${fits} high` : '✗ only 1 high'} in a ${cH} cm container${$('container').value === 'AUTO' ? ' (Auto: checked against 20ft / 40ft)' : ''}.`;
+}
+$('pallet').addEventListener('change', () => {
+  const p = PALLETS[$('pallet').value];
+  $('pmaxh').value = p.maxH;
+  // small pallets are meant to be stacked in the container
+  if (SMALL_PALLETS.has(p.code)) $('pstack').checked = true;
+  palletHint();
+});
+$('btn-fit2').addEventListener('click', () => { $('pmaxh').value = stackHeight(containerH(), 2); $('pstack').checked = true; palletHint(); });
+$('pmaxh').addEventListener('input', palletHint);
+$('container').addEventListener('change', palletHint);
+$('pmaxh').value = PALLETS[$('pallet').value].maxH;
+
+// ── Packer worker ────────────────────────────────────────────────────────────
+let worker = null, jobId = 0;
+const pending = new Map();
+function runPacker(task, items, opts) {
+  if (!worker) {
+    try {
+      worker = new Worker('/load-packer-worker.js', { type: 'module' });
+      worker.onmessage = e => { const p = pending.get(e.data.id); if (!p) return; pending.delete(e.data.id); e.data.ok ? p.resolve(e.data.data) : p.reject(new Error(e.data.error)); };
+      worker.onerror = () => { worker = false; };
+    } catch { worker = false; }
+  }
+  if (worker) return new Promise((resolve, reject) => { const id = ++jobId; pending.set(id, { resolve, reject }); worker.postMessage({ id, task, items, opts }); });
+  // No module workers in this browser — run on the page.
+  return import('/load-packer.js').then(m => task === 'compare' ? m.compareContainers(items, opts) : m.simulate(items, opts));
+}
+
+function busy(on, text) { $('busy').style.display = on ? 'flex' : 'none'; if (text) $('busy-t').textContent = text; }
+
+async function simulateNow() {
+  const items = simItems();
+  if (!items.length) return;
+  stopPlay();
+  $('btn-sim').disabled = true;
+  busy(true, 'Trying carton orders and turns…');
+  status('Simulating…', 'loading');
+  try {
+    let container = $('container').value;
+    const opts = { mode: S.mode, pallet: $('pallet').value, palletStack: $('pstack').checked, palletMaxH: +$('pmaxh').value || undefined };
+    S.compare = null; S.chosen = null;
+    if (S.mode !== 'pallet') {
+      busy(true, 'Comparing 20ft, 40ft and 40ft HC…');
+      S.compare = await runPacker('compare', items, opts);
+      if (container === 'AUTO') {
+        const ok = S.compare.filter(c => !c.error).sort((a, b) => a.unpacked - b.unpacked || a.containers - b.containers ||
+          (CONTAINERS[a.code].L * CONTAINERS[a.code].H) - (CONTAINERS[b.code].L * CONTAINERS[b.code].H));
+        container = ok[0]?.code || '40HC';
+        S.chosen = container;
+      }
+    }
+    busy(true, 'Building the load plan…');
+    S.result = await runPacker('simulate', items, { ...opts, container });
+    S.items = items;
+    S.view = S.result.containers ? 'containers' : 'pallets';
+    S.idx = 0;
+    $('vkind').style.display = S.result.containers && S.result.pallets ? '' : 'none';
+    $('vkind').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.k === S.view));
+    renderResult();
+    status(`Simulated in ${(S.result.ms / 1000).toFixed(1)} s`, 'ready');
+    showTab('ai');
+    loadAdvice();
+    startPlay(true);
+  } catch (e) {
+    status('Error', 'error');
+    $('empty').style.display = 'flex';
+    $('empty').innerHTML = `<b>Simulation failed</b>${esc(e.message)}`;
+  } finally { busy(false); $('btn-sim').disabled = false; }
+}
+
+// ── 3D scene ─────────────────────────────────────────────────────────────────
+const wrap = $('wrap');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+wrap.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 1, 20000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun, sun.target);
+let world = new THREE.Group(); scene.add(world);
+let wallsGroup = null, boxGroups = [], seqMeshes = [], highlight = null, dims = null;
+
+function resize() {
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(wrap);
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+function canvasTexture(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+// Carton face: light body with darker edges and a tape strip; tinted per item by material colour.
+const cartonTex = canvasTexture(128, 128, (g, w, h) => {
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(w * 0.44, 0, w * 0.12, h);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
+});
+const plankTex = canvasTexture(512, 64, (g, w, h) => {
+  g.fillStyle = '#9a6b3f'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#8d6038' : '#a5744a'; g.fillRect(0, i * 8, w, 7); }
+  g.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 0; i < 8; i++) g.fillRect(0, i * 8 + 7, w, 1);
+});
+plankTex.wrapS = plankTex.wrapT = THREE.RepeatWrapping;
+
+const steel = new THREE.MeshStandardMaterial({ color: 0x2f5d8a, metalness: 0.35, roughness: 0.55 });
+const steelDark = new THREE.MeshStandardMaterial({ color: 0x23384d, metalness: 0.4, roughness: 0.5 });
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x3b72a8, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false });
+const ribMat = new THREE.MeshStandardMaterial({ color: 0x3b72a8, transparent: true, opacity: 0.22, depthWrite: false });
+const doorMat = new THREE.MeshStandardMaterial({ color: 0x2f5d8a, metalness: 0.3, roughness: 0.6, transparent: true, opacity: 0.85 });
+const woodMat = new THREE.MeshStandardMaterial({ color: 0xc89a64, roughness: 0.9 });
+
+const boxMesh = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; };
+
+// Shipping container shell: floor, frame, corrugated walls, roof and open doors at +x.
+function buildContainer(L, W, H) {
+  const g = new THREE.Group(), walls = new THREE.Group(), t = 8;
+  const floorTex = plankTex.clone(); floorTex.needsUpdate = true; floorTex.repeat.set(L / 300, W / 120);
+  const floor = boxMesh(L, 4, W, new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85 }), 0, -2, 0);
+  floor.receiveShadow = true; g.add(floor);
+  g.add(boxMesh(L + 2 * t, 14, W + 2 * t, steelDark, 0, -11, 0));                       // base frame
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    g.add(boxMesh(t, H + 2 * t, t, steel, sx * (L / 2 + t / 2), H / 2, sz * (W / 2 + t / 2)));   // corner posts
+    for (const y of [-t, H + t]) g.add(boxMesh(14, 12, 14, steelDark, sx * (L / 2 + t / 2), y, sz * (W / 2 + t / 2)));   // corner castings
+  }
+  for (const sz of [-1, 1]) g.add(boxMesh(L, t, t, steel, 0, H + t / 2, sz * (W / 2 + t / 2)));   // top side rails
+  for (const sx of [-1, 1]) g.add(boxMesh(t, t, W, steel, sx * (L / 2 + t / 2), H + t / 2, 0));   // top end rails
+  // Side walls with corrugation ribs.
+  const ribs = Math.floor(L / 28);
+  const ribGeo = new THREE.BoxGeometry(12, H, 3);
+  const ribInst = new THREE.InstancedMesh(ribGeo, ribMat, ribs * 2);
+  const m4 = new THREE.Matrix4();
+  for (let i = 0; i < ribs; i++) for (const [k, sz] of [[0, -1], [1, 1]]) {
+    m4.makeTranslation(-L / 2 + 14 + i * 28, H / 2, sz * (W / 2 + 4)); ribInst.setMatrixAt(i * 2 + k, m4);
+  }
+  walls.add(ribInst);
+  for (const sz of [-1, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(L, H), wallMat); p.position.set(0, H / 2, sz * (W / 2 + 2)); walls.add(p); }
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(W, H), wallMat); front.rotation.y = Math.PI / 2; front.position.set(-L / 2 - 2, H / 2, 0); walls.add(front);
+  const fr = Math.floor(W / 28), frInst = new THREE.InstancedMesh(new THREE.BoxGeometry(3, H, 12), ribMat, fr);
+  for (let i = 0; i < fr; i++) { m4.makeTranslation(-L / 2 - 4, H / 2, -W / 2 + 14 + i * 28); frInst.setMatrixAt(i, m4); }
+  walls.add(frInst);
+  const roof = new THREE.Mesh(new THREE.PlaneGeometry(L, W), new THREE.MeshStandardMaterial({ color: 0x3b72a8, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }));
+  roof.rotation.x = -Math.PI / 2; roof.position.set(0, H + 2, 0); walls.add(roof);
+  // Doors, swung open ~110° on their hinges.
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(L / 2 + t, H / 2, side * (W / 2 + t / 2));
+    const leaf = boxMesh(4, H + t, W / 2 + t / 2, doorMat, 0, 0, -side * (W / 4 + t / 4));
+    pivot.add(leaf);
+    for (const f of [0.3, 0.7]) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, H, 10), steelDark);
+      bar.position.set(3, 0, -side * (W / 2 + t / 2) * f); pivot.add(bar);
+    }
+    pivot.rotation.y = side * (110 * Math.PI / 180);
+    walls.add(pivot);
+  }
+  g.add(walls);
+  return { group: g, walls };
+}
+
+// Wooden pallet as one merged geometry: deck top at y = deckH, footprint centred on (0, 0), length along x.
+function palletGeometry(L, W, deckH) {
+  const parts = [], bt = 2.2, boards = 5, bw = W * 0.14, blockH = deckH - 2 * bt;
+  const add = (w, h, d, x, y, z) => { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); parts.push(g); };
+  for (let i = 0; i < boards; i++) add(L, bt, bw, 0, deckH - bt / 2, -W / 2 + bw / 2 + i * (W - bw) / (boards - 1));
+  for (const fx of [-1, 0, 1]) for (const fz of [-1, 0, 1]) add(14, blockH, 12, fx * (L / 2 - 7), bt + blockH / 2, fz * (W / 2 - 6));
+  for (const fz of [-1, 0, 1]) add(L, bt, 12, 0, bt / 2, fz * (W / 2 - 6));
+  return mergeGeometries(parts);
+}
+function buildPallet(L, W, deckH) {
+  const m = new THREE.Mesh(palletGeometry(L, W, deckH), woodMat);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+function clearWorld() {
+  scene.remove(world);
+  world.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  world = new THREE.Group(); scene.add(world);
+  boxGroups = []; seqMeshes = []; highlight = null; wallsGroup = null;
+}
+
+// Boxes in world space: { x, y, z, l, w, h, seq, ...meta } with z already including any base height.
+function addBoxes(boxes, L, W) {
+  const byColor = new Map();
+  for (const b of boxes) { const c = b.color || '#999999'; if (!byColor.has(c)) byColor.set(c, []); byColor.get(c).push(b); }
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+  const gap = 0.6;
+  for (const [color, list] of byColor) {
+    list.sort((a, b) => a.seq - b.seq);
+    const mat = new THREE.MeshStandardMaterial({ color, map: cartonTex, roughness: 0.75 });
+    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((b, i) => {
+      p.set(b.x + b.l / 2 - L / 2, b.z + b.h / 2, b.y + b.w / 2 - W / 2);
+      s.set(Math.max(0.5, b.l - gap), Math.max(0.5, b.h - gap), Math.max(0.5, b.w - gap));
+      mesh.setMatrixAt(i, m4.compose(p, q, s));
+    });
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.userData.list = list; mesh.userData.seqs = list.map(b => b.seq);
+    world.add(mesh); boxGroups.push(mesh); seqMeshes.push(mesh);
+  }
+}
+
+function currentPart() { return S.view === 'containers' ? S.result.containers : S.result.pallets; }
+
+function renderScene() {
+  clearWorld();
+  const part = currentPart(), space = part?.spaces[S.idx];
+  if (!space) { $('empty').style.display = 'flex'; return; }
+  $('empty').style.display = 'none';
+  let L, W, H, boxes;
+  if (S.view === 'containers') {
+    ({ L, W, H } = part.spec);
+    const c = buildContainer(L, W, H); world.add(c.group); wallsGroup = c.walls;
+    if (S.result.mode === 'palletised') {
+      const ps = S.result.pallets.spec;
+      boxes = [];
+      // All pallets in one instanced mesh, in loading order so setStep can reveal them by count.
+      const units = [...space.boxes].sort((a, b) => a.seq - b.seq);
+      const pallets = new THREE.InstancedMesh(palletGeometry(ps.L, ps.W, ps.deckH), woodMat, units.length);
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
+      units.forEach((u, i) => {
+        q.setFromAxisAngle(up, Math.abs(u.l - ps.L) > 0.01 ? Math.PI / 2 : 0);
+        pallets.setMatrixAt(i, m4.compose(new THREE.Vector3(u.x + u.l / 2 - L / 2, u.z, u.y + u.w / 2 - W / 2), q, one));
+      });
+      pallets.castShadow = true; pallets.receiveShadow = true;
+      pallets.userData.seqs = units.map(u => u.seq);
+      world.add(pallets); seqMeshes.push(pallets);
+      for (const u of space.boxes) {
+        const load = S.result.pallets.spaces[u.pallet];
+        const rotated = Math.abs(u.l - ps.L) > 0.01;
+        for (const b of load.boxes) {
+          boxes.push(rotated
+            ? { ...b, x: u.x + b.y, y: u.y + (ps.L - b.x - b.l), z: u.z + ps.deckH + b.z, l: b.w, w: b.l, seq: u.seq, palletNo: u.pallet + 1 }
+            : { ...b, x: u.x + b.x, y: u.y + b.y, z: u.z + ps.deckH + b.z, seq: u.seq, palletNo: u.pallet + 1 });
+        }
+      }
+    } else boxes = space.boxes;
+  } else {
+    const ps = part.spec;
+    L = ps.L; W = ps.W; H = ps.maxH;
+    world.add(buildPallet(L, W, ps.deckH));
+    // Faint outline of the allowed load height.
+    const lim = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L, H - ps.deckH, W)),
+      new THREE.LineBasicMaterial({ color: 0x0070f2, transparent: true, opacity: 0.35 }));
+    lim.position.set(0, ps.deckH + (H - ps.deckH) / 2, 0); world.add(lim);
+    boxes = space.boxes.map(b => ({ ...b, z: b.z + ps.deckH }));
+  }
+  dims = { L, W, H };
+  addBoxes(boxes, L, W);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(L * 3 + 600, W * 6 + 600), new THREE.ShadowMaterial({ opacity: 0.18 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = S.view === 'containers' ? -18 : 0; ground.receiveShadow = true; world.add(ground);
+  highlight = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xffb000 }));
+  highlight.visible = false; world.add(highlight);
+  const span = Math.max(L, W, H);
+  sun.position.set(-span * 0.4, span * 1.2, span * 0.6); sun.target.position.set(0, 0, 0);
+  const sc = sun.shadow.camera; sc.left = -span; sc.right = span; sc.top = span; sc.bottom = -span; sc.far = span * 4; sc.updateProjectionMatrix();
+  if (wallsGroup) wallsGroup.visible = $('walls').checked;
+  S.total = S.view === 'containers' && S.result.mode === 'palletised' ? space.boxes.length : boxes.length;
+  $('p-step').max = S.total;
+  setCamera(document.querySelector('#cam .on')?.dataset.v || 'iso');
+  renderLegend(boxes);
+  setStep(S.total);
+}
+
+function setCamera(v) {
+  if (!dims) return;
+  const { L, W, H } = dims, size = S.view === 'pallets' && S.result ? Math.max(L, W, H) * 2.3 : Math.max(L, W * 1.6, H * 1.6);
+  controls.target.set(0, H * 0.4, 0);
+  const pos = { iso: [size * 0.55, size * 0.5, size * 0.85], top: [0, size * 1.25, 1], side: [0, H * 0.5, size * 1.05], door: [L / 2 + Math.max(W, H) * 2.4, H * 0.8, 0] }[v];
+  camera.position.set(...pos);
+  controls.update();
+}
+
+function setStep(n) {
+  n = Math.max(0, Math.min(S.total, Math.round(n)));
+  S.step = n;
+  $('p-step').value = n;
+  for (const mesh of seqMeshes) {
+    const seqs = mesh.userData.seqs;
+    let lo = 0, hi = seqs.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (seqs[mid] <= n) lo = mid + 1; else hi = mid; }
+    mesh.count = lo;
+  }
+  const space = currentPart()?.spaces[S.idx];
+  const cur = space?.boxes.find(b => b.seq === n);
+  if (cur && highlight && S.playing) {
+    const z = S.view === 'pallets' ? currentPart().spec.deckH : 0;
+    highlight.scale.set(cur.l + 1, cur.h + 1, cur.w + 1);
+    highlight.position.set(cur.x + cur.l / 2 - dims.L / 2, z + cur.z + cur.h / 2, cur.y + cur.w / 2 - dims.W / 2);
+    highlight.visible = true;
+  } else if (highlight) highlight.visible = false;
+  const what = cur ? (cur.pallet != null ? `Pallet ${cur.pallet + 1}` : `${cur.code} · ${cur.name} (${cur.ref})`) : '';
+  $('p-lbl').textContent = n === 0 ? `Empty — ${S.total} step(s) to load` :
+    `Step ${n} / ${S.total}${what ? ' · ' + what : ''}${cur ? ` · ${(cur.x / 100).toFixed(2)} m from front wall` : ''}`;
+  renderOverlay();
+}
+
+// Playback: about 10 s for a full load at 1×.
+let playTimer = null, playAcc = 0;
+function startPlay(fromEmpty) {
+  if (!S.total) return;
+  if (fromEmpty || S.step >= S.total) setStep(0);
+  S.playing = true; $('p-play').textContent = '⏸';
+  let last = performance.now();
+  cancelAnimationFrame(playTimer);
+  const tick = now => {
+    const dt = (now - last) / 1000; last = now;
+    playAcc += dt * Math.max(2, S.total / 10) * (+$('p-speed').value);
+    if (playAcc >= 1) { const k = Math.floor(playAcc); playAcc -= k; setStep(S.step + k); }
+    if (S.step >= S.total) { stopPlay(); setStep(S.total); return; }
+    playTimer = requestAnimationFrame(tick);
+  };
+  playTimer = requestAnimationFrame(tick);
+}
+function stopPlay() { S.playing = false; cancelAnimationFrame(playTimer); $('p-play').textContent = '▶'; if (highlight) highlight.visible = false; }
+
+// ── Overlay, legend, KPIs ───────────────────────────────────────────────────
+function renderOverlay() {
+  const part = currentPart(), space = part?.spaces[S.idx];
+  if (!space) { $('ov').style.display = 'none'; return; }
+  const loaded = space.boxes.filter(b => b.seq <= S.step);
+  const isPal = S.view === 'pallets', spec = part.spec;
+  const cap = spec.L * spec.W * (isPal ? spec.maxH - spec.deckH : spec.H);
+  const vol = loaded.reduce((s, b) => s + b.l * b.w * b.h, 0);
+  const kg = loaded.reduce((s, b) => s + b.kg, 0);
+  const fill = vol / cap * 100, wpct = kg / spec.maxKg * 100;
+  const name = isPal ? `Pallet ${S.idx + 1} · ${spec.name}` : `${spec.name} ${part.spaces.length > 1 ? '#' + (S.idx + 1) : ''}`;
+  $('ov').style.display = 'block';
+  $('ov').innerHTML = `<div class="t">${esc(name)}</div>
+    Volume <b>${fill.toFixed(1)}%</b> · ${(vol / 1e6).toFixed(2)} / ${(cap / 1e6).toFixed(2)} m³
+    <div class="bar"><i style="width:${Math.min(100, fill)}%"></i></div>
+    Weight <b>${fmt(kg)} kg</b> · ${wpct.toFixed(1)}% of ${fmt(spec.maxKg)} kg
+    <div class="bar"><i class="w" style="width:${Math.min(100, wpct)}%"></i></div>
+    ${S.result.mode === 'palletised' && !isPal ? 'Pallets' : 'Cartons'} <b>${loaded.length}</b> / ${space.boxes.length}
+    ${isPal ? ` · load height <b>${space.loadH} cm</b>` : (space.cog && S.step === S.total ? `<br>Centre of gravity <b>${space.cog.x > 0 ? '+' : ''}${space.cog.x}%</b> length · <b>${space.cog.y > 0 ? '+' : ''}${space.cog.y}%</b> width` : '')}`;
+}
+
+function renderLegend(boxes) {
+  const m = new Map();
+  for (const b of boxes) { const k = b.code; if (!m.has(k)) m.set(k, { color: b.color, code: b.code, name: b.name, n: 0 }); m.get(k).n++; }
+  $('legend').style.display = m.size ? 'block' : 'none';
+  $('legend').innerHTML = [...m.values()].map(x => `<div><span class="sw" style="background:${x.color}"></span><b>${esc(x.code)}</b><span class="muted">× ${x.n}</span></div>`).join('');
+}
+
+function renderKpis() {
+  const r = S.result, part = r.containers || r.pallets;
+  const k = (l, v, s, cls = '') => `<div class="kpi ${cls}"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  const notLoaded = (part.unpacked || []).reduce((s, u) => s + u.cartons, 0) + (r.pallets && r.containers ? r.pallets.unpacked.reduce((s, u) => s + u.cartons, 0) : 0);
+  const avgFill = part.spaces.reduce((s, x) => s + x.fillPct, 0) / Math.max(1, part.spaces.length);
+  const kg = part.spaces.reduce((s, x) => s + x.kg, 0);
+  let html = '';
+  if (r.containers) html += k('Containers', r.containers.spaces.length, `${r.containers.spec.name}${S.chosen ? ' · chosen by agent' : ''}`);
+  if (r.pallets) html += k('Pallets', r.pallets.spaces.length, r.pallets.spec.name);
+  html += k('Avg. volume used', avgFill.toFixed(1) + '%', `${fmt(r.totalM3, 2)} m³ of cargo`, avgFill >= 75 ? 'good' : '');
+  html += k('Cargo weight', fmt(kg) + ' kg', `max ${fmt(part.spec.maxKg)} kg per ${r.containers ? 'container' : 'pallet'}`);
+  html += k('Cartons loaded', fmt(r.cartons - notLoaded), `of ${fmt(r.cartons)}`);
+  html += k('Not loaded', fmt(notLoaded), notLoaded ? 'see "Not loaded"' : 'everything fits', notLoaded ? 'bad' : 'good');
+  $('kpis').innerHTML = html;
+}
+
+function renderSpaceSelect() {
+  const part = currentPart();
+  const lbl = S.view === 'containers' ? part.spec.name : 'Pallet';
+  $('space').innerHTML = part.spaces.map((s, i) => `<option value="${i}">${esc(lbl)} ${i + 1} — ${s.fillPct}% · ${fmt(s.kg)} kg</option>`).join('');
+  $('space').value = S.idx;
+}
+
+// ── Result panes ────────────────────────────────────────────────────────────
+function renderSequence() {
+  const part = currentPart(), space = part.spaces[S.idx];
+  // Group consecutive placements of the same item into one instruction.
+  const runs = [];
+  for (const b of space.boxes) {
+    const last = runs[runs.length - 1];
+    if (last && last.key === b.key) { last.n++; last.to = b.seq; last.x2 = Math.max(last.x2, b.x + b.l); last.z2 = Math.max(last.z2, b.z + b.h); last.kg += b.kg; last.zs.add(b.z); }
+    else runs.push({ key: b.key, code: b.code, name: b.name, ref: b.ref, color: b.color, pallet: b.pallet, from: b.seq, to: b.seq, n: 1, x1: b.x, x2: b.x + b.l, z2: b.z + b.h, kg: b.kg, zs: new Set([b.z]), turned: `${b.l}×${b.w}×${b.h}` });
+  }
+  const unit = S.result.mode === 'palletised' && S.view === 'containers' ? 'Pallet' : 'Item';
+  $('pane-seq').innerHTML = `<div class="hint">Load in this order — from the ${S.view === 'containers' ? 'front wall toward the doors' : 'pallet deck upward'}. Each row is a run of identical ${unit === 'Pallet' ? 'pallets' : 'cartons'}. <button class="btn sm" id="csv">Export CSV</button></div>
+  <table><thead><tr><th class="num">Steps</th><th>${unit}</th><th>Order</th><th class="num">Qty</th><th class="num">Placed as (L×W×H cm)</th><th class="num">From → to wall (m)</th><th class="num">Levels</th><th class="num">Top (cm)</th><th class="num">kg</th></tr></thead><tbody>
+  ${runs.map(r => `<tr><td class="num">${r.from}${r.to !== r.from ? '–' + r.to : ''}</td>
+    <td><div style="display:flex;gap:6px;align-items:center">${r.color ? `<span class="sw" style="background:${r.color}"></span>` : ''}<span><b>${esc(r.code)}</b> <span class="muted">${esc(r.name)}</span></span></div></td>
+    <td>${esc(r.ref)}</td><td class="num">${r.n}</td><td class="num">${r.turned}</td><td class="num">${(r.x1 / 100).toFixed(2)} → ${(r.x2 / 100).toFixed(2)}</td>
+    <td class="num">${r.zs.size}</td><td class="num">${fmt(r.z2)}</td><td class="num">${fmt(r.kg)}</td></tr>`).join('')}
+  </tbody></table>`;
+  $('csv').onclick = exportCsv;
+}
+
+function exportCsv() {
+  const part = currentPart();
+  const rows = [['Space', 'Seq', 'Item', 'Name', 'Order', 'X cm', 'Y cm', 'Z cm', 'L cm', 'W cm', 'H cm', 'kg']];
+  part.spaces.forEach((s, i) => s.boxes.forEach(b => rows.push([i + 1, b.seq, b.code, b.name, b.ref, b.x, b.y, b.z, b.l, b.w, b.h, b.kg])));
+  const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `load-plan-${S.view}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+function renderUnpacked() {
+  const r = S.result;
+  const list = [...(r.pallets?.unpacked || []).map(u => ({ ...u, where: 'Pallet' })), ...(r.containers?.unpacked || []).map(u => ({ ...u, where: 'Container' }))];
+  const missing = S.lines.filter(l => l.include && !hasDims(l));
+  $('tabs').querySelector('[data-t="unpacked"]').textContent = `Not loaded (${list.reduce((s, u) => s + u.cartons, 0) + missing.length})`;
+  $('pane-unpacked').innerHTML = !list.length && !missing.length ? '<div class="chip good">Everything was loaded</div>' : `
+    <table><thead><tr><th>Item</th><th>Order</th><th class="num">Cartons</th><th>Stage</th><th>Reason</th></tr></thead><tbody>
+    ${list.map(u => `<tr><td><b>${esc(u.code)}</b> <span class="muted">${esc(u.name)}</span></td><td>${esc(u.ref)}</td><td class="num">${u.cartons}</td><td>${u.where}</td><td>${esc(u.reason)}</td></tr>`).join('')}
+    ${missing.map(l => `<tr><td><b>${esc(l.itemCode)}</b> <span class="muted">${esc(l.itemName)}</span></td><td>SO ${esc(l.docNum)}</td><td class="num">${cartonsOf(l)}</td><td>—</td><td>No carton size — enter L / W / H in Items &amp; dimensions</td></tr>`).join('')}
+    </tbody></table>`;
+}
+
+function renderCompare() {
+  if (!S.compare) { $('pane-compare').innerHTML = '<div class="muted">Container comparison runs for the Container and Pallets → Container modes.</div>'; return; }
+  const used = S.result.containers?.spec.code;
+  $('pane-compare').innerHTML = `<div class="hint">The same cargo simulated in each container type${S.result.mode === 'palletised' ? ' (on pallets)' : ''}. ${S.chosen ? `The agent chose <b>${esc(CONTAINERS[S.chosen].name)}</b>: nothing left behind, fewest containers, then the smallest box.` : ''}</div>
+  <table><thead><tr><th>Container</th><th class="num">Inside L×W×H (m)</th><th class="num">Payload</th><th class="num">Containers</th><th class="num">Avg. fill</th><th class="num">Last one</th><th class="num">Not loaded</th></tr></thead><tbody>
+  ${S.compare.map(c => { const sp = CONTAINERS[c.code]; return `<tr class="${c.code === used ? 'best' : ''}"><td><b>${esc(c.name)}</b>${c.code === used ? ' <span class="chip good">used</span>' : ''}</td>
+    <td class="num">${(sp.L / 100).toFixed(2)} × ${(sp.W / 100).toFixed(2)} × ${(sp.H / 100).toFixed(2)}</td><td class="num">${fmt(sp.maxKg)} kg</td>
+    ${c.error ? `<td colspan="4">${esc(c.error)}</td>` : `<td class="num">${c.containers}</td><td class="num">${c.avgFill}%</td><td class="num">${c.lastFill}%</td><td class="num">${c.unpacked}</td>`}</tr>`; }).join('')}
+  </tbody></table>`;
+}
+
+function renderTried() {
+  const blocks = [S.result.pallets && ['Pallets', S.result.pallets], S.result.containers && ['Containers', S.result.containers]].filter(Boolean);
+  $('pane-tried').innerHTML = blocks.map(([t, p]) => `<div class="hint"><b>${t}</b> — kept: <b>${esc(p.strategy)}</b></div>
+    <table style="margin-bottom:14px"><thead><tr><th>Strategy</th><th class="num">Spaces</th><th class="num">Avg. fill</th><th class="num">Not loaded</th></tr></thead><tbody>
+    ${[...p.tried].sort((a, b) => a.unpacked - b.unpacked || a.spaces - b.spaces || b.fill - a.fill).map(x => `<tr class="${x.strategy === p.strategy ? 'best' : ''}"><td>${esc(x.strategy)}</td><td class="num">${x.spaces}</td><td class="num">${x.fill}%</td><td class="num">${x.unpacked}</td></tr>`).join('')}
+    </tbody></table>`).join('');
+}
+
+async function loadAdvice() {
+  $('pane-ai').innerHTML = '<div class="muted">Reviewing the load plan…</div>';
+  // Coordinates stay on the page; the agent only needs the numbers.
+  const strip = p => p && { ...p, spaces: p.spaces.map(({ boxes, ...rest }) => rest) };
+  const result = { ...S.result, pallets: strip(S.result.pallets), containers: strip(S.result.containers) };
+  try {
+    const r = await api('/advice', { method: 'POST', body: { result, items: S.items, compare: S.compare || [] } });
+    $('pane-ai').innerHTML = r.checks.map(c => `<div class="check"><span class="chip ${c.level}">${{ critical: 'Action', serious: 'Check', info: 'Tip', good: 'OK' }[c.level]}</span><div>${esc(c.text)}</div></div>`).join('') +
+      (r.ai ? `<div class="ai-md">${window.marked ? marked.parse(r.ai.replace(/</g, '&lt;')) : `<pre>${esc(r.ai)}</pre>`}</div>`
+            : '<div class="muted small" style="margin-top:8px">AI brief unavailable — no AI provider is configured. The checks above are rule-based.</div>');
+  } catch (e) { $('pane-ai').innerHTML = `<div class="notice err">${esc(e.message)}</div>`; }
+}
+
+function renderResult() {
+  renderKpis(); renderSpaceSelect(); renderScene();
+  renderSequence(); renderUnpacked(); renderCompare(); renderTried();
+}
+
+// ── Tooltip ──────────────────────────────────────────────────────────────────
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+renderer.domElement.addEventListener('pointermove', e => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObjects(boxGroups, false)[0];
+  const tip = $('tip');
+  if (!hit || hit.instanceId == null) { tip.style.display = 'none'; return; }
+  const b = hit.object.userData.list[hit.instanceId];
+  tip.innerHTML = `<b>${esc(b.code)}</b> ${esc(b.name)}<br>${esc(b.ref)}${b.palletNo ? ` · on pallet ${b.palletNo}` : ''}<br>${b.l} × ${b.w} × ${b.h} cm · ${b.kg} kg<br>Step ${b.seq}${b.stackable ? '' : ' · <span style="color:#ffb3b3">do not stack</span>'}`;
+  tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX - rect.left + 14, rect.width - 270) + 'px';
+  tip.style.top = (e.clientY - rect.top + 14) + 'px';
+});
+renderer.domElement.addEventListener('pointerleave', () => { $('tip').style.display = 'none'; });
+
+// ── Wiring ───────────────────────────────────────────────────────────────────
+function showTab(t) {
+  $('tabs').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + t));
+}
+$('tabs').querySelectorAll('button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+$('so-go').onclick = loadOrders;
+$('so-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadOrders(); });
+$('so-all').onchange = () => { S.selected = $('so-all').checked ? new Set(S.orders.map(o => o.docEntry)) : new Set(); renderOrders(); };
+$('so-load').onclick = loadLines;
+$('btn-sample').onclick = () => useSample();
+$('btn-sim').onclick = simulateNow;
+$('p-play').onclick = () => S.playing ? stopPlay() : startPlay(false);
+$('p-reset').onclick = () => { stopPlay(); setStep(0); };
+$('p-end').onclick = () => { stopPlay(); setStep(S.total); };
+$('p-step').oninput = () => { stopPlay(); setStep(+$('p-step').value); };
+$('walls').onchange = () => { if (wallsGroup) wallsGroup.visible = $('walls').checked; };
+$('cam').querySelectorAll('button').forEach(b => b.onclick = () => { $('cam').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); setCamera(b.dataset.v); });
+const pickSpace = i => { if (!S.result) return; const n = currentPart().spaces.length; S.idx = (i + n) % n; $('space').value = S.idx; stopPlay(); renderScene(); renderSequence(); startPlay(true); };
+$('space').onchange = () => pickSpace(+$('space').value);
+$('sp-prev').onclick = () => pickSpace(S.idx - 1);
+$('sp-next').onclick = () => pickSpace(S.idx + 1);
+$('vkind').querySelectorAll('button').forEach(b => b.onclick = () => {
+  S.view = b.dataset.k; S.idx = 0;
+  $('vkind').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  stopPlay(); renderSpaceSelect(); renderScene(); renderSequence();
+});
+
+const EMPTY_HTML = $('empty').innerHTML;
+function showEmptyContainer() {
+  clearWorld();
+  const c = CONTAINERS['40HC'], g = buildContainer(c.L, c.W, c.H);
+  world.add(g.group); wallsGroup = g.walls; wallsGroup.visible = $('walls').checked;
+  dims = c; setCamera('iso');
+}
+
+// Back to a blank planner: order list stays, everything picked or simulated is cleared.
+function resetAll() {
+  stopPlay();
+  Object.assign(S, { selected: new Set(), lines: [], items: null, result: null, compare: null, chosen: null, view: 'containers', idx: 0, step: 0, total: 0 });
+  renderOrders();
+  $('pane-items').innerHTML = '<div class="muted">Load sales orders to see their items.</div>';
+  ['seq', 'unpacked', 'compare', 'ai', 'tried'].forEach(t => { $('pane-' + t).innerHTML = '<div class="muted">Run a simulation first.</div>'; });
+  $('tabs').querySelector('[data-t="unpacked"]').textContent = 'Not loaded';
+  $('kpis').innerHTML = ''; $('space').innerHTML = ''; $('vkind').style.display = 'none';
+  $('ov').style.display = 'none'; $('legend').style.display = 'none'; $('tip').style.display = 'none';
+  $('p-step').max = 0; $('p-step').value = 0; $('p-lbl').textContent = '—';
+  $('empty').innerHTML = EMPTY_HTML; $('empty').style.display = 'flex';
+  showEmptyContainer();
+  updateTotals(); showTab('items');
+  status(S.source === 'sap' ? 'SAP connected' : 'Reset', S.source === 'sap' ? 'ready' : '');
+}
+$('btn-reset').onclick = resetAll;
+
+resize();
+showEmptyContainer();
+loadOrders();
+</script>
+</body>
+</html>

@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<script src="/app-locale.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<meta name="theme-color" content="#354A5E"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="GRPO Sorting"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>GRPO Sorting — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  const login='/login.html?next='+encodeURIComponent(location.pathname+location.search);
+  if(!t){window.location.replace(login);return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace(login);}}).catch(()=>{});
+})();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--green-bg:#EAF5EE;--red:#BB0000;--red-bg:#FBEAEA;--orange:#E9730C;--orange-bg:#FEF3E8;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{min-height:100%;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);font-size:13px}
+button{font-family:inherit}
+input,select{font-family:inherit}
+
+/* Shell */
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;position:sticky;top:0}
+.shell-back{color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.2);white-space:nowrap}
+.shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:#0f766e;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
+.shell-spacer{flex:1}
+.shell-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-weight:600;white-space:nowrap}
+
+/* Tabs */
+.tabs{background:var(--white);border-bottom:1px solid var(--border);display:flex;gap:4px;padding:0 14px;position:sticky;top:44px;z-index:25;overflow-x:auto}
+.tab{border:none;background:none;padding:11px 14px;font-size:13px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.view{display:none;padding:14px;max-width:1500px;margin:0 auto}
+.view.active{display:block}
+
+/* Generic */
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);margin-bottom:14px}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card-hd h3{font-size:13.5px;font-weight:600}
+.card-hd .sub{color:var(--muted);font-size:11.5px}
+.card-bd{padding:14px}
+.spacer{flex:1}
+.btn{height:30px;padding:0 12px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:12.5px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--blue-mid)}
+.btn.good{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+.btn.warn{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:600}
+.btn.danger{color:var(--red);border-color:#e8b4b4}
+.btn.danger:hover{background:var(--red-bg)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.lg{height:44px;padding:0 22px;font-size:15px}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fg input,.fg select{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);outline:none}
+.fg input:focus,.fg select:focus{border-color:var(--blue);background:var(--white)}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.mono{font-variant-numeric:tabular-nums}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+
+/* Badges */
+.badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.b-pending{background:#EEF0F2;color:#556B82}
+.b-assigned{background:var(--blue-light);color:var(--blue-mid)}
+.b-in_progress{background:var(--orange-bg);color:#B45309}
+.b-done{background:var(--green-bg);color:var(--green)}
+.b-on{background:var(--green-bg);color:var(--green)}
+.b-off{background:#EEF0F2;color:#556B82}
+.b-err{background:var(--red-bg);color:var(--red)}
+.sap-ok{color:var(--green);font-weight:700}
+.sap-wait{color:var(--orange);font-weight:700}
+.sap-err{color:var(--red);font-weight:700;cursor:help}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 14px;border-left:4px solid var(--blue)}
+.kpi .k-l{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.kpi .k-v{font-size:24px;font-weight:700;margin-top:4px}
+.kpi .k-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+/* Tables */
+.tbl-wrap{overflow:auto;max-height:62vh}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{position:sticky;top:0;background:#F7F8F9;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;z-index:1}
+td{padding:7px 10px;border-bottom:1px solid #F0F0F0;vertical-align:middle}
+tr:hover td{background:#FAFBFC}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.sel td{background:var(--blue-light)}
+
+/* Floor board */
+.floor{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.sorter{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--white)}
+.sorter.on{border-color:#9fd3b2;background:#FBFEFC}
+.sorter .nm{font-weight:600;display:flex;align-items:center;gap:6px;justify-content:space-between}
+.sorter .meta{font-size:11.5px;color:var(--muted);margin:6px 0 8px;line-height:1.6}
+
+/* My sorting */
+.me-grid{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:14px;align-items:start}
+.clock{text-align:center;padding:22px 16px}
+.clock .big{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin:8px 0 4px}
+.run{border:2px solid var(--orange);border-radius:8px;padding:14px;background:var(--orange-bg);margin-bottom:14px}
+.run .it{font-size:17px;font-weight:700}
+.run .big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;color:#B45309}
+.q-item{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid #F0F0F0}
+.q-item:last-child{border-bottom:none}
+.q-item .grow{flex:1;min-width:0}
+.q-item .t1{font-weight:600}
+.q-item .t2{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-item .qty{font-weight:700;font-size:14px;white-space:nowrap}
+
+/* Toast + modal */
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2d3e;color:#fff;padding:9px 16px;border-radius:6px;font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:calc(100% - 32px)}
+#toast.show{opacity:1}
+#toast.err{background:var(--red)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:90;padding:16px}
+.modal-bg.open{display:flex}
+.modal{background:var(--white);border-radius:8px;width:100%;max-width:400px;box-shadow:0 12px 32px rgba(0,0,0,.25)}
+.modal .card-bd{display:flex;flex-direction:column;gap:12px}
+.modal .ft{display:flex;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:1px solid var(--border)}
+
+/* Selection bar (supervisor) — sticky at the bottom on phones */
+.bulk-bar{display:none}
+
+@media (max-width:760px){
+  body{font-size:14px;-webkit-text-size-adjust:100%}
+  .view{padding:10px 12px calc(16px + env(safe-area-inset-bottom))}
+  .shell-bar{padding:0 10px;gap:8px;padding-top:env(safe-area-inset-top);height:calc(48px + env(safe-area-inset-top))}
+  .shell-subtitle{display:none}
+  .shell-badge{max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+  .tabs{top:calc(48px + env(safe-area-inset-top));padding:0 6px}
+  .tab{padding:12px 14px;font-size:14px;flex:1}
+  .card{border-radius:10px;margin-bottom:12px}
+  .card-hd{padding:10px 12px}
+  .card-bd{padding:12px}
+  .kpis{grid-template-columns:repeat(2,1fr);gap:8px}
+  .kpi{padding:10px 12px}
+  .kpi .k-v{font-size:20px}
+  /* touch-size controls; 16px stops iOS zooming into fields */
+  .btn{height:40px;font-size:14px;padding:0 14px}
+  .btn.lg{height:52px;font-size:16px}
+  .fg input,.fg select{height:42px;font-size:16px}
+  .row{gap:8px}
+  .row>.fg{flex:1 1 140px}
+  .row>.spacer{display:none}
+  .row>.btn,.card-hd>.btn{flex:1 1 auto}
+  .card-hd .fg{flex:1 1 100%}
+
+  /* My Sorting */
+  .me-grid{grid-template-columns:1fr;gap:12px}
+  .clock{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px}
+  .clock>.clock-info{flex:1;min-width:0}
+  .clock .big{font-size:28px;margin:2px 0}
+  .clock>div:last-child{margin-top:0!important}
+  .clock .btn.lg{min-width:122px}
+  .run{padding:12px;border-radius:10px}
+  .run .it{font-size:16px}
+  .run .big{font-size:34px;text-align:center;width:100%;margin-top:6px}
+  .run .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .run .actions .btn{width:100%}
+  .q-item{flex-wrap:wrap;padding:12px}
+  .q-item .grow{flex:1 1 100%}
+  .q-item .t2{white-space:normal}
+  .q-item .qty{flex:1;font-size:16px}
+  .q-item .btn{min-width:120px;height:46px;font-size:15px}
+
+  /* tables → stacked cards */
+  .rt thead{display:none}
+  .rt,.rt tbody,.rt tr,.rt td{display:block;width:100%}
+  .rt tr{border:1px solid var(--border);border-radius:10px;margin:0 0 10px;padding:8px 12px;background:var(--white)}
+  .rt tr.sel{border-color:var(--blue);background:var(--blue-light)}
+  .rt tr:hover td{background:none}
+  .rt td{border:0;padding:4px 0;display:flex;justify-content:space-between;gap:12px;text-align:right}
+  .rt td::before{content:attr(data-label);color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-align:left;flex-shrink:0;padding-top:2px}
+  .rt td:not([data-label])::before,.rt td[data-label=""]::before{content:none}
+  .rt td.num{text-align:right}
+  .rt td.c-main{display:block;text-align:left;font-size:15px;padding-bottom:6px;border-bottom:1px solid #F0F0F0;margin-bottom:4px}
+  .rt td.c-main::before{content:none}
+  .rt td.c-sel{float:right;width:auto;padding:2px 0 0 8px}
+  .rt td.c-sel input{width:24px;height:24px}
+  .rt td.c-act:empty{display:none}
+  .rt td.c-act .btn{width:100%}
+  .rt td.empty{display:block;text-align:center}
+  /* compact 2-column cards (supervisor lines): item as the title, label above value */
+  .rt.compact tr{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:2px;position:relative}
+  .rt.compact td{display:block;text-align:left;padding:3px 0}
+  .rt.compact td::before{display:block;padding:0;font-size:10px}
+  .rt.compact td.num{text-align:left}
+  .rt.compact td.c-main{grid-column:1/-1;order:-1;padding-right:36px}
+  .rt.compact td.c-sel{position:absolute;top:8px;right:10px;padding:0}
+  .rt.compact td.c-act{grid-column:1/-1}
+  .rt td select{height:42px;font-size:16px;max-width:62%}
+  .tbl-wrap{max-height:none;overflow:visible}
+  .tbl-wrap.wide{overflow-x:auto}
+  .card>.tbl-wrap{padding:10px 10px 0}
+
+  /* selection actions follow the thumb */
+  .bulk-row{display:none!important}
+  .bulk-bar.show{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;gap:8px;align-items:center;flex-wrap:wrap;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--white);border-top:1px solid var(--border);box-shadow:0 -4px 14px rgba(0,0,0,.12)}
+  .bulk-bar select{flex:1 1 150px;height:42px;font-size:16px;border:1px solid var(--border);border-radius:var(--r);padding:0 8px;background:var(--bg)}
+  .bulk-bar .btn{flex:1 1 auto}
+  body.has-bulk .view{padding-bottom:150px}
+
+  /* complete dialog as a bottom sheet */
+  .modal-bg{align-items:flex-end;padding:0}
+  .modal{max-width:none;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+  .modal .ft .btn{flex:1;height:48px}
+  #toast{bottom:calc(84px + env(safe-area-inset-bottom))}
+}
+</style>
+<script>
+// Embedded in the main app (iframe panel): close the panel there instead of
+// loading the app inside the iframe. Standalone: follow the link to the app.
+function goBack() {
+  try {
+    if (window.top !== window.self && typeof window.parent.showChatPanel === 'function') { window.parent.showChatPanel(); return false; }
+  } catch {}
+  return true;
+}
+</script>
+</head>
+<body>
+<div class="shell-bar">
+  <a class="shell-back" href="/?app=1" onclick="return goBack()" title="Back to the full app">← Back</a>
+  <div class="shell-icon">⇅</div>
+  <div>
+    <div class="shell-title">GRPO Sorting</div>
+    <div class="shell-subtitle">Goods Receipt PO lines · sorter shifts · user &amp; item-wise sorting time</div>
+  </div>
+  <div class="shell-spacer"></div>
+  <span class="shell-badge" id="company-badge">…</span>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-view="my">My Sorting</button>
+  <button class="tab sup-only" data-view="sup" hidden>Supervisor</button>
+  <button class="tab sup-only" data-view="rep" hidden>Reports</button>
+</div>
+
+<!-- ── My Sorting ─────────────────────────────────────────────────────────── -->
+<section class="view active" id="view-my">
+  <div class="me-grid">
+    <div class="card clock">
+      <div class="clock-info">
+        <div class="muted" id="my-name">—</div>
+        <div class="big" id="my-shift-timer">--:--:--</div>
+        <div class="muted" id="my-shift-label">Not clocked in</div>
+      </div>
+      <div style="margin-top:16px"><button class="btn lg good" id="btn-clock">Clock In</button></div>
+    </div>
+    <div>
+      <div id="my-running"></div>
+      <div class="card">
+        <div class="card-hd"><h3>My queue</h3><span class="sub" id="my-queue-sub"></span></div>
+        <div id="my-queue"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><h3>Done this shift</h3><span class="sub" id="my-done-sub"></span></div>
+        <div id="my-done"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Supervisor ─────────────────────────────────────────────────────────── -->
+<section class="view" id="view-sup">
+  <div class="card">
+    <div class="card-hd"><h3>Load Goods Receipt PO lines</h3><span class="sub">Re-loading is safe: lines already in the sorting table keep their assignment and progress.</span></div>
+    <div class="card-bd row">
+      <div class="fg"><label>GRPO date from</label><input type="date" id="ld-from"/></div>
+      <div class="fg"><label>To</label><input type="date" id="ld-to"/></div>
+      <button class="btn primary" id="btn-load">Load GRPO lines</button>
+      <span class="spacer"></span>
+      <div class="fg"><label>Queue per sorter</label><input type="number" id="set-queue" min="1" max="100" style="width:90px"/></div>
+      <div class="fg"><label>Auto-assign</label>
+        <select id="set-auto"><option value="1">On — top up on clock-in &amp; completion</option><option value="0">Off — manual only</option></select></div>
+      <button class="btn" id="btn-save-set">Save</button>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card" id="sap-card">
+    <div class="card-hd">
+      <h3>SAP @SORTING</h3><span class="sub" id="sap-sub"></span><span class="spacer"></span>
+      <button class="btn" id="btn-sap-retry" title="Clear SAP errors and push those lines again">Retry failed</button>
+    </div>
+    <div class="card-bd" id="sap-errors" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd">
+      <h3>Sorters ↔ SAP employees</h3>
+      <span class="sub">Written to @SORTING.U_USER (employee first name, upper case) when a sorter starts / completes a line</span>
+    </div>
+    <div class="tbl-wrap" id="emp-map"><div class="empty">Loading SAP employees…</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd">
+      <h3>On the floor</h3><span class="sub" id="floor-sub"></span><span class="spacer"></span>
+      <button class="btn" id="btn-auto" title="Fill every clocked-in sorter's queue from pending lines">Auto-assign pending</button>
+      <button class="btn" id="btn-rebal" title="Pull back unstarted queued lines and deal them out evenly across whoever is clocked in now">Rebalance</button>
+    </div>
+    <div class="card-bd"><div class="floor" id="floor"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd">
+      <h3>Sorting lines</h3><span class="sub" id="tbl-sub"></span><span class="spacer"></span>
+      <div class="fg"><label>Status</label><select id="f-status">
+        <option value="">All</option><option value="pending">Pending</option><option value="assigned">Assigned</option>
+        <option value="in_progress">In progress</option><option value="done">Done</option></select></div>
+      <div class="fg"><label>Sorter</label><select id="f-user"><option value="">All</option></select></div>
+      <div class="fg"><label>Search</label><input id="f-q" placeholder="Item, vendor, GRPO no."/></div>
+    </div>
+    <div class="card-bd row bulk-row" style="padding:8px 14px;border-bottom:1px solid var(--border)">
+      <span class="muted" id="sel-count">0 selected</span>
+      <div class="fg"><select id="bulk-user"><option value="">Assign to…</option></select></div>
+      <button class="btn primary" id="btn-assign" disabled>Assign</button>
+      <button class="btn" id="btn-unassign" disabled>Unassign</button>
+      <span class="spacer"></span>
+      <button class="btn" id="btn-sel-item" disabled title="Also select every pending/assigned line of the same items">Select same items</button>
+    </div>
+    <div class="bulk-bar" id="bulk-bar">
+      <b id="m-sel-count">0 selected</b>
+      <select id="m-bulk-user"><option value="">Assign to…</option></select>
+      <button class="btn primary" id="m-assign" disabled>Assign</button>
+      <button class="btn" id="m-unassign">Unassign</button>
+      <button class="btn" id="m-clear">Clear</button>
+    </div>
+    <div class="tbl-wrap"><table class="rt compact">
+      <thead><tr>
+        <th><input type="checkbox" id="chk-all"/></th><th>GRPO</th><th>Date</th><th>Vendor</th><th>Item</th>
+        <th class="num">Qty</th><th>Whs</th><th>Bin</th><th>Status</th><th>Sorter</th><th class="num">Sort time</th><th class="num">Sorted qty</th><th>SAP</th><th></th>
+      </tr></thead>
+      <tbody id="tbl-body"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── Reports ────────────────────────────────────────────────────────────── -->
+<section class="view" id="view-rep">
+  <div class="card">
+    <div class="card-bd row">
+      <div class="fg"><label>From</label><input type="date" id="rp-from"/></div>
+      <div class="fg"><label>To</label><input type="date" id="rp-to"/></div>
+      <button class="btn" data-preset="0">Today</button>
+      <button class="btn" data-preset="6">Last 7 days</button>
+      <button class="btn" data-preset="30">Last 30 days</button>
+      <button class="btn" data-preset="90">Last 90 days</button>
+      <button class="btn primary" id="btn-report">Run</button>
+    </div>
+  </div>
+  <div class="kpis" id="rp-kpis"></div>
+  <div class="card"><div class="card-hd"><h3>Line-wise — every sorted GRPO line</h3><span class="sub" id="rp-line-sub"></span><span class="spacer"></span>
+    <div class="fg"><input id="rp-line-q" placeholder="Filter: sorter, item, GRPO, vendor, bin"/></div>
+    <button class="btn" data-csv="lineWise">CSV</button></div><div class="tbl-wrap" id="rp-line"></div></div>
+  <div class="card"><div class="card-hd"><h3>User-wise</h3><span class="sub">Shift time from clock in/out; sort time from started → paused/completed runs</span><span class="spacer"></span><button class="btn" data-csv="userWise">CSV</button></div><div class="tbl-wrap" id="rp-user"></div></div>
+  <div class="card"><div class="card-hd"><h3>Item-wise</h3><span class="spacer"></span><button class="btn" data-csv="itemWise">CSV</button></div><div class="tbl-wrap" id="rp-item"></div></div>
+  <div class="card"><div class="card-hd"><h3>User × Item</h3><span class="spacer"></span><button class="btn" data-csv="userItem">CSV</button></div><div class="tbl-wrap" id="rp-cross"></div></div>
+  <div class="card"><div class="card-hd"><h3>Shifts (clock in / out)</h3><span class="spacer"></span><button class="btn" data-csv="shifts">CSV</button></div><div class="tbl-wrap" id="rp-shifts"></div></div>
+</section>
+
+<!-- Complete modal -->
+<div class="modal-bg" id="done-modal">
+  <div class="modal">
+    <div class="card-hd"><h3>Complete sorting</h3></div>
+    <div class="card-bd">
+      <div id="done-info" class="muted"></div>
+      <div class="fg"><label>Sorted quantity</label><input type="number" step="any" inputmode="decimal" id="done-qty"/></div>
+      <div class="fg"><label>Notes (damage, shortage…)</label><input id="done-notes" maxlength="500"/></div>
+    </div>
+    <div class="ft"><button class="btn" id="done-cancel">Cancel</button><button class="btn good" id="done-ok">Complete</button></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  const TOKEN = () => localStorage.getItem('hanny_token') || '';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const fmtQty = n => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 3 });
+  const pad = n => String(n).padStart(2, '0');
+  const hms = secs => { secs = Math.max(0, Math.floor(secs)); return `${pad(Math.floor(secs/3600))}:${pad(Math.floor(secs/60)%60)}:${pad(secs%60)}`; };
+  const mins = m => m == null ? '—' : m >= 60 ? `${Math.floor(m/60)}h ${Math.round(m%60)}m` : `${Math.round(m*10)/10}m`;
+  const tm = iso => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+  const dtm = iso => iso ? new Date(iso).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  const localYmd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const STATUS = { pending: 'Pending', assigned: 'Assigned', in_progress: 'In progress', done: 'Done' };
+  const badge = s => `<span class="badge b-${s}">${STATUS[s] || esc(s)}</span>`;
+  // Live sort time of a line: stored seconds + the run in progress.
+  const liveSecs = t => (t.work_seconds || 0) + (t.active_since ? (Date.now() - new Date(t.active_since)) / 1000 : 0);
+
+  let toastT;
+  function toast(msg, err) {
+    const el = $('toast'); el.textContent = msg; el.className = 'show' + (err ? ' err' : '');
+    clearTimeout(toastT); toastT = setTimeout(() => el.className = '', 3500);
+  }
+  async function api(path, opts = {}) {
+    const r = await fetch('/api/grpo-sorting' + path, { ...opts,
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': TOKEN(), ...(opts.headers || {}) },
+      body: opts.body ? JSON.stringify(opts.body) : undefined });
+    if (r.status === 401) { localStorage.removeItem('hanny_token'); location.replace('/login.html'); throw new Error('Session expired'); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+    return j;
+  }
+  // Run an action from a button: disable it meanwhile, toast errors.
+  async function act(btn, fn) {
+    if (btn) btn.disabled = true;
+    try { await fn(); } catch (e) { toast(e.message, true); }
+    finally { if (btn) btn.disabled = false; }
+  }
+  const assignedMsg = n => n ? ` · ${n} line${n > 1 ? 's' : ''} auto-assigned` : '';
+
+  const S = { me: null, my: null, users: [], tasks: [], board: null, sel: new Set(), report: null, view: 'my', doneTask: null };
+
+  // ── Tabs ────────────────────────────────────────────────────────────────
+  $('tabs').addEventListener('click', e => {
+    const b = e.target.closest('.tab'); if (!b) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === b));
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + b.dataset.view));
+    S.view = b.dataset.view;
+    try { localStorage.setItem('gsort_view', S.view); } catch {}
+    $('bulk-bar').classList.toggle('show', S.view === 'sup' && S.sel.size > 0);
+    document.body.classList.toggle('has-bulk', S.view === 'sup' && S.sel.size > 0);
+    refresh();
+    if (S.view === 'rep' && !S.report) runReport();
+  });
+
+  // ── My Sorting ──────────────────────────────────────────────────────────
+  async function loadMy() {
+    S.my = await api('/my');
+    renderMy();
+  }
+  // Phones: keep the screen awake while a line is being sorted (the timer stays visible)
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch { wakeLock = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.my) keepAwake(S.my.active.some(t => t.status === 'in_progress')); });
+
+  function renderMy() {
+    const { shift, active, done } = S.my;
+    keepAwake(active.some(t => t.status === 'in_progress'));
+    $('my-name').textContent = S.me.user.full_name || S.me.user.username;
+    const btn = $('btn-clock');
+    btn.textContent = shift ? 'Clock Out' : 'Clock In';
+    btn.className = 'btn lg ' + (shift ? 'danger' : 'good');
+    $('my-shift-label').textContent = shift ? `On shift since ${tm(shift.clock_in)}` : 'Not clocked in';
+
+    const run = active.find(t => t.status === 'in_progress');
+    const queue = active.filter(t => t.status === 'assigned');
+    $('my-running').innerHTML = run ? `
+      <div class="run">
+        <div class="row" style="align-items:center">
+          <div style="flex:1;min-width:200px">
+            <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase">Sorting now</div>
+            <div class="it">${esc(run.item_code)} — ${esc(run.item_name)}</div>
+            <div class="muted">GRPO ${esc(run.doc_num)} · ${esc(run.card_name)} · Whs ${esc(run.whs_code)} · <b>${fmtQty(run.quantity)} ${esc(run.uom)}</b></div>
+          </div>
+          <div class="big" data-live="${run.id}">${hms(liveSecs(run))}</div>
+        </div>
+        <div class="row actions" style="margin-top:12px">
+          <button class="btn lg warn" data-pause="${run.id}">Pause</button>
+          <button class="btn lg good" data-complete="${run.id}">Complete</button>
+        </div>
+      </div>` : '';
+
+    $('my-queue-sub').textContent = shift ? `${queue.length} line${queue.length === 1 ? '' : 's'} waiting` : 'Clock in to receive sorting work';
+    $('my-queue').innerHTML = queue.length ? queue.map(t => `
+      <div class="q-item">
+        <div class="grow">
+          <div class="t1">${esc(t.item_code)} — ${esc(t.item_name)}</div>
+          <div class="t2">GRPO ${esc(t.doc_num)} / line ${t.line_num + 1} · ${esc(t.card_name)} · Whs ${esc(t.whs_code)}${t.work_seconds ? ` · paused at ${hms(t.work_seconds)}` : ''}</div>
+        </div>
+        <div class="qty">${fmtQty(t.quantity)} <span class="muted" style="font-weight:400">${esc(t.uom)}</span></div>
+        <button class="btn primary" data-start="${t.id}" ${run || !shift ? 'disabled' : ''}>${t.work_seconds ? 'Resume' : 'Start'}</button>
+      </div>`).join('') : `<div class="empty">${shift ? 'Nothing queued right now — your supervisor or auto-assign will add lines.' : 'You are not clocked in.'}</div>`;
+
+    const qty = done.reduce((s, t) => s + Number(t.sorted_qty ?? t.quantity ?? 0), 0);
+    const secs = done.reduce((s, t) => s + (t.work_seconds || 0), 0);
+    $('my-done-sub').textContent = done.length ? `${done.length} lines · ${fmtQty(qty)} sorted · ${hms(secs)} sort time` : '';
+    $('my-done').innerHTML = done.length ? `<div class="tbl-wrap"><table class="rt"><thead><tr><th>Item</th><th>GRPO</th><th class="num">Sorted</th><th class="num">Time</th><th>Done at</th></tr></thead><tbody>${
+      done.map(t => `<tr><td class="c-main"><b>${esc(t.item_code)}</b> <span class="muted">${esc(t.item_name)}</span></td><td data-label="GRPO">${esc(t.doc_num)}</td>
+        <td class="num" data-label="Sorted">${fmtQty(t.sorted_qty ?? t.quantity)}</td><td class="num" data-label="Time">${hms(t.work_seconds)}</td><td data-label="Done at">${tm(t.completed_at)}</td></tr>`).join('')
+    }</tbody></table></div>` : `<div class="empty">No lines completed this shift yet.</div>`;
+  }
+  $('btn-clock').addEventListener('click', e => act(e.currentTarget, async () => {
+    if (S.my.shift) {
+      if (!confirm('Clock out? A running line is paused and your queued lines go back to the pool.')) return;
+      await api('/clock-out', { method: 'POST' }); toast('Clocked out');
+    } else {
+      const r = await api('/clock-in', { method: 'POST' }); toast('Clocked in' + assignedMsg(r.assigned));
+    }
+    await refresh();
+  }));
+  $('view-my').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.start) act(b, async () => { await api(`/tasks/${b.dataset.start}/start`, { method: 'POST' }); await loadMy(); });
+    if (b.dataset.pause) act(b, async () => { await api(`/tasks/${b.dataset.pause}/pause`, { method: 'POST' }); await loadMy(); });
+    if (b.dataset.complete) openDone(S.my.active.find(t => t.id === Number(b.dataset.complete)));
+  });
+
+  function openDone(t) {
+    S.doneTask = t;
+    $('done-info').innerHTML = `<b>${esc(t.item_code)}</b> — ${esc(t.item_name)}<br>GRPO ${esc(t.doc_num)} · received ${fmtQty(t.quantity)} ${esc(t.uom)}`;
+    $('done-qty').value = t.quantity; $('done-notes').value = '';
+    $('done-modal').classList.add('open'); $('done-qty').focus();
+  }
+  $('done-cancel').addEventListener('click', () => $('done-modal').classList.remove('open'));
+  $('done-ok').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api(`/tasks/${S.doneTask.id}/complete`, { method: 'POST', body: { sortedQty: $('done-qty').value, notes: $('done-notes').value } });
+    $('done-modal').classList.remove('open');
+    toast(`Completed in ${hms(r.task.work_seconds)}`);
+    await loadMy();
+  }));
+
+  // ── Supervisor ──────────────────────────────────────────────────────────
+  async function loadSup() {
+    const [board, users, tasks] = await Promise.all([
+      api('/board'), api('/users'),
+      api('/tasks?' + new URLSearchParams({ status: $('f-status').value, userId: $('f-user').value, q: $('f-q').value.trim() })),
+    ]);
+    S.board = board; S.users = users.users; S.tasks = tasks.tasks;
+    const live = new Set(S.tasks.map(t => t.id));
+    S.sel.forEach(id => { if (!live.has(id)) S.sel.delete(id); });
+    renderSup();
+  }
+  function fillUserSelect(sel, first) {
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${first}</option>` + S.users.map(u =>
+      `<option value="${u.id}">${esc(u.name)}${u.onShift ? ' ● on shift' : ''}</option>`).join('');
+    sel.value = cur;
+  }
+  function renderSup() {
+    const c = Object.fromEntries(S.board.counts.map(x => [x.status, x]));
+    const k = (label, s, color) => { const x = c[s] || { n: 0, qty: 0 };
+      return `<div class="kpi" style="border-left-color:${color}"><div class="k-l">${label}</div><div class="k-v">${x.n}</div><div class="k-s">${fmtQty(x.qty)} qty</div></div>`; };
+    $('kpis').innerHTML = k('Pending', 'pending', '#556B82') + k('Assigned', 'assigned', '#0070F2') + k('In progress', 'in_progress', '#E9730C') + k('Done', 'done', '#107E3E') +
+      `<div class="kpi" style="border-left-color:#0f766e"><div class="k-l">Sorters on shift</div><div class="k-v">${S.board.onShift.length}</div><div class="k-s">of ${S.users.length} sorters</div></div>`;
+
+    const onMap = new Map(S.board.onShift.map(s => [s.user_id, s]));
+    const sorters = [...S.users].sort((a, b) => (b.onShift - a.onShift) || a.name.localeCompare(b.name));
+    $('floor-sub').textContent = `${S.board.onShift.length} clocked in`;
+    $('floor').innerHTML = sorters.length ? sorters.map(u => { const s = onMap.get(u.id);
+      return `<div class="sorter ${s ? 'on' : ''}">
+        <div class="nm"><span>${esc(u.name)}</span><span class="badge ${s ? 'b-on' : 'b-off'}">${s ? 'On shift' : 'Off'}</span></div>
+        <div class="meta">${s ? `In at <b>${tm(s.clock_in)}</b> · <span data-since="${esc(s.clock_in)}">${hms((Date.now() - new Date(s.clock_in)) / 1000)}</span><br>
+          Queued <b>${s.queued}</b> · Running <b>${s.running}</b> · Done <b>${s.done_this_shift}</b>` : 'Not clocked in'}</div>
+        <button class="btn ${s ? 'danger' : 'good'}" data-clock="${u.id}" data-on="${s ? 1 : 0}">${s ? 'Clock out' : 'Clock in'}</button>
+      </div>`; }).join('') : `<div class="empty">No users hold the GRPO Sorting permission yet — grant it in Roles &amp; Permissions.</div>`;
+
+    fillUserSelect($('f-user'), 'All'); fillUserSelect($('bulk-user'), 'Assign to…'); fillUserSelect($('m-bulk-user'), 'Assign to…');
+    renderSap(); if (S.emp) renderEmp(); else loadEmployees();
+    $('tbl-sub').textContent = `${S.tasks.length} line${S.tasks.length === 1 ? '' : 's'}`;
+    $('tbl-body').innerHTML = S.tasks.length ? S.tasks.map(t => {
+      const can = t.status === 'pending' || t.status === 'assigned';
+      return `<tr class="${S.sel.has(t.id) ? 'sel' : ''}">
+        <td class="c-sel">${can ? `<input type="checkbox" data-sel="${t.id}" ${S.sel.has(t.id) ? 'checked' : ''}/>` : ''}</td>
+        <td data-label="GRPO"><span><b>${esc(t.doc_num)}</b><span class="muted">/${t.line_num + 1}</span></span></td><td data-label="Date">${esc(t.doc_date)}</td>
+        <td data-label="Vendor">${esc(t.card_name)}</td><td class="c-main" data-label="Item"><span><b>${esc(t.item_code)}</b> <span class="muted">${esc(t.item_name)}</span></span></td>
+        <td class="num" data-label="Qty"><span>${fmtQty(t.quantity)} <span class="muted">${esc(t.uom)}</span></span></td><td data-label="Whs">${esc(t.whs_code)}</td>
+        <td data-label="Bin" title="${esc(t.bin_all)}">${esc(t.bin_code || '—')}</td><td data-label="Status">${badge(t.status)}</td><td data-label="Sorter">${esc(t.assigned_name || t.assigned_username || '—')}</td>
+        <td class="num" data-label="Sort time" ${t.active_since ? `data-live="${t.id}"` : ''}>${t.work_seconds || t.active_since ? hms(liveSecs(t)) : '—'}</td>
+        <td class="num" data-label="Sorted qty">${t.sorted_qty != null ? fmtQty(t.sorted_qty) : '—'}</td>
+        <td data-label="SAP">${sapCell(t)}</td>
+        <td class="c-act">${t.status === 'done' ? `<button class="btn" data-reopen="${t.id}" title="Undo completion">Reopen</button>` : ''}</td>
+      </tr>`; }).join('') : `<tr><td colspan="14" class="empty">No lines. Load GRPO lines above, or change the filters.</td></tr>`;
+    syncSel();
+  }
+  const sapCell = t => t.sap_error ? `<span class="sap-err" title="${esc(t.sap_error)}">⚠ Error</span>`
+    : t.sap_dirty ? `<span class="sap-wait" title="Waiting to be written to @SORTING">⏳</span>`
+    : t.sap_synced_at ? `<span class="sap-ok" title="In @SORTING as ${esc(t.doc_entry)}-${esc(t.line_num)}">✓</span>` : '—';
+  function renderSap() {
+    const x = S.board.sap;
+    $('sap-sub').innerHTML = `<span class="sap-ok">${x.synced} synced</span> · <span class="sap-wait">${x.pending} waiting</span>${x.running ? ' (sending…)' : ''} · ` +
+      `<span class="${x.errors ? 'sap-err' : 'muted'}">${x.errors} failed</span>`;
+    $('btn-sap-retry').disabled = !x.errors;
+    const box = $('sap-errors');
+    box.style.display = x.lastErrors.length ? 'block' : 'none';
+    box.innerHTML = x.lastErrors.map(e => `<div style="margin-bottom:6px"><span class="badge b-err">GRPO ${esc(e.doc_num)}/${e.line_num + 1} · ${esc(e.item_code)}</span> ${esc(e.sap_error)}</div>`).join('');
+  }
+  async function loadEmployees() {
+    try { S.emp = await api('/employees'); renderEmp(); }
+    catch (e) { $('emp-map').innerHTML = `<div class="empty">Could not read SAP employees: ${esc(e.message)}</div>`; }
+  }
+  function renderEmp() {
+    if (!S.emp) return;
+    const map = new Map(S.emp.map.map(m => [m.user_id, m])), vv = S.emp.validValues;
+    $('emp-map').innerHTML = S.users.length ? `<table class="rt"><thead><tr><th>Sorter (app user)</th><th>SAP employee (OHEM)</th><th>U_USER value</th><th>SAP check</th></tr></thead><tbody>${
+      S.users.map(u => { const m = map.get(u.id), emp = m && S.emp.employees.find(e => e.empId === m.emp_id), val = emp?.userValue || '';
+        const ok = !m ? '<span class="muted">Not mapped — U_USER left blank</span>'
+          : !vv || vv.includes(val) ? '<span class="sap-ok">✓ accepted</span>'
+          : `<span class="sap-err" title="SAP valid values: ${esc(vv.join(', '))}">⚠ not in U_USER valid values</span>`;
+        return `<tr><td class="c-main">${esc(u.name)}</td><td data-label="SAP employee"><select data-emp="${u.id}"><option value="">— none —</option>${
+          S.emp.employees.map(e => `<option value="${e.empId}" ${m?.emp_id === e.empId ? 'selected' : ''}>${esc(e.name)} (#${e.empId})</option>`).join('')}</select></td>
+          <td class="mono" data-label="U_USER">${esc(val || '—')}</td><td data-label="SAP check">${ok}</td></tr>`; }).join('')}</tbody></table>`
+      + (vv ? `<div class="muted" style="padding:8px 14px">SAP accepts U_USER: ${esc(vv.join(', '))}</div>` : '')
+      : `<div class="empty">No sorters yet.</div>`;
+  }
+  $('emp-map').addEventListener('change', e => {
+    const sel = e.target.closest('[data-emp]'); if (!sel) return;
+    const emp = S.emp.employees.find(x => x.empId === Number(sel.value));
+    act(sel, async () => {
+      await api('/employee-map', { method: 'PUT', body: { userId: Number(sel.dataset.emp), empId: sel.value || null, empName: emp?.name || '' } });
+      toast('Employee mapping saved'); S.emp = await api('/employees'); renderEmp(); await loadSup();
+    });
+  });
+  $('btn-sap-retry').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api('/sap-sync', { method: 'POST' }); toast(`${r.retried} line(s) queued for SAP again`); await loadSup();
+  }));
+  function syncSel() {
+    const n = S.sel.size;
+    $('sel-count').textContent = `${n} selected`;
+    $('m-sel-count').textContent = `${n} selected`;
+    $('bulk-bar').classList.toggle('show', n > 0 && S.view === 'sup');
+    document.body.classList.toggle('has-bulk', n > 0 && S.view === 'sup');
+    $('m-assign').disabled = !n || !$('m-bulk-user').value;
+    $('btn-assign').disabled = !n || !$('bulk-user').value;
+    $('btn-unassign').disabled = !n; $('btn-sel-item').disabled = !n;
+    const boxes = [...document.querySelectorAll('[data-sel]')];
+    $('chk-all').checked = boxes.length > 0 && boxes.every(b => b.checked);
+  }
+  $('tbl-body').addEventListener('change', e => {
+    const b = e.target.closest('[data-sel]'); if (!b) return;
+    const id = Number(b.dataset.sel);
+    b.checked ? S.sel.add(id) : S.sel.delete(id);
+    b.closest('tr').classList.toggle('sel', b.checked); syncSel();
+  });
+  $('chk-all').addEventListener('change', e => {
+    document.querySelectorAll('[data-sel]').forEach(b => { b.checked = e.target.checked; const id = Number(b.dataset.sel);
+      e.target.checked ? S.sel.add(id) : S.sel.delete(id); b.closest('tr').classList.toggle('sel', b.checked); });
+    syncSel();
+  });
+  $('btn-sel-item').addEventListener('click', () => {
+    const items = new Set(S.tasks.filter(t => S.sel.has(t.id)).map(t => t.item_code));
+    S.tasks.forEach(t => { if (items.has(t.item_code) && (t.status === 'pending' || t.status === 'assigned')) S.sel.add(t.id); });
+    renderSup();
+  });
+  $('bulk-user').addEventListener('change', syncSel);
+  $('m-bulk-user').addEventListener('change', syncSel);
+  $('m-assign').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api('/assign', { method: 'POST', body: { ids: [...S.sel], userId: Number($('m-bulk-user').value) } });
+    toast(`${r.changed} line(s) assigned`); S.sel.clear(); await loadSup();
+  }));
+  $('m-unassign').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api('/assign', { method: 'POST', body: { ids: [...S.sel], userId: null } });
+    toast(`${r.changed} line(s) back to pending`); S.sel.clear(); await loadSup();
+  }));
+  $('m-clear').addEventListener('click', () => { S.sel.clear(); renderSup(); });
+  $('btn-assign').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api('/assign', { method: 'POST', body: { ids: [...S.sel], userId: Number($('bulk-user').value) } });
+    toast(`${r.changed} line(s) assigned`); S.sel.clear(); await loadSup();
+  }));
+  $('btn-unassign').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api('/assign', { method: 'POST', body: { ids: [...S.sel], userId: null } });
+    toast(`${r.changed} line(s) back to pending`); S.sel.clear(); await loadSup();
+  }));
+  $('tbl-body').addEventListener('click', e => {
+    const b = e.target.closest('[data-reopen]'); if (!b) return;
+    act(b, async () => { await api(`/tasks/${b.dataset.reopen}/reopen`, { method: 'POST' }); toast('Line reopened'); await loadSup(); });
+  });
+  $('floor').addEventListener('click', e => {
+    const b = e.target.closest('[data-clock]'); if (!b) return;
+    const on = b.dataset.on === '1';
+    if (on && !confirm('Clock this sorter out? Their running line is paused and queued lines go back to the pool.')) return;
+    act(b, async () => {
+      const r = await api(on ? '/clock-out' : '/clock-in', { method: 'POST', body: { userId: Number(b.dataset.clock) } });
+      toast((on ? 'Clocked out' : 'Clocked in') + assignedMsg(r.assigned)); await refresh();
+    });
+  });
+  $('btn-load').addEventListener('click', e => act(e.currentTarget, async () => {
+    toast('Loading GRPO lines from SAP…');
+    const r = await api('/load', { method: 'POST', body: { from: $('ld-from').value, to: $('ld-to').value } });
+    toast(`${r.fetched} GRPO lines read (${r.source}) · ${r.inserted} new · ${r.existing} already loaded${assignedMsg(r.assigned)}`);
+    await loadSup();
+  }));
+  $('btn-save-set').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api('/settings', { method: 'PUT', body: { queue_size: Number($('set-queue').value), auto_assign: $('set-auto').value === '1' } });
+    S.me.settings = r.settings; toast('Settings saved' + assignedMsg(r.assigned)); await loadSup();
+  }));
+  $('btn-auto').addEventListener('click', e => act(e.currentTarget, async () => {
+    const r = await api('/auto-assign', { method: 'POST' }); toast(r.assigned ? `${r.assigned} line(s) assigned` : 'Nothing to assign — no pending lines or every queue is full'); await loadSup();
+  }));
+  $('btn-rebal').addEventListener('click', e => act(e.currentTarget, async () => {
+    if (!confirm('Pull back every queued line that has not been started and deal it out again across sorters on shift?')) return;
+    const r = await api('/rebalance', { method: 'POST' }); toast(`${r.assigned} line(s) re-dealt`); await loadSup();
+  }));
+  let qT;
+  $('f-q').addEventListener('input', () => { clearTimeout(qT); qT = setTimeout(() => act(null, loadSup), 300); });
+  $('f-status').addEventListener('change', () => act(null, loadSup));
+  $('f-user').addEventListener('change', () => act(null, loadSup));
+
+  // ── Reports ─────────────────────────────────────────────────────────────
+  function setPreset(days) {
+    const to = new Date(), from = new Date(); from.setDate(from.getDate() - days);
+    $('rp-from').value = localYmd(from); $('rp-to').value = localYmd(to);
+  }
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { setPreset(Number(b.dataset.preset)); runReport(); }));
+  $('btn-report').addEventListener('click', () => runReport());
+  async function runReport() {
+    // Local-day bounds → ISO instants, so "today" means the user's today.
+    const from = new Date($('rp-from').value + 'T00:00:00'), to = new Date($('rp-to').value + 'T00:00:00');
+    to.setDate(to.getDate() + 1);
+    try { S.report = await api('/report?' + new URLSearchParams({ from: from.toISOString(), to: to.toISOString() })); renderReport(); }
+    catch (e) { toast(e.message, true); }
+  }
+  const COLS = {
+    lineWise: [['timeOut','Sorted on','day'],['grpo','GRPO','num'],['line','Line','num'],['vendor','Vendor'],['itemCode','Item'],['itemName','Description'],
+      ['whs','Whs'],['bin','Bin'],['qty','Qty','q'],['sortedQty','Sorted qty','q'],['name','Sorter'],['timeIn','Time in','hm'],['timeOut','Time out','hm'],
+      ['workMinutes','Sort time','m'],['notes','Notes'],['sap','SAP @SORTING','sap']],
+    userWise: [['name','Sorter'],['shifts','Shifts','num'],['firstIn','First in','t'],['lastOut','Last out','t'],['shiftMinutes','Shift time','m'],['workMinutes','Sort time','m'],
+      ['idleMinutes','Idle','m'],['utilisationPct','Utilisation','pct'],['linesDone','Lines done','num'],['qtySorted','Qty sorted','q'],['distinctItems','Items','num'],['qtyPerHour','Qty / hour','q'],['avgMinPerLine','Avg / line','m']],
+    itemWise: [['itemCode','Item'],['itemName','Description'],['linesDone','Lines done','num'],['qtyReceived','Qty received','q'],['qtySorted','Qty sorted','q'],
+      ['workMinutes','Sort time','m'],['avgMinPerLine','Avg / line','m'],['secPerUnit','Sec / unit','q'],['users','Sorted by']],
+    userItem: [['name','Sorter'],['itemCode','Item'],['itemName','Description'],['linesWorked','Lines worked','num'],['linesDone','Lines done','num'],['qtySorted','Qty sorted','q'],['workMinutes','Sort time','m'],['qtyPerHour','Qty / hour','q']],
+    shifts: [['name','Sorter'],['clockIn','Clock in','dt'],['clockOut','Clock out','dt'],['minutes','Duration','m'],['clockedBy','Clocked by']],
+  };
+  function cell(v, kind) {
+    if (kind === 'day') return v ? new Date(v).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+    if (kind === 'hm') return tm(v);
+    if (kind === 'sap') return v === 'Synced' ? '<span class="sap-ok">✓ Synced</span>' : v === 'Error' ? '<span class="sap-err">⚠ Error</span>' : v === 'Waiting' ? '<span class="sap-wait">⏳ Waiting</span>' : '—';
+    if (kind === 'm') return mins(v);
+    if (kind === 't') return v ? dtm(v) : (v === null ? '—' : '');
+    if (kind === 'dt') return v ? dtm(v) : '<span class="badge b-on">On shift</span>';
+    if (kind === 'pct') return v == null ? '—' : v + '%';
+    if (kind === 'q') return v == null ? '—' : fmtQty(v);
+    if (Array.isArray(v)) return esc(v.join(', '));
+    return esc(v ?? '—');
+  }
+  function table(key, rows = S.report[key]) {
+    if (!rows.length) return `<div class="empty">No data in this period.</div>`;
+    const cols = COLS[key], right = k => ['num','m','pct','q'].includes(k) ? ' class="num"' : '';
+    return `<table class="rt"><thead><tr>${cols.map(c => `<th${right(c[2])}>${c[1]}</th>`).join('')}</tr></thead><tbody>${
+      rows.map(r => `<tr>${cols.map((c, i) => `<td${i ? right(c[2]) + ` data-label="${esc(c[1])}"` : ' class="c-main"'}>${cell(r[c[0]], c[2])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  }
+  function renderReport() {
+    const R = S.report, sum = (a, k) => a.reduce((s, x) => s + (x[k] || 0), 0);
+    const shift = sum(R.userWise, 'shiftMinutes'), work = sum(R.userWise, 'workMinutes'), qty = sum(R.userWise, 'qtySorted');
+    $('rp-kpis').innerHTML = [
+      ['Sorters', R.userWise.length, '', '#0f766e'], ['Lines done', sum(R.userWise, 'linesDone'), '', '#107E3E'],
+      ['Qty sorted', fmtQty(qty), '', '#0070F2'], ['Sort time', mins(work), `of ${mins(shift)} on shift`, '#E9730C'],
+      ['Utilisation', shift ? Math.round(work / shift * 100) + '%' : '—', 'sort time ÷ shift time', '#7B5EA7'],
+      ['Qty / hour', work ? fmtQty(Math.round(qty / (work / 60) * 10) / 10) : '—', 'across all sorters', '#556B82'],
+    ].map(([l, v, s, c]) => `<div class="kpi" style="border-left-color:${c}"><div class="k-l">${l}</div><div class="k-v">${v}</div><div class="k-s">${s}</div></div>`).join('');
+    renderLines();
+    $('rp-user').innerHTML = table('userWise'); $('rp-item').innerHTML = table('itemWise');
+    $('rp-cross').innerHTML = table('userItem'); $('rp-shifts').innerHTML = table('shifts');
+  }
+  function lineRows() {
+    const f = $('rp-line-q').value.trim().toLowerCase();
+    return f ? S.report.lineWise.filter(r => [r.name, r.itemCode, r.itemName, r.grpo, r.vendor, r.bin].some(v => String(v ?? '').toLowerCase().includes(f))) : S.report.lineWise;
+  }
+  function renderLines() {
+    const rows = lineRows();
+    $('rp-line-sub').textContent = `${rows.length} line${rows.length === 1 ? '' : 's'} · ${fmtQty(rows.reduce((s, r) => s + r.sortedQty, 0))} sorted`;
+    $('rp-line').innerHTML = table('lineWise', rows);
+  }
+  $('rp-line-q').addEventListener('input', () => { if (S.report) renderLines(); });
+  document.querySelectorAll('[data-csv]').forEach(b => b.addEventListener('click', () => {
+    if (!S.report) return;
+    const key = b.dataset.csv, cols = COLS[key];
+    const q = v => `"${String(Array.isArray(v) ? v.join('; ') : v ?? '').replace(/"/g, '""')}"`;
+    const fmtCsv = (v, k) => !v ? v : ['t','dt'].includes(k) ? new Date(v).toLocaleString() : k === 'day' ? new Date(v).toLocaleDateString() : k === 'hm' ? tm(v) : v;
+    const csv = [cols.map(c => q(c[1])).join(','), ...(key === 'lineWise' ? lineRows() : S.report[key]).map(r => cols.map(c =>
+      q(fmtCsv(r[c[0]], c[2]))).join(','))].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+    a.download = `grpo-sorting-${key}-${$('rp-from').value}_${$('rp-to').value}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }));
+
+  // ── Refresh + live timers ───────────────────────────────────────────────
+  async function refresh() {
+    try {
+      if (S.view === 'my') await loadMy();
+      else if (S.view === 'sup') await loadSup();
+      else if (S.my == null) await loadMy();
+    } catch (e) { toast(e.message, true); }
+  }
+  setInterval(() => {
+    if (S.my?.shift) $('my-shift-timer').textContent = hms((Date.now() - new Date(S.my.shift.clock_in)) / 1000);
+    else $('my-shift-timer').textContent = '--:--:--';
+    const all = [...(S.my?.active || []), ...S.tasks];
+    document.querySelectorAll('[data-live]').forEach(el => { const t = all.find(x => x.id === Number(el.dataset.live)); if (t) el.textContent = hms(liveSecs(t)); });
+    document.querySelectorAll('[data-since]').forEach(el => { el.textContent = hms((Date.now() - new Date(el.dataset.since)) / 1000); });
+  }, 1000);
+  // Pick up other people's changes (assignments, clock-ins) without a reload.
+  setInterval(() => { if (!document.hidden && !$('done-modal').classList.contains('open') && S.view !== 'rep') refresh(); }, 15000);
+
+  (async function init() {
+    try {
+      S.me = await api('/me');
+      $('company-badge').textContent = S.me.company;
+      if (S.me.isSupervisor) {
+        document.querySelectorAll('.sup-only').forEach(el => el.hidden = false);
+        $('ld-from').value = S.me.defaultRange.from; $('ld-to').value = S.me.defaultRange.to;
+        $('set-queue').value = S.me.settings.queue_size; $('set-auto').value = String(S.me.settings.auto_assign ? 1 : 0);
+        setPreset(90);
+        let saved = null; try { saved = localStorage.getItem('gsort_view'); } catch {}
+        if (saved && saved !== 'my') document.querySelector(`.tab[data-view="${saved}"]`)?.click();
+      }
+      await loadMy();
+    } catch (e) { toast(e.message, true); }
+  })();
+})();
+</script>
+</body>
+</html>

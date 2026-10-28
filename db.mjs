@@ -579,6 +579,7 @@ export const ALL_PERMISSIONS = [
   { key: 'sales.workflow.quote_compare',     label: 'Quotation Compare',  section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.quote_to_order',    label: 'Quot → Order',       section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.order_confirmation', label: 'Order Confirmation', section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.load_planner',      label: 'Load Planner',       section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.order_to_delivery', label: 'Order → Delivery',   section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.delivery_to_arinv', label: 'Delivery → AR Inv',  section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.arinv_to_arcm',     label: 'AR Inv → Credit',    section: 'Sales — O2C', group: 'AI Workflow' },
@@ -615,6 +616,11 @@ export const ALL_PERMISSIONS = [
   { key: 'purchase.workflow.outgoing_payment',label: 'Outgoing Payment',       section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.vp_aging',        label: 'AP Aging Report',        section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.purchase_analysis_link', label: 'Purchase Analysis', section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.grpo_sorting',    label: 'GRPO Sorting',           section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.grpo_sorting_supervise', label: 'GRPO Sorting — Supervisor', section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.sorting_analytics', label: 'Sorting Analytics', section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.putaway_analytics', label: 'Putaway Analytics', section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.warehouse_twin',    label: 'Warehouse Digital Twin', section: 'Purchase — P2P', group: 'AI Workflow' },
 
   // Purchase — P2P : Procurement Analysis
   { key: 'purchase.analysis.purchase_analysis', label: 'Purchase Analysis', section: 'Purchase — P2P', group: 'Procurement Analysis' },
@@ -675,6 +681,7 @@ export const ALL_PERMISSIONS = [
   { key: 'ai.ocr.po_scan',  label: 'Scan PO',           section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.expense',  label: 'Scan Expense Invoice', section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.apinv',    label: 'Scan A/P Invoice',     section: 'AI Agents', group: 'OCR Processing' },
+  { key: 'ai.ocr.bank_reco', label: 'Bank Reconciliation', section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.inward',   label: 'Scan Inward',          section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.gatepass', label: 'Scan Gate Pass',       section: 'AI Agents', group: 'OCR Processing' },
   { key: 'ai.ocr.document', label: 'Scan Document Mode',  section: 'AI Agents', group: 'OCR Processing' },
@@ -685,6 +692,8 @@ export const ALL_PERMISSIONS = [
   { key: 'apip.approvals', label: 'Invoice Approval', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
   { key: 'apip.stages', label: 'Approval Stage', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
   { key: 'apip.master', label: 'Approval Master', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.vitems', label: 'Vendor Item Mapping', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
+  { key: 'apip.vexpense', label: 'Vendor Expense G/L', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
   { key: 'apip.mail', label: 'Mail Configuration', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
   { key: 'apip.settings', label: 'Settings', section: 'AP Invoice Processing', group: 'AP Invoice Processing' },
 
@@ -764,12 +773,12 @@ export const LEGACY_PERMISSION_CHILDREN = {
   'sales.workflow':  ['sales.workflow.sales_order','sales.workflow.quotation','sales.workflow.quote_compare','sales.workflow.quote_to_order','sales.workflow.order_to_delivery','sales.workflow.delivery_to_arinv','sales.workflow.arinv_to_arcm','sales.workflow.incoming_payment','sales.workflow.sales_analysis_link'],
   'sales.analysis':  ['sales.analysis.open_orders','sales.analysis.open_quotations','sales.analysis.top_customers','sales.analysis.monthly_trend','sales.analysis.quarterly_sales','sales.analysis.top_items','sales.analysis.by_salesperson','sales.analysis.by_gross_profit','sales.analysis.by_gp_margin','sales.analysis.by_warehouse'],
   'purchase.create':   ['purchase.create.purchase_order','purchase.create.grpo','purchase.create.ap_invoice','purchase.create.outgoing_payment'],
-  'purchase.workflow': ['purchase.workflow.pr_agent','purchase.workflow.po_agent','purchase.workflow.pr_to_po','purchase.workflow.po_to_grpo','purchase.workflow.grpo_to_apinv','purchase.workflow.apinv_service','purchase.workflow.three_way_match','purchase.workflow.apinv_to_apcm','purchase.workflow.outgoing_payment','purchase.workflow.vp_aging','purchase.workflow.purchase_analysis_link'],
+  'purchase.workflow': ['purchase.workflow.pr_agent','purchase.workflow.po_agent','purchase.workflow.pr_to_po','purchase.workflow.po_to_grpo','purchase.workflow.grpo_to_apinv','purchase.workflow.apinv_service','purchase.workflow.three_way_match','purchase.workflow.apinv_to_apcm','purchase.workflow.outgoing_payment','purchase.workflow.vp_aging','purchase.workflow.purchase_analysis_link','purchase.workflow.grpo_sorting'],
   'purchase.analysis': ['purchase.analysis.purchase_analysis','purchase.analysis.top_vendors','purchase.analysis.vendor_list','purchase.analysis.customer_list'],
   'finance':    ['finance.ar_aging','finance.overdue_30','finance.overdue_60','finance.ap_aging','finance.financial_dashboard','finance.customer_aging','finance.reports.balance_sheet','finance.reports.profit_loss','finance.reports.trial_balance'],
   'inventory':  ['inventory.stock_levels','inventory.in_stock_items','inventory.pick_list','inventory.atp_check','inventory.dashboard'],
   'ai.supply':  ['ai.supply.mrp_auto_po','ai.supply.procurement_agent','ai.supply.three_way_match','ai.supply.production_agent','ai.supply.purchasing_agent','ai.supply.rush_orders','ai.supply.shipment_delay','ai.supply.inv_opt','ai.supply.dead_stock','ai.supply.vendor_perf'],
-  'ai.ocr':     ['ai.ocr.po_scan','ai.ocr.expense','ai.ocr.apinv','ai.ocr.inward','ai.ocr.gatepass','ai.ocr.document'],
+  'ai.ocr':     ['ai.ocr.po_scan','ai.ocr.expense','ai.ocr.apinv','ai.ocr.bank_reco','ai.ocr.inward','ai.ocr.gatepass','ai.ocr.document'],
   'ai.sales':   ['ai.sales.dynamic_pricing','ai.sales.order_intelligence','ai.sales.product_forecast','ai.sales.followup','ai.sales.quote_intel','ai.sales.mail_po','ai.sales.po_workflow'],
   'ai.crm':     ['ai.crm.activity_agent','ai.crm.prompt_activity'],
   'analytics':  ['analytics.inv.abc_xyz','analytics.inv.stockout_prediction','analytics.inv.dead_slow_stock','analytics.inv.reorder_points','analytics.inv.eoq','analytics.cust.rfm','analytics.cust.churn','analytics.cust.clv','analytics.cust.revenue_concentration','analytics.cust.quote_win_rate','analytics.fin.working_capital','analytics.fin.margin_erosion','analytics.fin.transaction_outliers','analytics.fin.cash_flow_forecast','analytics.vend.lead_time','analytics.vend.on_time_delivery','analytics.vend.concentration','analytics.fcast.sales_forecast','analytics.fcast.demand_forecast','analytics.fcast.seasonality'],
@@ -915,9 +924,10 @@ function expandLegacyKeys(keys) {
   // holding a still-valid trigger key (e.g. 'admin.roles', 'finance') would
   // report a "migration" on every single boot even though nothing changed.
   const addIfMissing = k => { if (!set.has(k)) toAdd.add(k); };
+  // ADMIN_* / MASTER_CUSTOMER_* triggers are still-valid keys, so they can't
+  // run here (every boot) — they'd re-grant a child an admin later unchecked.
+  // They're applied once via ONE_TIME_GRANTS below instead.
   if (AI_FINANCE_TRIGGER_KEYS.some(k => set.has(k)))       AI_FINANCE_CHILDREN.forEach(addIfMissing);
-  if (ADMIN_TRIGGER_KEYS.some(k => set.has(k)))            ADMIN_EXTRA_CHILDREN.forEach(addIfMissing);
-  if (MASTER_CUSTOMER_TRIGGER_KEYS.some(k => set.has(k)))  MASTER_CUSTOMER_EXTRA_CHILDREN.forEach(addIfMissing);
   for (const [legacy, children] of Object.entries(LEGACY_PERMISSION_CHILDREN)) {
     if (set.has(legacy)) {
       children.forEach(addIfMissing);
@@ -963,6 +973,11 @@ for (const role of roleRepo.list.all()) {
 // and recorded, so an admin who later revokes the new key keeps it revoked.
 db.exec(`CREATE TABLE IF NOT EXISTS permission_grants_applied (name TEXT PRIMARY KEY, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
 const ONE_TIME_GRANTS = [
+  // User Rights / Company Setup / Developer Settings and GSTIN Check / BP
+  // Duplicate Check — formerly re-granted on every boot by expandLegacyKeys,
+  // which made unchecking them impossible.
+  { name: 'admin.extra_children.v1', trigger: ADMIN_TRIGGER_KEYS, keys: ADMIN_EXTRA_CHILDREN },
+  { name: 'master.customer_extra_children.v1', trigger: MASTER_CUSTOMER_TRIGGER_KEYS, keys: MASTER_CUSTOMER_EXTRA_CHILDREN },
   // Financial Reports (Balance Sheet / P&L / Trial Balance) → whoever could
   // already see the Financial Dashboard.
   { name: 'finance.reports.v1', trigger: ['finance.financial_dashboard'],
@@ -981,6 +996,9 @@ const ONE_TIME_GRANTS = [
   // agent, since confirming is the next step on the same documents.
   { name: 'sales.workflow.order_confirmation.v1', trigger: ['sales.workflow.sales_order'],
     keys: ['sales.workflow.order_confirmation'] },
+  // Load Planner (reads open SOs, simulates container / pallet loading) → admins and order-to-delivery users.
+  { name: 'sales.workflow.load_planner.v1', trigger: ['admin.roles','sales.workflow.order_to_delivery','sales.workflow.order_confirmation'],
+    keys: ['sales.workflow.load_planner'] },
   // Inventory Dashboard & Reports (read-only) → whoever can already see Stock Levels.
   { name: 'inventory.dashboard.v1', trigger: ['inventory.stock_levels'],
     keys: ['inventory.dashboard'] },
@@ -991,9 +1009,30 @@ const ONE_TIME_GRANTS = [
   // A/P Service Invoice agent → whoever can already post A/P invoices from GRPOs.
   { name: 'purchase.workflow.apinv_service.v1', trigger: ['purchase.workflow.grpo_to_apinv'],
     keys: ['purchase.workflow.apinv_service'] },
+  // GRPO Sorting → sorters are whoever already receives goods (PO → GRPO);
+  // the supervisor screen (load, assign, reports) starts with admin roles only.
+  { name: 'purchase.workflow.grpo_sorting.v1', trigger: ['purchase.workflow.po_to_grpo','admin.roles'],
+    keys: ['purchase.workflow.grpo_sorting'] },
+  { name: 'purchase.workflow.grpo_sorting_supervise.v1', trigger: ['admin.roles'],
+    keys: ['purchase.workflow.grpo_sorting_supervise'] },
+  // Sorting Analytics (reads SAP @SORTING) → admins and sorting supervisors.
+  { name: 'purchase.workflow.sorting_analytics.v1', trigger: ['admin.roles','purchase.workflow.grpo_sorting_supervise'],
+    keys: ['purchase.workflow.sorting_analytics'] },
+  // Putaway Analytics (reads SAP UDO STTL_PUTAWAY) → the same audience as Sorting Analytics.
+  { name: 'purchase.workflow.putaway_analytics.v1', trigger: ['admin.roles','purchase.workflow.sorting_analytics'],
+    keys: ['purchase.workflow.putaway_analytics'] },
+  // Warehouse Digital Twin (3D bins & stock, read-only, moves are simulated) → admins and putaway / stock users.
+  { name: 'purchase.workflow.warehouse_twin.v1', trigger: ['admin.roles','purchase.workflow.putaway_analytics','inventory.stock_levels'],
+    keys: ['purchase.workflow.warehouse_twin'] },
+  // Bank Reconciliation (reads SAP bank G/L lines) → admins and finance dashboard / trial balance users.
+  { name: 'ai.ocr.bank_reco.v1', trigger: ['admin.roles','finance.financial_dashboard','finance.reports.trial_balance'],
+    keys: ['ai.ocr.bank_reco'] },
   // AP Invoice Processing menu → admins and whoever can already scan A/P invoices.
   { name: 'apip.v1', trigger: ['admin.roles','ai.ocr.apinv'],
     keys: ['apip.dashboard','apip.queue','apip.approvals','apip.stages','apip.master','apip.mail','apip.settings'] },
+  // Vendor Item Mapping / Vendor Expense G/L → whoever can already change AP Invoice Processing settings.
+  { name: 'apip.vendor_mapping.v1', trigger: ['admin.roles','apip.settings'],
+    keys: ['apip.vitems','apip.vexpense'] },
   // Home Insights → whoever held any permission in that module, which is
   // exactly who saw those insight cards before they had keys of their own.
   ...['finance', 'sales', 'purchase', 'inventory'].map(area => ({
@@ -1002,6 +1041,13 @@ const ONE_TIME_GRANTS = [
     keys: ALL_PERMISSIONS.map(x => x.key).filter(k => k.startsWith(`insights.${area}.`)),
   })),
 ];
+// Databases that already ran the old every-boot version of these two grants
+// must not get them once more — that would undo the admin's latest uncheck.
+for (const name of ['admin.extra_children.v1', 'master.customer_extra_children.v1']) {
+  const g = ONE_TIME_GRANTS.find(x => x.name === name);
+  const alreadyRan = db.prepare(`SELECT 1 FROM role_permissions WHERE perm_key IN (${g.keys.map(() => '?').join(',')}) LIMIT 1`).get(...g.keys);
+  if (alreadyRan) db.prepare(`INSERT OR IGNORE INTO permission_grants_applied(name) VALUES(?)`).run(name);
+}
 for (const g of ONE_TIME_GRANTS) {
   if (db.prepare(`SELECT 1 FROM permission_grants_applied WHERE name=?`).get(g.name)) continue;
   db.transaction(() => {
@@ -1111,6 +1157,31 @@ db.exec(`
     NumAtCard  TEXT DEFAULT '',
     PRIMARY KEY (company_id, DocEntry)
   );
+  CREATE TABLE IF NOT EXISTS cache_gl_accounts (
+    company_id TEXT NOT NULL,
+    AcctCode   TEXT NOT NULL,
+    AcctName   TEXT DEFAULT '',
+    FormatCode TEXT DEFAULT '',
+    Postable   TEXT DEFAULT 'tYES',            -- tYES = active (postable) account, tNO = title account
+    Frozen     TEXT DEFAULT 'tNO',
+    AcctType   TEXT DEFAULT '',                -- SL AccountType: at_Expenses | at_Revenues | at_Other
+    PRIMARY KEY (company_id, AcctCode)
+  );
+  CREATE TABLE IF NOT EXISTS cache_bom_lines (
+    company_id   TEXT NOT NULL,
+    TreeCode     TEXT NOT NULL,                -- parent (finished) item
+    ParentName   TEXT DEFAULT '',
+    TreeType     TEXT DEFAULT '',              -- SL BoMObjectTypes: iProductionTree | iSalesTree | iTemplateTree | iAssemblyTree
+    BaseQty      REAL DEFAULT 1,
+    BomWarehouse TEXT DEFAULT '',
+    LineNum      INTEGER NOT NULL,
+    ItemCode     TEXT DEFAULT '',              -- component
+    ItemName     TEXT DEFAULT '',
+    Quantity     REAL DEFAULT 0,
+    Warehouse    TEXT DEFAULT '',
+    IssueMethod  TEXT DEFAULT '',
+    PRIMARY KEY (company_id, TreeCode, LineNum)
+  );
   CREATE TABLE IF NOT EXISTS cache_sync_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id TEXT NOT NULL,
@@ -1158,6 +1229,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_cache_bp_name       ON cache_business_partners(company_id, CardName, CardType);
   CREATE INDEX IF NOT EXISTS idx_cache_sync_company  ON cache_sync_log(company_id, entity);
   CREATE INDEX IF NOT EXISTS idx_cache_open_orders_cust ON cache_open_orders(company_id, CardCode);
+  CREATE INDEX IF NOT EXISTS idx_cache_bom_lines_item   ON cache_bom_lines(company_id, ItemCode);
   CREATE INDEX IF NOT EXISTS idx_ocr_documents_type   ON ocr_documents(company_id, doc_type, uploaded_at);
 `);
 
@@ -1467,6 +1539,349 @@ export const workflowInstancesRepo = {
   },
 };
 
+// ── GRPO Sorting — GRPO lines loaded for warehouse sorting, sorter shifts
+// (clock in/out) and per-user work intervals. Scoped by SAP company DB.
+// All timestamps are ISO-8601 UTC strings written from JS so they compare
+// as text and parse unambiguously in the browser.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sorting_tasks (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    company          TEXT NOT NULL DEFAULT '',
+    doc_entry        INTEGER NOT NULL,
+    doc_num          INTEGER,
+    line_num         INTEGER NOT NULL,
+    doc_date         TEXT,
+    card_code        TEXT DEFAULT '',
+    card_name        TEXT DEFAULT '',
+    item_code        TEXT DEFAULT '',
+    item_name        TEXT DEFAULT '',
+    quantity         REAL DEFAULT 0,
+    uom              TEXT DEFAULT '',
+    whs_code         TEXT DEFAULT '',
+    status           TEXT NOT NULL DEFAULT 'pending',
+    assigned_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    assigned_by      TEXT DEFAULT '',
+    assigned_at      TEXT,
+    started_at       TEXT,
+    active_since     TEXT,
+    work_seconds     INTEGER NOT NULL DEFAULT 0,
+    completed_at     TEXT,
+    completed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    sorted_qty       REAL,
+    notes            TEXT DEFAULT '',
+    loaded_at        TEXT,
+    updated_at       TEXT,
+    UNIQUE(company, doc_entry, line_num)
+  );
+  CREATE INDEX IF NOT EXISTS idx_sorting_tasks_status ON sorting_tasks(company, status);
+  CREATE INDEX IF NOT EXISTS idx_sorting_tasks_user   ON sorting_tasks(assigned_user_id, status);
+
+  CREATE TABLE IF NOT EXISTS sorting_shifts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    company    TEXT NOT NULL DEFAULT '',
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    clock_in   TEXT NOT NULL,
+    clock_out  TEXT,
+    clocked_by TEXT DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS idx_sorting_shifts_user ON sorting_shifts(company, user_id, clock_out);
+
+  CREATE TABLE IF NOT EXISTS sorting_work (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id  INTEGER NOT NULL REFERENCES sorting_tasks(id) ON DELETE CASCADE,
+    user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    start_at TEXT NOT NULL,
+    end_at   TEXT,
+    seconds  INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_sorting_work_task ON sorting_work(task_id);
+  CREATE INDEX IF NOT EXISTS idx_sorting_work_user ON sorting_work(user_id, start_at);
+
+  CREATE TABLE IF NOT EXISTS sorting_settings (
+    company     TEXT PRIMARY KEY,
+    queue_size  INTEGER NOT NULL DEFAULT 5,
+    auto_assign INTEGER NOT NULL DEFAULT 1
+  );
+`);
+
+// SAP @SORTING mirror: sap_dirty=1 → row needs pushing; sap_error holds the
+// last Service Layer rejection (cleared by a retry).
+(function migrateSortingTasks() {
+  const cols = db.prepare(`PRAGMA table_info(sorting_tasks)`).all().map(c => c.name);
+  const add = { doc_due_date: 'TEXT', bin_code: `TEXT DEFAULT ''`, bin_all: `TEXT DEFAULT ''`,
+    sap_dirty: 'INTEGER NOT NULL DEFAULT 0', sap_synced_at: 'TEXT', sap_error: 'TEXT' };
+  for (const [c, t] of Object.entries(add)) if (!cols.includes(c)) db.exec(`ALTER TABLE sorting_tasks ADD COLUMN ${c} ${t}`);
+})();
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_sorting_tasks_sap ON sorting_tasks(company, sap_dirty);
+  CREATE TABLE IF NOT EXISTS sorting_emp_map (
+    company  TEXT NOT NULL,
+    user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emp_id   INTEGER NOT NULL,
+    emp_name TEXT DEFAULT '',
+    PRIMARY KEY (company, user_id)
+  );
+`);
+
+const sortNow = () => new Date().toISOString();
+const sortSecs = (from, to) => Math.max(0, Math.round((new Date(to) - new Date(from)) / 1000));
+
+export const sortingRepo = {
+  getSettings(company) {
+    return db.prepare(`SELECT queue_size, auto_assign FROM sorting_settings WHERE company=?`).get(company)
+      || { queue_size: 5, auto_assign: 1 };
+  },
+  saveSettings(company, { queue_size, auto_assign }) {
+    db.prepare(`INSERT INTO sorting_settings (company, queue_size, auto_assign) VALUES (?,?,?)
+      ON CONFLICT(company) DO UPDATE SET queue_size=excluded.queue_size, auto_assign=excluded.auto_assign`)
+      .run(company, Math.max(1, Math.min(100, Number(queue_size) || 5)), auto_assign ? 1 : 0);
+    return this.getSettings(company);
+  },
+
+  // Insert new GRPO lines; refresh SAP fields only on lines nobody has touched yet.
+  upsertLines(company, lines) {
+    const exists = db.prepare(`SELECT 1 FROM sorting_tasks WHERE company=? AND doc_entry=? AND line_num=?`);
+    const up = db.prepare(`INSERT INTO sorting_tasks
+        (company, doc_entry, doc_num, line_num, doc_date, doc_due_date, card_code, card_name, item_code, item_name, quantity, uom, whs_code,
+         bin_code, bin_all, sap_dirty, loaded_at, updated_at)
+      VALUES (@company,@doc_entry,@doc_num,@line_num,@doc_date,@doc_due_date,@card_code,@card_name,@item_code,@item_name,@quantity,@uom,@whs_code,
+         @bin_code,@bin_all,1,@now,@now)
+      ON CONFLICT(company, doc_entry, line_num) DO UPDATE SET
+        doc_num=excluded.doc_num, doc_date=excluded.doc_date, doc_due_date=excluded.doc_due_date, card_code=excluded.card_code,
+        card_name=excluded.card_name, item_code=excluded.item_code, item_name=excluded.item_name, quantity=excluded.quantity,
+        uom=excluded.uom, whs_code=excluded.whs_code, bin_code=excluded.bin_code, bin_all=excluded.bin_all, sap_dirty=1,
+        updated_at=excluded.updated_at
+      WHERE sorting_tasks.status='pending'`);
+    let inserted = 0, existing = 0;
+    const now = sortNow();
+    db.transaction(() => {
+      for (const l of lines) {
+        if (exists.get(company, l.doc_entry, l.line_num)) existing++; else inserted++;
+        up.run({ doc_due_date: null, bin_code: '', bin_all: '', ...l, company, now });
+      }
+    })();
+    return { inserted, existing };
+  },
+
+  list(company, { status, userId, item, q, from, to, limit = 5000 } = {}) {
+    const where = ['t.company=?'], args = [company];
+    if (status) { where.push('t.status=?'); args.push(status); }
+    if (userId) { where.push('t.assigned_user_id=?'); args.push(userId); }
+    if (item)   { where.push('t.item_code=?'); args.push(item); }
+    if (from)   { where.push('t.doc_date>=?'); args.push(from); }
+    if (to)     { where.push('t.doc_date<=?'); args.push(to); }
+    if (q) {
+      where.push(`(t.item_code LIKE ? OR t.item_name LIKE ? OR t.card_name LIKE ? OR CAST(t.doc_num AS TEXT) LIKE ?)`);
+      const like = `%${q}%`; args.push(like, like, like, like);
+    }
+    return db.prepare(`SELECT t.*, u.username AS assigned_username, u.full_name AS assigned_name
+      FROM sorting_tasks t LEFT JOIN users u ON u.id=t.assigned_user_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'assigned' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END,
+        t.doc_date, t.doc_num, t.line_num LIMIT ?`).all(...args, limit);
+  },
+  get(id) { return db.prepare(`SELECT * FROM sorting_tasks WHERE id=?`).get(id); },
+  counts(company) {
+    return db.prepare(`SELECT status, COUNT(*) AS n, COALESCE(SUM(quantity),0) AS qty FROM sorting_tasks WHERE company=? GROUP BY status`).all(company);
+  },
+
+  // ── Shifts ────────────────────────────────────────────────────────────────
+  openShift(company, userId) {
+    return db.prepare(`SELECT * FROM sorting_shifts WHERE company=? AND user_id=? AND clock_out IS NULL ORDER BY id DESC LIMIT 1`).get(company, userId);
+  },
+  clockIn(company, userId, by) {
+    if (this.openShift(company, userId)) throw new Error('Already clocked in');
+    db.prepare(`INSERT INTO sorting_shifts (company, user_id, clock_in, clocked_by) VALUES (?,?,?,?)`).run(company, userId, sortNow(), by || '');
+    return this.openShift(company, userId);
+  },
+  // Pause the running line, hand unfinished queued lines back to the pool, close the shift.
+  clockOut(company, userId, by) {
+    const shift = this.openShift(company, userId);
+    if (!shift) throw new Error('Not clocked in');
+    const now = sortNow();
+    db.transaction(() => {
+      for (const t of db.prepare(`SELECT id FROM sorting_tasks WHERE company=? AND assigned_user_id=? AND status='in_progress'`).all(company, userId)) {
+        this._stopRun(t.id, now);
+      }
+      db.prepare(`UPDATE sorting_tasks SET status='pending', assigned_user_id=NULL, assigned_by='', assigned_at=NULL, updated_at=?
+        WHERE company=? AND assigned_user_id=? AND status='assigned'`).run(now, company, userId);
+      db.prepare(`UPDATE sorting_shifts SET clock_out=? WHERE id=?`).run(now, shift.id);
+    })();
+    return db.prepare(`SELECT * FROM sorting_shifts WHERE id=?`).get(shift.id);
+  },
+  // Who is on the floor right now, with their current workload.
+  onShift(company) {
+    return db.prepare(`SELECT s.id AS shift_id, s.user_id, s.clock_in, u.username, u.full_name,
+        (SELECT COUNT(*) FROM sorting_tasks t WHERE t.company=s.company AND t.assigned_user_id=s.user_id AND t.status='assigned') AS queued,
+        (SELECT COUNT(*) FROM sorting_tasks t WHERE t.company=s.company AND t.assigned_user_id=s.user_id AND t.status='in_progress') AS running,
+        (SELECT COUNT(*) FROM sorting_tasks t WHERE t.company=s.company AND t.completed_by=s.user_id AND t.completed_at>=s.clock_in) AS done_this_shift
+      FROM sorting_shifts s JOIN users u ON u.id=s.user_id
+      WHERE s.company=? AND s.clock_out IS NULL ORDER BY s.clock_in`).all(company);
+  },
+  shifts(company, { userId, from, to } = {}) {
+    const where = ['s.company=?'], args = [company];
+    if (userId) { where.push('s.user_id=?'); args.push(userId); }
+    if (to)     { where.push('s.clock_in<?'); args.push(to); }
+    if (from)   { where.push('(s.clock_out IS NULL OR s.clock_out>?)'); args.push(from); }
+    return db.prepare(`SELECT s.*, u.username, u.full_name FROM sorting_shifts s JOIN users u ON u.id=s.user_id
+      WHERE ${where.join(' AND ')} ORDER BY s.clock_in DESC`).all(...args);
+  },
+
+  // ── Assignment ────────────────────────────────────────────────────────────
+  assign(company, ids, userId, by) {
+    const now = sortNow();
+    const st = db.prepare(`UPDATE sorting_tasks SET status=CASE WHEN ? IS NULL THEN 'pending' ELSE 'assigned' END,
+        assigned_user_id=?, assigned_by=?, assigned_at=CASE WHEN ? IS NULL THEN NULL ELSE ? END, updated_at=?
+      WHERE company=? AND id=? AND status IN ('pending','assigned')`);
+    let changed = 0;
+    db.transaction(() => { for (const id of ids) changed += st.run(userId, userId, userId ? by : '', userId, now, now, company, id).changes; })();
+    return changed;
+  },
+  // Fill each clocked-in sorter's queue up to queue_size, least-loaded first.
+  // A sorter keeps getting the same item while it is pending (fewer bin
+  // changes), otherwise the oldest GRPO line.
+  topUp(company, by = 'auto') {
+    const { queue_size } = this.getSettings(company);
+    const pickSame = db.prepare(`SELECT id FROM sorting_tasks WHERE company=? AND status='pending' AND item_code=?
+      ORDER BY doc_date, doc_num, line_num LIMIT 1`);
+    const pickOldest = db.prepare(`SELECT id FROM sorting_tasks WHERE company=? AND status='pending'
+      ORDER BY doc_date, doc_num, line_num LIMIT 1`);
+    const lastItem = db.prepare(`SELECT item_code FROM sorting_tasks WHERE company=? AND assigned_user_id=?
+      ORDER BY COALESCE(assigned_at,'') DESC LIMIT 1`);
+    const give = db.prepare(`UPDATE sorting_tasks SET status='assigned', assigned_user_id=?, assigned_by=?, assigned_at=?, updated_at=? WHERE id=?`);
+    let given = 0;
+    db.transaction(() => {
+      const crew = this.onShift(company).map(s => ({ ...s, load: s.queued, item: lastItem.get(company, s.user_id)?.item_code }));
+      while (crew.length) {
+        crew.sort((a, b) => a.load - b.load || a.clock_in.localeCompare(b.clock_in));
+        const s = crew[0];
+        if (s.load >= queue_size) break;
+        const row = (s.item && pickSame.get(company, s.item)) || pickOldest.get(company);
+        if (!row) break;
+        const now = sortNow();
+        give.run(s.user_id, by, now, now, row.id);
+        s.load++; given++;
+        s.item = this.get(row.id).item_code;
+      }
+    })();
+    return given;
+  },
+  // Pull every not-yet-started queued line back to the pool and deal it out
+  // again across whoever is clocked in now (e.g. after late joiners arrive).
+  rebalance(company, by) {
+    db.prepare(`UPDATE sorting_tasks SET status='pending', assigned_user_id=NULL, assigned_by='', assigned_at=NULL, updated_at=?
+      WHERE company=? AND status='assigned' AND work_seconds=0`).run(sortNow(), company);
+    return this.topUp(company, by);
+  },
+
+  // ── Work on a line ────────────────────────────────────────────────────────
+  _stopRun(taskId, now) {
+    const t = this.get(taskId);
+    if (!t || t.status !== 'in_progress') return;
+    const run = db.prepare(`SELECT * FROM sorting_work WHERE task_id=? AND end_at IS NULL ORDER BY id DESC LIMIT 1`).get(taskId);
+    const secs = run ? sortSecs(run.start_at, now) : 0;
+    if (run) db.prepare(`UPDATE sorting_work SET end_at=?, seconds=? WHERE id=?`).run(now, secs, run.id);
+    db.prepare(`UPDATE sorting_tasks SET status='assigned', active_since=NULL, work_seconds=work_seconds+?, updated_at=? WHERE id=?`)
+      .run(secs, now, taskId);
+  },
+  start(taskId, userId) {
+    const now = sortNow();
+    db.transaction(() => {
+      const t = this.get(taskId);
+      if (!t) throw new Error('Line not found');
+      if (t.assigned_user_id !== userId || t.status !== 'assigned') throw new Error('This line is not in your queue');
+      if (!this.openShift(t.company, userId)) throw new Error('Clock in before you start sorting');
+      if (db.prepare(`SELECT 1 FROM sorting_tasks WHERE assigned_user_id=? AND status='in_progress'`).get(userId)) {
+        throw new Error('Finish or pause your current line first');
+      }
+      db.prepare(`INSERT INTO sorting_work (task_id, user_id, start_at) VALUES (?,?,?)`).run(taskId, userId, now);
+      db.prepare(`UPDATE sorting_tasks SET status='in_progress', active_since=?, started_at=COALESCE(started_at, ?),
+          sap_dirty=CASE WHEN started_at IS NULL THEN 1 ELSE sap_dirty END, updated_at=? WHERE id=?`)
+        .run(now, now, now, taskId);
+    })();
+    return this.get(taskId);
+  },
+  pause(taskId, userId) {
+    const t = this.get(taskId);
+    if (!t || t.assigned_user_id !== userId || t.status !== 'in_progress') throw new Error('This line is not running');
+    db.transaction(() => this._stopRun(taskId, sortNow()))();
+    return this.get(taskId);
+  },
+  complete(taskId, userId, { sortedQty, notes } = {}) {
+    const now = sortNow();
+    db.transaction(() => {
+      const t = this.get(taskId);
+      if (!t || t.assigned_user_id !== userId || t.status !== 'in_progress') throw new Error('Start the line before completing it');
+      this._stopRun(taskId, now);
+      const qty = sortedQty == null || sortedQty === '' ? t.quantity : Number(sortedQty);
+      db.prepare(`UPDATE sorting_tasks SET status='done', completed_at=?, completed_by=?, sorted_qty=?, notes=?, sap_dirty=1, updated_at=? WHERE id=?`)
+        .run(now, userId, qty, String(notes || '').slice(0, 500), now, taskId);
+    })();
+    return this.get(taskId);
+  },
+  reopen(company, taskId) {
+    return db.prepare(`UPDATE sorting_tasks SET status=CASE WHEN assigned_user_id IS NULL THEN 'pending' ELSE 'assigned' END,
+        completed_at=NULL, completed_by=NULL, sorted_qty=NULL, sap_dirty=1, updated_at=? WHERE company=? AND id=? AND status='done'`)
+      .run(sortNow(), company, taskId).changes;
+  },
+
+  // ── SAP @SORTING sync bookkeeping ─────────────────────────────────────────
+  sapDirty(company, limit = 50) {
+    return db.prepare(`SELECT * FROM sorting_tasks WHERE company=? AND sap_dirty=1 AND sap_error IS NULL ORDER BY id LIMIT ?`).all(company, limit);
+  },
+  // Only clear the flag if nothing changed the row while it was being pushed.
+  sapSynced(id, pushedAt) {
+    db.prepare(`UPDATE sorting_tasks SET sap_dirty=CASE WHEN updated_at>? THEN 1 ELSE 0 END, sap_synced_at=?, sap_error=NULL WHERE id=?`)
+      .run(pushedAt, sortNow(), id);
+  },
+  sapFailed(id, error) {
+    db.prepare(`UPDATE sorting_tasks SET sap_error=? WHERE id=?`).run(String(error).slice(0, 500), id);
+  },
+  sapStatus(company) {
+    const r = db.prepare(`SELECT
+        SUM(CASE WHEN sap_dirty=1 AND sap_error IS NULL THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN sap_error IS NOT NULL THEN 1 ELSE 0 END) AS errors,
+        SUM(CASE WHEN sap_dirty=0 AND sap_synced_at IS NOT NULL THEN 1 ELSE 0 END) AS synced
+      FROM sorting_tasks WHERE company=?`).get(company);
+    const lastErrors = db.prepare(`SELECT id, doc_num, line_num, item_code, sap_error FROM sorting_tasks
+      WHERE company=? AND sap_error IS NOT NULL ORDER BY updated_at DESC LIMIT 5`).all(company);
+    return { pending: r.pending || 0, errors: r.errors || 0, synced: r.synced || 0, lastErrors };
+  },
+  sapRetry(company) {
+    return db.prepare(`UPDATE sorting_tasks SET sap_error=NULL, sap_dirty=1 WHERE company=? AND sap_error IS NOT NULL`).run(company).changes;
+  },
+
+  // ── App user → SAP employee (OHEM) mapping, written to @SORTING.U_USER ─────
+  empMap(company) {
+    return db.prepare(`SELECT user_id, emp_id, emp_name FROM sorting_emp_map WHERE company=?`).all(company);
+  },
+  empOf(company, userId) {
+    return userId ? db.prepare(`SELECT emp_id, emp_name FROM sorting_emp_map WHERE company=? AND user_id=?`).get(company, userId) : null;
+  },
+  setEmp(company, userId, empId, empName) {
+    db.transaction(() => {
+      if (empId == null) db.prepare(`DELETE FROM sorting_emp_map WHERE company=? AND user_id=?`).run(company, userId);
+      else db.prepare(`INSERT INTO sorting_emp_map (company, user_id, emp_id, emp_name) VALUES (?,?,?,?)
+        ON CONFLICT(company, user_id) DO UPDATE SET emp_id=excluded.emp_id, emp_name=excluded.emp_name`).run(company, userId, empId, empName || '');
+      // Lines this user started or finished carry their employee in SAP — resend them.
+      db.prepare(`UPDATE sorting_tasks SET sap_dirty=1, sap_error=NULL, updated_at=?
+        WHERE company=? AND ((assigned_user_id=? AND started_at IS NOT NULL) OR completed_by=?)`).run(sortNow(), company, userId, userId);
+    })();
+  },
+
+  // ── Reporting inputs (aggregated in the controller) ───────────────────────
+  workIntervals(company, from, to) {
+    return db.prepare(`SELECT w.*, t.item_code, t.item_name, t.quantity, t.status, t.completed_by, t.completed_at, t.sorted_qty,
+        u.username, u.full_name
+      FROM sorting_work w JOIN sorting_tasks t ON t.id=w.task_id JOIN users u ON u.id=w.user_id
+      WHERE t.company=? AND w.start_at<? AND (w.end_at IS NULL OR w.end_at>?)`).all(company, to, from);
+  },
+  completedBetween(company, from, to) {
+    return db.prepare(`SELECT t.*, u.username, u.full_name FROM sorting_tasks t LEFT JOIN users u ON u.id=t.completed_by
+      WHERE t.company=? AND t.status='done' AND t.completed_at>=? AND t.completed_at<?`).all(company, from, to);
+  },
+};
+
 export const cacheRepo = {
   // Items
   upsertItems(companyId, rows) {
@@ -1557,6 +1972,28 @@ export const cacheRepo = {
     db.transaction(() => { for (const r of rows) ins.run(companyId,r.Code,r.Name||''); })();
   },
   getBPGroups(companyId) { return db.prepare(`SELECT * FROM cache_bp_groups WHERE company_id=? ORDER BY Name`).all(companyId); },
+  // G/L Accounts (Chart of Accounts)
+  upsertGLAccounts(companyId, rows) {
+    try { db.exec(`ALTER TABLE cache_gl_accounts ADD COLUMN AcctType TEXT DEFAULT ''`); } catch(_) {}
+    const ins = db.prepare(`INSERT OR REPLACE INTO cache_gl_accounts(company_id,AcctCode,AcctName,FormatCode,Postable,Frozen,AcctType) VALUES(?,?,?,?,?,?,?)`);
+    db.transaction(() => { for (const r of rows) ins.run(companyId,r.AcctCode,r.AcctName||'',r.FormatCode||'',r.Postable||'tYES',r.Frozen||'tNO',r.AcctType||''); })();
+  },
+  // postable expense accounts (all postable accounts when the type was never synced)
+  listExpenseAccounts(companyId) {
+    try { db.exec(`ALTER TABLE cache_gl_accounts ADD COLUMN AcctType TEXT DEFAULT ''`); } catch(_) {}
+    const exp = db.prepare(`SELECT * FROM cache_gl_accounts WHERE company_id=? AND Postable='tYES' AND Frozen='tNO' AND AcctType='at_Expenses' ORDER BY AcctCode`).all(companyId);
+    return exp.length ? exp : db.prepare(`SELECT * FROM cache_gl_accounts WHERE company_id=? AND Postable='tYES' AND Frozen='tNO' AND COALESCE(AcctType,'')='' ORDER BY AcctCode`).all(companyId);
+  },
+  // postable, non-frozen accounts matching code / format code / name; top=0 → no limit
+  searchGLAccounts(companyId, q, top=50) {
+    const like = `%${q||''}%`;
+    return db.prepare(`SELECT * FROM cache_gl_accounts WHERE company_id=? AND Postable='tYES' AND Frozen='tNO'
+      AND (AcctCode LIKE ? OR FormatCode LIKE ? OR AcctName LIKE ?)
+      ORDER BY CASE WHEN AcctCode=? OR FormatCode=? THEN 0 ELSE 1 END, AcctCode ${top ? 'LIMIT ' + Number(top) : ''}`)
+      .all(companyId,like,like,like,q||'',q||'');
+  },
+  getGLAccount(companyId, code) { return db.prepare(`SELECT * FROM cache_gl_accounts WHERE company_id=? AND AcctCode=?`).get(companyId, code) || null; },
+  countGLAccounts(companyId) { return db.prepare(`SELECT COUNT(*) AS n FROM cache_gl_accounts WHERE company_id=?`).get(companyId)?.n ?? 0; },
   // Open Sales Orders — transactional, not master data: a stale row here (an order
   // that's since been delivered/closed elsewhere) would let someone act on it as if
   // it were still open, so every sync replaces the whole snapshot rather than merging.
@@ -1573,6 +2010,31 @@ export const cacheRepo = {
   getOpenOrdersCustomers(companyId) {
     return db.prepare(`SELECT CardCode AS cardCode, CardName AS cardName FROM cache_open_orders
       WHERE company_id=? GROUP BY CardCode ORDER BY CardName`).all(companyId);
+  },
+  // Bill of Materials — one row per component line, header fields repeated on each line
+  upsertBomLines(companyId, rows) {
+    const ins = db.prepare(`INSERT OR REPLACE INTO cache_bom_lines
+      (company_id,TreeCode,ParentName,TreeType,BaseQty,BomWarehouse,LineNum,ItemCode,ItemName,Quantity,Warehouse,IssueMethod)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+    db.transaction(() => {
+      for (const r of rows) ins.run(companyId,r.TreeCode,r.ParentName||'',r.TreeType||'',r.BaseQty??1,r.BomWarehouse||'',
+        r.LineNum,r.ItemCode||'',r.ItemName||'',r.Quantity||0,r.Warehouse||'',r.IssueMethod||'');
+    })();
+  },
+  // BOM headers (one row per parent) matching code / name; top=0 → no limit
+  searchBoms(companyId, q, top=20) {
+    const like = `%${q||''}%`;
+    return db.prepare(`SELECT TreeCode, ParentName, TreeType, BaseQty, BomWarehouse, COUNT(*) AS ComponentCount
+      FROM cache_bom_lines WHERE company_id=? AND (TreeCode LIKE ? OR ParentName LIKE ?)
+      GROUP BY TreeCode ORDER BY TreeCode ${top ? 'LIMIT ' + Number(top) : ''}`).all(companyId, like, like);
+  },
+  getBomLines(companyId, treeCode) {
+    return db.prepare(`SELECT * FROM cache_bom_lines WHERE company_id=? AND TreeCode=? ORDER BY LineNum`).all(companyId, treeCode);
+  },
+  // Where-used: every BOM that consumes this component
+  getBomsUsingItem(companyId, itemCode) {
+    return db.prepare(`SELECT TreeCode, ParentName, TreeType, Quantity, Warehouse FROM cache_bom_lines
+      WHERE company_id=? AND ItemCode=? ORDER BY TreeCode`).all(companyId, itemCode);
   },
   // Sync log
   logSync(companyId, entity, status, count, error='') {
@@ -1601,6 +2063,8 @@ export const cacheRepo = {
       item_groups:      db.prepare(`SELECT COUNT(*) AS n FROM cache_item_groups      WHERE company_id=?`).get(companyId)?.n ?? 0,
       bp_groups:        db.prepare(`SELECT COUNT(*) AS n FROM cache_bp_groups        WHERE company_id=?`).get(companyId)?.n ?? 0,
       open_orders:      db.prepare(`SELECT COUNT(*) AS n FROM cache_open_orders      WHERE company_id=?`).get(companyId)?.n ?? 0,
+      gl_accounts:      db.prepare(`SELECT COUNT(*) AS n FROM cache_gl_accounts      WHERE company_id=?`).get(companyId)?.n ?? 0,
+      boms:             db.prepare(`SELECT COUNT(*) AS n FROM cache_bom_lines        WHERE company_id=?`).get(companyId)?.n ?? 0,
     };
   },
   // Wipes cached rows AND sync history for one entity — status goes back to
@@ -1632,6 +2096,8 @@ export const cacheRepo = {
       item_groups:   () => del(`DELETE FROM cache_item_groups WHERE company_id=?`),
       bp_groups:     () => del(`DELETE FROM cache_bp_groups WHERE company_id=?`),
       open_orders:   () => del(`DELETE FROM cache_open_orders WHERE company_id=?`),
+      gl_accounts:   () => del(`DELETE FROM cache_gl_accounts WHERE company_id=?`),
+      boms:          () => del(`DELETE FROM cache_bom_lines WHERE company_id=?`),
     };
     if (!byEntity[entity]) throw new Error(`Unknown entity: ${entity}`);
     byEntity[entity]();
@@ -1639,7 +2105,7 @@ export const cacheRepo = {
   clearCompany(companyId) {
     ['cache_items','cache_business_partners','cache_tax_codes','cache_warehouses',
      'cache_uom','cache_payment_terms','cache_currencies','cache_item_groups','cache_bp_groups',
-     'cache_open_orders']
+     'cache_open_orders','cache_gl_accounts','cache_bom_lines']
       .forEach(t => db.prepare(`DELETE FROM ${t} WHERE company_id=?`).run(companyId));
     // Also clear sync history so the UI shows "Never synced" instead of stale OK/counts.
     db.prepare(`DELETE FROM cache_sync_log WHERE company_id=?`).run(companyId);

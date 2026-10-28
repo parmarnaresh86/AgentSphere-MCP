@@ -470,13 +470,15 @@ async function loadBpSeries(sess, sap) {
 async function bpGroupReply(sess, sap, res, prefixHtml) {
   sess.step = 'ASK_GROUP';
   let groupError = null;
+  // SAP rejects a customer in a vendor group (and vice versa), so only offer groups of the matching type
+  const groupType = sess.bpType==='customer' ? 'bbpgt_CustomerGroup' : 'bbpgt_VendorGroup';
   try {
-    const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name', $orderby:'Name', $top:200 });
-    sess.groupList = arr(gRes);
+    const gRes = await sap.get('/BusinessPartnerGroups', { $select:'Code,Name,Type', $orderby:'Name', $top:200 });
+    sess.groupList = arr(gRes).filter(g => !g.Type || g.Type===groupType);
   } catch(e) { sess.groupList = []; groupError = e.message; }
   const groupContent = sess.groupList.length
     ? bpGroupChips(sess.groupList)
-    : `<div style="font-size:12.5px;color:#b91c1c">⚠️ Could not load BP groups from SAP${groupError ? `: ${esc(groupError)}` : ' (none configured)'}.</div>`;
+    : `<div style="font-size:12.5px;color:#b91c1c">⚠️ Could not load BP groups from SAP${groupError ? `: ${esc(groupError)}` : ` (no ${sess.bpType} groups configured)`}.</div>`;
   return res.json({ ok:true, reply:`${prefixHtml}<div style="margin-top:8px">Select the <strong>BP Group</strong>:</div><div style="margin-top:8px">${groupContent}</div>`, step:sess.step, sessionId:sess.sid });
 }
 
@@ -689,27 +691,78 @@ function bomSummaryHtml(sess) {
   </div>`;
 }
 
+// ── BOM reads: DB Direct (OITM/OITT/OWHS), Service Layer fallback ──
+// Same pattern as Production/MRP: SQL when DB Direct is connected, Service Layer on
+// any failure. Writes (POST /ProductTrees) always go through the Service Layer.
+const sqlStr = s => String(s).replace(/'/g, "''");
+function dbq() {
+  const h = getActiveType() === 'hana';
+  return { cfg: getActiveConfig(), q: c => h ? `"${c}"` : c };
+}
+async function searchItemsViaDB(term) {
+  const { cfg, q } = dbq();
+  const t = sqlStr(term);
+  const nameLike = `UPPER(${q('ItemName')}) LIKE UPPER('%${t}%')`;
+  const where = isNaN(term) ? nameLike : `${q('ItemCode')}='${t}' OR ${nameLike}`;
+  return executeSQL(
+    `SELECT TOP 10 ${q('ItemCode')} AS "ItemCode", ${q('ItemName')} AS "ItemName"
+     FROM ${tableRef('OITM', cfg)} WHERE ${where}`);
+}
+async function inventoryItemsViaDB(excludeExistingBom) {
+  const { cfg, q } = dbq();
+  const noBom = excludeExistingBom
+    ? ` AND ${q('ItemCode')} NOT IN (SELECT ${q('Code')} FROM ${tableRef('OITT', cfg)})` : '';
+  return executeSQL(
+    `SELECT TOP 200 ${q('ItemCode')} AS "ItemCode", ${q('ItemName')} AS "ItemName"
+     FROM ${tableRef('OITM', cfg)} WHERE ${q('InvntItem')}='Y'${noBom}
+     ORDER BY ${q('ItemName')}`);
+}
+async function warehousesViaDB() {
+  const { cfg, q } = dbq();
+  return executeSQL(
+    `SELECT TOP 200 ${q('WhsCode')} AS "WarehouseCode", ${q('WhsName')} AS "WarehouseName"
+     FROM ${tableRef('OWHS', cfg)} WHERE ${q('Inactive')}='N'`);
+}
+async function fetchWarehouses(sap) {
+  if (isConnected()) {
+    try { return await warehousesViaDB(); }
+    catch(e) { console.warn('[BOM] DB warehouse read failed, using Service Layer:', e.message); }
+  }
+  return arr(await sap.get('/Warehouses', { $select:'WarehouseCode,WarehouseName', $filter:"Inactive eq 'tNO'", $top:200 }));
+}
+
 async function searchItems(sap, q) {
+  if (isConnected()) {
+    try { return await searchItemsViaDB(q); }
+    catch(e) { console.warn('[BOM] DB item search failed, using Service Layer:', e.message); }
+  }
   const filter = isNaN(q) ? `contains(ItemName,'${q}')` : `ItemCode eq '${q}' or contains(ItemName,'${q}')`;
   const res = await sap.get('/Items', { $filter: filter, $select:'ItemCode,ItemName', $top:10 });
   return arr(res);
 }
 async function itemPickerHtml(sap, prefix, excludeExistingBom = false) {
   try {
-    const res = await sap.get('/Items', {
-      $filter: "InventoryItem eq 'tYES'",
-      $select: 'ItemCode,ItemName',
-      $orderby: 'ItemName',
-      $top: 200,
-    });
-    let items = arr(res);
+    let items = null;
+    if (isConnected()) {
+      try { items = await inventoryItemsViaDB(excludeExistingBom); }
+      catch(e) { console.warn('[BOM] DB item list failed, using Service Layer:', e.message); }
+    }
+    if (!items) {
+      const res = await sap.get('/Items', {
+        $filter: "InventoryItem eq 'tYES'",
+        $select: 'ItemCode,ItemName',
+        $orderby: 'ItemName',
+        $top: 200,
+      });
+      items = arr(res);
 
-    if (excludeExistingBom && items.length) {
-      try {
-        const bomRes = await sap.get('/ProductTrees', { $select: 'TreeCode', $top: 500 });
-        const existing = new Set(arr(bomRes).map(b => b.TreeCode));
-        items = items.filter(i => !existing.has(i.ItemCode));
-      } catch(_) { /* if BOM fetch fails, show all items */ }
+      if (excludeExistingBom && items.length) {
+        try {
+          const bomRes = await sap.get('/ProductTrees', { $select: 'TreeCode', $top: 500 });
+          const existing = new Set(arr(bomRes).map(b => b.TreeCode));
+          items = items.filter(i => !existing.has(i.ItemCode));
+        } catch(_) { /* if BOM fetch fails, show all items */ }
+      }
     }
 
     if (!items.length) return '<em class="imf-empty">All items already have a BOM, or none found. Type code below to search.</em>';
@@ -810,10 +863,7 @@ async function handleBOMChat(sess, msg, sap, res, user) {
   }
   if (step==='ASK_BASE_QTY') {
     const q = parseFloat(msg.trim()||'1'); sess.baseQty = isNaN(q)?1:q; sess.step = 'ADDING_COMPONENTS';
-    if (!sess.warehouseList.length) {
-      const whRes = await sap.get('/Warehouses', { $select:'WarehouseCode,WarehouseName', $filter:"Inactive eq 'tNO'", $top:200 });
-      sess.warehouseList = arr(whRes);
-    }
+    if (!sess.warehouseList.length) sess.warehouseList = await fetchWarehouses(sap);
     const picker = await itemPickerHtml(sap, 'select_comp');
     return res.json({ ok:true, reply:`<div>Base Qty: <strong>${sess.baseQty}</strong> ✓</div><div style="margin-top:10px">Select <strong>components</strong> to add:</div>${picker}`, step:sess.step, sessionId:sid });
   }

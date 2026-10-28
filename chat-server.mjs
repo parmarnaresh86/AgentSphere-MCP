@@ -30,6 +30,11 @@ import { createRushOrderRouter, runRushOrderScan } from './controllers/rush-orde
 import { createPurchasingAgentRouter }      from './controllers/purchasing-agent.mjs';
 import { createOrderIntelligenceRouter }    from './controllers/order-intelligence-agent.mjs';
 import { createShipmentDelayRouter }        from './controllers/shipment-delay-agent.mjs';
+import { createGrpoSortingRouter }          from './controllers/grpo-sorting-agent.mjs';
+import { createSortingAnalyticsRouter }     from './controllers/sorting-analytics-agent.mjs';
+import { createPutawayAnalyticsRouter }     from './controllers/putaway-analytics-agent.mjs';
+import { createLoadPlannerRouter }          from './controllers/load-planner-agent.mjs';
+import { createWarehouseTwinRouter }        from './controllers/warehouse-twin-agent.mjs';
 import { createPurchaseRequestAgentRouter } from './controllers/pr-agent.mjs';
 import { createPurchaseOrderAgentRouter } from './controllers/po-agent.mjs';
 import { createInventoryAgentRouter } from './controllers/inventory-agent.mjs';
@@ -38,6 +43,7 @@ import { createPRtoPOAgentRouter } from './controllers/pr-to-po-agent.mjs';
 import { createPOtoGRPOAgentRouter } from './controllers/po-to-grpo-agent.mjs';
 import { createGRPOtoAPInvAgentRouter } from './controllers/grpo-to-apinv-agent.mjs';
 import { createScanAPInvAgentRouter } from './controllers/scan-apinv-agent.mjs';
+import { createBankRecoRouter } from './controllers/bank-reco-agent.mjs';
 import { createAPInvServiceAgentRouter } from './controllers/apinv-service-agent.mjs';
 import { createOcrPoScanAgentRouter }   from './controllers/ocr-po-scan-agent.mjs';
 import { createApipRouter, startApipIntake } from './controllers/ap-invoice-processing-agent.mjs';
@@ -3511,7 +3517,7 @@ app.get("/api/connections", requireAuth, (_req, res) => {
 
 // POST /api/connections
 app.post("/api/connections", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   const { name, base_url, company, sl_user, sl_password, hana, schema_hint, dim_names } = req.body;
   if (!name || !base_url || !company || !sl_user || !sl_password)
     return res.status(400).json({ error: "All fields required" });
@@ -3524,7 +3530,7 @@ app.post("/api/connections", requireAuth, (req, res) => {
 
 // PUT /api/connections/:id/activate
 app.put("/api/connections/:id/activate", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   try {
     connRepo.activate(Number(req.params.id));
     res.json({ ok: true });
@@ -3533,7 +3539,7 @@ app.put("/api/connections/:id/activate", requireAuth, (req, res) => {
 
 // PUT /api/connections/:id  — edit a connection
 app.put("/api/connections/:id", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   const { name, base_url, company, sl_user, sl_password, hana, schema_hint, dim_names } = req.body;
   if (!name || !base_url || !company || !sl_user)
     return res.status(400).json({ error: "name, base_url, company and sl_user are required" });
@@ -3620,7 +3626,7 @@ app.post("/api/connections/:id/switch", requireAuth, async (req, res) => {
 
 // DELETE /api/connections/:id
 app.delete("/api/connections/:id", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   try {
     connRepo.delete.run(Number(req.params.id));
     res.json({ ok: true });
@@ -3630,13 +3636,13 @@ app.delete("/api/connections/:id", requireAuth, (req, res) => {
 // ── User management routes (admin only) ──────────────────────
 // GET /api/users
 app.get("/api/users", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   res.json(userRepo.list.all());
 });
 
 // POST /api/users
 app.post("/api/users", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   const { username, password, fullName, role } = req.body;
   if (!username || !password) return res.status(400).json({ error: "username and password required" });
   try {
@@ -5014,7 +5020,7 @@ app.delete("/api/query-cache/:id", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 app.delete("/api/query-cache", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   queryCacheRepo.clear.run();
   res.json({ ok: true });
 });
@@ -5027,7 +5033,7 @@ app.get("/api/db-connections", requireAuth, (_req, res) => {
 });
 
 app.post("/api/db-connections", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   const { name, db_type, host, port, database, schema_name, query_name, username, password, password_encrypted } = req.body;
   if (!name || !host || !database || !username || !password)
     return res.status(400).json({ error: "name, host, database, username and password are required" });
@@ -5038,7 +5044,7 @@ app.post("/api/db-connections", requireAuth, (req, res) => {
 });
 
 app.put("/api/db-connections/:id", requireAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   const { name, db_type, host, port, database, schema_name, query_name, username, password, password_encrypted } = req.body;
   try {
     dbConnRepo.update(Number(req.params.id), name, db_type||"mssql", host, port||null, database, schema_name||"", query_name||"", username, password, password_encrypted||false);
@@ -5047,7 +5053,7 @@ app.put("/api/db-connections/:id", requireAuth, (req, res) => {
 });
 
 app.post("/api/db-connections/:id/activate", requireAuth, async (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   try {
     const cfg = dbConnRepo.getById(Number(req.params.id));
     if (!cfg) return res.status(404).json({ error: "Not found" });
@@ -5070,7 +5076,7 @@ app.post("/api/db-connections/test", requireAuth, async (req, res) => {
 });
 
 app.delete("/api/db-connections/:id", requireAuth, async (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   dbConnRepo.delete.run(Number(req.params.id));
   // Deleting the row alone doesn't touch the live connection already open in
   // memory — without this, the app keeps using it (and the AI keeps answering
@@ -6871,6 +6877,14 @@ app.use('/api/scan-apinv', createScanAPInvAgentRouter({
   requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
 }));
 
+// ── Bank Reconciliation Agent routes (scan statement ↔ SAP bank G/L, UI: public/bank-reco.html) ──
+// Statement OCR prefers Azure Anthropic (reads scanned PDFs natively) whatever the global AI_PROVIDER, like APIP.
+app.use('/api/bank-reco', createBankRecoRouter({
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
+  OCR_PROVIDER: (process.env.DEMO_MODE !== "true" && process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY) ? 'azure' : undefined,
+  isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, ensureConnected: rushEnsureDb,
+}));
+
 // ── OCR Processing suite routes ─────────────────────────────────────────────
 const getActiveCompanyId = () => connRepo.getActive()?.company || 'default';
 app.use('/api/ocr-po-scan', createOcrPoScanAgentRouter({
@@ -6968,6 +6982,35 @@ app.use('/api/shipment-delays', createShipmentDelayRouter({
   requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI,
   isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns, resolveFieldMap,
   ensureConnected: rushEnsureDb,   // DB Direct only — reconnect to the saved connection
+}));
+
+// ── GRPO Sorting Agent routes (UI: public/grpo-sorting.html) ──────────────────
+app.use('/api/grpo-sorting', createGrpoSortingRouter({
+  requireAuth, getActiveSap, isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, getTableColumns,
+  ensureConnected: rushEnsureDb,
+}));
+
+// ── Sorting Analytics Agent routes (SAP @SORTING, UI: public/sorting-analytics.html) ──
+app.use('/api/sorting-analytics', createSortingAnalyticsRouter({
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER,
+  isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, ensureConnected: rushEnsureDb,
+}));
+
+// ── Putaway Analytics Agent routes (SAP UDO STTL_PUTAWAY, UI: public/putaway-analytics.html) ──
+app.use('/api/putaway-analytics', createPutawayAnalyticsRouter({
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER,
+  isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, ensureConnected: rushEnsureDb,
+}));
+
+// ── Load Planner Agent routes (SO cartons → pallets / containers, UI: public/load-planner.html) ──
+app.use('/api/load-planner', createLoadPlannerRouter({
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER,
+}));
+
+// ── Warehouse Digital Twin routes (3D bins & stock, default 17SH, UI: public/warehouse-twin.html) ──
+app.use('/api/warehouse-twin', createWarehouseTwinRouter({
+  requireAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER,
+  isConnected, getActiveType, getActiveConfig, executeSQL, tableRef, ensureConnected: rushEnsureDb,
 }));
 
 // ── Activity Agent routes ──────────────────────────────────────────────────

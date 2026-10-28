@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<script src="/app-locale.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Sorting Analytics — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  if(!t){window.location.replace('/login.html');return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace('/login.html');}}).catch(()=>{});
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<!-- Shared KPI detail popup (window.KpiDetail) — the same one the agents use. -->
+<script src="/insight-agents.js" defer></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--green-bg:#EAF5EE;--red:#BB0000;--orange:#E9730C;--orange-bg:#FEF3E8;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+  /* chart roles (reference palette, light) */
+  --s1:#2a78d6;--grid:#e1e0d9;--axis:#52514e;--good:#0ca30c;--serious:#ec835a;--critical:#d03b3b;
+}
+html,body{min-height:100%;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);font-size:13px}
+button,input,select{font-family:inherit}
+
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;position:sticky;top:0}
+.shell-back{color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.2);white-space:nowrap}
+.shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:#0f766e;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
+.shell-spacer{flex:1}
+.shell-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-weight:600;white-space:nowrap}
+.shell-badge.loading{background:rgba(233,115,12,.6)}
+.shell-badge.ready{background:rgba(16,126,62,.6)}
+.shell-badge.error{background:rgba(187,0,0,.6)}
+
+.filter-bar{background:var(--white);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;position:sticky;top:44px;z-index:25}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fg input,.fg select{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);outline:none;max-width:220px}
+.fg input:focus,.fg select:focus{border-color:var(--blue);background:var(--white)}
+.btn{height:30px;padding:0 12px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:12px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--blue-mid)}
+.btn:disabled{opacity:.55;cursor:wait}
+.presets{display:flex;gap:4px}
+
+.wrap{padding:14px;max-width:1500px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 14px;position:relative;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.kpi:hover{border-color:#9ec5f4;box-shadow:var(--shadow)}
+.kpi:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.kpi .k-l{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding-right:58px}
+.kpi .k-d{position:absolute;top:8px;right:8px;height:22px;padding:0 8px;border:1px solid var(--border);border-radius:11px;background:var(--white);color:var(--blue);font-size:11px;font-weight:600;cursor:pointer}
+.kpi .k-d:hover{background:var(--blue-light);border-color:var(--blue)}
+.kpi .k-v{font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .k-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);margin-bottom:14px;min-width:0}
+.grid2 .card{margin-bottom:0}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card-hd h3{font-size:13.5px;font-weight:600}
+.card-hd .sub{color:var(--muted);font-size:11.5px}
+.spacer{flex:1}
+.chart-box{position:relative;height:280px;padding:10px 14px}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+
+/* Heatmap */
+.heat{overflow:auto;padding:12px 14px}
+.heat table{border-collapse:separate;border-spacing:2px;font-size:12px}
+.heat th{font-weight:600;color:var(--muted);font-size:11px;padding:2px 4px;text-align:center}
+.heat th.u{text-align:right;padding-right:8px;color:var(--text);white-space:nowrap}
+.heat td{width:44px;height:30px;text-align:center;border-radius:4px;font-variant-numeric:tabular-nums;font-weight:600;cursor:default}
+.heat td.z{background:#f4f4f2;color:#b8b6ad;font-weight:400}
+.legend-ramp{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:0 14px 12px}
+.legend-ramp span.sw{width:22px;height:10px;border-radius:2px;display:inline-block}
+
+/* Tabs + tables */
+.tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{border:none;background:none;padding:10px 12px;font-size:12.5px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.tbl-wrap{overflow:auto;max-height:60vh}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t th{position:sticky;top:0;background:#F7F8F9;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+table.t th:hover{color:var(--text)}
+table.t td{padding:7px 10px;border-bottom:1px solid #F0F0F0;white-space:nowrap}
+table.t tr:hover td{background:#FAFBFC}
+table.t .num{text-align:right;font-variant-numeric:tabular-nums}
+.bar-cell{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.bar-cell i{display:inline-block;height:8px;border-radius:0 4px 4px 0;background:var(--s1);min-width:2px}
+.badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.b-yes{background:var(--green-bg);color:var(--green)}
+.b-no{background:var(--orange-bg);color:#B45309}
+.b-age{background:#FBEAEA;color:var(--red)}
+
+.ai{padding:14px;line-height:1.6;font-size:13px}
+.ai h1,.ai h2,.ai h3{font-size:14px;margin:10px 0 4px}
+.ai ul,.ai ol{padding-left:20px}
+.ai p{margin:4px 0}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2d3e;color:#fff;padding:9px 16px;border-radius:6px;font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100}
+#toast.show{opacity:1}
+#toast.err{background:var(--red)}
+
+@media (max-width:900px){ .grid2{grid-template-columns:1fr} }
+@media (max-width:760px){
+  .wrap{padding:10px 16px}
+  .shell-subtitle{display:none}
+  .filter-bar{position:static}
+  .kpi .k-v{font-size:20px}
+}
+</style>
+<script>
+// Embedded in the main app (iframe panel): close the panel there instead of
+// loading the app inside the iframe. Standalone: follow the link to the app.
+function goBack() {
+  try {
+    if (window.top !== window.self && typeof window.parent.showChatPanel === 'function') { window.parent.showChatPanel(); return false; }
+  } catch {}
+  return true;
+}
+</script>
+</head>
+<body>
+<div class="shell-bar">
+  <a class="shell-back" href="/" onclick="return goBack()" title="Back">← Back</a>
+  <div class="shell-icon">▤</div>
+  <div>
+    <div class="shell-title">Sorting Analytics</div>
+    <div class="shell-subtitle">GRPO sorting performance from SAP @SORTING · sorter, item, vendor &amp; time patterns</div>
+  </div>
+  <div class="shell-spacer"></div>
+  <span class="shell-badge" id="status">…</span>
+</div>
+
+<div class="filter-bar">
+  <div class="fg"><label>GRPO date from</label><input type="date" id="f-from"/></div>
+  <div class="fg"><label>To</label><input type="date" id="f-to"/></div>
+  <div class="presets">
+    <button class="btn" data-months="1">1M</button>
+    <button class="btn" data-months="3">3M</button>
+    <button class="btn" data-months="6">6M</button>
+    <button class="btn" data-months="12">12M</button>
+  </div>
+  <div class="fg"><label>Sorter</label><select id="f-user"><option value="">All sorters</option></select></div>
+  <div class="fg"><label>Vendor</label><select id="f-vendor"><option value="">All vendors</option></select></div>
+  <div class="fg"><label>Warehouse</label><select id="f-whs"><option value="">All warehouses</option></select></div>
+  <button class="btn primary" id="btn-run">Run</button>
+</div>
+
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-hd"><h3>Lines sorted per day</h3><span class="sub" id="daily-sub"></span></div>
+      <div class="chart-box"><canvas id="ch-daily" role="img" aria-label="Lines sorted per day"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><h3>Workload by sorter</h3><span class="sub">Lines sorted · share of total</span></div>
+      <div class="chart-box"><canvas id="ch-users" role="img" aria-label="Lines sorted by sorter"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-hd"><h3>Typical working window</h3><span class="sub">Average first Time IN → last Time OUT per sorting day</span></div>
+      <div class="chart-box"><canvas id="ch-window" role="img" aria-label="Average working window per sorter"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><h3>Average minutes per line</h3><span class="sub">Time OUT − Time IN</span></div>
+      <div class="chart-box"><canvas id="ch-speed" role="img" aria-label="Average minutes per line by sorter"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><h3>Activity by hour of day</h3><span class="sub">Lines started in each hour (Time IN) per sorter</span></div>
+    <div class="heat" id="heat"></div>
+    <div class="legend-ramp" id="heat-legend"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><h3>AI insights</h3><span class="sub">Narrative read-out of the figures above</span><span class="spacer"></span>
+      <button class="btn" id="btn-ai">Generate insights</button></div>
+    <div class="ai" id="ai"><span style="color:var(--muted)">Click “Generate insights” for a supervisor brief: who carries the load, bottlenecks, backlog risk and staffing actions.</span></div>
+  </div>
+
+  <div class="card">
+    <div class="tabs" id="tabs"></div>
+    <div class="card-hd" style="border-bottom:none;padding-bottom:0">
+      <span class="sub" id="tbl-sub"></span><span class="spacer"></span>
+      <div class="fg"><input id="tbl-q" placeholder="Filter rows…"/></div>
+      <button class="btn" id="btn-csv">CSV</button>
+    </div>
+    <div class="tbl-wrap" id="tbl"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  const TOKEN = () => localStorage.getItem('hanny_token') || '';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const fmt = (n, d = 0) => n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+  const fmtQ = n => n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const hhmm = m => m == null ? '—' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+  const localYmd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const SEQ = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#0d366b'];   // sequential blue 100→700
+  let toastT;
+  function toast(msg, err) { const el = $('toast'); el.textContent = msg; el.className = 'show' + (err ? ' err' : ''); clearTimeout(toastT); toastT = setTimeout(() => el.className = '', 3500); }
+  function status(text, cls) { const b = $('status'); b.textContent = text; b.className = 'shell-badge ' + (cls || ''); }
+  async function api(path, opts = {}) {
+    const r = await fetch('/api/sorting-analytics' + path, { ...opts,
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': TOKEN() }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    if (r.status === 401) { localStorage.removeItem('hanny_token'); location.replace('/login.html'); throw new Error('Session expired'); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+    return j;
+  }
+  const params = () => ({ from: $('f-from').value, to: $('f-to').value, user: $('f-user').value, vendor: $('f-vendor').value, whs: $('f-whs').value });
+  const userLabel = u => u === '(blank)' ? 'Unassigned' : u;
+
+  let D = null;
+  const charts = {};
+
+  // ── Presets ─────────────────────────────────────────────────────────────
+  function preset(months) {
+    const to = new Date(), from = new Date(); from.setMonth(from.getMonth() - months);
+    $('f-from').value = localYmd(from); $('f-to').value = localYmd(to);
+  }
+  document.querySelectorAll('[data-months]').forEach(b => b.addEventListener('click', () => { preset(Number(b.dataset.months)); run(); }));
+  $('btn-run').addEventListener('click', run);
+  ['f-user', 'f-vendor', 'f-whs'].forEach(id => $(id).addEventListener('change', run));
+
+  async function run() {
+    const btn = $('btn-run'); btn.disabled = true; status('Loading…', 'loading');
+    try {
+      D = await api('/data?' + new URLSearchParams(params()));
+      fillOptions(); render();
+      status(`${fmt(D.kpis.lines)} lines · ${D.source === 'db' ? 'SAP DB' : 'Service Layer'}`, 'ready');
+    } catch (e) { status('Error', 'error'); toast(e.message, true); }
+    finally { btn.disabled = false; }
+  }
+  function fillOptions() {
+    const fill = (id, list, all) => { const sel = $(id), cur = sel.value;
+      sel.innerHTML = `<option value="">${all}</option>` + list.map(v => `<option>${esc(v)}</option>`).join(''); sel.value = list.includes(cur) ? cur : ''; };
+    fill('f-user', D.options.users, 'All sorters'); fill('f-vendor', D.options.vendors, 'All vendors'); fill('f-whs', D.options.warehouses, 'All warehouses');
+  }
+
+  // ── KPIs ────────────────────────────────────────────────────────────────
+  function renderKpis() {
+    kpiAI = {};   // new data → AI insights are fetched again
+    $('kpis').innerHTML = kpiDefs().map((t, i) => `<div class="kpi" data-kd="${i}" role="button" tabindex="0" title="Click for details, data summary and AI insight">
+      <div class="k-l">${t.label}</div><button class="k-d" type="button" data-kd="${i}" aria-label="Details for ${esc(t.label)}">Details</button>
+      <div class="k-v">${t.value}</div><div class="k-s">${t.sub}</div></div>`).join('');
+  }
+
+  // ── KPI detail popups ───────────────────────────────────────────────────
+  // Each tile opens the shared 3-tab KPI popup the agents use (window.KpiDetail
+  // from insight-agents.js): data summary, how it is calculated, AI insight.
+  // Built from the data already on screen; the formulas mirror analyse() in
+  // controllers/sorting-analytics-agent.mjs — keep them in sync.
+  let kpiAI = {};
+  const SRC = {
+    rows: '**Sorting table (@SORTING):** one row per GRPO line — GRPO (U_GRPO), GRPO date (U_DD), item (U_IN / U_ID), quantity (U_QTY), vendor (U_VC / U_VN), warehouse (U_WH) and bin (U_BIN).',
+    flag: '**Sorted flag (U_IS):** YES = sorted. Lines without YES are the open backlog.',
+    time: '**Sorter and times:** sorter (U_USER), Time IN (U_TI), Time OUT (U_TO). Minutes = Time OUT − Time IN (wraps past midnight).',
+  };
+  const scopeStep = () => {
+    const f = [['Sorter', $('f-user').value], ['Vendor', $('f-vendor').value], ['Warehouse', $('f-whs').value]].filter(x => x[1]);
+    return `Lines with a **GRPO date (U_DD) from ${D.from} to ${D.to}**${f.length ? `, filtered on ${f.map(x => `${x[0]} = ${x[1]}`).join(', ')}` : ', all sorters, vendors and warehouses'}.`;
+  };
+  const SORTED_STEP = 'A line counts as **sorted** when U_IS = YES **and** both Time IN and Time OUT are filled; lines marked YES without times are left out of the time figures.';
+  const C = {
+    user: { key: 'user', label: 'Sorter' }, lines: { key: 'lines', label: 'Lines', fmt: 'int' }, share: { key: 'sharePct', label: 'Share', fmt: 'pct' },
+    qty: { key: 'qty', label: 'Qty', fmt: 'num' }, hours: { key: 'sortHours', label: 'Sort h', fmt: 'num' }, avg: { key: 'avgMinPerLine', label: 'Avg min/line', fmt: 'num' },
+    med: { key: 'medianMinPerLine', label: 'Median min', fmt: 'num' }, qph: { key: 'qtyPerHour', label: 'Qty / h', fmt: 'num' }, days: { key: 'daysWorked', label: 'Days', fmt: 'int' },
+    lpd: { key: 'linesPerDay', label: 'Lines/day', fmt: 'num' }, fin: { key: 'avgFirstIn', label: 'Avg first in' }, lout: { key: 'avgLastOut', label: 'Avg last out' },
+    busy: { key: 'busyPct', label: 'Busy %', fmt: 'pct' }, item: { key: 'key', label: 'Item' }, desc: { key: 'label', label: 'Description', wrap: true },
+    spu: { key: 'secPerUnit', label: 'Sec / unit', fmt: 'num' },
+  };
+  const BACKLOG_COLS = [{ key: 'ageDays', label: 'Age (days)', fmt: 'int', strong: true }, { key: 'date', label: 'GRPO date', fmt: 'date' }, { key: 'grpo', label: 'GRPO' },
+    { key: 'vendor', label: 'Vendor', wrap: true }, { key: 'itemCode', label: 'Item' }, { key: 'qty', label: 'Qty', fmt: 'num' }, { key: 'whs', label: 'Whs' }, { key: 'bin', label: 'Bin' }];
+  const n1 = v => fmt(v, 1);
+  const dayChart = (title, name, key, f) => D.daily.length ? { title, fmt: f, labels: D.daily.map(d => d.date.slice(5)), series: [{ name, values: D.daily.map(d => d[key]) }] } : null;
+  const userChart = (title, name, key, f, rows) => rows.length ? { title, fmt: f, horizontal: true, labels: rows.map(x => x.user), series: [{ name, values: rows.map(x => x[key]) }] } : null;
+
+  function kpiDefs() {
+    const k = D.kpis;
+    const users = D.userWise.map(x => ({ ...x, user: userLabel(x.user) }));
+    const top = users[0], busiest = [...D.daily].sort((a, b) => b.lines - a.lines)[0];
+    const byAvg = users.filter(x => x.avgMinPerLine != null && x.lines >= 3).sort((a, b) => a.avgMinPerLine - b.avgMinPerLine);
+    const byQph = users.filter(x => x.qtyPerHour != null && x.lines >= 3).sort((a, b) => b.qtyPerHour - a.qtyPerHour);
+    const old7 = D.backlog.filter(b => (b.ageDays ?? 0) > 7);
+    return [
+      { label: 'Lines sorted', value: fmt(k.sortedLines), sub: `of ${fmt(k.lines)} GRPO lines · ${fmt(k.grpos)} GRPOs`, tab: 'users', tone: '',
+        hint: 'Sorted @SORTING lines in the period', detail: {
+          formula: '**Lines sorted** = number of @SORTING lines with U_IS = YES and Time IN + Time OUT recorded',
+          steps: [scopeStep(), SORTED_STEP, 'Count those lines. GRPOs = distinct GRPO numbers among all lines in the period (sorted or not).'],
+          sources: [SRC.rows, SRC.flag, SRC.time],
+          actions: ['Compare with **GRPO lines** to see how much of the received goods has been sorted.', 'Use the chart to spot days with little or no sorting.'],
+          stats: [{ label: 'Lines sorted', value: k.sortedLines, fmt: 'int' }, { label: 'GRPO lines in period', value: k.lines, fmt: 'int' }, { label: 'GRPOs', value: k.grpos, fmt: 'int' },
+            { label: 'Not sorted yet', value: k.openLines, fmt: 'int' }, { label: 'Sorters', value: k.sorters, fmt: 'int' }, { label: 'Sorting days', value: k.sortingDays, fmt: 'int' }],
+          chart: dayChart('Lines sorted per day', 'Lines', 'lines', 'int'),
+          table: { title: 'Lines sorted by sorter', columns: [C.user, C.lines, C.share, C.qty, C.days, C.lpd], rows: users },
+          insight: `**${fmt(k.sortedLines)} of ${fmt(k.lines)} GRPO lines sorted (${k.completionPct ?? 0}%).**\n\n` +
+            (top ? `- ${top.user} sorted the most: ${fmt(top.lines)} lines (${top.sharePct}%).\n` : '') +
+            (busiest ? `- Busiest day: ${busiest.date} with ${fmt(busiest.lines)} lines by ${busiest.sorters} sorter(s).` : '- No sorted lines in this period.') } },
+
+      { label: 'Completion', value: k.completionPct == null ? '—' : fmt(k.completionPct, 1) + '%', sub: `${fmt(k.openLines)} line(s) not sorted yet`, tab: 'backlog',
+        tone: k.completionPct == null ? '' : k.completionPct >= 95 ? 'good' : k.completionPct >= 80 ? 'warn' : 'bad',
+        hint: 'Share of GRPO lines already sorted', detail: (() => {
+          const m = new Map();
+          for (const r of D.lines) {
+            const v = m.get(r.vendor || '(blank)') || { vendor: r.vendor || '(blank)', lines: 0, sorted: 0, open: 0, openQty: 0 };
+            v.lines++; if (r.sorted && r.mins != null) v.sorted++; if (!r.sorted) { v.open++; v.openQty += r.qty; } m.set(v.vendor, v);
+          }
+          const vend = [...m.values()].map(v => ({ ...v, pct: v.lines ? Math.round(v.sorted / v.lines * 1000) / 10 : null })).sort((a, b) => b.open - a.open || b.lines - a.lines);
+          const ch = vend.filter(v => v.open).slice(0, 10);
+          return {
+            formula: '**Completion %** = Lines sorted ÷ all GRPO lines in the period × 100',
+            steps: [scopeStep(), SORTED_STEP, 'Not sorted = lines where U_IS is not YES.', 'Completion % = sorted lines ÷ all lines × 100, rounded to one decimal.'],
+            sources: [SRC.rows, SRC.flag],
+            actions: ['Below 100% means received goods are still waiting to be sorted — open the backlog to see which GRPOs.', 'Vendors with many open lines may need sorting capacity planned around their deliveries.'],
+            stats: [{ label: 'Completion', value: k.completionPct, fmt: 'pct' }, { label: 'Lines sorted', value: k.sortedLines, fmt: 'int' }, { label: 'Not sorted', value: k.openLines, fmt: 'int' },
+              { label: 'Qty not sorted', value: k.openQty, fmt: 'num' }, { label: 'Oldest open (days)', value: k.oldestOpenDays, fmt: 'int' }],
+            chart: ch.length ? { title: 'Vendors with most open lines', fmt: 'int', horizontal: true, stacked: true, labels: ch.map(v => v.vendor),
+              series: [{ name: 'Sorted', color: '#16A34A', values: ch.map(v => v.sorted) }, { name: 'Not sorted', color: '#D97706', values: ch.map(v => v.open) }] } : null,
+            table: { title: 'Completion by vendor — most open first', columns: [{ key: 'vendor', label: 'Vendor', wrap: true }, { key: 'lines', label: 'Lines', fmt: 'int' },
+              { key: 'sorted', label: 'Sorted', fmt: 'int' }, { key: 'open', label: 'Not sorted', fmt: 'int', strong: true }, { key: 'openQty', label: 'Open qty', fmt: 'num' }, { key: 'pct', label: 'Completion', fmt: 'pct' }], rows: vend },
+            insight: `**${k.completionPct ?? 0}% of GRPO lines are sorted; ${fmt(k.openLines)} line(s) (${fmtQ(k.openQty)} qty) are still waiting.**\n\n` +
+              (ch[0] ? `- Most open lines: ${ch[0].vendor} (${ch[0].open} of ${ch[0].lines}).\n` : '') +
+              (k.oldestOpenDays != null ? `- Oldest open line is ${k.oldestOpenDays} day(s) past its GRPO date.` : '- Nothing is waiting.'),
+          };
+        })() },
+
+      { label: 'Qty sorted', value: fmtQ(k.qtySorted), sub: `${fmt(k.items)} distinct items`, tab: 'items', tone: '',
+        hint: 'Total quantity on sorted lines', detail: (() => {
+          const items = [...D.itemWise].sort((a, b) => b.qty - a.qty);
+          return {
+            formula: '**Qty sorted** = Σ U_QTY of the sorted lines',
+            steps: [scopeStep(), SORTED_STEP, 'Add up the quantity (U_QTY) of the sorted lines — in each line\'s own unit, so different items are summed as-is.', 'Distinct items = distinct item codes among all lines in the period.'],
+            sources: [SRC.rows, SRC.flag],
+            actions: ['Quantities of different units (pcs, boxes, kg) are added together — compare items by **Sec / unit** rather than totals.'],
+            stats: [{ label: 'Qty sorted', value: k.qtySorted, fmt: 'num' }, { label: 'Qty per line', value: k.sortedLines ? k.qtySorted / k.sortedLines : null, fmt: 'num' },
+              { label: 'Qty / sort hour', value: k.qtyPerHour, fmt: 'num' }, { label: 'Distinct items', value: k.items, fmt: 'int' }, { label: 'Qty not sorted', value: k.openQty, fmt: 'num' }],
+            chart: dayChart('Qty sorted per day (qty)', 'Qty', 'qty', 'num'),
+            table: { title: 'Items by qty sorted', columns: [C.item, C.desc, C.lines, C.qty, C.hours, C.spu], rows: items },
+            insight: `**${fmtQ(k.qtySorted)} qty sorted on ${fmt(k.sortedLines)} lines (${fmtQ(k.sortedLines ? k.qtySorted / k.sortedLines : 0)} per line).**\n\n` +
+              (items[0] ? `- Largest item: ${items[0].key} — ${fmtQ(items[0].qty)} qty on ${items[0].lines} line(s).\n` : '') +
+              `- ${fmtQ(k.openQty)} qty is still waiting to be sorted.`,
+          };
+        })() },
+
+      { label: 'Sort hours', value: n1(k.sortHours), sub: `${fmt(k.sortingDays)} sorting days · ${n1(k.linesPerDay)} lines/day`, tab: 'users', tone: '',
+        hint: 'Recorded sorting time (Time OUT − Time IN)', detail: {
+          formula: '**Sort hours** = Σ (Time OUT − Time IN) of the sorted lines ÷ 60',
+          steps: [scopeStep(), SORTED_STEP, 'Minutes per line = Time OUT − Time IN (a line that ends after midnight wraps to the next day).', 'Sort hours = total minutes ÷ 60. Sorting days = distinct GRPO dates with a sorted line; lines/day = lines sorted ÷ sorting days.'],
+          sources: [SRC.rows, SRC.time],
+          actions: ['This is hands-on time recorded per line, not attendance — **Busy %** in the table shows how much of each sorter\'s first-in → last-out window it fills.'],
+          stats: [{ label: 'Sort hours', value: k.sortHours, fmt: 'num' }, { label: 'Sorting days', value: k.sortingDays, fmt: 'int' },
+            { label: 'Sort hours / day', value: k.sortingDays ? k.sortHours / k.sortingDays : null, fmt: 'num' }, { label: 'Lines / day', value: k.linesPerDay, fmt: 'num' }, { label: 'Sorters', value: k.sorters, fmt: 'int' }],
+          chart: dayChart('Sort hours per day', 'Sort hours', 'sortHours', 'num'),
+          table: { title: 'Sort hours by sorter', columns: [C.user, C.hours, C.days, C.lpd, C.fin, C.lout, C.busy], rows: users },
+          insight: `**${n1(k.sortHours)} sort hours over ${fmt(k.sortingDays)} day(s) — ${n1(k.sortingDays ? k.sortHours / k.sortingDays : 0)} h per day.**\n\n` +
+            (top ? `- ${top.user}: ${n1(top.sortHours)} h, busy ${top.busyPct ?? '—'}% of the ${top.avgFirstIn}–${top.avgLastOut} window.` : '') } },
+
+      { label: 'Avg min / line', value: n1(k.avgMinPerLine), sub: `median ${n1(k.medianMinPerLine)} min`, tab: 'items', tone: '',
+        hint: 'Average Time OUT − Time IN per sorted line', detail: (() => {
+          const slow = D.itemWise.filter(i => i.lines >= 2).sort((a, b) => b.avgMinPerLine - a.avgMinPerLine);
+          const fast = byAvg[0], slowU = byAvg[byAvg.length - 1];
+          return {
+            formula: '**Avg min / line** = Σ minutes of sorted lines ÷ lines sorted · **Median** = middle value of the per-line minutes',
+            steps: [scopeStep(), SORTED_STEP, 'Minutes per line = Time OUT − Time IN.', 'Average = total minutes ÷ sorted lines; median = middle value when all line times are sorted.'],
+            sources: [SRC.rows, SRC.time],
+            actions: ['An average well above the median means a few very long lines pull it up — check the slowest items below.', 'Fastest / slowest sorter consider only sorters with at least 3 lines.'],
+            stats: [{ label: 'Average (min)', value: k.avgMinPerLine, fmt: 'num' }, { label: 'Median (min)', value: k.medianMinPerLine, fmt: 'num' },
+              { label: 'Fastest sorter', value: fast ? `${fast.user} · ${fast.avgMinPerLine} min` : '—' }, { label: 'Slowest sorter', value: slowU ? `${slowU.user} · ${slowU.avgMinPerLine} min` : '—' }],
+            chart: userChart('Average minutes per line by sorter', 'Avg min', 'avgMinPerLine', 'num', users.filter(x => x.avgMinPerLine != null)),
+            table: { title: 'Slowest items (2+ lines)', columns: [C.item, C.desc, C.lines, C.qty, C.avg, C.spu], rows: slow },
+            insight: `**A sorted line takes ${n1(k.avgMinPerLine)} min on average (median ${n1(k.medianMinPerLine)} min).**\n\n` +
+              (k.avgMinPerLine != null && k.medianMinPerLine != null && k.avgMinPerLine > k.medianMinPerLine * 1.3 ? '- The average is well above the median: a few long lines drive it.\n' : '') +
+              (fast && slowU && fast !== slowU ? `- Fastest ${fast.user} (${fast.avgMinPerLine} min) vs slowest ${slowU.user} (${slowU.avgMinPerLine} min).\n` : '') +
+              (slow[0] ? `- Slowest item: ${slow[0].key} at ${slow[0].avgMinPerLine} min per line.` : ''),
+          };
+        })() },
+
+      { label: 'Qty / sort hour', value: fmtQ(k.qtyPerHour), sub: 'throughput across all sorters', tab: 'users', tone: '',
+        hint: 'Qty sorted per recorded sort hour', detail: {
+          formula: '**Qty / sort hour** = Qty sorted ÷ (sort minutes ÷ 60)',
+          steps: [scopeStep(), SORTED_STEP, 'Qty sorted = Σ U_QTY of sorted lines; sort hours = Σ (Time OUT − Time IN) ÷ 60.', 'Throughput = qty ÷ hours, per sorter and overall.'],
+          sources: [SRC.rows, SRC.time],
+          actions: ['Sorters handling different items are not directly comparable — bulky or mixed-unit items lower the qty per hour.', 'Best / lowest sorter consider only sorters with at least 3 lines.'],
+          stats: [{ label: 'Qty / sort hour', value: k.qtyPerHour, fmt: 'num' }, { label: 'Qty sorted', value: k.qtySorted, fmt: 'num' }, { label: 'Sort hours', value: k.sortHours, fmt: 'num' },
+            { label: 'Highest', value: byQph[0] ? `${byQph[0].user} · ${fmtQ(byQph[0].qtyPerHour)}` : '—' }, { label: 'Lowest', value: byQph.length > 1 ? `${byQph[byQph.length - 1].user} · ${fmtQ(byQph[byQph.length - 1].qtyPerHour)}` : '—' }],
+          chart: userChart('Qty per sort hour by sorter', 'Qty / h', 'qtyPerHour', 'num', users.filter(x => x.qtyPerHour != null)),
+          table: { title: 'Throughput by sorter', columns: [C.user, C.qty, C.hours, C.qph, C.avg], rows: users },
+          insight: `**Overall ${fmtQ(k.qtyPerHour)} qty per sort hour.**\n\n` +
+            (byQph.length > 1 ? `- Range: ${byQph[0].user} ${fmtQ(byQph[0].qtyPerHour)} → ${byQph[byQph.length - 1].user} ${fmtQ(byQph[byQph.length - 1].qtyPerHour)}.` : '') } },
+
+      { label: 'Sorters', value: fmt(k.sorters), sub: 'with at least one sorted line', tab: 'users', tone: top && top.sharePct > 60 && users.length > 1 ? 'warn' : '',
+        hint: 'Distinct sorters (U_USER) on sorted lines', detail: {
+          formula: '**Sorters** = distinct U_USER among the sorted lines (a blank user is shown as Unassigned)',
+          steps: [scopeStep(), SORTED_STEP, 'Count distinct sorters. Share % = sorter lines ÷ all sorted lines × 100.', 'Avg first in / last out = average of each sorting day\'s first Time IN and last Time OUT.'],
+          sources: [SRC.rows, SRC.time],
+          actions: ['One sorter carrying most lines is a single point of failure — spread the work.', '**Unassigned** lines have no U_USER: fix the capture so the work is credited.'],
+          stats: [{ label: 'Sorters', value: k.sorters, fmt: 'int' }, { label: 'Top sorter', value: top ? `${top.user} · ${top.sharePct}%` : '—' },
+            { label: 'Lines per sorter', value: k.sorters ? k.sortedLines / k.sorters : null, fmt: 'num' }, { label: 'Sorting days', value: k.sortingDays, fmt: 'int' }],
+          chart: userChart('Lines sorted by sorter', 'Lines', 'lines', 'int', users),
+          table: { title: 'Sorter scorecard', columns: [C.user, C.lines, C.share, C.days, C.lpd, C.fin, C.lout, C.busy], rows: users },
+          insight: `**${fmt(k.sorters)} sorter(s) sorted ${fmt(k.sortedLines)} lines.**\n\n` +
+            (top ? `- ${top.user} carries ${top.sharePct}% of the lines${top.sharePct > 60 && users.length > 1 ? ' — the load is concentrated on one person' : ''}.\n` : '') +
+            (users.some(u => u.user === 'Unassigned') ? '- Some sorted lines have no sorter recorded (Unassigned).' : '') } },
+
+      { label: 'Open backlog', value: fmt(k.openLines), sub: k.oldestOpenDays == null ? 'nothing waiting' : `oldest ${k.oldestOpenDays} day(s) since GRPO`, tab: 'backlog',
+        tone: !k.openLines ? 'good' : old7.length ? 'bad' : 'warn',
+        hint: 'GRPO lines not sorted yet', detail: (() => {
+          const bands = [['0–2 days', a => a <= 2], ['3–7 days', a => a > 2 && a <= 7], ['8–30 days', a => a > 7 && a <= 30], ['30+ days', a => a > 30]];
+          return {
+            formula: '**Open backlog** = lines where U_IS is not YES · **Age** = today − GRPO date (U_DD)',
+            steps: [scopeStep(), 'Take the lines not flagged sorted (U_IS ≠ YES).', 'Age in days = today − GRPO date; the list is ordered oldest first.'],
+            sources: [SRC.rows, SRC.flag],
+            actions: ['Sort the oldest lines first — anything over 7 days is flagged red.', 'Only GRPO dates in the selected period are included; widen the dates to catch older lines.'],
+            stats: [{ label: 'Open lines', value: k.openLines, fmt: 'int' }, { label: 'Open qty', value: k.openQty, fmt: 'num' }, { label: 'Oldest (days)', value: k.oldestOpenDays, fmt: 'int' },
+              { label: 'Older than 7 days', value: old7.length, fmt: 'int' }, { label: 'GRPOs affected', value: new Set(D.backlog.map(b => b.grpo)).size, fmt: 'int' }],
+            chart: D.backlog.length ? { title: 'Open lines by age', fmt: 'int', labels: bands.map(b => b[0]),
+              series: [{ name: 'Lines', color: '#D97706', values: bands.map(([, f]) => D.backlog.filter(b => f(b.ageDays ?? 0)).length) }] } : null,
+            table: { title: 'Open lines — oldest first', columns: BACKLOG_COLS, rows: D.backlog.slice(0, 200) },
+            insight: k.openLines ? `**${fmt(k.openLines)} line(s) (${fmtQ(k.openQty)} qty) are waiting to be sorted; ${old7.length} are older than 7 days.**\n\n` +
+              `- Oldest: GRPO ${D.backlog[0].grpo} (${D.backlog[0].itemCode}, ${D.backlog[0].vendor}) — ${D.backlog[0].ageDays} day(s).`
+              : '**No open backlog — every GRPO line in the period is sorted.**',
+          };
+        })() },
+    ];
+  }
+
+  function kpiDetail(i) {
+    const t = D && kpiDefs()[i];
+    let KD = window.KpiDetail;
+    if (!KD) try { KD = window.parent.KpiDetail; } catch {}
+    if (!t) return;
+    if (!KD) { toast('Detail view is still loading — try again in a moment.', true); return; }
+    const d = t.detail;
+    KD.open({
+      label: `${t.label} — Sorting Analytics`, valueHtml: t.value, tone: t.tone, hint: t.hint, detail: d, color: '#0f766e',
+      footnote: `${D.from} to ${D.to} · read live from SAP @SORTING (${D.source === 'db' ? 'SAP DB' : 'Service Layer'}).`,
+      cache: kpiAI, cacheKey: i,
+      loadAI: () => api('/kpi-insight', { method: 'POST', body: { ...params(), kpi: {
+        label: t.label, value: t.value, formula: d.formula, stats: (d.stats || []).map(s => ({ label: s.label, value: s.value })),
+        table: d.table ? { title: d.table.title, columns: d.table.columns.map(c => c.label), rows: d.table.rows.slice(0, 20).map(r => d.table.columns.map(c => r[c.key])) } : null,
+      }, kpis: D.kpis } }).then(r => ({ text: r.available ? r.text : '', source: 'ai' })),
+      buttons: [{ label: 'Open full list', onClick: () => {
+        tab = t.tab; sortKey = null; try { localStorage.setItem('sa_tab', tab); } catch {} renderTable();
+        $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } }],
+    });
+  }
+  $('kpis').addEventListener('click', e => { const el = e.target.closest('[data-kd]'); if (el) kpiDetail(Number(el.dataset.kd)); });
+  $('kpis').addEventListener('keydown', e => {
+    const el = e.target.closest('.kpi[data-kd]');
+    if (el && e.target === el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); kpiDetail(Number(el.dataset.kd)); }
+  });
+
+  // ── Charts (single-series, recessive grid, tooltips on hover) ───────────
+  function base(extra = {}) {
+    return {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1d2d3e', padding: 10, displayColors: false, ...(extra.tooltip || {}) } },
+      scales: extra.scales, indexAxis: extra.indexAxis || 'x',
+      interaction: { mode: extra.indexAxis === 'y' ? 'y' : 'index', intersect: false },
+    };
+  }
+  const axis = (o = {}) => ({ grid: { color: css('--grid'), drawTicks: false }, border: { display: false }, ticks: { color: css('--axis'), padding: 6, font: { size: 11 } }, ...o });
+  const noGrid = (o = {}) => ({ grid: { display: false }, border: { display: false }, ticks: { color: css('--axis'), font: { size: 11 } }, ...o });
+  function draw(id, cfg) { charts[id]?.destroy(); charts[id] = new Chart($(id), cfg); }
+  const barStyle = { backgroundColor: css('--s1'), hoverBackgroundColor: '#256abf', borderRadius: 4, borderSkipped: 'start', maxBarThickness: 28, categoryPercentage: 0.8, barPercentage: 0.9 };
+
+  function renderCharts() {
+    const daily = D.daily;
+    $('daily-sub').textContent = daily.length ? `${daily.length} sorting day(s)` : '';
+    draw('ch-daily', { type: 'bar',
+      data: { labels: daily.map(d => new Date(d.date + 'T00:00:00').toLocaleDateString([], { day: '2-digit', month: 'short' })),
+        datasets: [{ data: daily.map(d => d.lines), ...barStyle }] },
+      options: base({ scales: { x: noGrid({ ticks: { color: css('--axis'), font: { size: 11 }, maxRotation: 0, autoSkip: true } }), y: axis({ beginAtZero: true, title: { display: true, text: 'Lines', color: css('--axis') } }) },
+        tooltip: { callbacks: { title: i => daily[i[0].dataIndex].date, label: i => { const d = daily[i.dataIndex];
+          return [`${d.lines} lines · ${fmtQ(d.qty)} qty`, `${d.sortHours} sort h · ${d.sorters} sorter(s)`, `${d.avgMinPerLine} min / line`]; } } } }) });
+
+    const u = D.userWise;
+    draw('ch-users', { type: 'bar',
+      data: { labels: u.map(x => userLabel(x.user)), datasets: [{ data: u.map(x => x.lines), ...barStyle }] },
+      options: base({ indexAxis: 'y', scales: { x: axis({ beginAtZero: true }), y: noGrid() },
+        tooltip: { callbacks: { label: i => { const x = u[i.dataIndex]; return [`${x.lines} lines (${x.sharePct}%)`, `${fmtQ(x.qty)} qty · ${x.sortHours} sort h`, `${x.daysWorked} day(s) · ${x.linesPerDay} lines/day`]; } } } }) });
+
+    const w = u.filter(x => x.avgFirstInMin != null);
+    const lo = Math.max(0, Math.floor(Math.min(...w.map(x => x.avgFirstInMin), 420) / 60) * 60 - 60);
+    const hi = Math.min(1440, Math.ceil(Math.max(...w.map(x => x.avgLastOutMin), 1020) / 60) * 60 + 60);
+    draw('ch-window', { type: 'bar',
+      data: { labels: w.map(x => userLabel(x.user)), datasets: [{ data: w.map(x => [x.avgFirstInMin, x.avgLastOutMin]), ...barStyle, borderSkipped: false }] },
+      options: base({ indexAxis: 'y', scales: { x: axis({ min: lo, max: hi, ticks: { color: css('--axis'), stepSize: 60, callback: v => hhmm(v) } }), y: noGrid() },
+        tooltip: { callbacks: { label: i => { const x = w[i.dataIndex]; return [`${x.avgFirstIn} → ${x.avgLastOut}`, `busy ${x.busyPct ?? '—'}% of that window`]; } } } }) });
+
+    draw('ch-speed', { type: 'bar',
+      data: { labels: u.map(x => userLabel(x.user)), datasets: [{ data: u.map(x => x.avgMinPerLine), ...barStyle }] },
+      options: base({ indexAxis: 'y', scales: { x: axis({ beginAtZero: true, title: { display: true, text: 'Minutes', color: css('--axis') } }), y: noGrid() },
+        tooltip: { callbacks: { label: i => { const x = u[i.dataIndex]; return [`avg ${x.avgMinPerLine} min · median ${x.medianMinPerLine} min`, `${fmtQ(x.qtyPerHour)} qty / sort hour`]; } } } }) });
+  }
+
+  // ── Heatmap: hour × sorter, sequential blue ─────────────────────────────
+  function renderHeat() {
+    const h = D.hourly;
+    if (!h.hours.length) { $('heat').innerHTML = '<div class="empty">No sorted lines in this period.</div>'; $('heat-legend').innerHTML = ''; return; }
+    const max = Math.max(1, ...h.rows.flatMap(r => r.counts));
+    const step = n => Math.min(SEQ.length - 1, Math.floor((n / max) * (SEQ.length - 1e-9)));
+    const cell = (n, who, hr) => n ? (() => { const s = step(n); return `<td style="background:${SEQ[s]};color:${s >= 3 ? '#fff' : '#0b0b0b'}" title="${esc(who)} · ${hhmm(hr * 60)}–${hhmm(hr * 60 + 59)} · ${n} line(s) started">${n}</td>`; })()
+      : `<td class="z" title="${esc(who)} · ${hhmm(hr * 60)} · none">·</td>`;
+    $('heat').innerHTML = `<table><thead><tr><th></th>${h.hours.map(x => `<th>${String(x).padStart(2, '0')}:00</th>`).join('')}</tr></thead><tbody>${
+      h.rows.map(r => `<tr><th class="u">${esc(userLabel(r.user))}</th>${r.counts.map((n, i) => cell(n, userLabel(r.user), h.hours[i])).join('')}</tr>`).join('')}
+      <tr><th class="u" style="color:var(--muted)">All</th>${h.totals.map((n, i) => `<td style="background:#f4f4f2;color:var(--text)" title="All sorters · ${n} line(s)">${n}</td>`).join('')}</tr></tbody></table>`;
+    $('heat-legend').innerHTML = `Fewer ${SEQ.map(c => `<span class="sw" style="background:${c}"></span>`).join('')} More &nbsp;·&nbsp; max ${max} lines in one hour`;
+  }
+
+  // ── Tables ──────────────────────────────────────────────────────────────
+  const bar = (v, max) => `<span class="bar-cell">${fmtQ(v)}<i style="width:${max ? Math.round(v / max * 60) : 0}px"></i></span>`;
+  const TABLES = {
+    users: { label: 'Sorter scorecard', rows: () => D.userWise, cols: [
+      ['user', 'Sorter', v => esc(userLabel(v))], ['lines', 'Lines', 'bar'], ['sharePct', 'Share %', 'n1'], ['qty', 'Qty', 'q'], ['sortHours', 'Sort h', 'n1'],
+      ['avgMinPerLine', 'Avg min/line', 'n1'], ['medianMinPerLine', 'Median min', 'n1'], ['qtyPerHour', 'Qty / h', 'q'], ['daysWorked', 'Days', 'n'],
+      ['linesPerDay', 'Lines/day', 'n1'], ['avgFirstIn', 'Avg first in'], ['avgLastOut', 'Avg last out'], ['busyPct', 'Busy %', 'n'], ['items', 'Items', 'n']] },
+    items: { label: 'Item-wise', rows: () => D.itemWise, cols: [
+      ['key', 'Item'], ['label', 'Description'], ['lines', 'Lines', 'bar'], ['qty', 'Qty', 'q'], ['sortHours', 'Sort h', 'n1'], ['avgMinPerLine', 'Avg min/line', 'n1'],
+      ['secPerUnit', 'Sec / unit', 'n1'], ['sorters', 'Sorted by', v => esc(v.map(userLabel).join(', '))]] },
+    vendors: { label: 'Vendor-wise', rows: () => D.vendorWise, cols: [
+      ['key', 'Vendor'], ['label', 'Code'], ['lines', 'Lines', 'bar'], ['qty', 'Qty', 'q'], ['sortHours', 'Sort h', 'n1'], ['avgMinPerLine', 'Avg min/line', 'n1'],
+      ['secPerUnit', 'Sec / unit', 'n1'], ['sorters', 'Sorted by', v => esc(v.map(userLabel).join(', '))]] },
+    whs: { label: 'Warehouse & bin', rows: () => D.binWise, cols: [
+      ['label', 'Warehouse'], ['key', 'Bin'], ['lines', 'Lines', 'bar'], ['qty', 'Qty', 'q'], ['sortHours', 'Sort h', 'n1'], ['avgMinPerLine', 'Avg min/line', 'n1'],
+      ['sorters', 'Sorted by', v => esc(v.map(userLabel).join(', '))]] },
+    backlog: { label: () => `Open backlog (${D.backlog.length})`, rows: () => D.backlog, cols: [
+      ['ageDays', 'Age (days)', v => v == null ? '—' : `<span class="badge ${v > 7 ? 'b-age' : 'b-no'}">${v}</span>`], ['date', 'GRPO date'], ['grpo', 'GRPO'],
+      ['vendor', 'Vendor'], ['itemCode', 'Item'], ['itemName', 'Description'], ['qty', 'Qty', 'q'], ['whs', 'Whs'], ['bin', 'Bin'], ['due', 'Due date']] },
+    lines: { label: 'All lines', rows: () => D.lines, cols: [
+      ['date', 'GRPO date'], ['grpo', 'GRPO'], ['vendor', 'Vendor'], ['itemCode', 'Item'], ['itemName', 'Description'], ['qty', 'Qty', 'q'], ['whs', 'Whs'], ['bin', 'Bin'],
+      ['user', 'Sorter', v => esc(v || '—')], ['timeIn', 'Time in', v => v || '—'], ['timeOut', 'Time out', v => v || '—'], ['mins', 'Minutes', 'n'],
+      ['sorted', 'Sorted', v => v ? '<span class="badge b-yes">YES</span>' : '<span class="badge b-no">NO</span>']] },
+  };
+  let tab = 'users', sortKey = null, sortDir = -1;
+  try { tab = localStorage.getItem('sa_tab') || 'users'; } catch {}
+  if (!TABLES[tab]) tab = 'users';
+  function visibleRows() {
+    const T = TABLES[tab], f = $('tbl-q').value.trim().toLowerCase();
+    let rows = T.rows();
+    if (f) rows = rows.filter(r => T.cols.some(([k]) => String(Array.isArray(r[k]) ? r[k].join(' ') : r[k] ?? '').toLowerCase().includes(f)));
+    if (sortKey) rows = [...rows].sort((a, b) => { const x = a[sortKey], y = b[sortKey];
+      return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''))) * sortDir; });
+    return rows;
+  }
+  function renderTable() {
+    $('tabs').innerHTML = Object.entries(TABLES).map(([k, t]) => `<button class="tab ${k === tab ? 'active' : ''}" data-tab="${k}">${typeof t.label === 'function' ? t.label() : t.label}</button>`).join('');
+    const T = TABLES[tab], rows = visibleRows();
+    const maxes = Object.fromEntries(T.cols.filter(c => c[2] === 'bar').map(([k]) => [k, Math.max(0, ...rows.map(r => r[k] || 0))]));
+    const isNum = k => ['bar', 'q', 'n', 'n1'].includes(k);
+    const show = (c, r) => { const [k, , kind] = c, v = r[k];
+      if (typeof kind === 'function') return kind(v, r);
+      if (kind === 'bar') return bar(v, maxes[k]);
+      if (kind === 'q') return fmtQ(v); if (kind === 'n') return fmt(v); if (kind === 'n1') return fmt(v, 1);
+      return esc(v ?? '—'); };
+    $('tbl-sub').textContent = `${rows.length} row(s)` + (rows.length > 1000 ? ' · showing first 1,000 (CSV has all)' : '');
+    $('tbl').innerHTML = rows.length ? `<table class="t"><thead><tr>${T.cols.map(c => `<th class="${isNum(c[2]) ? 'num' : ''}" data-sort="${c[0]}">${c[1]}${sortKey === c[0] ? (sortDir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead><tbody>${
+      rows.slice(0, 1000).map(r => `<tr>${T.cols.map(c => `<td class="${isNum(c[2]) ? 'num' : ''}">${show(c, r)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+      : '<div class="empty">No rows.</div>';
+  }
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; tab = b.dataset.tab; sortKey = null; try { localStorage.setItem('sa_tab', tab); } catch {} renderTable(); });
+  $('tbl').addEventListener('click', e => { const th = e.target.closest('[data-sort]'); if (!th) return;
+    if (sortKey === th.dataset.sort) sortDir = -sortDir; else { sortKey = th.dataset.sort; sortDir = -1; } renderTable(); });
+  $('tbl-q').addEventListener('input', () => D && renderTable());
+  $('btn-csv').addEventListener('click', () => {
+    if (!D) return;
+    const T = TABLES[tab], q = v => `"${String(Array.isArray(v) ? v.join('; ') : v ?? '').replace(/"/g, '""')}"`;
+    const csv = [T.cols.map(c => q(c[1])).join(','), ...visibleRows().map(r => T.cols.map(([k]) => q(k === 'user' ? userLabel(r[k]) : r[k])).join(','))].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+    a.download = `sorting-analytics-${tab}-${D.from}_${D.to}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  // ── AI insights ─────────────────────────────────────────────────────────
+  $('btn-ai').addEventListener('click', async e => {
+    const btn = e.currentTarget; btn.disabled = true; $('ai').innerHTML = '<span style="color:var(--muted)">Analysing sorting data…</span>';
+    try {
+      const r = await api('/insights', { method: 'POST', body: params() });
+      $('ai').innerHTML = r.available ? (window.marked ? marked.parse(r.text.replace(/</g, '&lt;')) : `<pre>${esc(r.text)}</pre>`)
+        : '<span style="color:var(--muted)">AI is not configured on this server — the charts and tables above still have the full analysis.</span>';
+    } catch (err) { $('ai').innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`; }
+    finally { btn.disabled = false; }
+  });
+
+  function render() { renderKpis(); renderCharts(); renderHeat(); renderTable(); }
+
+  preset(3);
+  run();
+})();
+</script>
+</body>
+</html>

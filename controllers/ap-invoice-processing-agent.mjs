@@ -18,9 +18,11 @@ import fs from 'node:fs';
 import { extractPdfText, runVisionExtraction, similarity, nameSimilarity, keyWords, containsAnyCase, today, sapDate } from '../lib/ocr-extract.mjs';
 import { matchPartner, matchItem, searchPartners, searchItems, getWarehouses } from '../lib/ocr-sap-match.mjs';
 import { getTaxCodes as cdfGetTaxCodes, fetchAllPages } from '../lib/copy-doc-flow.mjs';
+import { classifyDocType, docTypeLabel } from '../lib/apip-doctype.mjs';
+import { FIELDS as COND_FIELDS, OPS as COND_OPS, evalConditions, conditionProblems, describeConditions } from '../lib/apip-conditions.mjs';
 import {
-  settingsRepo, queueRepo, actionRepo, mailRepo, templateRepo, mappingRepo, toQueueRow, normalizeTemplate,
-  listPrincipals, roleIdByName, apipLog, getLogs,
+  settingsRepo, queueRepo, actionRepo, mailRepo, templateRepo, mappingRepo, vendorItemRepo, vendorExpenseRepo,
+  toQueueRow, normalizeTemplate, listPrincipals, roleIdByName, apipLog, getLogs,
 } from '../lib/apip-store.mjs';
 import {
   configureIntake, applyIntakeSettings, startIntake, stopIntake, scanNow, getIntakeStatus, finalizeFolderOriginal,
@@ -109,9 +111,11 @@ Return ONLY valid JSON (no markdown, no explanation) with exactly this structure
   "subtotal": 0,
   "taxTotal": 0,
   "total": 0,
+  "invoiceType": "item or service — item when the bill is mainly for physical goods / materials; service when it is mainly for services or expenses (freight, rent, consultancy, repairs, AMC, utilities, fees …)",
+  "invoiceTypeReason": "string — a few words on why",
   "lines": [
-    { "description": "string", "itemCode": "string or null", "hsn": "string or null", "qty": 0, "uom": "string or null",
-      "unitPrice": 0, "discountPct": 0, "taxPct": 0, "taxAmount": 0, "lineTotal": 0 }
+    { "description": "string", "itemCode": "string or null", "hsn": "string or null — HSN or SAC code", "qty": 0, "uom": "string or null",
+      "unitPrice": 0, "discountPct": 0, "taxPct": 0, "taxAmount": 0, "lineTotal": 0, "lineType": "goods or service" }
   ]
 }
 "lines" must contain ONLY the item/service rows printed in the invoice's line table, once each, in printed order.
@@ -160,6 +164,7 @@ function normalizeExtracted(raw = {}) {
       uom: l.uom || l.unit || null,
       unitPrice: unitPrice || (qty && lineTotal ? round2(lineTotal / qty) : lineTotal),
       discountPct, taxPct, taxAmount, lineTotal,
+      lineType: /^serv/i.test(l.lineType || '') ? 'service' : /^(good|item|mat)/i.test(l.lineType || '') ? 'goods' : null,
     };
   }).filter(l => l.description || l.itemCode || l.lineTotal);
   return {
@@ -174,6 +179,8 @@ function normalizeExtracted(raw = {}) {
     subtotal: num(r.subtotal),
     taxTotal: num(r.taxTotal),
     total: num(r.total ?? r.grandTotal),
+    invoiceType: /^serv/i.test(r.invoiceType || '') ? 'service' : /^(item|good|mat)/i.test(r.invoiceType || '') ? 'item' : null,
+    invoiceTypeReason: r.invoiceTypeReason ? String(r.invoiceTypeReason).slice(0, 200) : null,
     lines,
     ...(r._fallback ? { _fallback: true } : {}),
   };
@@ -234,6 +241,123 @@ function cacheItemCandidates(text) {
   tryQ(text);
   if (!seen.size) keyWords(text, 3).forEach(tryQ);
   return [...seen.values()].map(i => ({ code: i.ItemCode, name: i.ItemName, unit: i.InventoryUoM || i.PurchaseUnit || '' }));
+}
+
+// G/L accounts from the local Data Sync cache (null = cache never synced → caller asks SAP)
+function cacheGlSearch(text, top = 50) {
+  const repo = _ctx.cacheRepo;
+  try {
+    if (!repo?.countGLAccounts?.(companyId())) return null;
+    return repo.searchGLAccounts(companyId(), text, top).map(a => ({ code: a.AcctCode, name: a.AcctName || '', format: a.FormatCode || '' }));
+  } catch { return null; }
+}
+// Turn whatever is in a G/L field (internal code, format code "5200-01", "5200 — Advertisement", or a name)
+// into a real account { code, name, format }. null = no single matching account.
+async function resolveGl(sap, online, input) {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  const token = raw.split(/\s+[—–-]\s+/)[0].trim();
+  const repo = _ctx.cacheRepo, cid = companyId();
+  const out = a => ({ code: a.AcctCode ?? a.Code, name: a.AcctName ?? a.Name ?? '', format: a.FormatCode || '' });
+  try {
+    if (repo?.countGLAccounts?.(cid)) {
+      const exact = repo.getGLAccount(cid, token) || repo.getGLAccount(cid, raw);
+      if (exact) return out(exact);
+      const hits = repo.searchGLAccounts(cid, token, 0);
+      const eq = hits.filter(a => [a.FormatCode, a.AcctName].some(v => String(v || '').toLowerCase() === token.toLowerCase() || String(v || '').toLowerCase() === raw.toLowerCase()));
+      if (eq.length === 1) return out(eq[0]);
+      if (hits.length === 1) return out(hits[0]);
+      return null;
+    }
+  } catch { /* fall back to SAP */ }
+  if (!online) return null;
+  try { return out(await sap.get(`/ChartOfAccounts('${q(token)}')`, { $select: 'Code,Name,FormatCode' })); } catch { /* not an internal code */ }
+  try {
+    const r = await searchGlAccounts(sap, token, 5);
+    const eq = r.filter(a => [a.format, a.name].some(v => String(v || '').toLowerCase() === token.toLowerCase()));
+    const one = eq.length === 1 ? eq[0] : r.length === 1 ? r[0] : null;
+    return one ? { code: one.code, name: one.name, format: one.format || '' } : null;
+  } catch { return null; }
+}
+
+// Fill the local G/L copy from SAP once, in the background, when it was never synced
+const _glSyncing = new Set();
+async function syncGlAccounts(sap) {
+  const cid = companyId(), repo = _ctx.cacheRepo;
+  const rows = (await fetchAllPages(sap, '/ChartOfAccounts', { $select: 'Code,Name,FormatCode,ActiveAccount,FrozenFor,AccountType' }, 50000))
+    .map(a => ({ AcctCode: a.Code, AcctName: a.Name || '', FormatCode: a.FormatCode || '', Postable: a.ActiveAccount || 'tYES', Frozen: a.FrozenFor || 'tNO', AcctType: a.AccountType || '' }));
+  if (rows.length) repo.replaceEntity(cid, 'gl_accounts', () => repo.upsertGLAccounts(cid, rows));
+  repo.logSync?.(cid, 'gl_accounts', 'ok', rows.length);
+  return rows.length;
+}
+function ensureGlCache(sap) {
+  const cid = companyId();
+  if (_glSyncing.has(cid) || !_ctx.cacheRepo?.countGLAccounts || _ctx.cacheRepo.countGLAccounts(cid)) return;
+  _glSyncing.add(cid);
+  syncGlAccounts(sap).then(n => apipLog('INFO', `G/L accounts cached locally (${n})`))
+    .catch(e => apipLog('WARN', `G/L account cache fill failed: ${e.message}`)).finally(() => _glSyncing.delete(cid));
+}
+
+// Service lines: replace typed text by the real account; returns [{ line, text }] that could not be resolved
+async function resolveServiceGls(m, sap, online) {
+  const bad = [];
+  if (m.DocType !== 'dDocument_Service') return bad;
+  for (const [i, l] of (m.lines || []).entries()) {
+    if (!l.AccountCode || (l.BaseEntry != null && l.BaseEntry !== '')) continue;
+    const g = await resolveGl(sap, online, l.AccountCode);
+    if (g) { l.AccountCode = g.code; l.AccountName = g.name; l.AccountFormat = g.format; l.glInvalid = false; }
+    else { l.glInvalid = true; bad.push({ line: i + 1, text: l.AccountCode }); }
+  }
+  return bad;
+}
+
+function cacheHasGl(code) { try { return !!_ctx.cacheRepo?.getGLAccount?.(companyId(), code); } catch { return false; } }
+function cacheItemExact(code) {
+  if (!code) return null;
+  try {
+    const i = (_ctx.cacheRepo?.searchItems?.(companyId(), code, 30) || []).find(x => String(x.ItemCode).toLowerCase() === String(code).trim().toLowerCase());
+    return i ? { code: i.ItemCode, name: i.ItemName, unit: i.InventoryUoM || i.PurchaseUnit || '' } : null;
+  } catch { return null; }
+}
+
+// Expense G/L accounts for name matching (same idea as Scan Expense): local cache, else SAP (memoised 10 min)
+const _expAcctMemo = new Map();
+async function loadExpenseAccounts(sap, online) {
+  const cid = companyId();
+  try {
+    const rows = _ctx.cacheRepo?.listExpenseAccounts?.(cid) || [];
+    if (rows.length) return rows.map(a => ({ code: a.AcctCode, name: a.AcctName || '' }));
+  } catch { /* fall through to SAP */ }
+  const memo = _expAcctMemo.get(cid);
+  if (memo && Date.now() - memo.at < 600000) return memo.rows;
+  if (!online) return [];
+  try {
+    const r = await withTimeout(sap.get('/ChartOfAccounts', { $select: 'Code,Name', $filter: `AccountType eq 'at_Expenses' and ActiveAccount eq 'tYES'`, $orderby: 'Code', $top: 500 }), 20000, 'expense accounts');
+    const rows = (Array.isArray(r.value) ? r.value : []).map(a => ({ code: a.Code, name: a.Name || '' }));
+    _expAcctMemo.set(cid, { at: Date.now(), rows });
+    return rows;
+  } catch { return []; }
+}
+
+/**
+ * G/L for a service (expense) line, best first:
+ *   vendor keyword rule → learned correction for this text → vendor default G/L →
+ *   expense account whose name matches the bill text (≥ 35%, as Scan Expense) → global default G/L.
+ * Returns { code, name, by: rule|learned|vendor|match|default, score } or null.
+ */
+function suggestGl(text, { vExp, settings, expenseAccounts = [] }) {
+  const cid = companyId();
+  const v = vendorExpenseRepo.accountFor(vExp, text);
+  if (v?.by === 'rule') return { code: v.code, name: v.name, by: 'rule', score: 1 };
+  const mem = text ? mappingRepo.find(cid, 'gl', text) : null;
+  if (mem) return { code: mem.target, name: mem.target_name || '', by: 'learned', score: 1 };
+  if (v) return { code: v.code, name: v.name, by: 'vendor', score: 1 };
+  if (text && expenseAccounts.length) {
+    let best = null, bs = 0;
+    for (const a of expenseAccounts) { const s = Math.max(similarity(a.name, text), nameSimilarity(a.name, text)); if (s > bs) { bs = s; best = a; } }
+    if (best && bs >= 0.35) return { code: best.code, name: best.name, by: 'match', score: round2(bs) };
+  }
+  return settings.defaultGlAccount ? { code: settings.defaultGlAccount, name: '', by: 'default', score: 0 } : null;
 }
 
 function bestByName(cands, text, min = 0.5) {
@@ -322,8 +446,9 @@ async function buildMapped(ext, settings, row, sapIn) {
     const info = await lookupVendorName(sap, online, CardCode);
     if (info) { CardName = info.name || CardName; bpCurrency = info.currency; }
   } else if (ext.vendorName || ext.vendorCode) {
-    let hit = null;
-    if (online) {
+    // local synced supplier master first; SAP only when the cache has no confident hit
+    let hit = bestByName(cacheVendorCandidates(ext.vendorName || ext.vendorCode), ext.vendorName || ext.vendorCode, 0.85);
+    if (!hit && online) {
       try {
         const m = await withTimeout(matchPartner(sap, { name: ext.vendorName, code: ext.vendorCode }, 'cSupplier'), 45000, 'vendor match');
         if (m.partner) hit = { ...m.partner, score: m.score };
@@ -340,28 +465,51 @@ async function buildMapped(ext, settings, row, sapIn) {
   try { warehouses = await withTimeout(getWarehouses(sap, _ctx.cacheRepo, cid), 20000, 'warehouses'); } catch { warehouses = []; }
   const defaultWhs = settings.defaultWarehouse || warehouses[0]?.code || '';
 
+  // Vendor-specific setup: expense G/L profile + item mapping (see Vendor Item Mapping / Vendor Expense G/L)
+  const vExp = vendorExpenseRepo.get(cid, CardCode);
+  const expenseVendor = !!vExp?.expenseInvoice;
+  const defaultGl = vExp?.defaultGl || settings.defaultGlAccount || '';
+  const glCtx = { vExp, settings, expenseAccounts: await loadExpenseAccounts(sap, online) };
+  // Item / Service auto-detection (lib/apip-doctype.mjs): first pass before item matching
+  const typeHistory = CardCode ? queueRepo.vendorDocTypes(CardCode, row.id) : [];
+  const typeOpts = { expenseVendor, history: typeHistory, defaultType: settings.defaultDocType };
+  const preType = settings.autoDocType ? classifyDocType(ext, typeOpts) : null;
+  const skipSapItems = expenseVendor || (preType?.type === 'dDocument_Service' && preType.confidence >= 0.8);
+
   // Lines
   const lines = [];
   for (const l of ext.lines) {
     const desc = l.description || l.itemCode || '';
-    let ItemCode = '', ItemDescription = desc, UoMCode = '', matchScore = 0, AccountCode = '';
-    const memI = mappingRepo.find(cid, 'item', desc);
-    const memG = mappingRepo.find(cid, 'gl', desc);
-    if (memI) { ItemCode = memI.target; ItemDescription = memI.target_name || desc; matchScore = 1; }
+    let ItemCode = '', ItemDescription = desc, UoMCode = '', matchScore = 0, AccountCode = '', mappedBy = '';
+    const vItem = expenseVendor ? null : vendorItemRepo.match(cid, CardCode, { itemCode: l.itemCode, description: desc });
+    const memI = expenseVendor || vItem ? null : mappingRepo.find(cid, 'item', desc);
+    if (vItem) { ItemCode = vItem.itemCode; ItemDescription = vItem.itemName || desc; UoMCode = vItem.uom || ''; matchScore = 1; mappedBy = 'vendor-item'; }
+    else if (expenseVendor) { /* expense invoice — no item matching */ }
+    else if (memI) { ItemCode = memI.target; ItemDescription = memI.target_name || desc; matchScore = 1; }
+    // local synced item master first (fast); SAP is only asked when the cache has no confident hit
+    if (!ItemCode && !expenseVendor) {
+      const c = cacheItemExact(l.itemCode) || cacheItemExact(desc);
+      const fz = c ? { ...c, score: 1 } : bestByName(cacheItemCandidates(desc), desc, 0.85);
+      if (fz) { ItemCode = fz.code; ItemDescription = fz.name || desc; UoMCode = fz.unit || ''; matchScore = round2(fz.score); }
+    }
+    if (ItemCode || skipSapItems) { /* matched above, or a clear service bill */ }
     else if (online) {
       try {
         const m = await withTimeout(matchItem(sap, { itemCode: l.itemCode, description: desc }), 30000, 'item match');
         if (m) { ItemCode = m.code; ItemDescription = m.name || desc; UoMCode = m.unit || ''; matchScore = round2(m.score); }
       } catch { /* leave unmatched */ }
     }
-    if (!ItemCode && !online) {
+    if (!ItemCode && !online && !expenseVendor) {
       const c = bestByName(cacheItemCandidates(desc), desc, 0.4);
       if (c) { ItemCode = c.code; ItemDescription = c.name || desc; UoMCode = c.unit || ''; matchScore = c.score; }
     }
-    if (memG) AccountCode = memG.target;
-    else if (settings.defaultGlAccount) AccountCode = settings.defaultGlAccount;
+    // G/L: vendor keyword rule → learned correction → vendor default → (service only: name match) → global default
+    const g = suggestGl(desc, glCtx);
+    if (g && g.by !== 'match') AccountCode = g.code;
+    else if (defaultGl) AccountCode = defaultGl;
     lines.push({
-      ItemCode, ItemDescription: String(ItemDescription).slice(0, 100), AccountCode,
+      ItemCode, ItemDescription: String(ItemDescription).slice(0, 100), AccountCode, mappedBy,
+      glBy: g && g.by !== 'match' ? g.by : (AccountCode ? 'default' : ''), _glMatch: g?.by === 'match' ? g : null,
       Quantity: num(l.qty) || 1, UnitPrice: num(l.unitPrice), DiscountPercent: num(l.discountPct),
       TaxCode: pickTaxCode(taxCodes, num(l.taxPct), settings), WarehouseCode: defaultWhs, UoMCode,
       BaseType: null, BaseEntry: null, BaseLine: null,
@@ -375,18 +523,29 @@ async function buildMapped(ext, settings, row, sapIn) {
     const net = ext.subtotal || Math.max(0, ext.total - ext.taxTotal);
     const pct = net && ext.taxTotal ? round2(ext.taxTotal / net * 100) : 0;
     lines.push({
-      ItemCode: '', ItemDescription: 'Invoice amount', AccountCode: settings.defaultGlAccount || '', Quantity: 1, UnitPrice: round2(net),
+      ItemCode: '', ItemDescription: 'Invoice amount', AccountCode: vendorExpenseRepo.accountFor(vExp, '')?.code || defaultGl, Quantity: 1, UnitPrice: round2(net),
       DiscountPercent: 0, TaxCode: pickTaxCode(taxCodes, pct, settings), WarehouseCode: defaultWhs, UoMCode: '',
       BaseType: null, BaseEntry: null, BaseLine: null, ocrDescription: 'Invoice amount', matchScore: 0, taxPct: pct, hsn: '', ocrLineTotal: round2(net),
     });
     warnings.push('No line table was extracted — a single line for the invoice net amount was created.');
   }
 
-  // Doc type
-  let DocType = settings.defaultDocType === 'dDocument_Service' ? 'dDocument_Service' : 'dDocument_Items';
-  if (DocType === 'dDocument_Items' && lines.length && !lines.some(l => l.ItemCode) && lines.every(l => l.AccountCode)) {
-    DocType = 'dDocument_Service';
-    warnings.push('No line matched an SAP item — switched to a service invoice using the G/L account(s).');
+  // Doc type: auto-detected (second pass, now including the item matches) or the configured default
+  let DocType, docTypeAuto = null;
+  if (settings.autoDocType) {
+    docTypeAuto = classifyDocType(ext, { ...typeOpts, lines });
+    DocType = docTypeAuto.type;
+    if (docTypeAuto.source === 'auto') {
+      warnings.push(`Detected as ${docTypeLabel(DocType, docTypeAuto.confidence)} invoice: ${docTypeAuto.reasons.slice(0, 2).join('; ')}.`);
+      if (docTypeAuto.confidence < 0.65) warnings.push('Item / Service detection is uncertain — please check the invoice type.');
+    }
+  } else {
+    DocType = settings.defaultDocType === 'dDocument_Service' || expenseVendor ? 'dDocument_Service' : 'dDocument_Items';
+    if (expenseVendor) warnings.push(`${CardCode} is set up as an expense vendor — posted as a service invoice to G/L account(s).`);
+    if (DocType === 'dDocument_Items' && lines.length && !lines.some(l => l.ItemCode) && lines.every(l => l.AccountCode || l._glMatch)) {
+      DocType = 'dDocument_Service';
+      warnings.push('No line matched an SAP item — switched to a service invoice using the G/L account(s).');
+    }
   }
 
   // Base-document linking (PO / GRPO)
@@ -397,7 +556,9 @@ async function buildMapped(ext, settings, row, sapIn) {
     const po = poNo ? docs.pos.find(p => String(p.docNum) === poNo) : null;
     let grpos = po ? docs.grpos.filter(g => g.lines.some(l => l.baseType === 22 && Number(l.baseEntry) === Number(po.docEntry))) : [];
     if (!po && ext.invoiceNo) grpos = docs.grpos.filter(g => g.numAtCard && g.numAtCard.trim().toLowerCase() === String(ext.invoiceNo).trim().toLowerCase());
-    const baseDocs = grpos.length ? grpos.map(d => ({ ...d, type: 20 })) : (po ? [{ ...po, type: 22 }] : []);
+    let baseDocs = grpos.length ? grpos.map(d => ({ ...d, type: 20 })) : (po ? [{ ...po, type: 22 }] : []);
+    // an expense invoice can only be based on a service PO / GRPO
+    if (expenseVendor) baseDocs = baseDocs.filter(d => d.docType === 'dDocument_Service');
     if (baseDocs.length) {
       const pool = baseDocs.flatMap(d => d.lines.map(l => ({ ...l, docType: d.docType, type: d.type, docEntry: d.docEntry, docNum: d.docNum, left: l.openQty })));
       let linked = 0;
@@ -429,10 +590,24 @@ async function buildMapped(ext, settings, row, sapIn) {
       }
       if (linked) {
         BaseType = baseDocs[0].type; BaseEntry = baseDocs[0].docEntry;
-        if (baseDocs[0].docType === 'dDocument_Service') DocType = 'dDocument_Service';
+        const baseType = baseDocs[0].docType === 'dDocument_Service' ? 'dDocument_Service' : 'dDocument_Items';
+        if (baseType !== DocType) {
+          DocType = baseType;
+          if (docTypeAuto) docTypeAuto = { ...docTypeAuto, type: baseType, confidence: 1, source: 'base', reasons: [`Linked to ${baseDocs[0].type === 20 ? 'GRPO' : 'PO'} ${baseDocs[0].docNum}, which is a ${baseType === 'dDocument_Service' ? 'service' : 'item'} document`] };
+          warnings.push(`Type set to ${docTypeLabel(baseType)} to match ${baseDocs[0].type === 20 ? 'GRPO' : 'PO'} ${baseDocs[0].docNum}.`);
+        }
       } else warnings.push(`${baseDocs[0].type === 20 ? 'GRPO' : 'PO'} ${baseDocs[0].docNum} found but no invoice line could be linked to it.`);
     } else if (ext.poNumber) warnings.push(`PO "${ext.poNumber}" printed on the invoice is not an open purchase order for ${CardCode}.`);
   }
+
+  // Service (expense) invoice: description as printed on the bill, G/L from the name match where nothing better was set
+  lines.forEach(l => {
+    if (DocType === 'dDocument_Service' && l.BaseEntry == null) {
+      if (l.ocrDescription) l.ItemDescription = String(l.ocrDescription).slice(0, 100);
+      if (l._glMatch && (!l.AccountCode || l.glBy === 'default')) { l.AccountCode = l._glMatch.code; l.glBy = 'match'; l.glScore = l._glMatch.score; }
+    }
+    delete l._glMatch;
+  });
 
   // Line-level warnings
   lines.forEach((l, i) => {
@@ -456,6 +631,7 @@ async function buildMapped(ext, settings, row, sapIn) {
     // additions
     extraFields: {},
     vendorScore, sapOnline: online,
+    docTypeAuto, docTypeBy: docTypeAuto ? 'auto' : 'default',
   };
   computeTotals(mapped, taxCodes);
   if (ext.total && Math.abs(mapped.totals.total - ext.total) > (Number(settings.totalTolerance) || 0)) {
@@ -584,28 +760,73 @@ function principalMatches(p, user) {
   return String(p.id) === userIdOf(user) || (p.name && (p.name === user.username)) || String(p.id) === String(user.username);
 }
 
-function stagesForTotal(template, total) {
+// What approval conditions are evaluated against (lib/apip-conditions.mjs FIELDS). Groups come from the
+// local Data Sync copy of the item / supplier master; unknown groups simply do not match "is any of".
+function invoiceFacts(full) {
+  const m = full.mapped || {}, t = m.totals || {}, cid = companyId(), repo = _ctx.cacheRepo;
+  const lines = Array.isArray(m.lines) ? m.lines : [];
+  const lineAmt = l => (Number(l.Quantity) || 0) * (Number(l.UnitPrice) || 0) * (1 - (Number(l.DiscountPercent) || 0) / 100);
+  const itemGroupOf = code => { if (!code) return null; try { const i = (repo?.searchItems?.(cid, code, 30) || []).find(x => x.ItemCode === code); return i?.ItemsGroupCode != null ? String(i.ItemsGroupCode) : null; } catch { return null; } };
+  let vendorGroup = null;
+  try { const b = (repo?.searchBPs?.(cid, m.CardCode || '', 'cSupplier', 10) || []).find(x => x.CardCode === m.CardCode); if (b?.GroupCode != null) vendorGroup = String(b.GroupCode); } catch { /* cache missing */ }
+  const total = Number(t.total ?? full.total ?? 0);
+  const ocr = Number(full.extracted?.total) || 0;
+  const service = m.DocType === 'dDocument_Service';
+  return {
+    total, subtotal: Number(t.beforeDiscount ?? 0) - Number(t.discount ?? 0), tax: Number(t.tax ?? 0),
+    maxLine: lines.reduce((mx, l) => Math.max(mx, lineAmt(l)), 0),
+    deviationPct: ocr ? Math.abs(total - ocr) / ocr * 100 : 0,
+    vendor: m.CardCode || full.card_code || '', vendorGroup, currency: m.DocCurrency || full.currency || '',
+    docType: service ? 'service' : 'item',
+    itemCode: service ? [] : lines.map(l => l.ItemCode).filter(Boolean),
+    itemGroup: service ? [] : lines.map(l => itemGroupOf(l.ItemCode)).filter(Boolean),
+    glAccount: service ? lines.map(l => l.AccountCode).filter(Boolean) : [],
+    warehouse: service ? [] : lines.map(l => l.WarehouseCode).filter(Boolean),
+    hasBase: m.BaseEntry != null || lines.some(l => l.BaseEntry != null && l.BaseEntry !== ''),
+  };
+}
+
+// Stages that apply to this invoice: stage conditions must match; maxInvoiceTotal still ends the chain early.
+function stagesFor(template, facts) {
   const out = [];
   for (const s of template.stages || []) {
-    out.push(s);
-    if (s.maxInvoiceTotal != null && Number(s.maxInvoiceTotal) > 0 && Number(total) <= Number(s.maxInvoiceTotal)) break;
+    const c = evalConditions(s.conditions, facts);
+    if (!c.ok) continue;
+    out.push({ ...s, matchReasons: c.reasons });
+    if (s.maxInvoiceTotal != null && Number(s.maxInvoiceTotal) > 0 && Number(facts.total) <= Number(s.maxInvoiceTotal)) break;
   }
   return out;
 }
 
-function templateApplies(t, row, mapped, extracted, requestor) {
-  if (!t?.stages?.length) return false;
-  if (requestor && t.requestors?.length && !t.requestors.some(p => principalMatches(p, requestor))) return false;
+/** Templates that fit the invoice, best first: priority (low first) → more specific (more rules) → oldest. */
+function matchTemplates(full, requestor) {
+  const facts = invoiceFacts(full);
+  const all = templateRepo.list().map(t => {
+    const why = templateCheck(t, full, full.mapped, full.extracted, requestor, facts);
+    return { t, ...why };
+  });
+  const ok = all.filter(x => x.ok).sort((a, b) => (a.t.priority ?? 100) - (b.t.priority ?? 100)
+    || (b.t.conditions?.rules?.length || 0) - (a.t.conditions?.rules?.length || 0) || a.t.id - b.t.id);
+  return { facts, matches: ok, rejected: all.filter(x => !x.ok) };
+}
+
+function templateCheck(t, row, mapped, extracted, requestor, facts) {
+  const no = why => ({ ok: false, reasons: [], why });
+  if (!t?.stages?.length) return no('Template has no stages');
+  if (requestor && t.requestors?.length && !t.requestors.some(p => principalMatches(p, requestor))) return no('Requestor is not on this template');
   const add = t.additionalSettings || {};
   if (add.enabled) {
-    if (add.vendorCodes?.length && !add.vendorCodes.includes(mapped?.CardCode || row.card_code)) return false;
+    if (add.vendorCodes?.length && !add.vendorCodes.includes(mapped?.CardCode || row.card_code)) return no('Vendor is not in the template vendor list');
     if (Number(add.deviationPct) > 0) {
       const ocr = Number(extracted?.total) || 0, sapT = Number(mapped?.totals?.total) || 0;
       const dev = ocr ? Math.abs(sapT - ocr) / ocr * 100 : 0;
-      if (dev < Number(add.deviationPct)) return false;
+      if (dev < Number(add.deviationPct)) return no(`Deviation ${dev.toFixed(1)}% is below ${add.deviationPct}%`);
     }
   }
-  return true;
+  const c = evalConditions(t.conditions, facts);
+  if (!c.ok) return no(`Not met: ${c.failed.join('; ')}`);
+  if (!stagesFor(t, facts).length) return no('No stage applies to this invoice');
+  return { ok: true, reasons: c.reasons, why: '' };
 }
 
 function sendForApproval(row, { templateId = null, requestor = null, sentBy = '' } = {}) {
@@ -614,30 +835,31 @@ function sendForApproval(row, { templateId = null, requestor = null, sentBy = ''
   if (!['processed', 'duplicate'].includes(full.processing_status)) throw httpErr(400, `Only processed invoices can be sent for approval (status: ${full.processing_status}).`);
   if (['PENDING', 'PARTIAL'].includes(full.approval_status)) throw httpErr(400, 'Invoice is already awaiting approval.');
   if (full.approval_status === 'APPROVED') throw httpErr(400, 'Invoice is already approved.');
-  const total = Number(full.mapped?.totals?.total ?? full.total ?? 0);
-  let template = null;
+  const facts = invoiceFacts(full);
+  let template = null, matchReasons = [], how = 'chosen';
   if (templateId) {
     template = templateRepo.get(templateId);
     if (!template) throw httpErr(404, 'Approval template not found');
   } else {
-    template = templateRepo.list().find(t => templateApplies(t, full, full.mapped, full.extracted, requestor));
-    if (!template) throw httpErr(400, 'No approval template matches this invoice (requestor / vendor / amount rules).');
+    const { matches, rejected } = matchTemplates(full, requestor);
+    if (!matches.length) throw httpErr(400, `No approval template matches this invoice.${rejected.length ? ' ' + rejected.slice(0, 3).map(x => `"${x.t.name}": ${x.why}`).join(' · ') : ''}`);
+    template = matches[0].t; matchReasons = matches[0].reasons; how = 'auto';
   }
-  const stages = stagesForTotal(template, total);
-  if (!stages.length) throw httpErr(400, `Template "${template.name}" has no stages.`);
+  const stages = stagesFor(template, facts);
+  if (!stages.length) throw httpErr(400, `No stage of template "${template.name}" applies to this invoice — check the stage conditions.`);
   const approval = {
-    templateId: template.id, templateName: template.name, currentStage: 1,
+    templateId: template.id, templateName: template.name, currentStage: 1, how, matchReasons,
     stages: stages.map((s, i) => ({
       no: i + 1, name: s.name, description: s.description || '', approvalsRequired: s.approvalsRequired || 1,
       rejectorsRequired: s.rejectorsRequired || 1, maxInvoiceTotal: s.maxInvoiceTotal ?? null,
-      approvers: s.approvers || [], status: i === 0 ? 'PENDING' : 'WAITING',
+      approvers: s.approvers || [], status: i === 0 ? 'PENDING' : 'WAITING', matchReasons: s.matchReasons || [],
     })),
   };
   actionRepo.clear(row.id);
   const updated = queueRepo.update(row.id, {
     approval_json: approval, approval_status: 'PENDING', template_id: template.id, sent_at: nowIso(), sent_by: String(sentBy || ''),
   });
-  apipLog('INFO', `#${row.id} sent for approval using "${template.name}" (${stages.length} stage(s))`);
+  apipLog('INFO', `#${row.id} sent for approval using "${template.name}" (${how}${matchReasons.length ? ': ' + matchReasons.join('; ') : ''}, ${stages.length} stage(s))`);
   return updated;
 }
 
@@ -682,10 +904,10 @@ function approvalView(full) {
   if (!ap) return { templateName: null, stages: [], currentStage: null };
   const actions = actionRepo.list(full.id);
   return {
-    templateId: ap.templateId, templateName: ap.templateName, currentStage: ap.currentStage,
+    templateId: ap.templateId, templateName: ap.templateName, currentStage: ap.currentStage, how: ap.how || '', matchReasons: ap.matchReasons || [],
     stages: ap.stages.map(s => ({
       no: s.no, name: s.name, status: s.status, approvalsRequired: s.approvalsRequired, rejectorsRequired: s.rejectorsRequired,
-      approvers: s.approvers,
+      approvers: s.approvers, matchReasons: s.matchReasons || [],
       approvals: actions.filter(a => a.stage_no === s.no).map(a => ({ user: a.user_name, userId: a.user_id, action: a.action, comment: a.comment, at: a.at })),
     })),
   };
@@ -740,6 +962,7 @@ async function validateInvoice(full, sapIn) {
     const line = i + 1, base = l.BaseEntry != null && l.BaseEntry !== '';
     if (!isService && !l.ItemCode && !base) issues.push({ field: 'ItemCode', line, message: 'Item is required.', severity: 'error' });
     if (isService && !l.AccountCode && !base) issues.push({ field: 'AccountCode', line, message: 'G/L account is required.', severity: 'error' });
+    if (isService && !String(l.ItemDescription || '').trim()) issues.push({ field: 'ItemDescription', line, message: 'Service description is required.', severity: 'error' });
     if (!isService && l.ItemCode) itemCodes.add(l.ItemCode);
     if (isService && l.AccountCode) accounts.add(l.AccountCode);
     if (!(num(l.Quantity) > 0)) issues.push({ field: 'Quantity', line, message: 'Quantity must be greater than 0.', severity: 'error' });
@@ -749,10 +972,12 @@ async function validateInvoice(full, sapIn) {
   });
   if (online) {
     for (const code of itemCodes) {
+      if (cacheItemExact(code)) continue;
       try { await sap.get(`/Items('${q(code)}')`, { $select: 'ItemCode' }); }
       catch { (m.lines || []).forEach((l, i) => { if (l.ItemCode === code) issues.push({ field: 'ItemCode', line: i + 1, message: `Item ${code} does not exist in SAP.`, severity: 'error' }); }); }
     }
     for (const acct of accounts) {
+      if (cacheHasGl(acct)) continue;
       try { await sap.get(`/ChartOfAccounts('${q(acct)}')`, { $select: 'Code' }); }
       catch { (m.lines || []).forEach((l, i) => { if (l.AccountCode === acct) issues.push({ field: 'AccountCode', line: i + 1, message: `G/L account ${acct} does not exist in SAP.`, severity: 'error' }); }); }
     }
@@ -835,10 +1060,13 @@ async function postInvoice(id, sapIn) {
     const local = queueRepo.findPostedDuplicate(m.CardCode, m.NumAtCard, id);
     if (local) throw httpErr(400, `Vendor invoice ${m.NumAtCard} was already posted from queue item #${local.id}.`);
   }
-  const payload = buildPayload(m, settings);
-  if (!payload.DocumentLines.length) throw httpErr(400, 'No lines with a quantity to post.');
   const sap = sapIn || currentSap();
   if (!sap) throw httpErr(503, 'No SAP connection.');
+  const badGl = await resolveServiceGls(m, sap, await probeSap(sap));
+  if (badGl.length) throw httpErr(400, `G/L account not found for line(s) ${badGl.map(b => `${b.line} ("${b.text}")`).join(', ')} — select the G/L account from the list, save, then post.`);
+  if (m.DocType === 'dDocument_Service') queueRepo.update(id, { mapped_json: m });
+  const payload = buildPayload(m, settings);
+  if (!payload.DocumentLines.length) throw httpErr(400, 'No lines with a quantity to post.');
   let result;
   try {
     result = settings.postAsDraft
@@ -911,6 +1139,7 @@ async function masterSync(sap) {
     if (rows.length) repo.replaceEntity(cid, 'warehouses', () => repo.upsertWarehouses(cid, rows));
     return rows.length;
   });
+  await run('gl_accounts', () => syncGlAccounts(sap));
   apipLog('INFO', `Master sync: ${JSON.stringify(synced)}${Object.keys(errors).length ? ' errors=' + JSON.stringify(errors) : ''}`);
   return { synced, errors };
 }
@@ -927,8 +1156,17 @@ function learnMappings(prev, next, extracted) {
     const p = prev?.lines?.[i];
     const src = l.ocrDescription || p?.ocrDescription;
     if (!src) return;
-    if (l.ItemCode && l.ItemCode !== p?.ItemCode) { mappingRepo.learn(cid, 'item', src, l.ItemCode, l.ItemDescription || ''); learned++; }
-    if (l.AccountCode && l.AccountCode !== p?.AccountCode) { mappingRepo.learn(cid, 'gl', src, l.AccountCode, ''); learned++; }
+    if (l.ItemCode && l.ItemCode !== p?.ItemCode) {
+      mappingRepo.learn(cid, 'item', src, l.ItemCode, l.ItemDescription || ''); learned++;
+      // also remember it per vendor, so the next invoice from this vendor maps (and links to the PO) by our item code
+      if (next.CardCode) {
+        const xl = (extracted?.lines || []).find(e => (e.description || e.itemCode || '') === src);
+        vendorItemRepo.learn(cid, { cardCode: next.CardCode, cardName: next.CardName || '', vendorItemCode: xl?.itemCode || '', vendorItemName: src,
+          itemCode: l.ItemCode, itemName: l.ItemDescription || '', uom: l.UoMCode || '' });
+      }
+    }
+    // only G/Ls the user picked by hand are remembered — not suggestions accepted as-is
+    if (l.AccountCode && l.AccountCode !== p?.AccountCode && l.glBy === 'user') { mappingRepo.learn(cid, 'gl', src, l.AccountCode, l.AccountName || ''); learned++; }
   });
   return learned;
 }
@@ -946,7 +1184,8 @@ function sanitizeMapped(input, prev) {
     BaseType: l.BaseType === '' || l.BaseType == null ? null : Number(l.BaseType),
     BaseEntry: l.BaseEntry === '' || l.BaseEntry == null ? null : Number(l.BaseEntry),
     BaseLine: l.BaseLine === '' || l.BaseLine == null ? null : Number(l.BaseLine),
-    ocrDescription: l.ocrDescription || '', matchScore: l.matchScore ?? 0,
+    ocrDescription: l.ocrDescription || '', matchScore: l.matchScore ?? 0, mappedBy: String(l.mappedBy || ''),
+    glBy: String(l.glBy || ''), glScore: l.glScore ?? null, AccountName: String(l.AccountName || ''), AccountFormat: String(l.AccountFormat || ''),
     taxPct: num(l.taxPct), hsn: l.hsn || '', ocrLineTotal: num(l.ocrLineTotal),
   }));
   if (!m.extraFields || typeof m.extraFields !== 'object') m.extraFields = {};
@@ -1071,6 +1310,7 @@ export function createApipRouter(deps = {}) {
     if (!req.body?.mapped || typeof req.body.mapped !== 'object') throw httpErr(400, 'Body must contain { mapped }.');
     const mapped = sanitizeMapped(req.body.mapped, row.mapped);
     const sap = sapOf();
+    const badGl = await resolveServiceGls(mapped, sap, await probeSap(sap));
     const taxCodes = await loadTaxCodes(sap, false).catch(() => []);
     computeTotals(mapped, taxCodes);
     const learned = learnMappings(row.mapped, mapped, row.extracted);
@@ -1084,7 +1324,38 @@ export function createApipRouter(deps = {}) {
       && (mapped.NumAtCard !== row.mapped?.NumAtCard || mapped.CardCode !== row.mapped?.CardCode)) { fields.processing_status = 'processed'; fields.error = ''; }
     queueRepo.update(row.id, fields);
     if (learned) apipLog('INFO', `#${row.id}: learned ${learned} mapping correction(s)`);
-    res.json({ ok: true, mapped, learned });
+    res.json({ ok: true, mapped, learned, ...(badGl.length ? { warning: `G/L not found for line(s) ${badGl.map(b => `${b.line} ("${b.text}")`).join(', ')} — select the account from the list.` } : {}) });
+  }));
+
+  // Switch an invoice between Item and Service (from the queue list). Service lines get the bill
+  // description and a suggested G/L; base links are dropped because a PO / GRPO has one fixed type.
+  router.post('/invoice/:id/doc-type', requireAuth, wrap(async (req, res) => {
+    const row = getRow(req.params.id);
+    const docType = req.body?.docType === 'service' || req.body?.docType === 'dDocument_Service' ? 'dDocument_Service' : 'dDocument_Items';
+    if (row.processing_status === 'posted') throw httpErr(400, 'Invoice is already posted — its type can no longer be changed.');
+    if (['PENDING', 'PARTIAL', 'APPROVED'].includes(row.approval_status)) throw httpErr(400, 'Invoice is in approval — its type can no longer be changed.');
+    if (!row.mapped) throw httpErr(400, 'Process the invoice first.');
+    const mapped = sanitizeMapped({}, row.mapped);
+    if (mapped.DocType === docType) return res.json({ ok: true, mapped, row: toQueueRow(row) });
+    mapped.DocType = docType;
+    mapped.docTypeBy = 'user';
+    mapped.BaseType = null; mapped.BaseEntry = null; mapped.BaseDocNum = null;
+    mapped.lines.forEach(l => { l.BaseType = null; l.BaseEntry = null; l.BaseLine = null; });
+    if (docType === 'dDocument_Service') {
+      const sap = sapOf();
+      const ctx = { vExp: vendorExpenseRepo.get(companyId(), mapped.CardCode), settings: settingsRepo.get(), expenseAccounts: await loadExpenseAccounts(sap, await probeSap(sap)) };
+      mapped.lines.forEach(l => {
+        if (l.ocrDescription) l.ItemDescription = String(l.ocrDescription).slice(0, 100);
+        if (l.glBy === 'user' && l.AccountCode) return;
+        const g = suggestGl(l.ocrDescription || l.ItemDescription, ctx);
+        if (g) { l.AccountCode = g.code; l.AccountName = g.name || ''; l.glBy = g.by; l.glScore = g.score; }
+      });
+    }
+    const taxCodes = await loadTaxCodes(sapOf(), false).catch(() => []);
+    computeTotals(mapped, taxCodes);
+    const updated = queueRepo.update(row.id, { mapped_json: mapped, total: mapped.totals.total });
+    apipLog('INFO', `#${row.id}: switched to ${docType === 'dDocument_Service' ? 'Service' : 'Item'} invoice by ${req.user?.username || '?'}`);
+    res.json({ ok: true, mapped, row: toQueueRow(updated || getRow(row.id)) });
   }));
 
   router.post('/invoice/:id/validate', requireAuth, wrap(async (req, res) => {
@@ -1143,7 +1414,10 @@ export function createApipRouter(deps = {}) {
   }));
 
   router.get('/gl-accounts', requireAuth, wrap(async (req, res) => {
+    const cached = cacheGlSearch(String(req.query.q || '').trim());
+    if (cached) return res.json({ ok: true, rows: cached, accounts: cached, source: 'cache' });
     const sap = sapOf();
+    ensureGlCache(sap);
     if (!(await probeSap(sap))) return res.json({ ok: true, rows: [], accounts: [], warning: 'SAP is not reachable.' });
     const rows = await searchGlAccounts(sap, String(req.query.q || '').trim());
     res.json({ ok: true, rows, accounts: rows });
@@ -1163,6 +1437,72 @@ export function createApipRouter(deps = {}) {
 
   router.get('/mappings', requireAuth, wrap(async (req, res) => {
     res.json({ ok: true, rows: mappingRepo.list(companyId()) });
+  }));
+
+  // Resolve typed G/L text (code, format code or name) to one account
+  router.get('/gl-resolve', requireAuth, wrap(async (req, res) => {
+    const sap = sapOf();
+    res.json({ ok: true, account: await resolveGl(sap, await probeSap(sap), req.query.q) });
+  }));
+
+  // G/L suggestions for service lines (used when the user switches an invoice to Service)
+  router.post('/gl-suggest', requireAuth, wrap(async (req, res) => {
+    const b = req.body || {};
+    const sap = sapOf();
+    const online = await probeSap(sap);
+    const ctx = { vExp: vendorExpenseRepo.get(companyId(), String(b.cardCode || '').trim()), settings: settingsRepo.get(), expenseAccounts: await loadExpenseAccounts(sap, online) };
+    const rows = (Array.isArray(b.texts) ? b.texts : []).slice(0, 200).map(x => {
+      const g = suggestGl(String(x || ''), ctx);
+      const c = g ? _ctx.cacheRepo?.getGLAccount?.(companyId(), g.code) : null;
+      if (c) { g.name = g.name || c.AcctName || ''; g.format = c.FormatCode || ''; }
+      return g;
+    });
+    res.json({ ok: true, rows });
+  }));
+
+  // Vendor item mapping
+  const checkVendorItem = b => {
+    if (!String(b.cardCode || '').trim()) throw httpErr(400, 'Vendor is required.');
+    if (!String(b.vendorItemCode || '').trim() && !String(b.vendorItemName || '').trim()) throw httpErr(400, 'Enter the vendor item code or the vendor item name.');
+    if (!String(b.itemCode || '').trim()) throw httpErr(400, 'Our item is required.');
+  };
+  const dupErr = e => (/UNIQUE/i.test(e.message) ? httpErr(409, 'This vendor item is already mapped for this vendor.') : e);
+  router.get('/vendor-items', requireAuth, wrap(async (req, res) => {
+    res.json({ ok: true, rows: vendorItemRepo.list(companyId(), { cardCode: String(req.query.cardCode || '').trim(), q: String(req.query.q || '').trim() }) });
+  }));
+  router.post('/vendor-items', requireAuth, wrap(async (req, res) => {
+    const b = req.body || {};
+    checkVendorItem(b);
+    try { res.json({ ok: true, row: vendorItemRepo.create(companyId(), b) }); } catch (e) { throw dupErr(e); }
+  }));
+  router.put('/vendor-items/:id', requireAuth, wrap(async (req, res) => {
+    const b = req.body || {};
+    checkVendorItem(b);
+    let row;
+    try { row = vendorItemRepo.update(req.params.id, b); } catch (e) { throw dupErr(e); }
+    if (!row) throw httpErr(404, 'Mapping not found');
+    res.json({ ok: true, row });
+  }));
+  router.delete('/vendor-items/:id', requireAuth, wrap(async (req, res) => {
+    if (!vendorItemRepo.delete(req.params.id)) throw httpErr(404, 'Mapping not found');
+    res.json({ ok: true });
+  }));
+
+  // Vendor expense G/L
+  router.get('/vendor-expense', requireAuth, wrap(async (req, res) => {
+    res.json({ ok: true, rows: vendorExpenseRepo.list(companyId()) });
+  }));
+  router.put('/vendor-expense/:cardCode', requireAuth, wrap(async (req, res) => {
+    const b = { ...(req.body || {}), cardCode: req.params.cardCode };
+    if (!String(b.cardCode).trim()) throw httpErr(400, 'Vendor is required.');
+    const rules = Array.isArray(b.rules) ? b.rules : [];
+    if (rules.some(r => !String(r?.keyword || '').trim() || !String(r?.accountCode || '').trim())) throw httpErr(400, 'Every keyword rule needs a keyword and a G/L account.');
+    if (!String(b.defaultGl || '').trim() && !rules.length) throw httpErr(400, 'Set a default G/L account or at least one keyword rule.');
+    res.json({ ok: true, row: vendorExpenseRepo.save(companyId(), b) });
+  }));
+  router.delete('/vendor-expense/:cardCode', requireAuth, wrap(async (req, res) => {
+    if (!vendorExpenseRepo.delete(companyId(), req.params.cardCode)) throw httpErr(404, 'Vendor expense setup not found');
+    res.json({ ok: true });
   }));
 
   // Approvals
@@ -1205,6 +1545,9 @@ export function createApipRouter(deps = {}) {
 
   // Approval Master (templates)
   const validateTemplateBody = b => {
+    const problems = [...conditionProblems(b.conditions, 'Template condition'),
+      ...(Array.isArray(b.stages) ? b.stages : []).flatMap((s, i) => conditionProblems(s?.conditions, `Stage ${i + 1} condition`))];
+    if (problems.length) throw httpErr(400, problems.join(' '));
     const t = normalizeTemplate(b);
     if (!t.name) throw httpErr(400, 'Template name is required.');
     if (!t.stages.length) throw httpErr(400, 'At least one approval stage is required.');
@@ -1216,8 +1559,38 @@ export function createApipRouter(deps = {}) {
     const rows = templateRepo.list(String(req.query.search || '').trim()).map(t => ({
       id: t.id, name: t.name, description: t.description, stageCount: t.stages.length,
       settingsEnabled: !!t.additionalSettings?.enabled, requestorCount: t.requestors.length, createdAt: t.createdAt,
+      priority: t.priority ?? 100, conditionCount: t.conditions?.rules?.length || 0, conditionText: describeConditions(t.conditions),
+      stageConditionCount: t.stages.filter(s => s.conditions?.rules?.length).length,
     }));
     res.json({ ok: true, rows });
+  }));
+
+  // Condition builder metadata: fields, operators and the pick lists that come from the local master data
+  router.get('/condition-fields', requireAuth, wrap(async (req, res) => {
+    const cid = companyId(), repo = _ctx.cacheRepo;
+    const safe = fn => { try { return fn() || []; } catch { return []; } };
+    res.json({
+      ok: true, fields: COND_FIELDS, ops: COND_OPS,
+      lists: {
+        itemGroups: safe(() => repo.getItemGroups(cid)).map(g => ({ code: String(g.Number), name: g.GroupName || '' })),
+        vendorGroups: safe(() => repo.getBPGroups(cid)).map(g => ({ code: String(g.Code), name: g.Name || '' })),
+        currencies: safe(() => repo.getCurrencies(cid)).map(c => ({ code: c.Code, name: c.Name || '' })),
+        warehouses: safe(() => repo.getWarehouses(cid)).map(w => ({ code: w.WarehouseCode, name: w.WarehouseName || '' })),
+        docTypes: [{ code: 'item', name: 'Item invoice' }, { code: 'service', name: 'Service invoice' }],
+      },
+    });
+  }));
+
+  // Which template would this invoice get, and why (Send for Approval dialog / invoice form)
+  router.get('/templates/match/:queueId', requireAuth, wrap(async (req, res) => {
+    const full = getRow(req.params.queueId);
+    if (!full.mapped) throw httpErr(400, 'Process the invoice first.');
+    const requestor = full.uploaded_by ? principalForUsername(full.uploaded_by) : req.user;
+    const { facts, matches, rejected } = matchTemplates(full, requestor);
+    const view = x => ({ id: x.t.id, name: x.t.name, priority: x.t.priority ?? 100, reasons: x.reasons,
+      stages: stagesFor(x.t, facts).map(s => ({ name: s.name, approvers: (s.approvers || []).map(a => a.name || a.id), reasons: s.matchReasons })) });
+    res.json({ ok: true, facts, best: matches[0] ? view(matches[0]) : null, others: matches.slice(1).map(view),
+      rejected: rejected.map(x => ({ id: x.t.id, name: x.t.name, why: x.why })) });
   }));
 
   router.get('/templates/:id', requireAuth, wrap(async (req, res) => {

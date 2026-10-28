@@ -625,6 +625,7 @@
           '**KPI tiles** — Stock value, Dead stock, Slow-moving, Dead + slow %, Lines flagged, Transfer opportunities, Freeze purchasing, Liquidation value.',
           '**Chart** — flagged stock value by time since last use.',
           '**Tabs** — Dead & slow (with action), Purchase freeze, Transfers, By item group.',
+          '**Click a DEAD row** — last 10 out transactions of the item in that warehouse older than the dead threshold, and the last 10 customers who bought it; click a customer for their last 10 transactions with us.',
         ] },
         { title: 'Suggested demo flow', ordered: true, items: [
           'Show **Dead + slow %** of total stock value.',
@@ -852,6 +853,7 @@
 #${PANEL_ID} .ia-tbl td{padding:7px 10px;border-bottom:1px solid #F1F5F9;white-space:nowrap;vertical-align:top}
 #${PANEL_ID} .ia-tbl td.wrap{white-space:normal;min-width:220px;max-width:380px}
 #${PANEL_ID} .ia-tbl tr:hover td{background:#FAFBFF}
+#${PANEL_ID} .ia-tbl tr.ia-rowlink{cursor:pointer}
 #${PANEL_ID} .ia-sub{font-size:10px;color:var(--muted,#6A6D70);margin-top:1px}
 /* dense: wide tables (many month columns) — tighter cells, wrapped headers, sticky first column, truncated names */
 #${PANEL_ID} .ia-tbl.dense th{white-space:normal;vertical-align:bottom;line-height:1.2;min-width:48px}
@@ -923,6 +925,10 @@
 .ia-modal button{font-size:12px;padding:6px 14px;border-radius:4px;border:1px solid #CBD5E1;background:#fff;cursor:pointer}
 .ia-modal button.primary{background:#0070F2;border-color:#0070F2;color:#fff}
 .ia-modal.ia-kd{width:980px}
+.ia-modal.ia-rd table.ia-grid th,.ia-modal.ia-rd table.ia-grid td{text-align:left;vertical-align:top}
+.ia-modal.ia-rd table.ia-grid th.num,.ia-modal.ia-rd table.ia-grid td.num{text-align:right}
+.ia-modal.ia-rd table.ia-grid td.wrap{white-space:normal;min-width:160px}
+.ia-modal.ia-rd tr.ia-rd-link{cursor:pointer}.ia-modal.ia-rd tr.ia-rd-link:hover td{background:#EFF6FF}
 .ia-kd .ia-kd-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .ia-kd .ia-kd-val{font-size:28px;font-weight:700;color:#1d2d3e}.ia-kd .ia-kd-val.bad{color:#aa0808}.ia-kd .ia-kd-val.warn{color:#e76500}.ia-kd .ia-kd-val.good{color:#256f3a}
 .ia-kd .ia-kd-tabs{display:flex;gap:4px;border-bottom:1px solid #E5E7EB}
@@ -1582,7 +1588,10 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
     // is clickable and opens a popup showing how the value was calculated.
     const cellHtml = (r, c, i) => explainOf(r, c)
       ? `<span class="ia-score-click" data-sb="${i}" data-sbk="${esc(c.key)}" title="Click to see how this is calculated">${cell(r, c, dense)}</span>` : cell(r, c, dense);
-    const rowHtml = (r, i) => `<tr class="${rc && r.itemCode === rc.code ? 'sel' : ''}${gb ? ' ia-gchild' : ''}">${tab.columns.map(c => `<td class="${numeric(c) ? 'num' : ''} ${c.wrap ? 'wrap' : ''}">${cellHtml(r, c, i)}</td>`).join('')}
+    // rowDetail.onlyIf = { key: value } limits which rows open the popup.
+    const rd = tab.rowDetail;
+    const rdOn = r => rd && Object.entries(rd.onlyIf || {}).every(([k, v]) => r[k] === v);
+    const rowHtml = (r, i) => `<tr class="${rc && r.itemCode === rc.code ? 'sel' : ''}${gb ? ' ia-gchild' : ''}${rdOn(r) ? ' ia-rowlink' : ''}"${rdOn(r) ? ` data-ri="${i}" title="${esc(rd.title || 'Click for details')}"` : ''}>${tab.columns.map(c => `<td class="${numeric(c) ? 'num' : ''} ${c.wrap ? 'wrap' : ''}">${cellHtml(r, c, i)}</td>`).join('')}
           ${actions.length ? `<td>${actions.map(a => `<button class="ia-act" data-i="${i}" data-act="${esc(a.id)}">${esc(a.label)}</button>`).join('')}</td>` : ''}</tr>`;
     let bodyHtml;
     if (groups) {
@@ -1659,6 +1668,11 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
     if (sizeSel) sizeSel.onchange = () => { st.pageSize = Number(sizeSel.value); goTo(1); };
     tb.querySelectorAll('[data-act]').forEach(b => b.onclick = () => runAction(key, actions.find(a => a.id === b.dataset.act), shown[Number(b.dataset.i)]));
     tb.querySelectorAll('[data-sb]').forEach(el => el.onclick = () => { const r = shown[Number(el.dataset.sb)], c = tab.columns.find(x => x.key === el.dataset.sbk); showExplain(r, explainOf(r, c), c); });
+    // Row detail popup: a click anywhere on the row except explain cells and action buttons.
+    if (rd) tb.querySelectorAll('tr[data-ri]').forEach(tr => tr.onclick = e => {
+      if (e.target.closest('[data-sb],[data-act],a,button,input,select')) return;
+      openRowDetail(rd.endpoint, { row: shown[Number(tr.dataset.ri)] });
+    });
     tb.querySelector('[data-colguide]')?.addEventListener('click', () => showColumnGuide(tab));
     tb.querySelectorAll('tr.ia-grp').forEach(tr => tr.onclick = () => { gOpen[tr.dataset.g] = !gOpen[tr.dataset.g]; renderTab(key); });
     tb.querySelectorAll('[data-gall]').forEach(b => b.onclick = () => {
@@ -1884,6 +1898,52 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
     try { st.rowChart.data = await call(act.endpoint, { itemCode: code }); }
     catch (e) { st.rowChart.error = e.message; }
     if (current === key && st.data) renderTab(key);
+  }
+
+  // Row detail popup (tab.rowDetail). The endpoint returns
+  //   { title, subtitle, stats:[{label,value,fmt}], tabs:[{ key, label, notes[] (**bold**), desc, empty, columns, rows,
+  //     drill?: { endpoint, from:[row keys], extra } }] }
+  // A tab with `drill` makes its rows clickable; the next level opens in the same popup with Back.
+  function openRowDetail(endpoint, body) {
+    const stack = [];
+    let view = null;
+    const bg = modal('Loading…', '', [{ label: 'Close', primary: true }]);
+    bg.querySelector('.ia-modal').classList.add('ia-kd', 'ia-rd');
+    const head = bg.querySelector('h3'), box = bg.querySelector('.ia-m-body');
+    const numeric = c => ['amt', 'price', 'num', 'int', 'pct'].includes(c.fmt);
+    const paint = () => {
+      const d = view.d, t = (d.tabs || []).find(x => x.key === view.tab) || (d.tabs || [])[0];
+      head.textContent = d.title || '';
+      box.innerHTML = `
+        <div class="ia-kd-head">${stack.length ? '<button data-back>← Back</button>' : ''}<div class="ia-m-hint">${esc(d.subtitle || '')}</div></div>
+        ${(d.stats || []).length ? `<div class="ia-kd-stats">${d.stats.map(x => `<div class="ia-kd-stat"><div class="l">${esc(x.label)}</div><div class="v${typeof x.value === 'string' && !x.fmt ? ' txt' : ''}">${fmt(x.value, x.fmt)}</div></div>`).join('')}</div>` : ''}
+        ${(d.tabs || []).length > 1 ? `<div class="ia-kd-tabs">${d.tabs.map(x => `<button class="ia-kd-tab ${x === t ? 'on' : ''}" data-t="${esc(x.key)}">${esc(x.label)}</button>`).join('')}</div>` : ''}
+        ${t ? `${t.notes?.length ? `<div class="ia-kd-box"><ul class="ia-kd-list">${t.notes.map(x => `<li>${mdInline(x)}</li>`).join('')}</ul></div>` : ''}
+          ${t.desc ? `<div class="ia-m-hint">${esc(t.desc)}</div>` : ''}
+          ${t.rows?.length ? `<div style="overflow:auto;max-height:52vh"><table class="ia-grid"><thead><tr>${t.columns.map(c => `<th class="${numeric(c) ? 'num' : ''}">${esc(c.label)}</th>`).join('')}</tr></thead>
+            <tbody>${t.rows.map((r, i) => `<tr${t.drill ? ` class="ia-rd-link" data-dr="${i}" title="Click for details"` : ''}>${t.columns.map(c => `<td class="${numeric(c) ? 'num' : ''}${c.wrap ? ' wrap' : ''}">${cell(r, c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+            : `<div class="ia-empty" style="padding:24px">${esc(t.empty || 'No rows.')}</div>`}` : ''}`;
+      box.querySelector('[data-back]')?.addEventListener('click', () => { view = stack.pop(); paint(); });
+      box.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { view.tab = b.dataset.t; paint(); });
+      if (t?.drill) box.querySelectorAll('[data-dr]').forEach(tr => tr.onclick = () => {
+        const r = t.rows[Number(tr.dataset.dr)];
+        load(t.drill.endpoint, { row: Object.fromEntries((t.drill.from || Object.keys(r)).map(k => [k, r[k]])), ...(t.drill.extra || {}) }, true);
+      });
+    };
+    const load = async (ep, b, push) => {
+      box.innerHTML = '<div class="ia-m-hint"><span style="display:inline-block;animation:ia-spin 1s linear infinite">⟳</span> Loading from SAP…</div>';
+      try {
+        const d = await call(ep, b);
+        if (push && view) stack.push(view);
+        view = { d, tab: d.tabs?.[0]?.key };
+        if (bg.isConnected) paint();
+      } catch (e) {
+        if (!bg.isConnected) return;
+        box.innerHTML = `<div class="ia-empty" style="color:#991B1B;padding:20px">⚠ ${esc(e.message)}</div>${view ? '<button data-back>← Back</button>' : ''}`;
+        box.querySelector('[data-back]')?.addEventListener('click', paint);
+      }
+    };
+    load(endpoint, body, false);
   }
 
   // Month-by-month override editor: statistical forecast, current value, override input.

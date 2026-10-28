@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<script src="/app-locale.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Warehouse Digital Twin — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  if(!t){window.location.replace('/login.html');return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace('/login.html');}}).catch(()=>{});
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--green-bg:#EAF5EE;--red:#BB0000;--red-bg:#FDECEC;--orange:#E9730C;--orange-bg:#FEF3E8;--violet:#7c3aed;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{height:100%;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);font-size:13px;display:flex;flex-direction:column}
+button,input,select{font-family:inherit}
+
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;flex:none}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:#0f766e;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
+.shell-spacer{flex:1}
+.shell-btn{height:26px;padding:0 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;font-size:11.5px;cursor:pointer}
+.shell-btn:hover{background:rgba(255,255,255,.12)}
+.shell-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-weight:600;white-space:nowrap}
+.shell-badge.loading{background:rgba(233,115,12,.6)}
+.shell-badge.ready{background:rgba(16,126,62,.6)}
+.shell-badge.sim{background:rgba(124,58,237,.65)}
+.shell-badge.error{background:rgba(187,0,0,.6)}
+
+.layout{flex:1;display:grid;grid-template-columns:330px minmax(0,1fr);gap:12px;padding:12px;min-height:0}
+aside{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
+main{display:flex;flex-direction:column;gap:12px;min-width:0;overflow:auto}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px}
+.card-h{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.card-h h3{font-size:12.5px;font-weight:700}
+.card-h .sp{flex:1}
+.step{width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.card-b{padding:10px 12px}
+.muted{color:var(--muted)}
+.small{font-size:11.5px}
+.row{display:flex;gap:6px;align-items:center}
+.row > .inp{flex:1}
+
+.inp{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);outline:none;width:100%}
+.inp:focus{border-color:var(--blue);background:var(--white)}
+.btn{height:30px;padding:0 12px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:12px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--blue-mid);color:#fff}
+.btn.on{background:var(--violet);border-color:var(--violet);color:#fff;font-weight:600}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.sm{height:26px;padding:0 8px;font-size:11.5px}
+.btn.full{width:100%}
+.notice{padding:8px 10px;border-radius:var(--r);font-size:12px;margin-top:8px;line-height:1.45}
+.notice.warn{background:var(--orange-bg);color:#8a4300}
+.notice.err{background:var(--red-bg);color:var(--red)}
+.notice.info{background:var(--blue-light);color:#0a4a94}
+.notice.good{background:var(--green-bg);color:var(--green)}
+.notice.critical{background:var(--red-bg);color:var(--red)}
+.notice.serious{background:var(--orange-bg);color:#8a4300}
+
+.fld{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.fld label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:0 6px}
+.chk{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;cursor:pointer}
+.totals{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
+.totals div{background:var(--bg);border-radius:var(--r);padding:6px 8px}
+.totals b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
+.totals span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.seg{display:flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.seg button{flex:1;height:28px;border:none;background:var(--white);font-size:11.5px;cursor:pointer;color:var(--text);border-right:1px solid var(--border)}
+.seg button:last-child{border-right:none}
+.seg button.on{background:var(--blue);color:#fff;font-weight:600}
+details.card > summary{list-style:none;cursor:pointer}
+details.card > summary::-webkit-details-marker{display:none}
+details.card > summary .chev{transition:transform .15s;color:var(--muted)}
+details.card[open] > summary .chev{transform:rotate(90deg)}
+
+/* search results / lists */
+.list{max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--border);border-radius:var(--r)}
+.list:empty{display:none}
+.res{padding:7px 9px;border-bottom:1px solid var(--border)}
+.res:last-child{border-bottom:none}
+.res .t{display:flex;gap:6px;align-items:baseline}
+.res .t b{font-size:12px}
+.res .t .q{margin-left:auto;font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--muted)}
+.res .n{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.chip{font-size:11px;padding:2px 7px;border-radius:10px;background:var(--blue-light);color:#0a4a94;cursor:pointer;border:1px solid transparent;font-variant-numeric:tabular-nums}
+.chip:hover{border-color:var(--blue)}
+.mv{display:flex;gap:6px;align-items:flex-start;padding:6px 9px;border-bottom:1px solid var(--border);font-size:11.5px}
+.mv:last-child{border-bottom:none}
+.mv .k{color:var(--muted);font-variant-numeric:tabular-nums;min-width:18px}
+.mv .tag{font-size:10px;padding:1px 6px;border-radius:8px;background:#f1ecfd;color:var(--violet);font-weight:600;white-space:nowrap}
+
+/* viewer */
+.viewer{position:relative;display:flex;flex-direction:column;min-height:480px;height:66vh;flex:none;overflow:hidden}
+.vbar{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.vbar .sp{flex:1}
+.vbar .seg button{flex:none;height:26px;padding:0 10px}
+.vbar select{height:26px;font-size:12px;border:1px solid var(--border);border-radius:var(--r);padding:0 6px;background:var(--white);max-width:200px}
+.canvas-wrap{position:relative;flex:1;min-height:0;background:linear-gradient(#eef2f6,#dfe5eb);overflow:hidden}
+.canvas-wrap canvas{display:block;width:100%;height:100%;touch-action:none}
+.legend{position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:11px;max-width:240px;box-shadow:var(--shadow)}
+.legend .li{display:flex;align-items:center;gap:6px;margin-top:3px}
+.legend .sw{width:11px;height:11px;border-radius:2px;flex:none}
+.legend .grad{height:9px;border-radius:3px;margin:5px 0 2px;background:linear-gradient(90deg,#2e9e5b,#e9a23b,#d0453a)}
+.legend .ends{display:flex;justify-content:space-between;color:var(--muted)}
+.tip{position:absolute;pointer-events:none;background:rgba(32,40,52,.92);color:#fff;font-size:11.5px;padding:6px 8px;border-radius:5px;max-width:260px;display:none;z-index:5;line-height:1.4}
+.modebar{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--violet);color:#fff;font-size:12px;padding:6px 12px;border-radius:14px;display:none;box-shadow:var(--shadow);z-index:4}
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);text-align:center;padding:20px}
+.empty b{color:var(--text);font-size:14px}
+
+.drawer{position:absolute;top:0;right:0;bottom:0;width:340px;max-width:100%;background:var(--white);border-left:1px solid var(--border);box-shadow:-4px 0 14px rgba(0,0,0,.08);display:none;flex-direction:column;z-index:6}
+.drawer.open{display:flex}
+.drawer .dh{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start}
+.drawer .dh h4{font-size:14px}
+.drawer .db{padding:10px 12px;overflow:auto;flex:1}
+.drawer .x{margin-left:auto;border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted);line-height:1}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.kv div{background:var(--bg);border-radius:var(--r);padding:5px 7px}
+.kv span{display:block;font-size:9.5px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.kv b{font-size:13px}
+.bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin:4px 0 10px}
+.bar i{display:block;height:100%}
+table.t{width:100%;border-collapse:collapse;font-size:11.5px}
+table.t th{text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:4px 6px;border-bottom:1px solid var(--border);font-weight:700}
+table.t td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+table.t td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.pill{font-size:10px;padding:1px 7px;border-radius:9px;font-weight:600}
+.pill.planned{background:#f1ecfd;color:var(--violet)}
+.pill.disabled{background:var(--red-bg);color:var(--red)}
+.pill.free{background:var(--green-bg);color:var(--green)}
+
+.bottom{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px}
+.heat{overflow:auto}
+.heat table{border-collapse:separate;border-spacing:3px;font-size:11px}
+.heat th{font-size:10px;color:var(--muted);font-weight:700;padding:2px 4px;text-align:center}
+.heat td{min-width:44px;height:24px;text-align:center;border-radius:3px;font-variant-numeric:tabular-nums;cursor:pointer}
+.heat td.a{text-align:left;font-weight:700;background:none;cursor:pointer;padding-right:8px;white-space:nowrap}
+.heat tr:hover td.a{color:var(--blue)}
+.brief{font-size:12.5px;line-height:1.55}
+.brief ul{padding-left:18px;margin:6px 0}
+.brief p{margin:6px 0}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,0,0,.15);border-top-color:var(--blue);border-radius:50%;animation:sp 0.7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+@media (max-width: 960px){
+  .layout{grid-template-columns:1fr;overflow:auto}
+  aside{overflow:visible}
+  .bottom{grid-template-columns:1fr}
+  .viewer{height:60vh}
+  .drawer{width:100%}
+}
+</style>
+</head>
+<body>
+
+<div class="shell-bar">
+  <div class="shell-icon">▦</div>
+  <div>
+    <div class="shell-title">Warehouse Digital Twin</div>
+    <div class="shell-subtitle" id="sub">3D racks, bins &amp; stock — where every material sits</div>
+  </div>
+  <div class="shell-spacer"></div>
+  <span class="shell-badge" id="badge">Starting…</span>
+  <button class="shell-btn" id="btn-refresh" title="Reload stock from SAP">⟳ Refresh</button>
+</div>
+
+<div class="layout">
+<aside>
+  <!-- 1. Warehouse -->
+  <div class="card">
+    <div class="card-h"><span class="step">1</span><h3>Warehouse</h3></div>
+    <div class="card-b">
+      <div class="row">
+        <select class="inp" id="whs"><option value="17SH">17SH</option></select>
+        <button class="btn primary" id="btn-load">Load</button>
+      </div>
+      <div id="notes"></div>
+      <div class="totals">
+        <div><b id="k-bins">–</b><span>Bins</span></div>
+        <div><b id="k-occ">–</b><span>Occupied</span></div>
+        <div><b id="k-free">–</b><span>Free</span></div>
+        <div><b id="k-sku">–</b><span>Items</span></div>
+        <div><b id="k-qty">–</b><span>Total qty</span></div>
+        <div><b id="k-mixed">–</b><span>Mixed bins</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Find material -->
+  <div class="card">
+    <div class="card-h"><span class="step">2</span><h3>Find material</h3></div>
+    <div class="card-b">
+      <div class="row">
+        <input class="inp" id="q" placeholder="Item code, name, batch or bin…" autocomplete="off"/>
+        <button class="btn sm" id="btn-clear-q" title="Clear search">✕</button>
+      </div>
+      <div class="small muted" id="q-info" style="margin-top:6px">Matching bins light up in the 3D view; click a bin chip to fly there.</div>
+      <div class="list" id="results"></div>
+    </div>
+  </div>
+
+  <!-- 3. Simulation -->
+  <div class="card">
+    <div class="card-h"><span class="step">3</span><h3>Arrange (what-if)</h3><span class="sp"></span><span class="small muted">not posted to SAP</span></div>
+    <div class="card-b">
+      <div class="grid2">
+        <button class="btn full" id="btn-move">✥ Move pallet</button>
+        <button class="btn full" id="btn-suggest">✦ Suggest re-slotting</button>
+      </div>
+      <div class="list" id="sugg"></div>
+      <div class="row" id="sugg-actions" style="display:none;margin-top:6px">
+        <label class="chk" style="margin:0"><input type="checkbox" id="sugg-all" checked/> All</label>
+        <span style="flex:1"></span>
+        <button class="btn sm primary" id="btn-apply-sugg">Apply selected</button>
+      </div>
+      <div class="fld"><label>Simulated moves <span id="mv-count"></span></label></div>
+      <div class="list" id="moves"></div>
+      <div class="small muted" id="mv-empty" style="margin-top:4px">No moves yet. Use “Move pallet”, then click a source bin and a target bin.</div>
+      <div class="grid2" style="margin-top:8px">
+        <button class="btn sm" id="btn-undo" disabled>↶ Undo last</button>
+        <button class="btn sm" id="btn-reset" disabled>Reset all</button>
+      </div>
+      <button class="btn sm full" id="btn-export" style="margin-top:6px" disabled>⬇ Export move list (CSV)</button>
+    </div>
+  </div>
+
+  <!-- 4. Layout designer -->
+  <details class="card" id="designer">
+    <summary class="card-h"><span class="step">4</span><h3>Layout designer</h3><span class="sp"></span><span class="chev">▶</span></summary>
+    <div class="card-b">
+      <div class="small muted">How bin codes map to aisle / rack / level / position, and the physical size of a bin. Saved per warehouse.</div>
+      <div class="grid2">
+        <div class="fld"><label>Read location from</label>
+          <select class="inp" id="c-mapping">
+            <option value="auto">Auto (sublevels, else code)</option>
+            <option value="sublevel">Bin sublevels SL1–SL4</option>
+            <option value="code">Bin code segments</option>
+          </select></div>
+        <div class="fld"><label>Code separator</label><input class="inp" id="c-sep" maxlength="3"/></div>
+      </div>
+      <div class="fld"><label>Segment roles (after warehouse prefix)</label></div>
+      <div class="grid4" id="c-roles"></div>
+      <div class="small muted" id="c-sample" style="margin-top:6px"></div>
+      <div class="grid2">
+        <div class="fld"><label>Bin width (cm)</label><input class="inp" id="c-binW" type="number" min="40" max="600"/></div>
+        <div class="fld"><label>Bin depth (cm)</label><input class="inp" id="c-binD" type="number" min="40" max="600"/></div>
+        <div class="fld"><label>Level height (cm)</label><input class="inp" id="c-levelH" type="number" min="40" max="600"/></div>
+        <div class="fld"><label>Aisle width (cm)</label><input class="inp" id="c-aisleW" type="number" min="80" max="2000"/></div>
+        <div class="fld"><label>Bin capacity (qty)</label><input class="inp" id="c-cap" type="number" min="0" placeholder="0 = auto"/></div>
+        <div class="fld"><label>Rack rows</label>
+          <select class="inp" id="c-b2b"><option value="1">Back-to-back pairs</option><option value="0">Single rows</option></select></div>
+      </div>
+      <div id="gen-box">
+        <div class="fld"><label>Generated racks (warehouse without bins)</label></div>
+        <div class="grid4">
+          <div class="fld"><label>Aisles</label><input class="inp" id="g-aisles" type="number" min="1" max="40"/></div>
+          <div class="fld"><label>Racks</label><input class="inp" id="g-racks" type="number" min="1" max="80"/></div>
+          <div class="fld"><label>Levels</label><input class="inp" id="g-levels" type="number" min="1" max="12"/></div>
+          <div class="fld"><label>Pos.</label><input class="inp" id="g-pos" type="number" min="1" max="10"/></div>
+        </div>
+      </div>
+      <div class="fld"><label>Add planned aisle (empty racks for what-if)</label></div>
+      <div class="grid4">
+        <div class="fld"><label>Code</label><input class="inp" id="p-code" placeholder="P1"/></div>
+        <div class="fld"><label>Racks</label><input class="inp" id="p-racks" type="number" value="6" min="1" max="80"/></div>
+        <div class="fld"><label>Levels</label><input class="inp" id="p-levels" type="number" value="4" min="1" max="12"/></div>
+        <div class="fld"><label>Pos.</label><input class="inp" id="p-pos" type="number" value="2" min="1" max="10"/></div>
+      </div>
+      <button class="btn sm full" id="btn-add-planned" style="margin-top:6px">+ Add planned aisle</button>
+      <div class="list" id="planned"></div>
+      <div class="grid2" style="margin-top:10px">
+        <button class="btn primary" id="btn-apply">Apply</button>
+        <button class="btn" id="btn-save">Save layout</button>
+      </div>
+      <button class="btn sm full" id="btn-defaults" style="margin-top:6px">Reset to defaults</button>
+      <div id="save-note"></div>
+    </div>
+  </details>
+</aside>
+
+<main>
+  <div class="card viewer">
+    <div class="vbar">
+      <div class="seg" id="view-seg">
+        <button data-v="3d" class="on">3D</button><button data-v="top">Top</button><button data-v="front">From dock</button>
+      </div>
+      <button class="btn sm" id="btn-fit">Fit</button>
+      <select id="color-by" title="Colour pallets by">
+        <option value="group">Colour: Item group</option>
+        <option value="item">Colour: Item</option>
+        <option value="fill">Colour: Bin fill</option>
+        <option value="velocity">Colour: Pick frequency</option>
+        <option value="mixed">Colour: Items per bin</option>
+      </select>
+      <select id="aisle-filter" title="Show aisle"><option value="">All aisles</option></select>
+      <span class="sp"></span>
+      <label class="chk" style="margin:0"><input type="checkbox" id="show-empty" checked/> Empty bins</label>
+      <label class="chk" style="margin:0"><input type="checkbox" id="show-labels" checked/> Labels</label>
+    </div>
+    <div class="canvas-wrap" id="wrap">
+      <div class="empty" id="empty"><span class="spin"></span><b>Loading warehouse…</b></div>
+      <div class="legend" id="legend" style="display:none"></div>
+      <div class="tip" id="tip"></div>
+      <div class="modebar" id="modebar"></div>
+    </div>
+    <div class="drawer" id="drawer">
+      <div class="dh"><div><h4 id="d-code"></h4><div class="small muted" id="d-loc"></div></div><button class="x" id="d-close" title="Close">×</button></div>
+      <div class="db" id="d-body"></div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="card">
+      <div class="card-h"><h3>Occupancy by aisle × level</h3><span class="sp"></span><span class="small muted">click an aisle to isolate it</span></div>
+      <div class="card-b heat" id="heat"></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>AI warehouse brief</h3><span class="sp"></span><button class="btn sm primary" id="btn-advice">Analyse</button></div>
+      <div class="card-b">
+        <div id="checks"></div>
+        <div class="brief" id="brief"><span class="muted small">Checks occupancy, mixed bins and where fast movers sit, then suggests slotting changes. Includes any simulated moves.</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = n => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const natural = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const TOKEN = () => localStorage.getItem('hanny_token') || '';
+
+async function api(path, opts = {}) {
+  const r = await fetch('/api/warehouse-twin' + path, { ...opts,
+    headers: { 'Content-Type': 'application/json', 'x-auth-token': TOKEN() }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 401) { localStorage.removeItem('hanny_token'); location.replace('/login.html'); throw new Error('Session expired'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+function badge(text, cls = '') { const b = $('badge'); b.textContent = text; b.className = 'shell-badge ' + cls; }
+
+// ── Layout settings ───────────────────────────────────────────────────────────
+const DEFAULTS = {
+  mapping: 'auto', sep: '-', roles: ['auto', 'auto', 'auto', 'auto', 'auto'],
+  binW: 120, binD: 110, levelH: 160, aisleW: 300, rackGap: 10, backToBack: true, binCapacity: 0,
+  gen: { aisles: 6, racks: 8, levels: 4, positions: 2 }, planned: [],
+};
+const ROLES = ['auto', 'aisle', 'rack', 'level', 'position', 'ignore'];
+const AUTO_ROLES = { 1: ['rack'], 2: ['aisle', 'rack'], 3: ['aisle', 'rack', 'level'], 4: ['aisle', 'rack', 'level', 'position'] };
+const mergeCfg = c => ({ ...DEFAULTS, ...(c || {}), gen: { ...DEFAULTS.gen, ...(c?.gen || {}) },
+  roles: Array.isArray(c?.roles) && c.roles.length === 5 ? c.roles : [...DEFAULTS.roles], planned: Array.isArray(c?.planned) ? c.planned : [] });
+
+const state = {
+  whs: '17SH', data: null, cfg: mergeCfg(), bins: [], racks: [], aisles: [], byCode: new Map(), levelsMax: 1,
+  colorBy: 'group', aisleFilter: '', showEmpty: true, showLabels: true, matches: new Set(), selected: -1,
+  moveMode: false, moveFrom: -1, moves: [], suggestions: [], overflow: [], maxPicks: 0, cap: 1, bounds: null,
+};
+const pk = code => state.data?.picks?.[code]?.picks || 0;
+
+// ── Bin code → aisle / rack / level / position ───────────────────────────────
+function segmentsOf(b) {
+  const cfg = state.cfg;
+  const useSl = cfg.mapping === 'sublevel' || (cfg.mapping === 'auto' && (b.sl || []).some(Boolean));
+  let segs = useSl ? (b.sl || []).filter(Boolean) : String(b.code).split(cfg.sep || '-').map(s => s.trim()).filter(Boolean);
+  if (!useSl && segs.length > 1 && segs[0].toUpperCase() === state.whs.toUpperCase()) segs = segs.slice(1);
+  return segs;
+}
+function placeOf(b) {
+  const segs = segmentsOf(b), custom = state.cfg.roles.some(r => r !== 'auto');
+  const roles = custom ? state.cfg.roles : (AUTO_ROLES[Math.min(segs.length, 4)] || []);
+  const p = { aisle: '', rack: '', level: '', position: '' };
+  segs.forEach((s, i) => { const r = roles[i]; if (r in p) p[r] = p[r] ? `${p[r]}-${s}` : s; });
+  if (!custom && segs.length > 4) p.position = segs.slice(3).join('-');
+  return { aisle: p.aisle || 'Floor', rack: p.rack || '1', level: p.level || '1', position: p.position };
+}
+
+const letters = i => { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+const pad2 = n => String(n).padStart(2, '0');
+function rackBins(aisle, racks, levels, positions, extra) {
+  const out = [];
+  for (let r = 1; r <= racks; r++) for (let l = 1; l <= levels; l++) for (let p = 1; p <= positions; p++)
+    out.push({ abs: null, code: `${state.whs}-${aisle}-${pad2(r)}-${l}-${p}`, sl: [aisle, pad2(r), String(l), String(p)], disabled: false, items: [], ...extra });
+  return out;
+}
+const generatedBins = () => { const g = state.cfg.gen; return Array.from({ length: g.aisles }, (_, a) => rackBins(letters(a), g.racks, g.levels, g.positions, { generated: true })).flat(); };
+const plannedBins = () => state.cfg.planned.flatMap(p => rackBins(p.aisle, p.racks, p.levels, p.positions, { planned: true }));
+
+// Positions every bin in cm: aisles are rack rows along x, rows step along z, levels stack in y.
+function layoutGeometry(bins) {
+  const cfg = state.cfg, tree = new Map();
+  for (const b of bins) {
+    Object.assign(b, placeOf(b));
+    if (!tree.has(b.aisle)) tree.set(b.aisle, new Map());
+    const racks = tree.get(b.aisle);
+    if (!racks.has(b.rack)) racks.set(b.rack, []);
+    racks.get(b.rack).push(b);
+  }
+  const racksOut = [], aislesOut = [];
+  const aisleKeys = [...tree.keys()].sort(natural);
+  let levelsMax = 1;
+  aisleKeys.forEach((a, row) => {
+    const z0 = cfg.backToBack ? Math.floor(row / 2) * (2 * cfg.binD + cfg.aisleW) + (row % 2) * cfg.binD : row * (cfg.binD + cfg.aisleW);
+    let x = 0;
+    for (const r of [...tree.get(a).keys()].sort(natural)) {
+      const list = tree.get(a).get(r);
+      // A bin without a position, or a repeated one, takes the next free slot on its level.
+      const seen = new Map();
+      for (const b of list) {
+        const lv = b.level;
+        if (!seen.has(lv)) seen.set(lv, new Set());
+        let pos = b.position || '1', n = 1;
+        while (seen.get(lv).has(pos)) pos = `${b.position || '1'}#${++n}`;
+        seen.get(lv).add(pos); b.posKey = pos;
+      }
+      const levels = [...new Set(list.map(b => b.level))].sort(natural);
+      const positions = [...new Set(list.map(b => b.posKey))].sort(natural);
+      const width = positions.length * cfg.binW;
+      for (const b of list) {
+        b.levelIdx = levels.indexOf(b.level); b.posIdx = positions.indexOf(b.posKey); b.row = row;
+        b.x = x + (b.posIdx + 0.5) * cfg.binW; b.y = b.levelIdx * cfg.levelH; b.z = z0 + cfg.binD / 2;
+      }
+      levelsMax = Math.max(levelsMax, levels.length);
+      racksOut.push({ aisle: a, rack: r, x0: x, width, z0, levels: levels.length, planned: list.every(b => b.planned) });
+      x += width + cfg.rackGap;
+    }
+    aislesOut.push({ aisle: a, row, z0, x1: x - cfg.rackGap, planned: [...tree.get(a).values()].flat().every(b => b.planned) });
+  });
+  const minX = 0;
+  for (const b of bins) b.score = (b.x - minX) + b.levelIdx * 400 + b.z * 0.25;   // travel from the dock at x < 0
+  state.racks = racksOut; state.aisles = aislesOut; state.levelsMax = levelsMax;
+}
+
+// Warehouse totals only (no stock per bin): place items as a simulation, fastest movers nearest the dock.
+function slotStock(bins) {
+  const free = bins.filter(b => !b.planned && !b.disabled).sort((a, b) => a.score - b.score);
+  const items = [...state.data.items].sort((a, b) => (pk(b.itemCode) - pk(a.itemCode)) || b.qty - a.qty);
+  const qtys = items.map(i => i.qty).sort((a, b) => a - b);
+  const cap = state.cfg.binCapacity > 0 ? state.cfg.binCapacity : Math.max(1, qtys[Math.floor(qtys.length * 0.6)] || 1);
+  const overflow = [];
+  let k = 0;
+  for (const it of items) {
+    let left = it.qty, n = 0;
+    while (left > 1e-9) {
+      if (k >= free.length) { overflow.push({ ...it, qty: left }); break; }
+      const q = n === 3 ? left : Math.min(left, cap);
+      free[k++].items.push({ ...it, qty: q, batches: [] });
+      left -= q; n++;
+    }
+  }
+  return overflow;
+}
+
+function buildModel() {
+  const d = state.data;
+  let bins = d.source === 'slotted'
+    ? (d.bins.length ? d.bins : generatedBins()).map(b => ({ ...b, items: [] }))
+    : d.bins.map(b => ({ ...b, items: b.items.map(i => ({ ...i })) }));
+  bins = bins.concat(plannedBins());
+  layoutGeometry(bins);
+  state.overflow = d.source === 'slotted' ? slotStock(bins) : [];
+  bins.forEach((b, i) => { b.i = i; });
+  state.bins = bins;
+  state.byCode = new Map(bins.map(b => [b.code, b]));
+  const old = state.moves; state.moves = [];
+  for (const m of old) { const f = state.byCode.get(m.from), t = state.byCode.get(m.to); if (f && t) applyMove(f, t, m.items.map(i => i.itemCode), m.reason); }
+  computeStats();
+}
+
+function computeStats() {
+  const occ = state.bins.filter(b => b.items.length);
+  for (const b of state.bins) b.qty = b.items.reduce((s, i) => s + i.qty, 0);
+  const q = occ.map(b => b.qty).sort((a, b) => a - b);
+  state.cap = state.cfg.binCapacity > 0 ? state.cfg.binCapacity : Math.max(1, q[Math.floor(q.length * 0.9)] || 1);
+  for (const b of state.bins) b.fill = b.items.length ? clamp(b.qty / state.cap, 0.08, 1) : 0;
+  state.maxPicks = Math.max(0, ...Object.values(state.data?.picks || {}).map(p => p.picks || 0));
+}
+
+// ── Simulated moves ───────────────────────────────────────────────────────────
+function applyMove(from, to, codes, reason) {
+  const moving = from.items.filter(i => !codes || codes.includes(i.itemCode));
+  if (!moving.length || from === to) return false;
+  from.items = from.items.filter(i => !moving.includes(i));
+  for (const it of moving) {
+    const ex = to.items.find(x => x.itemCode === it.itemCode);
+    if (ex) { ex.qty += it.qty; ex.batches = [...(ex.batches || []), ...(it.batches || [])]; }
+    else to.items.push({ ...it });
+  }
+  state.moves.push({ from: from.code, to: to.code, reason, mixed: to.items.length > 1, items: moving.map(i => ({ ...i })) });
+  return true;
+}
+function undoMove() {
+  const m = state.moves.pop(); if (!m) return;
+  const from = state.byCode.get(m.from), to = state.byCode.get(m.to);
+  for (const it of m.items) {
+    const ex = to.items.find(x => x.itemCode === it.itemCode);
+    if (ex) { ex.qty -= it.qty; if (ex.qty <= 1e-9) to.items = to.items.filter(x => x !== ex); }
+    const back = from.items.find(x => x.itemCode === it.itemCode);
+    if (back) back.qty += it.qty; else from.items.push({ ...it });
+  }
+}
+
+function suggest() {
+  const out = [], used = new Set();
+  const bins = state.bins.filter(b => !b.planned && !b.disabled);
+  const free = bins.filter(b => !b.items.length).sort((a, b) => a.score - b.score);
+  if (state.maxPicks > 0) {
+    const codes = [...new Set(bins.flatMap(b => b.items.map(i => i.itemCode)))].map(c => [c, pk(c)]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
+    const fast = new Set(codes.slice(0, Math.max(1, Math.ceil(codes.length * 0.2))).map(x => x[0]));
+    const scores = bins.map(b => b.score).sort((a, b) => a - b), median = scores[scores.length >> 1];
+    for (const b of [...bins].sort((a, b) => pk(b.items[0]?.itemCode) - pk(a.items[0]?.itemCode))) {
+      if (b.items.length !== 1 || !fast.has(b.items[0].itemCode)) continue;
+      if (b.levelIdx < 2 && b.score <= median) continue;
+      const t = free.find(f => !used.has(f.i) && f.levelIdx <= 1 && f.score < b.score - 150);
+      if (!t) continue;
+      used.add(t.i);
+      out.push({ type: 'Fast mover', from: b.i, to: t.i, codes: [b.items[0].itemCode],
+        text: `<b>${esc(b.items[0].itemCode)}</b> (${pk(b.items[0].itemCode)} picks/90d) ${esc(b.code)} → <b>${esc(t.code)}</b> — level ${b.levelIdx + 1} → ${t.levelIdx + 1}, nearer the dock` });
+    }
+  }
+  const byItem = new Map();
+  for (const b of bins) if (b.items.length === 1) { const c = b.items[0].itemCode; if (!byItem.has(c)) byItem.set(c, []); byItem.get(c).push(b); }
+  for (const [code, list] of byItem) {
+    if (list.length < 3) continue;
+    const sorted = [...list].sort((a, b) => b.qty - a.qty), target = sorted[0];
+    let room = state.cap - target.qty;
+    for (const src of sorted.slice(1).reverse()) {
+      if (src.fill >= 0.5 || src.qty > room || used.has(src.i)) continue;
+      room -= src.qty; used.add(src.i);
+      out.push({ type: 'Consolidate', from: src.i, to: target.i, codes: [code],
+        text: `<b>${esc(code)}</b> ${fmt(src.qty)} from ${esc(src.code)} → <b>${esc(target.code)}</b> — frees a bin` });
+    }
+  }
+  return out.slice(0, 40);
+}
+
+// ── 3D scene ──────────────────────────────────────────────────────────────────
+const wrap = $('wrap');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+wrap.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 5, 80000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495; controls.screenSpacePanning = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.15));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun, sun.target);
+let world = new THREE.Group(); scene.add(world);
+let hitMesh = null, hitMap = [], cargoMesh = null, cargoMap = [], hiGroup = null;
+let fly = null;
+
+function resize() {
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(wrap);
+renderer.setAnimationLoop(t => {
+  if (fly) {
+    const k = clamp((t - fly.t0) / 650, 0, 1), e = 1 - Math.pow(1 - k, 3);
+    camera.position.lerpVectors(fly.p0, fly.p1, e); controls.target.lerpVectors(fly.c0, fly.c1, e);
+    if (k >= 1) fly = null;
+  }
+  if (hiGroup) hiGroup.children.forEach(l => { if (l.userData.pulse) l.material.opacity = 0.55 + 0.45 * Math.sin(t / 220); });
+  controls.update(); renderer.render(scene, camera);
+});
+
+function canvasTexture(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+const cartonTex = canvasTexture(128, 128, (g, w, h) => {
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(w * 0.44, 0, w * 0.12, h);
+  g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
+});
+const unit = new THREE.BoxGeometry(1, 1, 1);
+const uprightMat = new THREE.MeshStandardMaterial({ color: 0x1f5fa6, metalness: 0.35, roughness: 0.5 });
+const beamMat = new THREE.MeshStandardMaterial({ color: 0xf08a24, metalness: 0.3, roughness: 0.5 });
+const deckMat = new THREE.MeshStandardMaterial({ color: 0xb8c2cc, metalness: 0.2, roughness: 0.7, transparent: true, opacity: 0.55 });
+const plannedMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.55 });
+const woodMat = new THREE.MeshStandardMaterial({ color: 0xb98a55, roughness: 0.9 });
+const cargoMat = new THREE.MeshStandardMaterial({ map: cartonTex, roughness: 0.75 });
+const ghostMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.13, depthWrite: false });
+const hitMat = new THREE.MeshBasicMaterial();
+const floorMat = new THREE.MeshStandardMaterial({ color: 0xe3e8ed, roughness: 0.95 });
+const dockMat = new THREE.MeshStandardMaterial({ color: 0xf2c94c, transparent: true, opacity: 0.75 });
+
+const PALETTE = ['#2a7de1', '#e8743b', '#19a979', '#945ecf', '#ed4a7b', '#13a4b4', '#f2b134', '#6c8893', '#c45a5a', '#5899da', '#8cb34b', '#d67fd1', '#3b8b6e', '#b07d2b'];
+let groupColors = new Map();
+const hashColor = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; };
+const lerpHex = (a, b, t) => { const ca = new THREE.Color(a), cb = new THREE.Color(b); return '#' + ca.lerp(cb, t).getHexString(); };
+const heat = t => t < 0.5 ? lerpHex('#2e9e5b', '#e9a23b', t * 2) : lerpHex('#e9a23b', '#d0453a', (t - 0.5) * 2);
+function itemColor(it, bin) {
+  switch (state.colorBy) {
+    case 'item': return hashColor(it.itemCode);
+    case 'fill': return heat(bin.fill);
+    case 'velocity': { const p = pk(it.itemCode); return p > 0 && state.maxPicks ? heat(Math.sqrt(p / state.maxPicks)) : '#9aa4ae'; }
+    case 'mixed': return bin.items.length > 2 ? '#bb0000' : bin.items.length === 2 ? '#e9730c' : '#2e9e5b';
+    default: return groupColors.get(it.group || '—') || '#9aa4ae';
+  }
+}
+
+function label(text, k, { color = '#1f2d3d', bg = 'rgba(255,255,255,.9)', size = 40, onTop = true } = {}) {
+  const font = `600 ${size}px Segoe UI, sans-serif`, pad = 12;
+  const m = document.createElement('canvas').getContext('2d'); m.font = font;
+  const w = Math.ceil(m.measureText(text).width) + pad * 2, h = Math.ceil(size * 1.45);
+  const tex = canvasTexture(w, h, g => {
+    g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, w, h, 10); g.fill();
+    g.font = font; g.fillStyle = color; g.textBaseline = 'middle'; g.fillText(text, pad, h / 2 + 1);
+  });
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: !onTop, transparent: true }));
+  s.scale.set(w * k, h * k, 1); if (onTop) s.renderOrder = 10;
+  return s;
+}
+
+function disposeWorld() {
+  world.traverse(o => {
+    if (o.geometry && o.geometry !== unit) o.geometry.dispose();
+    if (o.isSprite) { o.material.map?.dispose(); o.material.dispose(); }
+    if (o.isLineSegments) o.material.dispose();
+  });
+  scene.remove(world); world = new THREE.Group(); scene.add(world);
+  hitMesh = cargoMesh = hiGroup = null; hitMap = []; cargoMap = [];
+}
+
+function instanced(mat, boxes, colors) {
+  if (!boxes.length) return null;
+  const mesh = new THREE.InstancedMesh(unit, mat, boxes.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
+  boxes.forEach((b, i) => {
+    m4.compose(p.set(b[0], b[1], b[2]), q, s.set(b[3], b[4], b[5])); mesh.setMatrixAt(i, m4);
+    if (colors) mesh.setColorAt(i, c.set(colors[i]));
+  });
+  mesh.computeBoundingSphere();
+  return mesh;
+}
+
+const visibleBins = () => state.bins.filter(b => !state.aisleFilter || b.aisle === state.aisleFilter);
+
+function render(fit = false) {
+  disposeWorld();
+  const cfg = state.cfg, bins = visibleBins();
+  $('empty').style.display = bins.length ? 'none' : 'flex';
+  if (!bins.length) { $('empty').innerHTML = '<b>No bins to show</b>Check the warehouse or the layout settings.'; return; }
+  const groups = [...new Set(state.bins.flatMap(b => b.items.map(i => i.group || '—')))].sort(natural);
+  groupColors = new Map(groups.map((g, i) => [g, PALETTE[i % PALETTE.length]]));
+
+  // Floor, dock and rack frames.
+  const racks = state.racks.filter(r => !state.aisleFilter || r.aisle === state.aisleFilter);
+  const x1 = Math.max(...racks.map(r => r.x0 + r.width)), zs = racks.map(r => r.z0);
+  const z0 = Math.min(...zs), z1 = Math.max(...zs) + cfg.binD, H = state.levelsMax * cfg.levelH;
+  const minX = -420, cx = (minX + x1) / 2, cz = (z0 + z1) / 2, W = x1 - minX + 400, D = z1 - z0 + 600;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMat);
+  floor.rotation.x = -Math.PI / 2; floor.position.set(cx, -1, cz); floor.receiveShadow = true; world.add(floor);
+  const grid = new THREE.GridHelper(Math.max(W, D), Math.round(Math.max(W, D) / 100), 0xc5ced8, 0xd6dde4);
+  grid.position.set(cx, 0, cz); world.add(grid);
+  const dock = new THREE.Mesh(new THREE.PlaneGeometry(160, z1 - z0 + 200), dockMat);
+  dock.rotation.x = -Math.PI / 2; dock.position.set(-280, 0.5, cz); world.add(dock);
+  if (state.showLabels) { const dl = label('DOCK / DISPATCH', 1.3, { bg: 'rgba(242,201,76,.95)' }); dl.position.set(-280, 70, cz); world.add(dl); }
+
+  const ups = [], beams = [], decks = [], pups = [], pbeams = [];
+  for (const r of racks) {
+    const h = r.levels * cfg.levelH + 10, U = r.planned ? pups : ups, B = r.planned ? pbeams : beams;
+    for (const x of [r.x0 + 4, r.x0 + r.width - 4]) for (const z of [r.z0 + 4, r.z0 + cfg.binD - 4]) U.push([x, h / 2, z, 8, h, 8]);
+    for (let l = 1; l <= r.levels; l++) {
+      const y = l * cfg.levelH;
+      for (const z of [r.z0 + 3, r.z0 + cfg.binD - 3]) B.push([r.x0 + r.width / 2, y - 5, z, r.width, 10, 6]);
+      if (l < r.levels && !r.planned) decks.push([r.x0 + r.width / 2, y - 1, r.z0 + cfg.binD / 2, r.width - 8, 2, cfg.binD - 8]);
+    }
+  }
+  for (const [mat, list] of [[uprightMat, ups], [beamMat, beams], [deckMat, decks], [plannedMat, pups], [plannedMat, pbeams]]) {
+    const m = instanced(mat, list); if (m) { m.castShadow = mat !== deckMat; m.receiveShadow = true; world.add(m); }
+  }
+
+  // Pallets, stock (one stacked block per item in the bin) and empty-bin ghosts.
+  const pallets = [], cargo = [], cargoColors = [], ghosts = [], ghostColors = [], hits = [];
+  const dimmed = state.matches.size > 0;
+  cargoMap = []; hitMap = [];
+  for (const b of bins) {
+    const bw = cfg.binW - 14, bd = cfg.binD - 14, base = b.y + (b.levelIdx ? 1 : 0);
+    hits.push([b.x, b.y + cfg.levelH / 2, b.z, cfg.binW - 4, cfg.levelH - 8, cfg.binD - 4]); hitMap.push(b.i);
+    if (!b.items.length) {
+      if (state.showEmpty || b.planned) { ghosts.push([b.x, b.y + cfg.levelH * 0.42, b.z, bw, cfg.levelH * 0.8, bd]); ghostColors.push(b.planned ? '#8b5cf6' : b.disabled ? '#bb0000' : '#19a979'); }
+      continue;
+    }
+    pallets.push([b.x, base + 7, b.z, bw, 14, bd]);
+    const totalH = (cfg.levelH - 34) * b.fill;
+    let y = base + 14;
+    for (const it of b.items) {
+      const h = Math.max(6, totalH * (b.qty ? it.qty / b.qty : 1 / b.items.length));
+      cargo.push([b.x, y + h / 2, b.z, bw - 6, h, bd - 6]); y += h;
+      const hit = !dimmed || state.matches.has(b.i);
+      cargoColors.push(hit ? itemColor(it, b) : '#d3d8de'); cargoMap.push(b.i);
+    }
+  }
+  const pm = instanced(woodMat, pallets); if (pm) { pm.castShadow = pm.receiveShadow = true; world.add(pm); }
+  cargoMesh = instanced(cargoMat, cargo, cargoColors);
+  if (cargoMesh) { cargoMesh.castShadow = cargoMesh.receiveShadow = true; world.add(cargoMesh); }
+  const gm = instanced(ghostMat, ghosts, ghostColors); if (gm) world.add(gm);
+  hitMesh = instanced(hitMat, hits); if (hitMesh) { hitMesh.visible = false; world.add(hitMesh); }
+
+  if (state.showLabels) {
+    for (const a of state.aisles.filter(a => !state.aisleFilter || a.aisle === state.aisleFilter)) {
+      const s = label(`Aisle ${a.aisle}`, 1.25, a.planned ? { color: '#fff', bg: 'rgba(124,58,237,.9)' } : { color: '#fff', bg: 'rgba(53,74,94,.92)' });
+      // Alternate row ends so labels of neighbouring rows never overlap.
+      s.position.set(a.row % 2 ? a.x1 + 120 : -120, H + 40, a.z0 + cfg.binD / 2); world.add(s);
+    }
+    if (racks.length <= 400) for (const r of racks) {
+      const s = label(r.rack, 0.75, { size: 34, onTop: false }); s.position.set(r.x0 + r.width / 2, r.levels * cfg.levelH + 26, r.z0 + cfg.binD / 2); world.add(s);
+    }
+  }
+
+  const size = Math.max(W, D, H * 2);
+  sun.position.set(cx + size * 0.35, size * 0.9, cz + size * 0.5); sun.target.position.set(cx, 0, cz);
+  Object.assign(sun.shadow.camera, { left: -size * 0.7, right: size * 0.7, top: size * 0.7, bottom: -size * 0.7, near: 10, far: size * 3 });
+  sun.shadow.camera.updateProjectionMatrix();
+  controls.maxDistance = size * 3;
+  state.bounds = { cx, cz, W, D, H, size, minX: 0, x1, z0, z1 };
+  drawHighlights();
+  renderLegend();
+  if (fit) setView(state.view || '3d', true);
+}
+
+function drawHighlights() {
+  if (hiGroup) { hiGroup.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); }); world.remove(hiGroup); }
+  hiGroup = new THREE.Group(); world.add(hiGroup);
+  const cfg = state.cfg, vis = new Set(visibleBins().map(b => b.i));
+  const add = (b, color, pulse, grow = 0) => {
+    const g = new THREE.EdgesGeometry(new THREE.BoxGeometry(cfg.binW - 4 + grow, cfg.levelH - 8 + grow, cfg.binD - 4 + grow));
+    const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color, transparent: true, depthTest: false }));
+    l.position.set(b.x, b.y + cfg.levelH / 2, b.z); l.renderOrder = 9; l.userData.pulse = pulse; hiGroup.add(l);
+  };
+  let n = 0;
+  for (const i of state.matches) { if (vis.has(i) && n++ < 400) add(state.bins[i], 0xffb000, true); }
+  if (state.selected >= 0 && vis.has(state.selected)) add(state.bins[state.selected], 0x0070f2, false, 8);
+  if (state.moveFrom >= 0 && vis.has(state.moveFrom)) add(state.bins[state.moveFrom], 0x7c3aed, true, 14);
+}
+
+function renderLegend() {
+  const L = $('legend'); L.style.display = 'block';
+  const m = state.colorBy;
+  const ghosts = `<div class="li"><span class="sw" style="background:#19a97955;border:1px solid #19a979"></span>Free bin</div>` +
+    (state.cfg.planned.length ? `<div class="li"><span class="sw" style="background:#8b5cf655;border:1px solid #8b5cf6"></span>Planned (what-if)</div>` : '');
+  if (m === 'group' || m === 'item') {
+    const counts = new Map();
+    for (const b of state.bins) for (const it of b.items) { const k = m === 'item' ? it.itemCode : (it.group || '—'); counts.set(k, (counts.get(k) || 0) + 1); }
+    const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    L.innerHTML = `<b>${m === 'item' ? 'Items' : 'Item groups'}</b>` + top.map(([k, n]) =>
+      `<div class="li"><span class="sw" style="background:${m === 'item' ? hashColor(k) : groupColors.get(k)}"></span>${esc(k)} <span class="muted">· ${n} bins</span></div>`).join('') +
+      (counts.size > 8 ? `<div class="muted" style="margin-top:3px">+${counts.size - 8} more</div>` : '') + ghosts;
+  } else if (m === 'mixed') {
+    L.innerHTML = '<b>Items per bin</b>' + [['#2e9e5b', '1 item'], ['#e9730c', '2 items'], ['#bb0000', '3+ items']].map(([c, t]) => `<div class="li"><span class="sw" style="background:${c}"></span>${t}</div>`).join('') + ghosts;
+  } else {
+    const t = m === 'fill' ? `Bin fill (capacity ${fmt(state.cap)})` : 'Pick frequency (last 90 days)';
+    const ends = m === 'fill' ? ['empty', 'full'] : ['rare', `${state.maxPicks} picks`];
+    L.innerHTML = `<b>${t}</b><div class="grad"></div><div class="ends"><span>${ends[0]}</span><span>${ends[1]}</span></div>` +
+      (m === 'velocity' && !state.maxPicks ? '<div class="muted" style="margin-top:4px">No movement history available.</div>' : '') + ghosts;
+  }
+}
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+function flyTo(pos, target, instant = false) {
+  if (instant) { camera.position.copy(pos); controls.target.copy(target); fly = null; return; }
+  fly = { t0: performance.now(), p0: camera.position.clone(), p1: pos, c0: controls.target.clone(), c1: target };
+}
+function setView(v, instant = false) {
+  state.view = v;
+  document.querySelectorAll('#view-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  const B = state.bounds; if (!B) return;
+  const t = new THREE.Vector3(B.cx, B.H * 0.3, B.cz), s = B.size;
+  const p = v === 'top' ? new THREE.Vector3(B.cx, s * 1.25, B.cz + 1)
+    : v === 'front' ? new THREE.Vector3(-s * 0.55, B.H * 1.6, B.cz)
+    : new THREE.Vector3(B.cx - s * 0.55, s * 0.6, B.cz + s * 0.75);
+  flyTo(p, t, instant);
+}
+function focusBin(i) {
+  const b = state.bins[i]; if (!b) return;
+  if (state.aisleFilter && b.aisle !== state.aisleFilter) { state.aisleFilter = ''; $('aisle-filter').value = ''; render(); }
+  const cfg = state.cfg, t = new THREE.Vector3(b.x, b.y + cfg.levelH / 2, b.z);
+  const side = b.row % 2 && cfg.backToBack ? 1 : -1;     // look from the aisle this rack faces
+  flyTo(new THREE.Vector3(b.x - 260, b.y + 320, b.z + side * 620), t);
+  select(i);
+}
+
+// ── Picking ───────────────────────────────────────────────────────────────────
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickBin(ev) {
+  if (!hitMesh) return -1;
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const h = ray.intersectObject(hitMesh, false)[0];
+  return h ? hitMap[h.instanceId] : -1;
+}
+let down = null, hoverPending = false;
+renderer.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; fly = null; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+  const i = pickBin(e);
+  if (state.moveMode) return moveClick(i);
+  if (i >= 0) select(i); else closeDrawer();
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if (hoverPending) return; hoverPending = true;
+  requestAnimationFrame(() => {
+    hoverPending = false;
+    const i = pickBin(e), tip = $('tip');
+    if (i < 0) { tip.style.display = 'none'; renderer.domElement.style.cursor = ''; return; }
+    const b = state.bins[i], r = wrap.getBoundingClientRect();
+    renderer.domElement.style.cursor = 'pointer';
+    tip.innerHTML = `<b>${esc(b.code)}</b>${b.planned ? ' · planned' : ''}<br>` + (b.items.length
+      ? b.items.slice(0, 3).map(it => `${esc(it.itemCode)} · ${fmt(it.qty)} ${esc(it.uom)}`).join('<br>') + (b.items.length > 3 ? `<br>+${b.items.length - 3} more` : '')
+      : '<span style="opacity:.75">Empty</span>');
+    tip.style.display = 'block';
+    tip.style.left = Math.min(e.clientX - r.left + 14, r.width - 270) + 'px'; tip.style.top = (e.clientY - r.top + 14) + 'px';
+  });
+});
+renderer.domElement.addEventListener('pointerleave', () => { $('tip').style.display = 'none'; });
+
+// ── Bin detail drawer ─────────────────────────────────────────────────────────
+function select(i) {
+  state.selected = i; drawHighlights();
+  const b = state.bins[i];
+  $('d-code').textContent = b.code;
+  $('d-loc').textContent = `Aisle ${b.aisle} · Rack ${b.rack} · Level ${b.level}${b.position ? ` · Pos ${b.position}` : ''}`;
+  const status = b.planned ? '<span class="pill planned">Planned</span>' : b.disabled ? '<span class="pill disabled">Disabled</span>' : !b.items.length ? '<span class="pill free">Free</span>' : '';
+  const pct = Math.round((b.qty / state.cap) * 100);
+  const rows = b.items.map(it => `<tr><td><span class="dot" style="background:${itemColor(it, b)}"></span><b>${esc(it.itemCode)}</b><div class="muted">${esc(it.itemName)}</div>` +
+    `${it.group ? `<div class="muted small">${esc(it.group)}</div>` : ''}${(it.batches || []).length ? `<div class="small">Batches: ${it.batches.slice(0, 6).map(x => `${esc(x.batch)} (${fmt(x.qty)})`).join(', ')}${it.batches.length > 6 ? '…' : ''}</div>` : ''}</td>` +
+    `<td class="n">${fmt(it.qty)} ${esc(it.uom)}</td><td class="n">${pk(it.itemCode) || '–'}</td></tr>`).join('');
+  $('d-body').innerHTML = `${status}
+    <div class="kv" style="margin-top:8px"><div><span>Aisle</span><b>${esc(b.aisle)}</b></div><div><span>Rack</span><b>${esc(b.rack)}</b></div><div><span>Level</span><b>${esc(b.level)}</b></div><div><span>Items</span><b>${b.items.length}</b></div></div>
+    <div class="small muted">Fill ${b.items.length ? pct + '%' : '0%'} of capacity ${fmt(state.cap)}${state.cfg.binCapacity > 0 ? '' : ' (auto)'}</div>
+    <div class="bar"><i style="width:${clamp(pct, 0, 100)}%;background:${heat(clamp(pct / 100, 0, 1))}"></i></div>
+    ${b.items.length ? `<table class="t"><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Picks</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted">No stock in this bin.</div>'}
+    <div class="grid2" style="margin-top:12px">
+      <button class="btn sm" id="d-fly">◎ Fly here</button>
+      <button class="btn sm" id="d-move" ${b.items.length ? '' : 'disabled'}>✥ Move from here</button>
+    </div>
+    ${state.data.source === 'slotted' && !b.planned ? '<div class="notice info">Placement simulated — SAP stock per bin not available.</div>' : ''}`;
+  $('drawer').classList.add('open');
+  $('d-fly').onclick = () => focusBin(i);
+  $('d-move').onclick = () => { setMoveMode(true); moveClick(i); };
+}
+function closeDrawer() { state.selected = -1; $('drawer').classList.remove('open'); drawHighlights(); }
+$('d-close').onclick = closeDrawer;
+
+// ── Move mode ─────────────────────────────────────────────────────────────────
+function setMoveMode(on) {
+  state.moveMode = on; state.moveFrom = -1;
+  $('btn-move').classList.toggle('on', on); $('btn-move').textContent = on ? '✥ Moving… (click to stop)' : '✥ Move pallet';
+  modebar(); drawHighlights();
+}
+function modebar() {
+  const m = $('modebar');
+  m.style.display = state.moveMode ? 'block' : 'none';
+  m.textContent = state.moveFrom < 0 ? 'Move: click the bin to move stock FROM' : `Moving ${state.bins[state.moveFrom].code} → click the target bin (Esc to cancel)`;
+}
+function moveClick(i) {
+  if (i < 0) return;
+  const b = state.bins[i];
+  if (state.moveFrom < 0) {
+    if (!b.items.length) { flash('That bin is empty — pick a bin with stock.'); return; }
+    state.moveFrom = i; modebar(); drawHighlights(); return;
+  }
+  if (i === state.moveFrom) { state.moveFrom = -1; modebar(); drawHighlights(); return; }
+  if (b.disabled) { flash('Target bin is disabled in SAP.'); return; }
+  const from = state.bins[state.moveFrom];
+  if (b.items.length && !confirm(`${b.code} already holds ${b.items.map(x => x.itemCode).join(', ')}. Mix the stock in one bin?`)) return;
+  applyMove(from, b, null, 'Manual');
+  state.moveFrom = -1; afterChange(); modebar(); select(b.i);
+}
+function flash(t) { $('modebar').textContent = t; setTimeout(() => modebar(), 1600); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (state.moveMode) setMoveMode(false); else closeDrawer(); } });
+
+function afterChange() {
+  computeStats(); render(); renderStats(); renderMoves(); renderHeat(); runSearch(false);
+}
+
+// ── Side panels ───────────────────────────────────────────────────────────────
+function renderStats() {
+  const real = state.bins.filter(b => !b.planned && !b.disabled), occ = real.filter(b => b.items.length);
+  const skus = new Set(state.bins.flatMap(b => b.items.map(i => i.itemCode)));
+  $('k-bins').textContent = fmt(real.length);
+  $('k-occ').textContent = real.length ? Math.round(occ.length / real.length * 100) + '%' : '–';
+  $('k-free').textContent = fmt(real.length - occ.length);
+  $('k-sku').textContent = fmt(skus.size);
+  $('k-qty').textContent = fmt(state.bins.reduce((s, b) => s + b.qty, 0));
+  $('k-mixed').textContent = fmt(state.bins.filter(b => b.items.length > 1).length);
+  const sel = $('aisle-filter'), cur = state.aisleFilter;
+  sel.innerHTML = '<option value="">All aisles</option>' + state.aisles.map(a => `<option value="${esc(a.aisle)}">Aisle ${esc(a.aisle)}${a.planned ? ' (planned)' : ''}</option>`).join('');
+  sel.value = cur;
+}
+
+function renderNotes() {
+  const d = state.data, n = [...(d.notes || [])].map(t => `<div class="notice ${d.source === 'demo' ? 'warn' : 'info'}">${esc(t)}</div>`);
+  if (state.overflow.length) n.push(`<div class="notice warn">${state.overflow.length} item(s) did not fit in the generated racks (e.g. ${esc(state.overflow.slice(0, 3).map(o => o.itemCode).join(', '))}). Add aisles or racks in “Layout designer”.</div>`);
+  if (d.unbinned?.length) n.push(`<div class="notice warn">${d.unbinned.length} item line(s) are still in the system bin (not shown on racks).</div>`);
+  $('notes').innerHTML = n.join('');
+}
+
+function renderMoves() {
+  const ms = state.moves;
+  $('mv-count').textContent = ms.length ? `(${ms.length})` : '';
+  $('mv-empty').style.display = ms.length ? 'none' : 'block';
+  $('moves').innerHTML = ms.map((m, k) => `<div class="mv"><span class="k">${k + 1}</span><div style="flex:1;min-width:0">` +
+    `<b>${esc(m.from)}</b> → <b>${esc(m.to)}</b><div class="muted">${m.items.map(i => `${esc(i.itemCode)} ${fmt(i.qty)}`).join(', ')}${m.mixed ? ' · <span style="color:var(--orange)">mixed bin</span>' : ''}</div></div>` +
+    `<span class="tag">${esc(m.reason)}</span></div>`).reverse().join('');
+  $('btn-undo').disabled = $('btn-reset').disabled = $('btn-export').disabled = !ms.length;
+  badge(ms.length ? `${state.whs} · ${ms.length} simulated move(s)` : sourceLabel(), ms.length ? 'sim' : state.data.source === 'demo' ? 'loading' : 'ready');
+}
+const sourceLabel = () => ({ bins: `${state.whs} · live bin stock`, slotted: `${state.whs} · simulated placement`, demo: `${state.whs} · demo data`, empty: `${state.whs} · no stock` })[state.data.source] || state.whs;
+
+function renderHeat() {
+  const L = state.levelsMax, cols = Array.from({ length: L }, (_, i) => i);
+  const rows = state.aisles.map(a => {
+    const bins = state.bins.filter(b => b.aisle === a.aisle && !b.disabled);
+    const cell = l => {
+      const lb = bins.filter(b => b.levelIdx === l);
+      if (!lb.length) return '<td style="background:var(--bg)"></td>';
+      const pct = lb.filter(b => b.items.length).length / lb.length;
+      return `<td style="background:${a.planned ? '#ede4fd' : heat(pct)}${a.planned ? '' : ';color:#fff'}" title="Aisle ${esc(a.aisle)} level ${l + 1}: ${Math.round(pct * 100)}% of ${lb.length} bins">${Math.round(pct * 100)}%</td>`;
+    };
+    const all = bins.length ? Math.round(bins.filter(b => b.items.length).length / bins.length * 100) : 0;
+    return `<tr data-a="${esc(a.aisle)}"><td class="a">${esc(a.aisle)}${a.planned ? ' <span class="pill planned">plan</span>' : ''}</td>${cols.map(cell).join('')}<td class="a" style="text-align:right">${all}%</td></tr>`;
+  });
+  $('heat').innerHTML = state.aisles.length ? `<table><thead><tr><th></th>${cols.map(l => `<th>L${l + 1}</th>`).join('')}<th>All</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : '<span class="muted">No aisles.</span>';
+  $('heat').querySelectorAll('tr[data-a]').forEach(tr => tr.onclick = () => {
+    state.aisleFilter = state.aisleFilter === tr.dataset.a ? '' : tr.dataset.a; $('aisle-filter').value = state.aisleFilter; render(true);
+  });
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+function runSearch(rerender = true) {
+  const q = $('q').value.trim().toLowerCase();
+  state.matches = new Set();
+  if (!q) { $('results').innerHTML = ''; $('q-info').textContent = 'Matching bins light up in the 3D view; click a bin chip to fly there.'; if (rerender) render(); return; }
+  const byItem = new Map(), binHits = [];
+  for (const b of state.bins) {
+    if (b.code.toLowerCase().includes(q)) { binHits.push(b); state.matches.add(b.i); }
+    for (const it of b.items) {
+      if (`${it.itemCode} ${it.itemName} ${(it.batches || []).map(x => x.batch).join(' ')}`.toLowerCase().includes(q)) {
+        state.matches.add(b.i);
+        if (!byItem.has(it.itemCode)) byItem.set(it.itemCode, { it, bins: [] });
+        byItem.get(it.itemCode).bins.push({ b, qty: it.qty });
+      }
+    }
+  }
+  const chips = list => `<div class="chips">${list.slice(0, 24).map(x => `<span class="chip" data-i="${x.b.i}">${esc(x.b.code.replace(state.whs + (state.cfg.sep || '-'), ''))}${x.qty != null ? ` · ${fmt(x.qty)}` : ''}</span>`).join('')}${list.length > 24 ? `<span class="muted small">+${list.length - 24}</span>` : ''}</div>`;
+  const items = [...byItem.values()].sort((a, b) => natural(a.it.itemCode, b.it.itemCode)).slice(0, 50);
+  $('results').innerHTML = items.map(({ it, bins }) => `<div class="res"><div class="t"><b>${esc(it.itemCode)}</b><span class="q">${fmt(bins.reduce((s, x) => s + x.qty, 0))} ${esc(it.uom)} · ${bins.length} bin(s)</span></div>` +
+    `<div class="n">${esc(it.itemName)}</div>${chips(bins.sort((a, b) => natural(a.b.code, b.b.code)))}</div>`).join('') +
+    (binHits.length ? `<div class="res"><div class="t"><b>Bins</b><span class="q">${binHits.length}</span></div>${chips(binHits.map(b => ({ b, qty: null })))}</div>` : '');
+  $('q-info').textContent = state.matches.size ? `${byItem.size} item(s) in ${state.matches.size} bin(s).` : 'No matches.';
+  $('results').querySelectorAll('.chip').forEach(c => c.onclick = () => focusBin(+c.dataset.i));
+  if (rerender) render();
+  if (rerender && state.matches.size === 1) focusBin([...state.matches][0]);
+}
+let qTimer; $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(runSearch, 250); });
+$('btn-clear-q').onclick = () => { $('q').value = ''; runSearch(); };
+
+// ── Layout designer form ──────────────────────────────────────────────────────
+function fillForm() {
+  const c = state.cfg;
+  $('c-mapping').value = c.mapping; $('c-sep').value = c.sep; $('c-binW').value = c.binW; $('c-binD').value = c.binD;
+  $('c-levelH').value = c.levelH; $('c-aisleW').value = c.aisleW; $('c-cap').value = c.binCapacity || ''; $('c-b2b').value = c.backToBack ? '1' : '0';
+  $('g-aisles').value = c.gen.aisles; $('g-racks').value = c.gen.racks; $('g-levels').value = c.gen.levels; $('g-pos').value = c.gen.positions;
+  $('c-roles').innerHTML = c.roles.map((r, i) => `<select class="inp" data-r="${i}" title="Segment ${i + 1}">${ROLES.map(x => `<option value="${x}" ${x === r ? 'selected' : ''}>${i + 1}: ${x}</option>`).join('')}</select>`).join('');
+  $('gen-box').style.display = state.data?.source === 'slotted' && !state.data.bins.length ? 'block' : 'none';
+  renderPlanned(); renderSample();
+}
+function readForm() {
+  const n = (id, lo, hi, d) => { const v = Number($(id).value); return Number.isFinite(v) && v >= lo ? Math.min(v, hi) : d; };
+  const c = state.cfg;
+  c.mapping = $('c-mapping').value; c.sep = $('c-sep').value || '-';
+  c.binW = n('c-binW', 40, 600, 120); c.binD = n('c-binD', 40, 600, 110); c.levelH = n('c-levelH', 40, 600, 160); c.aisleW = n('c-aisleW', 80, 2000, 300);
+  c.binCapacity = n('c-cap', 0, 1e9, 0); c.backToBack = $('c-b2b').value === '1';
+  c.gen = { aisles: n('g-aisles', 1, 40, 6), racks: n('g-racks', 1, 80, 8), levels: n('g-levels', 1, 12, 4), positions: n('g-pos', 1, 10, 2) };
+  c.roles = [...document.querySelectorAll('#c-roles select')].map(s => s.value);
+}
+function renderSample() {
+  const b = (state.data?.bins || [])[0] || state.bins.find(x => !x.planned);
+  if (!b) { $('c-sample').textContent = ''; return; }
+  const p = placeOf(b);
+  $('c-sample').innerHTML = `Example: <b>${esc(b.code)}</b> → aisle <b>${esc(p.aisle)}</b>, rack <b>${esc(p.rack)}</b>, level <b>${esc(p.level)}</b>${p.position ? `, position <b>${esc(p.position)}</b>` : ''}`;
+}
+function renderPlanned() {
+  $('planned').innerHTML = state.cfg.planned.map((p, k) => `<div class="mv"><div style="flex:1"><b>Aisle ${esc(p.aisle)}</b> <span class="muted">${p.racks} racks × ${p.levels} levels × ${p.positions} pos.</span></div><button class="btn sm" data-k="${k}">Remove</button></div>`).join('');
+  $('planned').querySelectorAll('button').forEach(b => b.onclick = () => { state.cfg.planned.splice(+b.dataset.k, 1); renderPlanned(); applyLayout(); });
+}
+function applyLayout(fit = true) {
+  readForm(); buildModel(); render(fit); renderStats(); renderNotes(); renderMoves(); renderHeat(); renderSample(); runSearch(false);
+  if (state.selected >= 0) closeDrawer();
+}
+$('c-roles').addEventListener('change', () => { readForm(); renderSample(); });
+['c-mapping', 'c-sep'].forEach(id => $(id).addEventListener('change', () => { readForm(); renderSample(); }));
+$('btn-apply').onclick = () => applyLayout();
+$('btn-defaults').onclick = () => { const planned = state.cfg.planned; state.cfg = mergeCfg({ planned }); fillForm(); applyLayout(); };
+$('btn-add-planned').onclick = () => {
+  const code = $('p-code').value.trim().toUpperCase().replace(/[^\w]/g, '') || `P${state.cfg.planned.length + 1}`;
+  if (state.aisles.some(a => a.aisle.toUpperCase() === code)) { alert(`Aisle ${code} already exists.`); return; }
+  const n = id => clamp(Math.round(Number($(id).value) || 1), 1, 80);
+  state.cfg.planned.push({ aisle: code, racks: n('p-racks'), levels: clamp(n('p-levels'), 1, 12), positions: clamp(n('p-pos'), 1, 10) });
+  $('p-code').value = ''; renderPlanned(); applyLayout();
+};
+$('btn-save').onclick = async () => {
+  readForm();
+  try { await api(`/layout?whs=${encodeURIComponent(state.whs)}`, { method: 'PUT', body: { config: state.cfg } });
+    $('save-note').innerHTML = `<div class="notice good">Layout saved for ${esc(state.whs)}.</div>`; }
+  catch (e) { $('save-note').innerHTML = `<div class="notice err">${esc(e.message)}</div>`; }
+  setTimeout(() => { $('save-note').innerHTML = ''; }, 3500);
+};
+
+// ── Simulation buttons ────────────────────────────────────────────────────────
+$('btn-move').onclick = () => setMoveMode(!state.moveMode);
+$('btn-undo').onclick = () => { undoMove(); afterChange(); };
+$('btn-reset').onclick = () => { if (!confirm('Discard all simulated moves?')) return; state.moves = []; buildModel(); afterChange(); };
+$('btn-suggest').onclick = () => {
+  state.suggestions = suggest();
+  const s = state.suggestions;
+  $('sugg').innerHTML = s.length ? s.map((x, k) => `<label class="mv" style="cursor:pointer"><input type="checkbox" data-k="${k}" checked/><div style="flex:1;min-width:0">${x.text}</div><span class="tag">${x.type}</span></label>`).join('')
+    : `<div class="mv muted">${state.maxPicks ? 'No re-slotting needed: fast movers already sit low and near the dock, and no item is split over 3+ part-full bins.' : 'No movement history for fast-mover slotting, and no item is split over 3+ part-full bins.'}</div>`;
+  $('sugg-actions').style.display = s.length ? 'flex' : 'none';
+  if (s.length) { state.matches = new Set(s.flatMap(x => [x.from, x.to])); render(); }
+};
+$('sugg-all').onchange = e => $('sugg').querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = e.target.checked; });
+$('btn-apply-sugg').onclick = () => {
+  let n = 0;
+  $('sugg').querySelectorAll('input[type=checkbox]:checked').forEach(c => {
+    const s = state.suggestions[+c.dataset.k];
+    if (applyMove(state.bins[s.from], state.bins[s.to], s.codes, s.type)) n++;
+  });
+  state.suggestions = []; $('sugg').innerHTML = ''; $('sugg-actions').style.display = 'none'; state.matches = new Set();
+  afterChange();
+  if (n) flashBadge(`${n} move(s) applied to the simulation`);
+};
+function flashBadge(t) { badge(t, 'sim'); setTimeout(() => renderMoves(), 2200); }
+$('btn-export').onclick = () => {
+  const rows = [['#', 'From bin', 'To bin', 'Item', 'Item name', 'Qty', 'UoM', 'Reason']];
+  state.moves.forEach((m, k) => m.items.forEach(i => rows.push([k + 1, m.from, m.to, i.itemCode, i.itemName, i.qty, i.uom, m.reason])));
+  const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+  a.download = `${state.whs}-move-plan-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+// ── View controls ─────────────────────────────────────────────────────────────
+document.querySelectorAll('#view-seg button').forEach(b => b.onclick = () => setView(b.dataset.v));
+$('btn-fit').onclick = () => setView(state.view || '3d');
+$('color-by').onchange = e => { state.colorBy = e.target.value; render(); if (state.selected >= 0) select(state.selected); };
+$('aisle-filter').onchange = e => { state.aisleFilter = e.target.value; render(true); };
+$('show-empty').onchange = e => { state.showEmpty = e.target.checked; render(); };
+$('show-labels').onchange = e => { state.showLabels = e.target.checked; render(); };
+
+// ── AI brief ──────────────────────────────────────────────────────────────────
+function summary() {
+  const real = state.bins.filter(b => !b.planned && !b.disabled), occ = real.filter(b => b.items.length);
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+  const scores = real.map(b => b.score).sort((a, b) => a - b), median = scores[scores.length >> 1];
+  const codes = [...new Set(real.flatMap(b => b.items.map(i => i.itemCode)))].filter(c => pk(c) > 0).sort((a, b) => pk(b) - pk(a));
+  const fast = new Set(codes.slice(0, Math.max(1, Math.ceil(codes.length * 0.2))));
+  const fastHigh = real.filter(b => b.items.some(i => fast.has(i.itemCode)) && (b.levelIdx >= 2 || b.score > median));
+  const byItem = new Map(); for (const b of real) for (const i of b.items) byItem.set(i.itemCode, [...(byItem.get(i.itemCode) || []), b]);
+  return {
+    warehouse: state.whs, source: state.data.source, totalBins: real.length, occupied: occ.length, occupancyPct: pct(occ.length, real.length),
+    plannedBins: state.bins.filter(b => b.planned).length, items: byItem.size, totalQty: Math.round(real.reduce((s, b) => s + b.qty, 0)),
+    mixedBins: real.filter(b => b.items.length > 1).length, binCapacity: state.cap,
+    aisles: state.aisles.filter(a => !a.planned).map(a => { const bs = real.filter(b => b.aisle === a.aisle); return { aisle: a.aisle, bins: bs.length, occupancyPct: pct(bs.filter(b => b.items.length).length, bs.length) }; }),
+    levels: Array.from({ length: state.levelsMax }, (_, l) => { const bs = real.filter(b => b.levelIdx === l); return { level: l + 1, occupancyPct: pct(bs.filter(b => b.items.length).length, bs.length) }; }),
+    fastHigh: fastHigh.length, fastMoversBadlyPlaced: fastHigh.slice(0, 10).map(b => ({ bin: b.code, level: b.levelIdx + 1, items: b.items.map(i => `${i.itemCode} (${pk(i.itemCode)} picks)`) })),
+    topMovers: codes.slice(0, 10).map(c => ({ itemCode: c, picks90d: pk(c), bins: byItem.get(c).map(b => b.code).slice(0, 5) })),
+    spread: [...byItem].filter(([, bs]) => bs.length >= 3 && bs.filter(b => b.fill < 0.5).length >= 2).slice(0, 10).map(([c, bs]) => ({ itemCode: c, bins: bs.length })),
+    unbinnedQty: Math.round((state.data.unbinned || []).reduce((s, i) => s + i.qty, 0)),
+    simulatedMoves: state.moves.slice(0, 30).map(m => ({ from: m.from, to: m.to, reason: m.reason, items: m.items.map(i => i.itemCode) })),
+    overflowItems: state.overflow.length,
+  };
+}
+$('btn-advice').onclick = async () => {
+  const btn = $('btn-advice'); btn.disabled = true;
+  $('brief').innerHTML = '<span class="spin"></span> <span class="muted">Analysing the warehouse…</span>'; $('checks').innerHTML = '';
+  try {
+    const r = await api('/advice', { method: 'POST', body: { summary: summary() } });
+    $('checks').innerHTML = r.checks.map(c => `<div class="notice ${c.level}">${esc(c.text)}</div>`).join('');
+    $('brief').innerHTML = r.ai ? marked.parse(r.ai) : '<span class="muted small">AI is not configured — rule checks only.</span>';
+  } catch (e) { $('brief').innerHTML = `<div class="notice err">${esc(e.message)}</div>`; }
+  finally { btn.disabled = false; }
+};
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+async function loadWarehouses() {
+  try {
+    const r = await api('/warehouses');
+    const list = r.warehouses.length ? r.warehouses : [{ code: r.default, name: '' }];
+    if (!list.some(w => w.code === r.default)) list.unshift({ code: r.default, name: '', bins: true });
+    $('whs').innerHTML = list.map(w => `<option value="${esc(w.code)}">${esc(w.code)}${w.name ? ' — ' + esc(w.name) : ''}${w.bins ? ' · bins' : ''}</option>`).join('');
+    $('whs').value = r.default;
+  } catch { /* keep 17SH */ }
+}
+async function loadAll() {
+  const whs = $('whs').value || '17SH';
+  state.whs = whs; badge('Loading…', 'loading');
+  $('empty').style.display = 'flex'; $('empty').innerHTML = `<span class="spin"></span><b>Loading ${esc(whs)}…</b>Reading bins and stock from SAP`;
+  $('btn-load').disabled = true;
+  try {
+    const [lay, stock] = await Promise.all([api(`/layout?whs=${encodeURIComponent(whs)}`), api(`/stock?whs=${encodeURIComponent(whs)}`)]);
+    state.cfg = mergeCfg(lay.config); state.data = stock; state.moves = []; state.aisleFilter = ''; state.matches = new Set();
+    closeDrawer(); setMoveMode(false);
+    $('sub').textContent = `${whs} · ${stock.source === 'bins' ? 'live stock per bin from SAP' : stock.source === 'slotted' ? 'warehouse stock, simulated placement' : stock.source === 'demo' ? 'demo warehouse' : 'no stock'}`;
+    fillForm(); buildModel(); render(true); renderStats(); renderNotes(); renderMoves(); renderHeat(); runSearch(false);
+  } catch (e) {
+    badge('Error', 'error');
+    $('empty').style.display = 'flex'; $('empty').innerHTML = `<b>Could not load ${esc(whs)}</b>${esc(e.message)}`;
+  } finally { $('btn-load').disabled = false; }
+}
+$('btn-load').onclick = loadAll;
+$('btn-refresh').onclick = loadAll;
+
+await loadWarehouses();
+await loadAll();
+</script>
+</body>
+</html>

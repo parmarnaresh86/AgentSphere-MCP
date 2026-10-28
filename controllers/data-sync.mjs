@@ -14,6 +14,9 @@
  *   GET  /api/cache/currencies      — all cached currencies
  *   GET  /api/cache/item-groups     — all cached item groups
  *   GET  /api/cache/bp-groups       — all cached BP groups
+ *   GET  /api/cache/boms            — search cached BOM headers
+ *   GET  /api/cache/boms/:code      — component lines of one cached BOM
+ *   GET  /api/cache/boms-where-used/:item — BOMs that use a component
  */
 import { Router } from 'express';
 import { cacheRepo, connRepo } from '../db.mjs';
@@ -319,6 +322,26 @@ const ENTITIES = {
     },
     save: (companyId, rows) => cacheRepo.upsertBPGroups(companyId, rows),
   },
+  gl_accounts: {
+    label: 'G/L Accounts',
+    icon:  '📒',
+    // Chart of Accounts — used by AP Invoice Processing (expense G/L search, vendor
+    // G/L setup, validation) so G/L lookups don't need a live SAP round trip.
+    fetchSL: async (sap) => (await fetchAll(sap, '/ChartOfAccounts', { $select: 'Code,Name,FormatCode,ActiveAccount,FrozenFor,AccountType' }))
+      .map(r => ({ AcctCode: r.Code, AcctName: r.Name || '', FormatCode: r.FormatCode || '', Postable: r.ActiveAccount || 'tYES', Frozen: r.FrozenFor || 'tNO', AcctType: r.AccountType || '' }))
+      .filter(r => r.AcctCode),
+    fetchDB: async () => {
+      const cfg = getActiveConfig(), isHana = dbGetActiveType() === 'hana';
+      const oact = tableRef('OACT', cfg);
+      const c = n => col(n, isHana);
+      const rows = await executeSQL(`SELECT ${c('AcctCode')} AS AcctCode, ${c('AcctName')} AS AcctName, ${c('FormatCode')} AS FormatCode,
+        ${c('Postable')} AS PostableRaw, ${c('FrozenFor')} AS FrozenRaw, ${c('ActType')} AS ActTypeRaw FROM ${oact}`);
+      return rows.map(r => ({ AcctCode: pick(r,'AcctCode'), AcctName: pick(r,'AcctName') || '', FormatCode: pick(r,'FormatCode') || '',
+        Postable: boolFlag(pick(r,'PostableRaw')), Frozen: boolFlag(pick(r,'FrozenRaw')),
+        AcctType: ({ E: 'at_Expenses', I: 'at_Revenues', N: 'at_Other' })[pick(r,'ActTypeRaw')] || '' })).filter(r => r.AcctCode);
+    },
+    save: (companyId, rows) => cacheRepo.upsertGLAccounts(companyId, rows),
+  },
   open_orders: {
     label: 'Open Sales Orders',
     icon:  '📄',
@@ -352,6 +375,57 @@ const ENTITIES = {
         }));
     },
     save: (companyId, rows) => cacheRepo.upsertOpenOrders(companyId, rows),
+  },
+  boms: {
+    label: 'Bill of Materials',
+    icon:  '🧩',
+    // Flattened: one cached row per component line, with the parent's header
+    // fields (type, base qty, warehouse) repeated on each line.
+    fetchSL: async (sap) => {
+      const trees = await fetchAll(sap, '/ProductTrees', {});
+      const rows = [];
+      for (const t of trees) {
+        (t.ProductTreeLines || []).forEach((l, i) => rows.push({
+          TreeCode: t.TreeCode, ParentName: t.ProductDescription || '', TreeType: t.TreeType || '',
+          BaseQty: Number(t.Quantity ?? 1), BomWarehouse: t.Warehouse || '',
+          LineNum: l.ChildNum ?? i, ItemCode: l.ItemCode || '', ItemName: l.ItemName || '',
+          Quantity: Number(l.Quantity || 0), Warehouse: l.Warehouse || '', IssueMethod: l.IssueMethod || '',
+        }));
+      }
+      return rows.filter(r => r.TreeCode);
+    },
+    fetchDB: async () => {
+      const cfg = getActiveConfig(), isHana = dbGetActiveType() === 'hana';
+      const oitt = tableRef('OITT', cfg), itt1 = tableRef('ITT1', cfg), oitm = tableRef('OITM', cfg);
+      const c = n => col(n, isHana);
+      // OITT's header quantity column is misspelled "Qauntity" in SAP B1; ITT1.ItemName
+      // and IssueMthd don't exist on older versions — check the live columns, don't guess.
+      const [hCols, lCols] = await Promise.all([getTableColumns('OITT'), getTableColumns('ITT1')]);
+      const qtyCol = hCols.has('qauntity') ? 'Qauntity' : 'Quantity';
+      const lineName = lCols.has('itemname') ? `COALESCE(m.${c('ItemName')}, l.${c('ItemName')})` : `m.${c('ItemName')}`;
+      const issue = lCols.has('issuemthd') ? `l.${c('IssueMthd')}` : `''`;
+      const rows = await executeSQL(
+        `SELECT t.${c('Code')} AS TreeCode, p.${c('ItemName')} AS ParentName, t.${c('TreeType')} AS TreeTypeRaw,
+                t.${c(qtyCol)} AS BaseQty, t.${c('ToWH')} AS BomWarehouse,
+                l.${c('ChildNum')} AS LineNum, l.${c('Code')} AS ItemCode, ${lineName} AS ItemName,
+                l.${c('Quantity')} AS Quantity, l.${c('Warehouse')} AS Warehouse, ${issue} AS IssueRaw
+         FROM ${oitt} t
+         JOIN ${itt1} l ON l.${c('Father')} = t.${c('Code')}
+         LEFT JOIN ${oitm} p ON p.${c('ItemCode')} = t.${c('Code')}
+         LEFT JOIN ${oitm} m ON m.${c('ItemCode')} = l.${c('Code')}`
+      );
+      const treeType = { P: 'iProductionTree', S: 'iSalesTree', T: 'iTemplateTree', A: 'iAssemblyTree' };
+      const issueMethod = { B: 'im_Backflush', M: 'im_Manual' };
+      return rows.map(r => ({
+        TreeCode: pick(r,'TreeCode'), ParentName: pick(r,'ParentName') || '',
+        TreeType: treeType[pick(r,'TreeTypeRaw')] || pick(r,'TreeTypeRaw') || '',
+        BaseQty: Number(pick(r,'BaseQty') ?? 1), BomWarehouse: pick(r,'BomWarehouse') || '',
+        LineNum: pick(r,'LineNum'), ItemCode: pick(r,'ItemCode') || '', ItemName: pick(r,'ItemName') || '',
+        Quantity: Number(pick(r,'Quantity') || 0), Warehouse: pick(r,'Warehouse') || '',
+        IssueMethod: issueMethod[pick(r,'IssueRaw')] || pick(r,'IssueRaw') || '',
+      })).filter(r => r.TreeCode && r.LineNum != null);
+    },
+    save: (companyId, rows) => cacheRepo.upsertBomLines(companyId, rows),
   },
 };
 
@@ -562,6 +636,11 @@ export function createDataSyncRouter({ requireAuth, getActiveSap }) {
   router.get('/cache/item-groups',     requireAuth, safe((req, res) => res.json(cacheRepo.getItemGroups(getCompanyId()))));
   router.get('/cache/bp-groups',       requireAuth, safe((req, res) => res.json(cacheRepo.getBPGroups(getCompanyId()))));
   router.get('/cache/open-orders-customers', requireAuth, safe((req, res) => res.json(cacheRepo.getOpenOrdersCustomers(getCompanyId()))));
+  router.get('/cache/boms', requireAuth, safe((req, res) => {
+    res.json(cacheRepo.searchBoms(getCompanyId(), (req.query.q || '').trim(), resolveTop(req.query)));
+  }));
+  router.get('/cache/boms/:code', requireAuth, safe((req, res) => res.json(cacheRepo.getBomLines(getCompanyId(), req.params.code))));
+  router.get('/cache/boms-where-used/:item', requireAuth, safe((req, res) => res.json(cacheRepo.getBomsUsingItem(getCompanyId(), req.params.item))));
 
   // ── Cache stats — exact row counts per entity stored in hanny.db ─────────────
   router.get('/cache/stats', requireAuth, safe((req, res) => {
@@ -589,6 +668,8 @@ export function createDataSyncRouter({ requireAuth, getActiveSap }) {
       case 'currencies':    rows = cacheRepo.getCurrencies(companyId); break;
       case 'item-groups':   rows = cacheRepo.getItemGroups(companyId); break;
       case 'bp-groups':     rows = cacheRepo.getBPGroups(companyId); break;
+      case 'gl-accounts':   rows = cacheRepo.searchGLAccounts(companyId, '', 0); break;
+      case 'boms':          rows = db.prepare(`SELECT * FROM cache_bom_lines WHERE company_id=? ORDER BY TreeCode, LineNum`).all(companyId); break;
       default: return res.status(400).json({ error: `Unknown entity: ${entity}` });
     }
     if (format === 'csv' && rows.length > 0) {
@@ -599,6 +680,66 @@ export function createDataSyncRouter({ requireAuth, getActiveSap }) {
       return res.send(csv);
     }
     res.json({ company_id: companyId, entity, count: rows.length, rows });
+  }));
+
+  // ── Details viewer — one page of any cached entity, with search / filters / sort ─
+  // GET /api/sync/data/:entity?page=1&size=50&q=&sort=&dir=asc|desc&filters={"col":"val"}
+  //   &format=csv → every matching row (no paging) as a CSV download
+  // Column names come from the table itself (PRAGMA), never from the request, so
+  // sort/filter keys are checked against that list before reaching the SQL.
+  router.get('/sync/data/:entity', requireAuth, safe((req, res) => {
+    const src = ENTITY_TABLES[req.params.entity];
+    if (!src) return res.status(400).json({ error: `Unknown entity: ${req.params.entity}` });
+    const companyId = getCompanyId();
+    const columns = db.prepare(`PRAGMA table_info(${src.table})`).all().map(c => c.name).filter(c => c !== 'company_id');
+    const q = (c) => `"${c}"`;
+
+    const where = ['company_id=?'], args = [companyId];
+    if (src.where) { where.push(src.where); args.push(...src.whereArgs); }
+    const search = String(req.query.q || '').trim();
+    if (search) {
+      where.push(`(${columns.map(c => `CAST(${q(c)} AS TEXT) LIKE ?`).join(' OR ')})`);
+      columns.forEach(() => args.push(`%${search}%`));
+    }
+    let filters = {};
+    try { filters = JSON.parse(req.query.filters || '{}') || {}; } catch { filters = {}; }
+    for (const [c, v] of Object.entries(filters)) {
+      if (!columns.includes(c) || v === '' || v == null) continue;
+      where.push(`CAST(${q(c)} AS TEXT)=?`); args.push(String(v));
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    const sortCol = columns.includes(req.query.sort) ? req.query.sort : columns[0];
+    const dir = req.query.dir === 'desc' ? 'DESC' : 'ASC';
+    const orderSql = `ORDER BY ${q(sortCol)} ${dir}`;
+    const fromSql = `FROM ${src.table} ${whereSql}`;
+
+    if (req.query.format === 'csv') {
+      const rows = db.prepare(`SELECT ${columns.map(q).join(',')} ${fromSql} ${orderSql}`).all(...args);
+      const csv = [columns.join(','), ...rows.map(r => columns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${companyId}_${req.params.entity}.csv"`);
+      return res.send(csv);
+    }
+
+    const size = Math.min(Math.max(parseInt(req.query.size) || 50, 1), 500);
+    const total = db.prepare(`SELECT COUNT(*) AS n ${fromSql}`).get(...args).n;
+    const pages = Math.max(1, Math.ceil(total / size));
+    const page = Math.min(Math.max(parseInt(req.query.page) || 1, 1), pages);
+    const rows = db.prepare(`SELECT ${columns.map(q).join(',')} ${fromSql} ${orderSql} LIMIT ? OFFSET ?`)
+      .all(...args, size, (page - 1) * size);
+
+    // Filter dropdowns: any column with a small set of distinct values (over the
+    // whole entity, not just the current search) gets a list of those values.
+    const baseWhere = ['company_id=?', ...(src.where ? [src.where] : [])].join(' AND ');
+    const baseArgs = [companyId, ...(src.whereArgs || [])];
+    const filterOptions = {};
+    for (const c of columns) {
+      const vals = db.prepare(`SELECT DISTINCT ${q(c)} AS v FROM ${src.table} WHERE ${baseWhere} AND ${q(c)} IS NOT NULL AND ${q(c)}<>'' ORDER BY v LIMIT 31`)
+        .all(...baseArgs).map(r => r.v);
+      if (vals.length > 1 && vals.length <= 30) filterOptions[c] = vals;
+    }
+    res.json({ entity: req.params.entity, label: ENTITIES[req.params.entity]?.label || req.params.entity,
+      columns, rows, total, page, pages, size, sort: sortCol, dir: dir.toLowerCase(), filterOptions });
   }));
 
   // Entity list (for UI)
@@ -653,6 +794,24 @@ export function createDataSyncRouter({ requireAuth, getActiveSap }) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 import db from '../db.mjs';
+
+// Sync entity key → the SQLite cache table (and row subset) it is stored in,
+// for the Details viewer. Mirrors cacheRepo.deleteEntityRows in db.mjs.
+const ENTITY_TABLES = {
+  items:         { table: 'cache_items' },
+  customers:     { table: 'cache_business_partners', where: 'CardType=?', whereArgs: ['cCustomer'] },
+  suppliers:     { table: 'cache_business_partners', where: 'CardType=?', whereArgs: ['cSupplier'] },
+  tax_codes:     { table: 'cache_tax_codes' },
+  warehouses:    { table: 'cache_warehouses' },
+  uom:           { table: 'cache_uom' },
+  payment_terms: { table: 'cache_payment_terms' },
+  currencies:    { table: 'cache_currencies' },
+  item_groups:   { table: 'cache_item_groups' },
+  bp_groups:     { table: 'cache_bp_groups' },
+  open_orders:   { table: 'cache_open_orders' },
+  gl_accounts:   { table: 'cache_gl_accounts' },
+  boms:          { table: 'cache_bom_lines' },
+};
 
 // top=0 → no LIMIT (return all stored rows)
 function _searchBPs(companyId, q, type, top = 20) {

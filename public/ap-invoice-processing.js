@@ -1,6 +1,6 @@
 /**
  * AP Invoice Processing (APIP) — frontend module.
- *   Views: dashboard | queue | approvals | stages | master | mail | settings  (+ invoice form)
+ *   Views: dashboard | queue | approvals | stages | master | vitems | vexpense | mail | settings  (+ invoice form)
  *   API:   /api/apip  (see docs/apip-spec.md), header x-auth-token = localStorage.hanny_token
  * Exposes window.showApipPanel(view) and window.ApipUI (helpers for debugging).
  */
@@ -8,10 +8,11 @@
   'use strict';
 
   const BASE = '/api/apip';
-  const VIEWS = ['dashboard', 'queue', 'approvals', 'stages', 'master', 'mail', 'settings'];
+  const VIEWS = ['dashboard', 'queue', 'approvals', 'stages', 'master', 'vitems', 'vexpense', 'mail', 'settings'];
   const VIEW_LABEL = {
     dashboard: 'Processing Dashboard', queue: 'Invoice Queue', approvals: 'Invoice Approval',
-    stages: 'Approval Stage', master: 'Approval Master', mail: 'Mail Configuration', settings: 'Settings',
+    stages: 'Approval Stage', master: 'Approval Master', vitems: 'Vendor Item Mapping', vexpense: 'Vendor Expense G/L',
+    mail: 'Mail Configuration', settings: 'Settings',
   };
   const HIDE_PANELS = ['messages', 'workflow-panel', 'mail-po-panel', 'demand-forecast-panel', 'b1-forecast-panel',
     'forecast-dashboard-panel', 'procurement-agent-panel', 'production-agent-panel',
@@ -24,7 +25,7 @@
     'user-rights-panel', 'data-sync-panel', 'activity-agent-panel', 'prompt-activity-panel', 'financial-dashboard-panel', 'customer-aging-panel',
     'company-setup-panel', 'developer-settings-panel', 'ai-credits-panel', 'roles-perms-panel', 'user-management-panel', 'db-builder-panel', 'udt-panel',
     'query-library-panel', 'schema-registry-panel', 'create-agent-panel', 'custom-agent-panel', 'custom-transaction-panel', 'custom-api-panel', 'local-table-panel', 'workflow-run-panel', 'insight-agent-panel', 'fin-reports-panel',
-    'vendor-payment-aging-panel', 'purchase-analysis-panel', 'sales-analysis-panel', 'inv-dashboard-panel', 'soc-panel'];
+    'vendor-payment-aging-panel', 'purchase-analysis-panel', 'sales-analysis-panel', 'inv-dashboard-panel', 'soc-panel', 'grpo-sorting-panel', 'sorting-analytics-panel', 'putaway-analytics-panel'];
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const tok = () => localStorage.getItem('hanny_token') || '';
@@ -85,6 +86,13 @@
       price: o.LastPurchasePrice ?? o.price ?? null,
       taxCode: o.taxCode ?? o.TaxCode ?? o.VatGroup ?? '',
     };
+  }
+  // "Document total is more than 1,00,000 AND …" (mirrors describeConditions on the server)
+  function condText(c) {
+    const L = { gt: 'is more than', gte: 'is at least', lt: 'is less than', lte: 'is at most', eq: 'equals', between: 'is between', in: 'is any of', nin: 'is none of', any: 'any line is', all: 'every line is', none: 'no line is' };
+    const N = { total: 'Document total', subtotal: 'Total before tax', tax: 'Tax amount', maxLine: 'Largest line amount', deviationPct: 'Deviation %', vendor: 'Vendor', vendorGroup: 'Vendor group', currency: 'Currency', docType: 'Invoice type', itemGroup: 'Item group', itemCode: 'Item', glAccount: 'G/L account', warehouse: 'Warehouse', hasBase: 'Linked to PO / GRPO' };
+    const v = r => Array.isArray(r.value) && r.op !== 'between' ? r.value.map(x => x.name ? `${x.code} ${x.name}` : x.code).join(', ') : r.op === 'between' ? `${fmt(r.value[0], 0)} and ${fmt(r.value[1], 0)}` : typeof r.value === 'boolean' ? (r.value ? 'yes' : 'no') : fmt(r.value, 0);
+    return arr(c?.rules).map(r => ['any', 'all', 'none'].includes(r.op) ? `${N[r.field] || r.field}: ${L[r.op]} ${v(r)}` : (r.field === 'hasBase' ? `${N.hasBase}: ${v(r)}` : `${N[r.field] || r.field} ${L[r.op]} ${v(r)}`)).map(esc).join(c?.match === 'any' ? ' <b>OR</b> ' : ' <b>AND</b> ');
   }
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
@@ -202,6 +210,13 @@ textarea.apip-in{min-height:64px;resize:vertical}
 .apip-pill.indigo{background:var(--ap-ind-bg);color:var(--ap-ind)}.apip-pill.purple{background:var(--ap-p-bg);color:var(--ap-p)}
 .apip-pill.spin::before{content:'';width:8px;height:8px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:apipspin .8s linear infinite}
 .apip-err-ic{display:inline-flex;color:var(--ap-bad);vertical-align:middle;margin-left:5px;cursor:help}
+.apip-seg{display:inline-flex;border:1px solid var(--ap-line);border-radius:8px;overflow:hidden;background:#fff}
+.apip-seg button{border:0;background:none;padding:6px 14px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ap-mut);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.apip-seg button+button{border-left:1px solid var(--ap-line)}
+.apip-seg button.on{background:var(--ap-p);color:#fff}
+.apip-seg button:disabled{cursor:not-allowed;opacity:.6}
+.apip-glby{display:inline-block;margin-top:3px;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:6px;background:var(--ap-grey-bg);color:var(--ap-grey)}
+.apip-glby.rule,.apip-glby.vendor{background:var(--ap-ok-bg);color:var(--ap-ok)}.apip-glby.learned{background:var(--ap-blue-bg);color:var(--ap-blue)}.apip-glby.match{background:var(--ap-amb-bg);color:var(--ap-amb)}.apip-glby.user{background:var(--ap-ind-bg);color:var(--ap-ind)}
 .apip-tabs{display:flex;gap:4px;border-bottom:1px solid var(--ap-line);margin-bottom:16px;overflow-x:auto}
 .apip-tabs button{border:0;background:none;padding:10px 14px;font:inherit;font-size:13px;font-weight:600;color:var(--ap-mut);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
 .apip-tabs button.on{color:var(--ap-p);border-bottom-color:var(--ap-p)}
@@ -268,6 +283,14 @@ textarea.apip-in{min-height:64px;resize:vertical}
 .apip-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:5px 8px;border:1px solid #d1d5db;border-radius:8px;min-height:38px;background:var(--ap-card);cursor:text}
 .apip-chips.bad{border-color:#f87171;background:#fff5f5}
 .apip-chips:focus-within{border-color:var(--ap-p);box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+.apip-cond{border:1px dashed #c4b5fd;border-radius:10px;padding:10px 12px;background:#faf8ff}
+.apip-cond .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;margin-bottom:8px}
+.apip-cond .hd select{width:auto;height:30px;padding:2px 8px}
+.apip-crule{display:grid;grid-template-columns:minmax(150px,1fr) minmax(130px,.8fr) minmax(200px,1.6fr) auto;gap:8px;align-items:start;margin-bottom:8px}
+.apip-crule .two{display:flex;gap:6px;align-items:center}
+.apip-cond .none{font-size:12px;color:var(--ap-mut);margin-bottom:8px}
+.apip-why{font-size:12px;color:#5b21b6;background:var(--ap-p-bg);border-radius:8px;padding:6px 10px;margin:6px 0}
+@media (max-width:760px){.apip-crule{grid-template-columns:1fr 1fr}.apip-crule>:nth-child(3){grid-column:1/-1}}
 .apip-chip{display:inline-flex;align-items:center;gap:5px;background:var(--ap-p-bg);color:#5b21b6;padding:3px 4px 3px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
 .apip-chip.role{background:var(--ap-blue-bg);color:#1d4ed8}
 .apip-chip button{border:0;background:rgba(0,0,0,.08);color:inherit;width:17px;height:17px;border-radius:50%;cursor:pointer;line-height:1;font-size:12px;padding:0}
@@ -322,7 +345,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
 .apip-lines .apip-in{min-height:30px;padding:5px 7px;font-size:12px}
 .apip-lines td{padding:6px 6px;vertical-align:top}
 .apip-lines th{padding:8px 6px}
-.apip-lines .w-code{min-width:150px}.apip-lines .w-desc{min-width:180px}.apip-lines .w-n{width:86px;min-width:76px}.apip-lines .w-s{min-width:96px}
+.apip-lines .w-code{min-width:150px}.apip-lines .w-gl{min-width:290px}.apip-lines .w-desc{min-width:180px}.apip-lines .w-n{width:86px;min-width:76px}.apip-lines .w-s{min-width:96px}
 .apip-lines .ocr{font-size:11px;color:#4b5563;min-width:140px;max-width:200px}
 .apip-lines .lt{font-weight:600;white-space:nowrap;padding-top:12px}
 .apip-lines .base{font-size:11px;color:var(--ap-ind);white-space:nowrap;padding-top:12px}
@@ -471,7 +494,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
       try { hits = (await fetcher(q)).filter(Boolean); } catch (e) { err = e.message; }
       if (my !== seq || document.activeElement !== input) return;
       if (err) { openDD(input, [{ html: esc('Error: ' + err), disabled: true }], () => {}); return; }
-      openDD(input, hits.slice(0, 50).map(h => ({ html: `<span class="c">${esc(h.code)}</span>${esc(h.name)}`, value: h })), h => onPick(h));
+      openDD(input, hits.slice(0, 50).map(h => ({ html: `<span class="c">${esc(h.format || h.code)}</span>${esc(h.name)}`, value: h })), h => onPick(h));
     };
     const deb = debounce(run, 260);
     input.addEventListener('input', deb);
@@ -484,7 +507,9 @@ textarea.apip-in{min-height:64px;resize:vertical}
   }
   const fetchVendors = async q => arr(await api('GET', '/vendors?q=' + enc(q)), 'rows', 'vendors', 'items').map(normHit);
   const fetchItems = async q => arr(await api('GET', '/items?q=' + enc(q)), 'rows', 'items').map(normHit);
-  const fetchGL = async q => arr(await api('GET', '/gl-accounts?q=' + enc(q)), 'rows', 'accounts', 'items').map(normHit);
+  const fetchGL = async q => arr(await api('GET', '/gl-accounts?q=' + enc(q)), 'rows', 'accounts', 'items').map(o => ({ ...normHit(o), format: String(o.format ?? o.FormatCode ?? '') }));
+  // "5200-01 — Advertisement Expense" (format code when the account has one)
+  const glText = (code, name, format) => code ? `${format || code}${name ? ' — ' + name : ''}` : '';
 
   // multi-select chips. options: [{type,id,name}], value: array (mutated)
   function chipSelect(host, options, value, { placeholder = 'Search users or roles…', readOnly = false, onChange } = {}) {
@@ -613,7 +638,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
   function go(view, opts) {
     if (view === 'invoice') return openInvoice(opts.id, opts);
     setNav(view);
-    const fn = { dashboard: vDashboard, queue: vQueue, approvals: vApprovals, stages: vStages, master: vMaster, mail: vMail, settings: vSettings }[view];
+    const fn = { dashboard: vDashboard, queue: vQueue, approvals: vApprovals, stages: vStages, master: vMaster, vitems: vVendorItems, vexpense: vVendorExpense, mail: vMail, settings: vSettings }[view];
     try { fn(opts || {}); } catch (e) { console.error('[apip]', e); bodyEl.innerHTML = errBox(e.message || String(e)); }
   }
 
@@ -832,7 +857,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
         return;
       }
       tblEl.innerHTML = `<div class="apip-tw"><table class="apip-tbl"><thead><tr>
-        <th>Sr. No</th><th>Invoice Name</th><th>Date</th><th>Processing Status</th><th>Approval Status</th><th>Invoice From</th><th>Action</th></tr></thead><tbody>
+        <th>Sr. No</th><th>Invoice Name</th><th>Date</th><th>Type</th><th>Processing Status</th><th>Approval Status</th><th>Invoice From</th><th>Action</th></tr></thead><tbody>
         ${Q.rows.map((r, i) => queueRow(r, i)).join('')}</tbody></table></div>`;
     }
 
@@ -854,15 +879,34 @@ textarea.apip-in{min-height:64px;resize:vertical}
       if (ps === 'processed' && !r.sapDocNum)
         acts.push(`<button class="apip-ib g" data-act="miro" data-id="${id}" title="Post A/P Invoice to SAP">SAP</button>`);
       const errIc = ps === 'failed' && r.error ? `<span class="apip-err-ic" title="${esc(r.error)}">${I.alert}</span>` : '';
+      // Item / Service switch — only while the invoice is still editable
+      const typeOk = ['processed', 'duplicate'].includes(ps) && !['PENDING', 'PARTIAL', 'APPROVED'].includes(as);
+      const typeCell = ps === 'pending' || busy ? '<span class="mut">—</span>'
+        : typeOk ? `<select class="apip-in" style="width:96px;height:30px;padding:2px 6px" data-type="${id}"><option value="item" ${r.docType !== 'service' ? 'selected' : ''}>Item</option><option value="service" ${r.docType === 'service' ? 'selected' : ''}>Service</option></select>`
+        : `<span class="apip-pill">${r.docType === 'service' ? 'Service' : 'Item'}</span>`;
       return `<tr>
         <td class="mut">${i + 1}</td>
         <td><div class="nm" title="${esc(r.fileName)}">${esc(r.fileName)}</div>${r.vendorName || r.invoiceNo ? `<div class="mut">${esc(r.vendorName || '')}${r.invoiceNo ? ' · #' + esc(r.invoiceNo) : ''}${r.total != null && r.total !== '' ? ' · ' + fmt(r.total) + ' ' + esc(r.currency || '') : ''}</div>` : ''}</td>
         <td style="white-space:nowrap">${esc(fmtD(r.receivedAt))}<div class="mut">${esc(fmtT(r.receivedAt))}</div></td>
+        <td>${typeCell}</td>
         <td style="white-space:nowrap">${pillP(ps)}${errIc}${r.sapDocNum ? `<div class="mut">SAP #${esc(r.sapDocNum)}</div>` : ''}</td>
         <td>${pillA(as)}</td>
         <td>${sourceLabel(r)}</td>
         <td><div class="apip-acts">${acts.join('')}</div></td></tr>`;
     }
+
+    tblEl.addEventListener('change', async e => {
+      const s = e.target.closest('[data-type]'); if (!s) return;
+      const row = Q.rows.find(r => String(r.id) === s.dataset.type) || {};
+      const svc = s.value === 'service';
+      const msg = svc ? `Switch <b>${esc(row.fileName || row.id)}</b> to a <b>Service</b> invoice?<br><br>Lines take the description printed on the bill and a G/L account from the vendor G/L setup / mapping. Any PO / GRPO link is removed.`
+        : `Switch <b>${esc(row.fileName || row.id)}</b> to an <b>Item</b> invoice?<br><br>Lines are posted by item code. Any PO / GRPO link is removed — re-link it in the invoice form if needed.`;
+      if (!await confirmDlg(msg, { okLabel: svc ? 'Switch to Service' : 'Switch to Item' })) { s.value = svc ? 'item' : 'service'; return; }
+      s.disabled = true;
+      try { await api('POST', `/invoice/${enc(row.id)}/doc-type`, { docType: s.value }); toast(`Switched to ${svc ? 'Service' : 'Item'} invoice — review it before posting.`, 'ok', 4000); }
+      catch (er) { toast(er.message, 'err', 6000); }
+      load();
+    });
 
     tblEl.addEventListener('click', async e => {
       const b = e.target.closest('[data-act]');
@@ -886,7 +930,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
         return load();
       }
       if (act === 'send') {
-        const body = await pickTemplate();
+        const body = await pickTemplate(id);
         if (!body) return;
         try { await api('POST', `/queue/${enc(id)}/send-approval`, body); toast('Sent for approval.', 'ok'); } catch (er) { toast(er.message, 'err', 6000); }
         return load();
@@ -915,7 +959,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
   }
 
   // returns {templateId?} or null if cancelled
-  function pickTemplate() {
+  function pickTemplate(queueId) {
     return new Promise(async res => {
       let done = false;
       const fin = v => { if (!done) { done = true; res(v); } };
@@ -930,10 +974,15 @@ textarea.apip-in{min-height:64px;resize:vertical}
         }],
       });
       m.onClose = () => fin(null);
-      let rows = [];
-      try { rows = arr(await api('GET', '/templates'), 'rows'); } catch (e) { /* fall back to auto */ }
-      m.body.innerHTML = `<div class="apip-f"><label>Approval template</label><select class="apip-in"><option value="">Auto — first matching template</option>${rows.map(t => `<option value="${esc(t.id)}">${esc(t.name)} (${esc(t.stageCount ?? '?')} stage${t.stageCount == 1 ? '' : 's'})</option>`).join('')}</select>
-        <div class="hint">Auto selects the first template where you are a requestor and the invoice total is within the stage thresholds.</div></div>`;
+      let rows = [], match = null;
+      [rows, match] = await Promise.all([api('GET', '/templates').then(d => arr(d, 'rows')).catch(() => []),
+        queueId ? api('GET', `/templates/match/${enc(queueId)}`).catch(() => null) : Promise.resolve(null)]);
+      const best = match?.best;
+      const preview = best ? `<div class="apip-why"><b>Auto picks “${esc(best.name)}”</b>${best.reasons.length ? ` because ${best.reasons.map(esc).join(' and ')}` : ' (fallback — no conditions)'}.
+          <div style="margin-top:4px">${best.stages.map((s, i) => `${i + 1}. ${esc(s.name)} → ${esc(s.approvers.join(', ') || '—')}${s.reasons.length ? ` <i>(${s.reasons.map(esc).join(', ')})</i>` : ''}`).join('<br>')}</div></div>`
+        : match ? `<div class="apip-msg warn">No template matches this invoice automatically — pick one below.${arr(match.rejected).length ? `<div style="margin-top:4px;font-size:11.5px">${arr(match.rejected).slice(0, 4).map(r => `<b>${esc(r.name)}</b>: ${esc(r.why)}`).join('<br>')}</div>` : ''}</div>` : '';
+      m.body.innerHTML = `${preview}<div class="apip-f"><label>Approval template</label><select class="apip-in"><option value="">${best ? `Auto — ${esc(best.name)}` : 'Auto — first matching template'}</option>${rows.map(t => `<option value="${esc(t.id)}">${esc(t.name)} (${esc(t.stageCount ?? '?')} stage${t.stageCount == 1 ? '' : 's'})</option>`).join('')}</select>
+        <div class="hint">Auto uses the template whose conditions match this invoice (lowest priority number first). Choosing a template still applies its stage conditions.</div></div>`;
     });
   }
 
@@ -1060,12 +1109,14 @@ textarea.apip-in{min-height:64px;resize:vertical}
         ${f('Document Date', inp('TaxDate', 'date'))}
         ${f('Currency', `<select class="apip-in" data-f="DocCurrency" ${dis}>${optsHtml(lk.currencies, m.DocCurrency, '— Local —')}</select>`)}
         ${f('Series', `<select class="apip-in" data-f="Series" ${dis}>${optsHtml(lk.series, m.Series, '— Default —')}</select>`)}
-        ${f('Doc. Type', `<select class="apip-in" data-f="DocType" ${dis}><option value="dDocument_Items" ${m.DocType !== 'dDocument_Service' ? 'selected' : ''}>Item</option><option value="dDocument_Service" ${m.DocType === 'dDocument_Service' ? 'selected' : ''}>Service</option></select>`)}
         ${f('Discount %', inp('DiscountPercent', 'number', 'step="any" min="0" max="100"'))}
         ${f('Base Document', `<div style="display:flex;gap:4px;align-items:center"><input class="apip-in" readonly value="${baseLbl}">${inv.ro ? '' : `<button class="apip-ib i" style="height:34px" data-a="basedoc" title="Link PO / GRPO">${I.link}</button>${m.BaseEntry ? `<button class="apip-ib r" style="height:34px" data-a="baseclear" title="Remove link">${I.x}</button>` : ''}`}</div>`)}
         ${extras}
       </div></div>
-      <div class="apip-card"><div class="apip-ch"><h3>Lines</h3><div class="sp"></div>${inv.ro ? '' : `<button class="apip-btn sm" data-a="addline">${I.plus} Add Line</button>`}</div><div id="apip-lines"></div></div>
+      <div class="apip-card"><div class="apip-ch"><h3>Lines</h3>
+        <div class="apip-seg" title="Item: post by item code (PO / GRPO matching). Service: post the bill description to a G/L account.">
+          <button data-a="doctype" data-v="dDocument_Items" class="${m.DocType !== 'dDocument_Service' ? 'on' : ''}" ${dis}>Item</button><button data-a="doctype" data-v="dDocument_Service" class="${m.DocType === 'dDocument_Service' ? 'on' : ''}" ${dis}>Service</button>
+        </div>${typeBadge(m)}<div class="sp"></div>${inv.ro ? '' : `<button class="apip-btn sm" data-a="addline">${I.plus} Add Line</button>`}</div><div id="apip-lines"></div></div>
       <div class="apip-card" id="apip-totals"></div>
       <div class="apip-card"><h3>Remarks</h3><textarea class="apip-in" data-f="Comments" rows="3" ${dis}>${esc(m.Comments || '')}</textarea></div>
       ${approvalTimeline(inv.approval)}`;
@@ -1087,6 +1138,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
       if (a === 'vsearch') vin._acRun && vin._acRun();
       else if (a === 'addline') { m.lines.push({ ItemCode: '', ItemDescription: '', Quantity: 1, UnitPrice: 0, DiscountPercent: 0, TaxCode: inv.settings.defaultTaxCode || '', WarehouseCode: inv.settings.defaultWarehouse || '', AccountCode: m.DocType === 'dDocument_Service' ? (inv.settings.defaultGlAccount || '') : '' }); renderLines(); renderTotals(); }
       else if (a === 'rmline') { m.lines.splice(+b.dataset.i, 1); renderLines(); renderTotals(); }
+      else if (a === 'doctype' && b.dataset.v !== m.DocType) switchDocType(b.dataset.v);
       else if (a === 'basedoc') pickBaseDoc();
       else if (a === 'baseclear') { m.BaseType = null; m.BaseEntry = null; m.BaseDocNum = null; m.lines.forEach(l => { l.BaseType = null; l.BaseEntry = null; l.BaseLine = null; }); renderForm(); }
     };
@@ -1102,6 +1154,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
         const l = m.lines[+t.dataset.i]; if (!l) return;
         const k = t.dataset.l;
         l[k] = NUM_KEYS.has(k) ? num(t.value) : t.value;
+        if (k === 'AccountCode') { l.glBy = 'user'; l.AccountName = ''; l.AccountFormat = ''; l.glInvalid = !!t.value.trim(); }
         t.classList.remove('bad');
         if (NUM_KEYS.has(k) || k === 'TaxCode') {
           const tr = t.closest('tr'); const c = tr && tr.querySelector('.lt'); if (c) c.textContent = fmt(lineTotal(l));
@@ -1111,6 +1164,46 @@ textarea.apip-in{min-height:64px;resize:vertical}
     };
     form.oninput = onEdit;
     form.onchange = onEdit;
+  }
+
+  // how the current type was chosen: auto-detected (confidence + reasons), by a linked PO / GRPO, or by the user
+  function typeBadge(m) {
+    const a = m.docTypeAuto;
+    if (m.docTypeBy === 'user') return '<span class="apip-pill indigo" title="Type chosen by a user">Set manually</span>';
+    if (!a || a.source === 'default') return '<span class="apip-pill" title="No clear signal on the bill — the default type from Settings is used">Default type</span>';
+    const c = Math.round(num(a.confidence) * 100);
+    const why = arr(a.reasons).join('\n');
+    if (a.source === 'base') return `<span class="apip-pill blue" title="${esc(why)}">From linked document</span>`;
+    return `<span class="apip-pill ${c >= 80 ? 'ok' : c >= 65 ? 'blue' : 'amber'}" title="${esc(why)}">Auto-detected · ${c}%</span>`;
+  }
+
+  // Item ⇄ Service. Service: description as printed on the bill + G/L from the vendor setup / mapping
+  // (same order as processing). A PO / GRPO has one fixed type, so its link is dropped on a switch.
+  async function switchDocType(docType) {
+    const inv = S.inv, m = inv.mapped, svc = docType === 'dDocument_Service';
+    if (m.BaseEntry || m.lines.some(l => l.BaseEntry)) {
+      if (!await confirmDlg(`This invoice is linked to ${num(m.BaseType) === 20 ? 'GRPO' : 'PO'} #${esc(m.BaseDocNum || m.BaseEntry || '')}. Switching to <b>${svc ? 'Service' : 'Item'}</b> removes the link. Continue?`, { okLabel: 'Switch' })) return;
+      m.BaseType = null; m.BaseEntry = null; m.BaseDocNum = null;
+      m.lines.forEach(l => { l.BaseType = null; l.BaseEntry = null; l.BaseLine = null; });
+    }
+    m.DocType = docType;
+    m.docTypeBy = 'user';
+    if (svc) {
+      m.lines.forEach(l => { if (l.ocrDescription) l.ItemDescription = String(l.ocrDescription).slice(0, 100); });
+      const todo = m.lines.filter(l => !(l.glBy === 'user' && l.AccountCode));
+      if (todo.length) {
+        try {
+          const d = await api('POST', '/gl-suggest', { cardCode: m.CardCode || '', texts: todo.map(l => l.ocrDescription || l.ItemDescription || '') });
+          arr(d, 'rows').forEach((g, k) => { const l = todo[k]; if (l && g) { l.AccountCode = g.code; l.AccountName = g.name || ''; l.AccountFormat = g.format || ''; l.glBy = g.by; l.glScore = g.score; l.glInvalid = false; } });
+        } catch (e) { toast('G/L suggestion failed: ' + e.message, 'warn', 5000); }
+      }
+      const miss = m.lines.filter(l => !l.AccountCode).length;
+      toast(miss ? `Service invoice — select a G/L account for ${miss} line(s).` : 'Service invoice — G/L accounts filled from the mapping. Please review.', miss ? 'warn' : 'ok', 4500);
+    } else {
+      const miss = m.lines.filter(l => !l.ItemCode).length;
+      if (miss) toast(`Item invoice — select an item for ${miss} line(s).`, 'warn', 4500);
+    }
+    renderForm();
   }
 
   function renderLines() {
@@ -1123,15 +1216,18 @@ textarea.apip-in{min-height:64px;resize:vertical}
       return `<span class="apip-score ${v >= 80 ? 'ok' : v >= 50 ? 'warn' : 'bad'}">${Math.round(v)}% match</span>`;
     };
     if (!m.lines.length) { host.innerHTML = `<div class="apip-empty">No lines. ${inv.ro ? '' : 'Click <b>Add Line</b> or link a base document.'}</div>`; return; }
+    const GLBY = { rule: 'Vendor keyword rule', vendor: 'Vendor default G/L', learned: 'Learned from correction', match: 'Matched by name', default: 'Default G/L', user: 'Selected by user' };
+    const glInfo = l => l.AccountCode ? `${l.glBy ? `<span class="apip-glby ${esc(l.glBy)}">${esc(GLBY[l.glBy] || l.glBy)}${l.glBy === 'match' && l.glScore ? ' ' + Math.round(num(l.glScore) * 100) + '%' : ''}</span>` : ''}` : '';
+    const req = '<i style="color:#dc2626;font-style:normal">*</i>';
     host.innerHTML = `<div class="apip-tw"><table class="apip-tbl apip-lines"><thead><tr>
-      <th>#</th><th>${svc ? 'G/L Account' : 'Item No.'}</th><th>Description</th><th>OCR Text</th><th class="r">Qty</th><th>UoM</th><th class="r">Unit Price</th><th class="r">Disc %</th><th>Tax Code</th>${svc ? '' : '<th>Warehouse</th>'}<th class="r">Line Total</th><th>Base Ref</th>${inv.ro ? '' : '<th></th>'}</tr></thead><tbody>
+      <th>#</th><th>${svc ? 'G/L Account ' + req : 'Item No.'}</th><th>${svc ? 'Service Description ' + req : 'Description'}</th><th>${svc ? 'As Per Bill' : 'OCR Text'}</th><th class="r">Qty</th>${svc ? '' : '<th>UoM</th>'}<th class="r">Unit Price</th><th class="r">Disc %</th><th>Tax Code</th>${svc ? '' : '<th>Warehouse</th>'}<th class="r">Line Total</th><th>Base Ref</th>${inv.ro ? '' : '<th></th>'}</tr></thead><tbody>
       ${m.lines.map((l, i) => `<tr data-i="${i}">
         <td class="mut" style="padding-top:12px">${i + 1}</td>
-        <td class="w-code"><input class="apip-in" data-l="${svc ? 'AccountCode' : 'ItemCode'}" data-i="${i}" data-ac="${svc ? 'gl' : 'item'}" value="${esc(svc ? (l.AccountCode || '') : (l.ItemCode || ''))}" placeholder="${svc ? 'G/L account' : 'Item no.'}" autocomplete="off" ${dis}></td>
-        <td class="w-desc"><input class="apip-in" data-l="ItemDescription" data-i="${i}" value="${esc(l.ItemDescription || '')}" ${dis}></td>
-        <td class="ocr">${esc(l.ocrDescription || '')}${l.ocrDescription ? '<br>' : ''}${score(l.matchScore)}</td>
+        <td class="w-code${svc ? ' w-gl' : ''}"><input class="apip-in${svc && ((!l.AccountCode && l.BaseEntry == null) || l.glInvalid) ? ' bad' : ''}" data-l="${svc ? 'AccountCode' : 'ItemCode'}" data-i="${i}" data-ac="${svc ? 'gl' : 'item'}" value="${esc(svc ? (l.glInvalid ? l.AccountCode : glText(l.AccountCode, l.AccountName, l.AccountFormat)) : (l.ItemCode || ''))}" ${svc && l.AccountCode && !l.glInvalid ? `title="${esc(glText(l.AccountCode, l.AccountName, l.AccountFormat))}${l.AccountFormat && l.AccountFormat !== l.AccountCode ? ' (internal ' + esc(l.AccountCode) + ')' : ''}"` : ''} placeholder="${svc ? 'Search G/L no. or name — pick from the list' : 'Item no.'}" autocomplete="off" ${dis}>${svc ? (l.glInvalid ? '<div class="ferr" style="display:block">Not a G/L account — pick one from the list</div>' : glInfo(l)) : ''}</td>
+        <td class="w-desc"><input class="apip-in${svc && !String(l.ItemDescription || '').trim() ? ' bad' : ''}" data-l="ItemDescription" data-i="${i}" value="${esc(l.ItemDescription || '')}" ${svc ? 'placeholder="Service description as per bill" maxlength="100"' : ''} ${dis}></td>
+        <td class="ocr">${esc(l.ocrDescription || '')}${l.ocrDescription && !svc ? '<br>' : ''}${svc ? '' : score(l.matchScore)}</td>
         <td class="w-n"><input class="apip-in" style="text-align:right" type="number" step="any" data-l="Quantity" data-i="${i}" value="${esc(l.Quantity ?? '')}" ${dis}></td>
-        <td><input class="apip-in" style="width:70px" data-l="UoMCode" data-i="${i}" value="${esc(l.UoMCode || '')}" ${dis}></td>
+        ${svc ? '' : `<td><input class="apip-in" style="width:70px" data-l="UoMCode" data-i="${i}" value="${esc(l.UoMCode || '')}" ${dis}></td>`}
         <td class="w-n"><input class="apip-in" style="text-align:right" type="number" step="any" data-l="UnitPrice" data-i="${i}" value="${esc(l.UnitPrice ?? '')}" ${dis}></td>
         <td><input class="apip-in" style="text-align:right;width:66px" type="number" step="any" data-l="DiscountPercent" data-i="${i}" value="${esc(l.DiscountPercent ?? '')}" ${dis}></td>
         <td class="w-s"><select class="apip-in" data-l="TaxCode" data-i="${i}" ${dis}>${optsHtml(lk.taxCodes, l.TaxCode, '—')}</select></td>
@@ -1141,12 +1237,22 @@ textarea.apip-in{min-height:64px;resize:vertical}
         ${inv.ro ? '' : `<td><button class="apip-x" data-a="rmline" data-i="${i}" title="Remove line">${I.trash}</button></td>`}
       </tr>`).join('')}</tbody></table></div>`;
     if (inv.ro) return;
+    // typed G/L text that was not picked from the list → look it up when leaving the field
+    host.querySelectorAll('[data-ac="gl"]').forEach(inp => inp.addEventListener('blur', () => setTimeout(async () => {
+      const l = m.lines[+inp.dataset.i];
+      if (!l || !l.glInvalid || S.inv !== inv || (dd && dd._anchor === inp)) return;
+      try {
+        const a = (await api('GET', '/gl-resolve?q=' + enc(l.AccountCode))).account;
+        if (a && S.inv === inv) { l.AccountCode = a.code; l.AccountName = a.name || ''; l.AccountFormat = a.format || ''; l.glInvalid = false; }
+      } catch { /* stays marked */ }
+      if (S.inv === inv) renderLines();
+    }, 250)));
     host.querySelectorAll('[data-ac]').forEach(inp => {
       const i = +inp.dataset.i;
       const isGl = inp.dataset.ac === 'gl';
       attachAC(inp, isGl ? fetchGL : fetchItems, h => {
         const l = m.lines[i]; if (!l) return;
-        if (isGl) { l.AccountCode = h.code; if (!l.ItemDescription) l.ItemDescription = h.name; }
+        if (isGl) { l.AccountCode = h.code; l.AccountName = h.name || ''; l.AccountFormat = h.format || ''; l.glBy = 'user'; l.glInvalid = false; if (!l.ItemDescription) l.ItemDescription = l.ocrDescription || h.name; }
         else {
           l.ItemCode = h.code;
           if (!l.ItemDescription || l.ItemDescription === l.ocrDescription) l.ItemDescription = h.name;
@@ -1201,7 +1307,8 @@ textarea.apip-in{min-height:64px;resize:vertical}
     if (!ap || !arr(ap.stages).length) return '';
     const cls = s => { const v = String(s || '').toUpperCase(); return v === 'APPROVED' ? 'ok' : v === 'REJECTED' ? 'bad' : (v === 'PENDING' || v === 'ACTIVE' || v === 'IN_PROGRESS' || v === 'PARTIAL') ? 'cur' : ''; };
     return `<div class="apip-card"><h3>Approval Timeline${ap.templateName ? ` <span class="apip-pill purple" style="text-transform:none;margin-left:6px">${esc(ap.templateName)}</span>` : ''}</h3>
-      <div class="apip-tl">${arr(ap.stages).map(s => `<div class="st ${cls(s.status)}"><b>Stage ${esc(s.no ?? '')}: ${esc(s.name || '')}</b> ${s.status ? pillA(s.status) : ''}
+      ${ap.how === 'auto' ? `<div class="apip-why">Template chosen automatically${arr(ap.matchReasons).length ? `: ${arr(ap.matchReasons).map(esc).join(' and ')}` : ' (fallback — no conditions)'}</div>` : ''}
+      <div class="apip-tl">${arr(ap.stages).map(s => `<div class="st ${cls(s.status)}"><b>Stage ${esc(s.no ?? '')}: ${esc(s.name || '')}</b> ${s.status ? pillA(s.status) : ''}${arr(s.matchReasons).length ? `<div class="mut" style="font-size:11.5px">Required because ${arr(s.matchReasons).map(esc).join(' and ')}</div>` : ''}
         ${arr(s.approvals).map(a => `<div class="ac"><b>${esc(a.user || '')}</b> — ${esc(String(a.action || '').toLowerCase())} <span style="color:#9ca3af">${esc(fmtDT(a.at))}</span>${a.comment ? `<div style="margin-top:2px">“${esc(a.comment)}”</div>` : ''}</div>`).join('') || '<div class="ac" style="color:#9ca3af">No actions yet</div>'}
       </div>`).join('')}</div></div>`;
   }
@@ -1236,7 +1343,8 @@ textarea.apip-in{min-height:64px;resize:vertical}
     const d = await api('PUT', `/invoice/${enc(inv.id)}`, { mapped: inv.mapped });
     if (S.inv !== inv) return false;
     if (d.mapped) { inv.mapped = normalizeMapped(d.mapped); renderForm(); }
-    if (!silent) toast('Invoice saved.', 'ok');
+    if (d.warning) toast(d.warning, 'warn', 7000);
+    else if (!silent) toast('Invoice saved.', 'ok');
     return true;
   }
 
@@ -1264,7 +1372,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
         showIssues(arr(d, 'issues'));
       } else if (act === 'send') {
         await saveInvoice(true);
-        const body = await pickTemplate();
+        const body = await pickTemplate(inv.id);
         if (body) {
           const d = await api('POST', `/queue/${enc(inv.id)}/send-approval`, body);
           toast('Sent for approval.', 'ok');
@@ -1464,11 +1572,11 @@ textarea.apip-in{min-height:64px;resize:vertical}
       const f = rows.filter(r => !q || `${r.name} ${r.description}`.toLowerCase().includes(q));
       bodyEl.querySelector('#apip-tcount').textContent = `Showing ${f.length} of ${rows.length} templates`;
       if (!f.length) { tbl.innerHTML = `<div class="apip-empty">${rows.length ? 'No templates match your search.' : 'No approval templates yet. Click <b>+ Create Template</b> to define one.'}</div>`; return; }
-      tbl.innerHTML = `<div class="apip-tw"><table class="apip-tbl"><thead><tr><th>Template Name</th><th>Description</th><th class="c">Stages</th><th>Settings</th><th>Requestors</th><th>Actions</th></tr></thead><tbody>
+      tbl.innerHTML = `<div class="apip-tw"><table class="apip-tbl"><thead><tr><th>Template Name</th><th>Used when</th><th class="c">Priority</th><th class="c">Stages</th><th>Requestors</th><th>Actions</th></tr></thead><tbody>
         ${f.map(r => `<tr><td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:9px;background:#dbeafe;color:#2563eb;display:flex;align-items:center;justify-content:center;flex-shrink:0">${I.tpl}</div><div><b>${esc(r.name)}</b><div class="mut">Created ${esc(fmtD(r.createdAt))}</div></div></div></td>
-          <td style="max-width:320px">${esc(r.description || '')}</td>
+          <td style="max-width:380px">${r.conditionText ? `<span style="font-size:12px">${esc(r.conditionText)}</span>` : '<span class="apip-pill">Any invoice (fallback)</span>'}${r.stageConditionCount ? `<div class="mut">${esc(r.stageConditionCount)} conditional stage(s)</div>` : ''}${r.description ? `<div class="mut">${esc(r.description)}</div>` : ''}</td>
+          <td class="c">${esc(r.priority ?? 100)}</td>
           <td class="c"><span class="apip-badge">${esc(r.stageCount ?? 0)}</span></td>
-          <td>${r.settingsEnabled ? '<span class="apip-pill ok">Enabled</span>' : '<span class="apip-pill">Disabled</span>'}</td>
           <td><span style="display:inline-flex;align-items:center;gap:5px;color:#4b5563">${I.users}<b>${esc(r.requestorCount ?? 0)}</b></span></td>
           <td><div class="apip-acts"><button class="apip-ib b" data-e="${esc(r.id)}" title="Edit">${I.edit}</button><button class="apip-ib" data-n="${esc(r.id)}" title="Details">${I.info}</button><button class="apip-ib r" data-d="${esc(r.id)}" title="Delete">${I.trash}</button></div></td></tr>`).join('')}</tbody></table></div>`;
     }
@@ -1489,6 +1597,88 @@ textarea.apip-in{min-height:64px;resize:vertical}
     load();
   }
 
+  // ── Approval conditions builder ──────────────────────────────────────────
+  // cond = { match: 'all' | 'any', rules: [{ field, op, value }] } (lib/apip-conditions.mjs); edited in place.
+  let condMetaP = null;
+  const condMeta = () => (condMetaP = condMetaP || api('GET', '/condition-fields').catch(e => { condMetaP = null; throw e; }));
+  function condEditor(host, cond, meta, { emptyText = 'No conditions — always applies.', addLabel = 'Add condition' } = {}) {
+    cond.match = cond.match === 'any' ? 'any' : 'all';
+    cond.rules = arr(cond.rules);
+    const F = Object.fromEntries(arr(meta.fields).map(f => [f.key, f]));
+    const lists = meta.lists || {};
+    const fetchers = {
+      vendors: fetchVendors, items: fetchItems, glAccounts: fetchGL,
+    };
+    const fetcherFor = src => fetchers[src] || (async q => { q = String(q || '').toLowerCase(); return arr(lists[src]).filter(x => !q || `${x.code} ${x.name}`.toLowerCase().includes(q)); });
+    const valueHtml = (r, i) => {
+      const f = F[r.field]; if (!f) return '<span></span>';
+      if (f.kind === 'number') return r.op === 'between'
+        ? `<div class="two"><input class="apip-in" type="number" step="any" data-cv="0" data-ci="${i}" value="${esc(arr(r.value)[0] ?? '')}" placeholder="From"><span>and</span><input class="apip-in" type="number" step="any" data-cv="1" data-ci="${i}" value="${esc(arr(r.value)[1] ?? '')}" placeholder="To"></div>`
+        : `<input class="apip-in" type="number" step="any" data-cv="n" data-ci="${i}" value="${esc(Array.isArray(r.value) ? '' : (r.value ?? ''))}" placeholder="Amount">`;
+      if (f.kind === 'bool') return `<select class="apip-in" data-cv="b" data-ci="${i}"><option value="true" ${r.value === true ? 'selected' : ''}>Yes</option><option value="false" ${r.value === false ? 'selected' : ''}>No</option></select>`;
+      const empty = f.source && !fetchers[f.source] && !arr(lists[f.source]).length;
+      return `<div><div class="apip-chips" data-cchips="${i}">${arr(r.value).map((v, k) => `<span class="apip-chip">${esc(v.code)}${v.name ? ' · ' + esc(v.name) : ''}<button type="button" data-crmv="${i}:${k}" title="Remove">×</button></span>`).join('')}<input class="apip-chip-in" data-cpick="${i}" placeholder="${arr(r.value).length ? '' : 'Search and pick…'}"></div>${empty ? '<div class="hint">No values synced yet — run Data Sync (Item Master / Supplier Master / Item Groups).</div>' : ''}</div>`;
+    };
+    function render() {
+      host.innerHTML = `<div class="apip-cond">
+        ${cond.rules.length > 1 ? `<div class="hd">Apply when <select class="apip-in" data-cmatch><option value="all" ${cond.match === 'all' ? 'selected' : ''}>ALL</option><option value="any" ${cond.match === 'any' ? 'selected' : ''}>ANY</option></select> of these are true:</div>` : ''}
+        ${cond.rules.length ? cond.rules.map((r, i) => `<div class="apip-crule">
+          <select class="apip-in" data-cf="${i}"><option value="">— Field —</option>${arr(meta.fields).map(f => `<option value="${esc(f.key)}" ${r.field === f.key ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select>
+          <select class="apip-in" data-co="${i}" ${F[r.field] ? '' : 'disabled'}>${F[r.field] ? arr(meta.ops[F[r.field].kind]).map(([k, l]) => `<option value="${esc(k)}" ${r.op === k ? 'selected' : ''}>${esc(l)}</option>`).join('') : ''}</select>
+          ${valueHtml(r, i)}
+          <button type="button" class="apip-x" data-crm="${i}" title="Remove condition">${I.trash}</button></div>`).join('') : `<div class="none">${emptyText}</div>`}
+        <button type="button" class="apip-btn sm" data-cadd>${I.plus} ${esc(addLabel)}</button></div>`;
+      host.querySelectorAll('[data-cpick]').forEach(inp => {
+        const i = +inp.dataset.cpick, f = F[cond.rules[i].field];
+        attachAC(inp, fetcherFor(f.source), h => {
+          const vals = arr(cond.rules[i].value);
+          if (!vals.some(v => String(v.code) === String(h.code))) vals.push({ code: String(h.code), name: h.name || '' });
+          cond.rules[i].value = vals; render();
+          setTimeout(() => host.querySelector(`[data-cpick="${i}"]`)?.focus(), 0);
+        });
+        inp.addEventListener('focus', () => inp._acRun && inp._acRun());
+      });
+    }
+    host.addEventListener('click', e => {
+      if (e.target.closest('[data-cadd]')) { cond.rules.push({ field: '', op: '', value: '' }); render(); return; }
+      const rm = e.target.closest('[data-crm]'); if (rm) { cond.rules.splice(+rm.dataset.crm, 1); render(); return; }
+      const rv = e.target.closest('[data-crmv]'); if (rv) { const [i, k] = rv.dataset.crmv.split(':').map(Number); cond.rules[i].value.splice(k, 1); render(); }
+    });
+    host.addEventListener('change', e => {
+      const t = e.target;
+      if (t.dataset.cmatch != null) cond.match = t.value;
+      else if (t.dataset.cf != null) {
+        const r = cond.rules[+t.dataset.cf], f = F[t.value];
+        r.field = t.value; r.op = f ? meta.ops[f.kind][0][0] : ''; r.value = f?.kind === 'bool' ? true : f?.kind === 'number' ? '' : [];
+        render();
+      } else if (t.dataset.co != null) {
+        const r = cond.rules[+t.dataset.co]; const wasBetween = r.op === 'between';
+        r.op = t.value;
+        if (F[r.field]?.kind === 'number' && wasBetween !== (r.op === 'between')) { r.value = r.op === 'between' ? [arr(r.value)[0] ?? r.value, ''] : (Array.isArray(r.value) ? r.value[0] : r.value); render(); }
+      } else if (t.dataset.cv === 'b') cond.rules[+t.dataset.ci].value = t.value === 'true';
+    });
+    host.addEventListener('input', e => {
+      const t = e.target; if (t.dataset.cv == null || t.dataset.cv === 'b') return;
+      const r = cond.rules[+t.dataset.ci];
+      if (t.dataset.cv === 'n') r.value = t.value;
+      else { const v = Array.isArray(r.value) ? r.value : ['', '']; v[+t.dataset.cv] = t.value; r.value = v; }
+      t.classList.remove('bad');
+    });
+    render();
+    return { render };
+  }
+  // client-side check mirroring conditionProblems() on the server
+  function condProblems(cond, meta, where) {
+    const F = Object.fromEntries(arr(meta?.fields).map(f => [f.key, f]));
+    return arr(cond?.rules).map((r, i) => {
+      const f = F[r.field];
+      if (!f) return `${where} ${i + 1}: choose a field.`;
+      if (f.kind === 'number') { const v = r.op === 'between' ? arr(r.value) : [r.value]; if (v.length < (r.op === 'between' ? 2 : 1) || v.some(x => x === '' || x == null || isNaN(Number(x)))) return `${where} ${i + 1} (${f.label}): enter ${r.op === 'between' ? 'both amounts' : 'an amount'}.`; }
+      else if (f.kind !== 'bool' && !arr(r.value).length) return `${where} ${i + 1} (${f.label}): pick at least one value.`;
+      return null;
+    }).filter(Boolean);
+  }
+
   async function templateInfo(id) {
     const m = modal({ title: 'Template Details', wide: true, body: loading() });
     try {
@@ -1497,19 +1687,22 @@ textarea.apip-in{min-height:64px;resize:vertical}
       const ad = t.additionalSettings || {};
       m.body.innerHTML = `<h3 style="margin:0 0 4px;font-size:16px">${esc(t.name)}</h3><p style="margin:0 0 12px;color:#6b7280">${esc(t.description || '')}</p>
         <div class="apip-f" style="margin-bottom:12px"><label>Requestors</label><div style="display:flex;flex-wrap:wrap;gap:4px">${chips(t.requestors)}</div></div>
+        <div class="apip-f" style="margin-bottom:12px"><label>Used automatically when · priority ${esc(t.priority ?? 100)}</label>${condText(t.conditions) || 'Any invoice (no conditions)'}</div>
         <div class="apip-f" style="margin-bottom:12px"><label>Additional Settings</label>${ad.enabled ? `Enabled · Deviation ${esc(ad.deviationPct ?? 0)}% · Vendors: ${esc(arr(ad.vendorCodes).join(', ') || 'All')}` : 'Disabled'}</div>
-        ${arr(t.stages).map((s, i) => `<div class="apip-stage"><div class="sh"><span class="no">${i + 1}</span><b>${esc(s.name)}</b><span class="apip-pill">${esc(s.approvalsRequired ?? 1)} approval(s) · ${esc(s.rejectorsRequired ?? 1)} rejector(s)${num(s.maxInvoiceTotal) > 0 ? ' · ≤ ' + fmt(s.maxInvoiceTotal) : ''}</span></div><div style="color:#6b7280;margin-bottom:8px">${esc(s.description || '')}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${chips(s.approvers)}</div></div>`).join('')}`;
+        ${arr(t.stages).map((s, i) => `<div class="apip-stage"><div class="sh"><span class="no">${i + 1}</span><b>${esc(s.name)}</b><span class="apip-pill">${esc(s.approvalsRequired ?? 1)} approval(s) · ${esc(s.rejectorsRequired ?? 1)} rejector(s)${num(s.maxInvoiceTotal) > 0 ? ' · ≤ ' + fmt(s.maxInvoiceTotal) : ''}</span></div><div style="color:#6b7280;margin-bottom:8px">${esc(s.description || '')}</div>${arr(s.conditions?.rules).length ? `<div class="apip-why">Only when: ${condText(s.conditions)}</div>` : ''}<div style="display:flex;flex-wrap:wrap;gap:4px">${chips(s.approvers)}</div></div>`).join('')}`;
     } catch (e) { m.body.innerHTML = errBox(e.message); }
   }
 
   async function templateForm(id) {
     const seq = startView('master');
     bodyEl.innerHTML = loading('Loading…');
-    let principals = { users: [], roles: [] }, t;
+    let principals = { users: [], roles: [] }, t, meta = { fields: [], ops: {}, lists: {} };
     try {
-      const [p, td] = await Promise.all([api('GET', '/principals').catch(e => { toast('Could not load users/roles: ' + e.message, 'err'); return {}; }), id ? api('GET', `/templates/${enc(id)}`) : Promise.resolve(null)]);
+      const [p, td, cm] = await Promise.all([api('GET', '/principals').catch(e => { toast('Could not load users/roles: ' + e.message, 'err'); return {}; }), id ? api('GET', `/templates/${enc(id)}`) : Promise.resolve(null),
+        condMeta().catch(e => { toast('Could not load condition fields: ' + e.message, 'err'); return { fields: [], ops: {}, lists: {} }; })]);
       principals = { users: arr(p?.users), roles: arr(p?.roles) };
       t = td ? td.template : null;
+      meta = cm;
     } catch (e) {
       if (seq !== S.seq) return;
       bodyEl.innerHTML = `<button class="apip-btn sm" data-a="back">${I.back} Back</button><div style="height:12px"></div>${errBox(e.message)}`;
@@ -1522,7 +1715,9 @@ textarea.apip-in{min-height:64px;resize:vertical}
     const T = t ? JSON.parse(JSON.stringify(t)) : { name: '', description: '', requestors: [], additionalSettings: { enabled: false, deviationPct: 0, vendorCodes: [] }, stages: [newStage()] };
     T.requestors = arr(T.requestors); T.stages = arr(T.stages); if (!T.stages.length) T.stages.push(newStage());
     T.additionalSettings = Object.assign({ enabled: false, deviationPct: 0, vendorCodes: [] }, T.additionalSettings || {});
-    T.stages.forEach(s => { s.approvers = arr(s.approvers); });
+    T.stages.forEach(s => { s.approvers = arr(s.approvers); s.conditions = s.conditions || { match: 'all', rules: [] }; });
+    T.conditions = T.conditions || { match: 'all', rules: [] };
+    T.priority = T.priority ?? 100;
 
     bodyEl.innerHTML = `<div class="apip-ph"><div style="display:flex;gap:12px;align-items:flex-start"><button class="apip-btn sm" data-a="back">${I.back} Back</button><div><h2>Approval Master</h2><p>Configure approval templates and stages${id ? ' — editing <b>' + esc(T.name) + '</b>' : ''}</p></div></div>
         <div class="apip-ph-r"><button class="apip-btn" data-a="cancel">Cancel</button><button class="apip-btn blue" data-a="save">${I.check} Save</button></div></div>
@@ -1532,12 +1727,17 @@ textarea.apip-in{min-height:64px;resize:vertical}
           <div class="apip-f"><label>Template Name <i>*</i></label><input class="apip-in" data-t="name" value="${esc(T.name)}" placeholder="e.g. Standard AP Approval"><div class="ferr" data-err="name"></div></div>
           <div class="apip-f"><label>Description <i>*</i></label><input class="apip-in" data-t="description" value="${esc(T.description)}" placeholder="What this template is used for"><div class="ferr" data-err="description"></div></div>
         </div>
-        <div class="apip-f" style="margin-top:12px"><label>Requestors <i>*</i></label><div id="apip-req"></div><div class="hint">Users or roles whose invoices use this template.</div><div class="ferr" data-err="requestors"></div></div>
+        <div class="apip-f" style="margin-top:12px"><label>Requestors</label><div id="apip-req"></div><div class="hint">Users or roles whose invoices may use this template. Leave empty for anyone (e.g. invoices received by mail or folder).</div><div class="ferr" data-err="requestors"></div></div>
         <div class="apip-tgrow" style="margin-top:8px">${toggle('data-t="adEnabled"', T.additionalSettings.enabled)}<div class="t"><b>Additional Settings</b><span>Restrict by price deviation and vendor codes</span></div></div>
         <div id="apip-adv" class="apip-grid2" style="${T.additionalSettings.enabled ? '' : 'display:none'}">
           <div class="apip-f"><label>Deviation %</label><input class="apip-in" type="number" step="any" min="0" data-t="deviationPct" value="${esc(T.additionalSettings.deviationPct ?? 0)}"><div class="hint">Apply only when the invoice deviates from PO / GRPO by more than this %.</div></div>
           <div class="apip-f"><label>Vendor Codes</label><input class="apip-in" data-t="vendorCodes" value="${esc(arr(T.additionalSettings.vendorCodes).join(', '))}" placeholder="V0001, V0002"><div class="hint">Comma separated. Blank = all vendors.</div></div>
         </div>
+      </div>
+      <div class="apip-card"><div class="apip-ch"><h3>When to use this template</h3><div class="sp"></div>
+          <div class="apip-f" style="flex-direction:row;align-items:center;gap:8px"><label style="margin:0">Priority</label><input class="apip-in" type="number" min="1" max="999" step="1" data-t="priority" value="${esc(T.priority)}" style="width:80px" title="Lower number wins when several templates match"></div></div>
+        <div class="hint" style="margin:-4px 0 10px">Invoices are given the template automatically when these conditions match — e.g. <i>Document total is more than 1,00,000</i> and <i>any line's item group is Raw Material</i>. If several templates match, the lowest priority number wins, then the one with more conditions. A template without conditions is the fallback for everything else.</div>
+        <div id="apip-tcond"></div>
       </div>
       <div class="apip-card"><div class="apip-ch"><h3>Approval Stages <i style="color:#dc2626;font-style:normal">*</i></h3><div class="sp"></div><button class="apip-btn sm blue" data-a="addstage">${I.plus} Add Stage</button></div><div class="ferr" data-err="stages" style="font-size:11.5px;color:#dc2626"></div><div id="apip-stages"></div></div>`;
     const $ = s => bodyEl.querySelector(s);
@@ -1556,15 +1756,19 @@ textarea.apip-in{min-height:64px;resize:vertical}
           <div class="apip-f"><label>Invoice Total (max amount)</label><input class="apip-in" type="number" min="0" step="any" data-s="maxInvoiceTotal" data-si="${i}" value="${esc(s.maxInvoiceTotal ?? '')}" placeholder="No limit"><div class="hint">Stage applies to invoices up to this total.</div></div>
         </div>
         <div class="apip-f" style="margin-top:12px"><label>Approvers <i>*</i></label><div data-appr="${i}"></div><div class="ferr" data-err="s${i}approvers"></div></div>
+        <div class="apip-f" style="margin-top:12px"><label>Stage applies only when</label><div data-scond="${i}"></div></div>
       </div>`).join('');
       stageSels = T.stages.map((s, i) => chipSelect(host.querySelector(`[data-appr="${i}"]`), options, s.approvers, { placeholder: 'Search approvers…', onChange: () => stageSels[i].setInvalid(false) }));
+      T.stages.forEach((s, i) => condEditor(host.querySelector(`[data-scond="${i}"]`), s.conditions, meta, { emptyText: 'Always — this stage applies to every invoice using the template.', addLabel: 'Add stage condition' }));
     }
     renderStages();
+    condEditor($('#apip-tcond'), T.conditions, meta, { emptyText: 'No conditions — this template can be used for any invoice (fallback).' });
     bodyEl.addEventListener('input', e => {
       const el = e.target;
       if (el.dataset.t) {
         const k = el.dataset.t;
         if (k === 'name' || k === 'description') T[k] = el.value;
+        else if (k === 'priority') T.priority = el.value;
         else if (k === 'deviationPct') T.additionalSettings.deviationPct = num(el.value);
         else if (k === 'vendorCodes') T.additionalSettings.vendorCodes = el.value.split(',').map(s => s.trim()).filter(Boolean);
         el.classList.remove('bad');
@@ -1584,12 +1788,14 @@ textarea.apip-in{min-height:64px;resize:vertical}
       if (a.dataset.a === 'back' || a.dataset.a === 'cancel') return vMaster();
       if (a.dataset.a === 'addstage') { T.stages.push(newStage()); renderStages(); $('#apip-stages').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
       if (a.dataset.a === 'save') {
-        if (!validate()) { $('#apip-tmsg').innerHTML = `<div class="apip-msg err">Please fill in all required fields.</div>`; bodyEl.querySelector('.bad')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+        const cprob = [...condProblems(T.conditions, meta, 'Template condition'), ...T.stages.flatMap((s, i) => condProblems(s.conditions, meta, `Stage ${i + 1} condition`))];
+        if (!validate() || cprob.length) { $('#apip-tmsg').innerHTML = `<div class="apip-msg err">${cprob.length ? cprob.map(esc).join('<br>') : 'Please fill in all required fields.'}</div>`; (bodyEl.querySelector('.bad') || $('#apip-tmsg')).scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
         a.disabled = true; $('#apip-tmsg').innerHTML = '';
         const body = {
           name: T.name.trim(), description: T.description.trim(), requestors: T.requestors,
           additionalSettings: { enabled: !!T.additionalSettings.enabled, deviationPct: num(T.additionalSettings.deviationPct), vendorCodes: arr(T.additionalSettings.vendorCodes) },
-          stages: T.stages.map(s => ({ name: s.name.trim(), description: s.description.trim(), approvalsRequired: Math.max(1, parseInt(s.approvalsRequired, 10) || 1), rejectorsRequired: Math.max(1, parseInt(s.rejectorsRequired, 10) || 1), maxInvoiceTotal: s.maxInvoiceTotal === '' || s.maxInvoiceTotal == null ? null : num(s.maxInvoiceTotal), approvers: s.approvers })),
+          stages: T.stages.map(s => ({ name: s.name.trim(), description: s.description.trim(), approvalsRequired: Math.max(1, parseInt(s.approvalsRequired, 10) || 1), rejectorsRequired: Math.max(1, parseInt(s.rejectorsRequired, 10) || 1), maxInvoiceTotal: s.maxInvoiceTotal === '' || s.maxInvoiceTotal == null ? null : num(s.maxInvoiceTotal), approvers: s.approvers, conditions: s.conditions })),
+          conditions: T.conditions, priority: T.priority === '' ? 100 : num(T.priority),
         };
         try {
           await api(id ? 'PUT' : 'POST', id ? `/templates/${enc(id)}` : '/templates', body);
@@ -1605,7 +1811,6 @@ textarea.apip-in{min-height:64px;resize:vertical}
       const fail = (key, msg, el) => { ok = false; const er = bodyEl.querySelector(`[data-err="${key}"]`); if (er) er.textContent = msg; if (el) el.classList.add('bad'); };
       if (!T.name.trim()) fail('name', 'Template name is required.', $('[data-t=name]'));
       if (!T.description.trim()) fail('description', 'Description is required.', $('[data-t=description]'));
-      if (!T.requestors.length) { fail('requestors', 'Select at least one requestor.'); reqSel.setInvalid(true); }
       if (!T.stages.length) fail('stages', 'Add at least one approval stage.');
       T.stages.forEach((s, i) => {
         const el = k => bodyEl.querySelector(`[data-s="${k}"][data-si="${i}"]`);
@@ -1618,6 +1823,198 @@ textarea.apip-in{min-height:64px;resize:vertical}
       });
       return ok;
     }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 6b. Vendor Item Mapping — vendor's item code / name → our SAP item
+  // ═════════════════════════════════════════════════════════════════════════
+  // input with autocomplete holding a picked {code,name}; typing a raw code is accepted as-is
+  function pickInput(input, fetcher, init, onPick) {
+    const st = { code: init?.code || '', name: init?.name || '' };
+    const show = () => { input.value = st.code ? `${st.format || st.code}${st.name ? ' — ' + st.name : ''}` : ''; };
+    show();
+    input.addEventListener('input', () => { st.code = input.value.trim(); st.name = ''; });
+    attachAC(input, fetcher, h => { st.code = h.code; st.name = h.name; st.format = h.format || ''; show(); input.classList.remove('bad'); onPick && onPick(h); });
+    return st;
+  }
+
+  function vVendorItems() {
+    const seq = startView('vitems');
+    let rows = [], q = '';
+    bodyEl.innerHTML = pageHead('Vendor Item Mapping', 'Map the item code / name a vendor prints on the invoice to our SAP item — used when matching invoice lines and linking them to the PO / GRPO',
+      `<button class="apip-btn" data-a="refresh">${I.redo} Refresh</button><button class="apip-btn pri" data-a="add">${I.plus} Add Mapping</button>`) +
+      `<div class="apip-card"><div class="apip-ch">${searchBox('apip-visearch', 'Search vendor, vendor item or our item...')}<div class="sp"></div><span id="apip-vicount" style="font-size:12px;color:var(--ap-mut)"></span></div><div id="apip-vitbl">${loading()}</div></div>`;
+    const tbl = bodyEl.querySelector('#apip-vitbl');
+    bodyEl.querySelector('[data-a=add]').onclick = () => itemForm(null);
+    bodyEl.querySelector('[data-a=refresh]').onclick = () => load();
+    bodyEl.querySelector('#apip-visearch').addEventListener('input', e => { q = e.target.value.trim().toLowerCase(); render(); });
+    function render() {
+      const f = rows.filter(r => !q || `${r.cardCode} ${r.cardName} ${r.vendorItemCode} ${r.vendorItemName} ${r.itemCode} ${r.itemName}`.toLowerCase().includes(q));
+      bodyEl.querySelector('#apip-vicount').textContent = `Showing ${f.length} of ${rows.length} mappings`;
+      if (!f.length) { tbl.innerHTML = `<div class="apip-empty">${rows.length ? 'No mappings match your search.' : 'No vendor item mappings yet. Click <b>+ Add Mapping</b>, or correct an item on an invoice — the correction is remembered for that vendor.'}</div>`; return; }
+      tbl.innerHTML = `<div class="apip-tw"><table class="apip-tbl"><thead><tr><th>Vendor</th><th>Vendor Item Code</th><th>Vendor Item Name</th><th>Our Item</th><th>UoM</th><th>Source</th><th class="c">Used</th><th>Actions</th></tr></thead><tbody>
+        ${f.map(r => `<tr><td><b>${esc(r.cardCode)}</b><div class="mut">${esc(r.cardName)}</div></td>
+          <td>${r.vendorItemCode ? `<code>${esc(r.vendorItemCode)}</code>` : '<span class="mut">—</span>'}</td>
+          <td style="max-width:260px">${esc(r.vendorItemName) || '<span class="mut">—</span>'}</td>
+          <td><b>${esc(r.itemCode)}</b><div class="mut">${esc(r.itemName)}</div></td>
+          <td>${esc(r.uom)}</td>
+          <td>${r.source === 'learned' ? '<span class="apip-pill blue" title="Remembered from a correction on an invoice">Learned</span>' : '<span class="apip-pill">Manual</span>'}</td>
+          <td class="c"><span class="apip-badge">${esc(r.hits)}</span></td>
+          <td><div class="apip-acts"><button class="apip-ib b" data-e="${esc(r.id)}" title="Edit">${I.edit}</button><button class="apip-ib r" data-d="${esc(r.id)}" title="Delete">${I.trash}</button></div></td></tr>`).join('')}</tbody></table></div>`;
+    }
+    tbl.addEventListener('click', async e => {
+      const ed = e.target.closest('[data-e]'), del = e.target.closest('[data-d]');
+      if (ed) itemForm(rows.find(r => String(r.id) === ed.dataset.e));
+      else if (del) {
+        const r = rows.find(x => String(x.id) === del.dataset.d) || {};
+        if (!await confirmDlg(`Delete the mapping <b>${esc(r.vendorItemCode || r.vendorItemName)}</b> → <b>${esc(r.itemCode)}</b> for vendor ${esc(r.cardCode)}?`, { okLabel: 'Delete', okCls: 'bad' })) return;
+        try { await api('DELETE', `/vendor-items/${enc(del.dataset.d)}`); toast('Mapping deleted.', 'ok'); load(); } catch (er) { toast(er.message, 'err', 6000); }
+      }
+    });
+    function load() {
+      api('GET', '/vendor-items').then(d => { if (seq !== S.seq) return; rows = arr(d, 'rows'); render(); })
+        .catch(e => { if (seq === S.seq) tbl.innerHTML = errBox(e.message); });
+    }
+    function itemForm(r, keepVendor) {
+      let vendor, item;
+      const save = async (x, again) => {
+        const g = k => x.body.querySelector(`[data-k="${k}"]`);
+        const body = { cardCode: vendor.code, cardName: vendor.name, vendorItemCode: g('vendorItemCode').value.trim(), vendorItemName: g('vendorItemName').value.trim(), itemCode: item.code, itemName: item.name, uom: g('uom').value.trim() };
+        const msg = x.body.querySelector('#apip-vimsg');
+        x.body.querySelectorAll('.bad').forEach(el => el.classList.remove('bad'));
+        const miss = [];
+        if (!body.cardCode) miss.push('vendor');
+        if (!body.itemCode) miss.push('item');
+        if (!body.vendorItemCode && !body.vendorItemName) miss.push('vendorItemCode', 'vendorItemName');
+        miss.forEach(k => g(k).classList.add('bad'));
+        if (miss.length) { msg.innerHTML = '<div class="apip-msg err">Select the vendor and our item, and enter the vendor item code or name.</div>'; return; }
+        try {
+          await api(r ? 'PUT' : 'POST', r ? `/vendor-items/${enc(r.id)}` : '/vendor-items', body);
+          toast('Mapping saved.', 'ok'); x.close(); load();
+          if (again) itemForm(null, { code: body.cardCode, name: body.cardName });
+        } catch (er) { msg.innerHTML = errBox(er.message); }
+      };
+      const btns = [{ label: 'Cancel' }];
+      if (!r) btns.push({ label: 'Save & Add Another', onClick: x => save(x, true) });
+      btns.push({ label: 'Save', cls: 'pri', onClick: x => save(x, false) });
+      modal({
+        title: r ? 'Edit Vendor Item Mapping' : 'Add Vendor Item Mapping', wide: true, buttons: btns,
+        body: `<div id="apip-vimsg"></div><div class="apip-grid2">
+          <div class="apip-f"><label>Vendor <i>*</i></label><input class="apip-in" data-k="vendor" placeholder="Search vendor code or name" autocomplete="off"></div>
+          <div></div>
+          <div class="apip-f"><label>Vendor Item Code</label><input class="apip-in" data-k="vendorItemCode" value="${esc(r?.vendorItemCode || '')}" placeholder="Code printed on the vendor's invoice" autocomplete="off"></div>
+          <div class="apip-f"><label>Vendor Item Name / Description</label><input class="apip-in" data-k="vendorItemName" value="${esc(r?.vendorItemName || '')}" placeholder="Description printed on the vendor's invoice" autocomplete="off"><div class="hint">Matched when the invoice line text contains this name.</div></div>
+          <div class="apip-f"><label>Our Item <i>*</i></label><input class="apip-in" data-k="item" placeholder="Search SAP item code or name" autocomplete="off"></div>
+          <div class="apip-f"><label>UoM</label><input class="apip-in" data-k="uom" value="${esc(r?.uom || '')}" placeholder="Filled from the item" autocomplete="off"></div>
+        </div>`,
+        onMount: x => {
+          const g = k => x.body.querySelector(`[data-k="${k}"]`);
+          vendor = pickInput(g('vendor'), fetchVendors, r ? { code: r.cardCode, name: r.cardName } : keepVendor);
+          item = pickInput(g('item'), fetchItems, r ? { code: r.itemCode, name: r.itemName } : null, h => { if (h.uom) g('uom').value = h.uom; });
+          setTimeout(() => (keepVendor ? g('vendorItemCode') : g('vendor')).focus(), 30);
+        },
+      });
+    }
+    load();
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 6c. Vendor Expense G/L — default G/L + keyword rules per vendor
+  // ═════════════════════════════════════════════════════════════════════════
+  function vVendorExpense() {
+    const seq = startView('vexpense');
+    let rows = [], q = '';
+    bodyEl.innerHTML = pageHead('Vendor Expense G/L', 'G/L accounts for expense (service) invoices per vendor: keyword rules first, then the vendor\'s default G/L',
+      `<button class="apip-btn" data-a="refresh">${I.redo} Refresh</button><button class="apip-btn pri" data-a="add">${I.plus} Add Vendor</button>`) +
+      `<div class="apip-card"><div class="apip-ch">${searchBox('apip-vesearch', 'Search vendor or G/L...')}<div class="sp"></div><span id="apip-vecount" style="font-size:12px;color:var(--ap-mut)"></span></div><div id="apip-vetbl">${loading()}</div></div>`;
+    const tbl = bodyEl.querySelector('#apip-vetbl');
+    bodyEl.querySelector('[data-a=add]').onclick = () => expForm(null);
+    bodyEl.querySelector('[data-a=refresh]').onclick = () => load();
+    bodyEl.querySelector('#apip-vesearch').addEventListener('input', e => { q = e.target.value.trim().toLowerCase(); render(); });
+    function render() {
+      const f = rows.filter(r => !q || `${r.cardCode} ${r.cardName} ${r.defaultGl} ${r.defaultGlName} ${r.rules.map(x => `${x.keyword} ${x.accountCode}`).join(' ')}`.toLowerCase().includes(q));
+      bodyEl.querySelector('#apip-vecount').textContent = `Showing ${f.length} of ${rows.length} vendors`;
+      if (!f.length) { tbl.innerHTML = `<div class="apip-empty">${rows.length ? 'No vendors match your search.' : 'No vendor G/L setup yet. Click <b>+ Add Vendor</b> to set a default expense G/L for a vendor.'}</div>`; return; }
+      tbl.innerHTML = `<div class="apip-tw"><table class="apip-tbl"><thead><tr><th>Vendor</th><th>Default G/L</th><th>Invoice Type</th><th>Keyword Rules</th><th>Updated</th><th>Actions</th></tr></thead><tbody>
+        ${f.map(r => `<tr><td><b>${esc(r.cardCode)}</b><div class="mut">${esc(r.cardName)}</div></td>
+          <td>${r.defaultGl ? `<b>${esc(r.defaultGl)}</b><div class="mut">${esc(r.defaultGlName)}</div>` : '<span class="mut">—</span>'}</td>
+          <td>${r.expenseInvoice ? '<span class="apip-pill amber">Always expense</span>' : '<span class="apip-pill">Auto</span>'}</td>
+          <td style="max-width:320px">${r.rules.length ? r.rules.map(x => `<div><code>${esc(x.keyword)}</code> → ${esc(x.accountCode)}</div>`).join('') : '<span class="mut">None</span>'}</td>
+          <td>${esc(fmtD(r.updatedAt))}</td>
+          <td><div class="apip-acts"><button class="apip-ib b" data-e="${esc(r.cardCode)}" title="Edit">${I.edit}</button><button class="apip-ib r" data-d="${esc(r.cardCode)}" title="Delete">${I.trash}</button></div></td></tr>`).join('')}</tbody></table></div>`;
+    }
+    tbl.addEventListener('click', async e => {
+      const ed = e.target.closest('[data-e]'), del = e.target.closest('[data-d]');
+      if (ed) expForm(rows.find(r => r.cardCode === ed.dataset.e));
+      else if (del) {
+        if (!await confirmDlg(`Remove the expense G/L setup for vendor <b>${esc(del.dataset.d)}</b>?`, { okLabel: 'Delete', okCls: 'bad' })) return;
+        try { await api('DELETE', `/vendor-expense/${enc(del.dataset.d)}`); toast('Vendor setup deleted.', 'ok'); load(); } catch (er) { toast(er.message, 'err', 6000); }
+      }
+    });
+    function load() {
+      api('GET', '/vendor-expense').then(d => { if (seq !== S.seq) return; rows = arr(d, 'rows').map(r => ({ ...r, rules: arr(r.rules) })); render(); })
+        .catch(e => { if (seq === S.seq) tbl.innerHTML = errBox(e.message); });
+    }
+    function expForm(r) {
+      const rules = (r?.rules || []).map(x => ({ keyword: x.keyword, gl: { code: x.accountCode, name: x.accountName } }));
+      let vendor, gl;
+      modal({
+        title: r ? `Vendor Expense G/L — ${r.cardCode}` : 'Add Vendor Expense G/L', wide: true,
+        buttons: [{ label: 'Cancel' }, {
+          label: 'Save', cls: 'pri', onClick: async x => {
+            const g = k => x.body.querySelector(`[data-k="${k}"]`);
+            const msg = x.body.querySelector('#apip-vemsg');
+            x.body.querySelectorAll('.bad').forEach(el => el.classList.remove('bad'));
+            const body = {
+              cardName: vendor.name, defaultGl: gl.code, defaultGlName: gl.name, expenseInvoice: g('expenseInvoice').checked,
+              rules: rules.filter(rule => rule.keyword.trim() || rule.gl.code).map(rule => ({ keyword: rule.keyword.trim(), accountCode: rule.gl.code, accountName: rule.gl.name })),
+            };
+            let bad = false;
+            if (!vendor.code) { g('vendor').classList.add('bad'); bad = true; }
+            rules.forEach(rule => {
+              if (!rule.keyword.trim() && !rule.gl.code) return;
+              if (!rule.keyword.trim()) { rule.kwEl.classList.add('bad'); bad = true; }
+              if (!rule.gl.code) { rule.glEl.classList.add('bad'); bad = true; }
+            });
+            if (!body.defaultGl && !body.rules.length) { g('gl').classList.add('bad'); bad = true; }
+            if (bad) { msg.innerHTML = '<div class="apip-msg err">Select the vendor, and set a default G/L or complete keyword rules (keyword + G/L).</div>'; return; }
+            if (!r && rows.some(v => v.cardCode === vendor.code) && !await confirmDlg(`Vendor <b>${esc(vendor.code)}</b> is already set up. Replace its setup?`, { okLabel: 'Replace' })) return;
+            try { await api('PUT', `/vendor-expense/${enc(vendor.code)}`, body); toast('Vendor G/L setup saved.', 'ok'); x.close(); load(); }
+            catch (er) { msg.innerHTML = errBox(er.message); }
+          },
+        }],
+        body: `<div id="apip-vemsg"></div><div class="apip-grid2">
+          <div class="apip-f"><label>Vendor <i>*</i></label><input class="apip-in" data-k="vendor" placeholder="Search vendor code or name" autocomplete="off" ${r ? 'disabled' : ''}></div>
+          <div class="apip-f"><label>Default Expense G/L</label><input class="apip-in" data-k="gl" placeholder="Search G/L account" autocomplete="off"><div class="hint">Used when no keyword rule matches the invoice line.</div></div>
+        </div>
+        <div class="apip-tgrow" style="margin-top:10px">${toggle('data-k="expenseInvoice"', r?.expenseInvoice)}<div class="t"><b>Always treat as expense invoice</b><span>Post this vendor's invoices as service invoices to G/L — skip item matching</span></div></div>
+        <div class="apip-ch" style="margin-top:14px"><h3 style="margin:0">Keyword Rules</h3><div class="sp"></div><button class="apip-btn sm" data-a="addrule">${I.plus} Add Rule</button></div>
+        <div class="hint" style="margin:4px 0 8px">If an invoice line contains the keyword (e.g. <code>freight</code>, <code>courier</code>, <code>rent</code>), that G/L is used instead of the default.</div>
+        <div id="apip-verules"></div>`,
+        onMount: x => {
+          const g = k => x.body.querySelector(`[data-k="${k}"]`);
+          vendor = pickInput(g('vendor'), fetchVendors, r ? { code: r.cardCode, name: r.cardName } : null);
+          gl = pickInput(g('gl'), fetchGL, r?.defaultGl ? { code: r.defaultGl, name: r.defaultGlName } : null);
+          const host = x.body.querySelector('#apip-verules');
+          const renderRules = () => {
+            host.innerHTML = rules.length ? rules.map((_, i) => `<div style="display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;margin-bottom:8px;align-items:center">
+              <input class="apip-in" data-kw="${i}" placeholder="Keyword in line text" autocomplete="off"><input class="apip-in" data-gl="${i}" placeholder="Search G/L account" autocomplete="off">
+              <button class="apip-ib r" data-rm="${i}" title="Remove rule">${I.trash}</button></div>`).join('') : '<div class="mut" style="font-size:12px">No keyword rules — the default G/L is used for every line.</div>';
+            rules.forEach((rule, i) => {
+              rule.kwEl = host.querySelector(`[data-kw="${i}"]`); rule.kwEl.value = rule.keyword;
+              rule.kwEl.addEventListener('input', () => { rule.keyword = rule.kwEl.value; rule.kwEl.classList.remove('bad'); });
+              rule.glEl = host.querySelector(`[data-gl="${i}"]`);
+              rule.gl = pickInput(rule.glEl, fetchGL, rule.gl);
+            });
+          };
+          host.addEventListener('click', e => { const rm = e.target.closest('[data-rm]'); if (rm) { rules.splice(+rm.dataset.rm, 1); renderRules(); } });
+          x.body.querySelector('[data-a=addrule]').addEventListener('click', () => { rules.push({ keyword: '', gl: { code: '', name: '' } }); renderRules(); host.querySelector(`[data-kw="${rules.length - 1}"]`)?.focus(); });
+          renderRules();
+          if (!r) setTimeout(() => g('vendor').focus(), 30);
+        },
+      });
+    }
+    load();
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -1668,7 +2065,13 @@ textarea.apip-in{min-height:64px;resize:vertical}
       const v = Object.assign({ name: '', imapHost: '', imapPort: 993, imapTls: true, user: '', folder: 'INBOX', subjectFilter: '', pollSec: 60, enabled: true }, r || {});
       const fld = (k, label, type = 'text', req, ph = '', hint = '') => `<div class="apip-f"><label>${label}${req ? ' <i>*</i>' : ''}</label><input class="apip-in" data-k="${k}" type="${type}" value="${esc(v[k] ?? '')}" placeholder="${esc(ph)}" autocomplete="off">${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
       const btns = [{ label: 'Cancel' }];
-      if (r) btns.push({ label: `${I.check} Test`, onClick: x => testMail(r.id, x.btn(1)) });
+      // Test the values typed in the form (unsaved password included), not just the saved row
+      if (r) btns.push({ label: `${I.check} Test`, onClick: x => {
+        const g = k => x.body.querySelector(`[data-k="${k}"]`);
+        const body = { imapHost: g('imapHost').value.trim(), imapPort: parseInt(g('imapPort').value, 10) || 993, imapTls: g('imapTls').checked, user: g('user').value.trim(), folder: g('folder').value.trim() || 'INBOX' };
+        if (g('password').value) body.password = g('password').value;
+        testMail(r.id, x.btn(1), body);
+      } });
       btns.push({
         label: 'Save', cls: 'pri', onClick: async x => {
           const g = k => x.body.querySelector(`[data-k="${k}"]`);
@@ -1703,9 +2106,9 @@ textarea.apip-in{min-height:64px;resize:vertical}
         </div>`,
       });
     }
-    async function testMail(id, btn) {
+    async function testMail(id, btn, body) {
       if (btn) btn.disabled = true;
-      try { const r = await api('POST', `/mail-configs/${enc(id)}/test`); toast(r.message || 'Connection successful.', 'ok', 5000); }
+      try { const r = await api('POST', `/mail-configs/${enc(id)}/test`, body); toast(r.message || 'Connection successful.', 'ok', 5000); }
       catch (e) { toast('Test failed: ' + e.message, 'err', 7000); }
       if (btn) btn.disabled = false;
       if (S.view === 'mail') load();
@@ -1737,7 +2140,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
       ${card('Mail Intake', I.mail, `${tg('mailEnabled', 'Enable mail intake', 'Poll all enabled mailboxes configured under Mail Configuration')}<button class="apip-btn sm" data-a="mailcfg" style="margin-top:6px">Open Mail Configuration</button>`)}
       ${card('Processing', I.gear, `<div class="apip-grid2"><div class="apip-f"><label>OCR Engine</label><select class="apip-in" data-k="ocrEngine"><option value="ai" ${v.ocrEngine !== 'text' ? 'selected' : ''}>AI vision (recommended)</option><option value="text" ${v.ocrEngine === 'text' ? 'selected' : ''}>PDF text extraction</option></select></div>${nmb('priceTolerancePct', 'Price Tolerance %', 'Allowed unit price deviation vs PO / GRPO')}${nmb('totalTolerance', 'Total Tolerance (amount)', 'Allowed difference between computed and OCR total')}</div>${tg('autoProcess', 'Auto process', 'OCR-process new queue items immediately')}${tg('duplicateCheck', 'Duplicate check', 'Flag invoices with the same vendor + invoice number already posted')}`)}
       ${card('Approval', I.users.replace(/13/g, '18'), `${tg('approvalRequired', 'Approval required', 'Invoices must be approved before posting')}${tg('autoSendApproval', 'Auto send for approval', 'Send processed invoices to the first matching template automatically')}${tg('postWithoutApproval', 'Allow posting without approval', 'Override approval requirement when posting')}${tg('autoPostOnApproval', 'Auto post on final approval', 'Post to SAP as soon as the last stage approves')}`)}
-      ${card('SAP Posting', I.upl, `${tg('postAsDraft', 'Post as draft', 'Create A/P Invoice drafts instead of final documents')}<div class="apip-grid2" style="margin-top:8px">${sel('defaultSeries', 'Default Series', lk.series, '— SAP default —')}${sel('defaultTaxCode', 'Default Tax Code', lk.taxCodes, '— None —')}${sel('defaultWarehouse', 'Default Warehouse', lk.warehouses, '— None —')}<div class="apip-f"><label>Default G/L Account</label><input class="apip-in" data-k="defaultGlAccount" id="apip-sgl" value="${esc(v.defaultGlAccount ?? '')}" placeholder="Type to search…" autocomplete="off"><div class="hint">Used for service-type invoices.</div></div><div class="apip-f"><label>Default Doc Type</label><select class="apip-in" data-k="defaultDocType"><option value="dDocument_Items" ${v.defaultDocType !== 'dDocument_Service' ? 'selected' : ''}>Item</option><option value="dDocument_Service" ${v.defaultDocType === 'dDocument_Service' ? 'selected' : ''}>Service</option></select></div></div>${lk.error ? `<div class="apip-msg warn" style="margin-top:10px">SAP lookups unavailable: ${esc(lk.error)}</div>` : ''}`)}
+      ${card('SAP Posting', I.upl, `${tg('postAsDraft', 'Post as draft', 'Create A/P Invoice drafts instead of final documents')}${tg('autoDocType', 'Auto-detect Item / Service', 'Decide the invoice type from the bill (AI, HSN / SAC codes, wording, item matches, vendor history). Default Doc Type is used only when there is no signal.')}<div class="apip-grid2" style="margin-top:8px">${sel('defaultSeries', 'Default Series', lk.series, '— SAP default —')}${sel('defaultTaxCode', 'Default Tax Code', lk.taxCodes, '— None —')}${sel('defaultWarehouse', 'Default Warehouse', lk.warehouses, '— None —')}<div class="apip-f"><label>Default G/L Account</label><input class="apip-in" data-k="defaultGlAccount" id="apip-sgl" value="${esc(v.defaultGlAccount ?? '')}" placeholder="Type to search…" autocomplete="off"><div class="hint">Used for service-type invoices.</div></div><div class="apip-f"><label>Default Doc Type</label><select class="apip-in" data-k="defaultDocType"><option value="dDocument_Items" ${v.defaultDocType !== 'dDocument_Service' ? 'selected' : ''}>Item</option><option value="dDocument_Service" ${v.defaultDocType === 'dDocument_Service' ? 'selected' : ''}>Service</option></select></div></div>${lk.error ? `<div class="apip-msg warn" style="margin-top:10px">SAP lookups unavailable: ${esc(lk.error)}</div>` : ''}`)}
       <div class="apip-card"><div class="apip-ch"><h3>Custom Fields</h3><div class="sp"></div><button class="apip-btn sm" data-a="addcf">${I.plus} Add Field</button></div><p class="apip-sub" style="margin:-6px 0 12px">Extra header fields shown on the invoice form and posted to SAP (e.g. user-defined fields <code>U_xxx</code>).</p><div id="apip-cf"></div></div>
       <div style="display:flex;justify-content:flex-end"><button class="apip-btn pri" data-a="save">${I.check} Save Settings</button></div>`;
     const $ = s => bodyEl.querySelector(s);

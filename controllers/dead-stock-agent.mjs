@@ -8,10 +8,11 @@
  *   TRANSFER        → the same item sells in another warehouse
  *   PROMOTION       → slow but still selling; discount to clear
  *   LIQUIDATE       → not used in over a year (or never); clear / write down
- *   CONSUME         → non-sales (raw/packing) item: use up in production first
+ *   CONSUME         → non-sales item, or sales item issued more than sold in 12 months: use up in production first
  */
-import { createInsightRouter, ctxTable, daysBetween, num, round, clamp, fmtAmt } from '../lib/insight-kit.mjs';
-import { loadItems, loadWarehouseStock, loadLastMovements, loadDemandMovements, loadOpenPoQtyByItem, since } from '../lib/insight-data.mjs';
+import { createInsightRouter, AgentDataError, ctxTable, addDays, daysBetween, isoDate, todayISO, num, round, clamp, fmtAmt } from '../lib/insight-kit.mjs';
+import { loadItems, loadWarehouseStock, loadLastMovements, loadDemandMovements, loadOpenPoQtyByItem, since, DEMAND_OUT_TYPES } from '../lib/insight-data.mjs';
+import { transName } from './inventory-dashboard-agent.mjs';
 
 // KPI drill-through (calc blocks → lib/insight-kit.mjs withKpiDetails).
 const SRC = {
@@ -21,15 +22,22 @@ const SRC = {
   opor: 'OPOR + POR1 — open purchase orders: open quantity per item',
   oitb: 'OITB — item groups',
 };
+// Clicking a row opens the item-history popup (public/insight-agents.js openRowDetail).
+// Only DEAD lines open it (onlyIf).
+const ROW_DETAIL = { endpoint: '/api/dead-stock-agent/item-history', title: 'Click for the last 10 out transactions and last 10 customers', onlyIf: { class: 'DEAD' } };
 const AGE_BANDS =['0-90d', '91-180d', '181-365d', '>365d', 'Never used'];
 // Decision table for the explain popup; `hit` only on the rule that applied (keeps JSON small).
 const rulesHit = (list, hitIdx) => list.map(([rule, result], i) => (i === hitIdx ? { rule, result, hit: true } : { rule, result }));
 const ageBand = d => (d == null ? 'Never used' : d <= 90 ? '0-90d' : d <= 180 ? '91-180d' : d <= 365 ? '181-365d' : '>365d');
 
+const thresholds = p => {
+  const slowDays = clamp(Math.round(num(p.slowDays) || 90), 14, 720);
+  return { slowDays, deadDays: clamp(Math.round(num(p.deadDays) || 180), slowDays + 1, 1500) };
+};
+
 async function run(k, p) {
   const asOf = p.asOf;
-  const slowDays = clamp(Math.round(num(p.slowDays) || 90), 14, 720);
-  const deadDays = clamp(Math.round(num(p.deadDays) || 180), slowDays + 1, 1500);
+  const { slowDays, deadDays } = thresholds(p);
   const warehouse = String(p.warehouse || '').trim();
   const minValue = num(p.minValue);
 
@@ -54,13 +62,13 @@ async function run(k, p) {
     w.set(m.whsCode, e);
   }
 
-  // Consumption item = not a sales item, or mostly goods-issued rather than
-  // sold over the last 12 months (falls back to "never sold" with no usage).
+  // Consumption item = not flagged "Sales Item" in SAP, or a sales item that was
+  // issued (goods issue / production) more than sold over the last 12 months.
+  // A sales item with no usage in 12 months follows the sales rules.
   const isConsumable = (code, it) => {
     if (!it.sellable) return true;
     const u = usageMix.get(code);
-    if (u && u.sale + u.issue > 0) return u.issue > u.sale;
-    return !last.soldItems.has(code);
+    return !!u && u.issue > u.sale;
   };
 
   const rows = [];
@@ -88,6 +96,7 @@ async function run(k, p) {
     let rec, detail, recRule;   // recRule = index of the decision rule (for the explain popup)
     let transfer = null;        // { to, qty } for TRANSFER lines (KPI popup)
     const nonSales = isConsumable(s.itemCode, it);
+    const mix = usageMix.get(s.itemCode) || { sale: 0, issue: 0 };
     if (po && po.openQty > 0) {
       rec = 'FREEZE PURCHASE'; recRule = 0;
       detail = `${round(po.openQty, 2)} still on ${po.poCount} open PO(s) — hold or cancel before it arrives`;
@@ -100,9 +109,10 @@ async function run(k, p) {
       // Raw / packing material: a customer promotion makes no sense.
       rec = dead && (daysSinceSale == null || daysSinceSale > 365) ? 'LIQUIDATE' : 'CONSUME';
       recRule = rec === 'LIQUIDATE' ? 2 : 3;
+      const why = it.sellable ? `Mostly used in production (12m: issued ${round(mix.issue, 2)} vs sold ${round(mix.sale, 2)})` : 'Non-sales item';
       detail = rec === 'LIQUIDATE'
-        ? `Non-sales item unused for ${daysSinceSale ?? 'ever'}${daysSinceSale != null ? ' days' : ''} — return to vendor, sell as scrap or write down`
-        : `Non-sales item — use up in production/BOMs before re-ordering; ${coverMonths != null ? `${round(coverMonths, 1)} months of cover` : `unused for ${daysSinceSale} days`}`;
+        ? `${why} unused for ${daysSinceSale ?? 'ever'}${daysSinceSale != null ? ' days' : ''} — return to vendor, sell as scrap or write down`
+        : `${why} — use up in production/BOMs before re-ordering; ${coverMonths != null ? `${round(coverMonths, 1)} months of cover` : `unused for ${daysSinceSale} days`}`;
     } else if (!dead) {
       const disc = coverMonths != null && coverMonths > 24 ? 20 : 10;
       rec = 'PROMOTION'; recRule = 4;
@@ -122,7 +132,7 @@ async function run(k, p) {
       lastSale, lastMove, daysSinceSale, ageBand: ageBand(daysSinceSale),
       sold365: round(here.s365, 2), sold90: round(here.s90, 2), coverMonths: coverMonths != null ? round(coverMonths, 1) : null,
       openPoQty: po ? round(po.openQty, 2) : 0, sellsElsewhere: others.map(([w]) => w).slice(0, 3).join(', '),
-      purchasable: it.purchasable ? 'YES' : 'NO', itemType: nonSales ? 'Non-sales' : 'Sales',
+      purchasable: it.purchasable ? 'YES' : 'NO', itemType: !it.sellable ? 'Non-sales' : nonSales ? 'Sales (mostly production)' : 'Sales',
       transferTo: transfer ? transfer.to : null, transferQty: transfer ? round(transfer.qty, 2) : null,
       transferValue: transfer ? round(transfer.qty * unitCost) : null,
       // "How is this calculated?" popups (click the cell) — same inputs as the rules above.
@@ -134,12 +144,12 @@ async function run(k, p) {
         recommendation: { rules: rulesHit([
           ['Open purchase orders for the item', 'FREEZE PURCHASE'],
           ['Used in another warehouse in the last 90 days', 'TRANSFER'],
-          ['Non-sales item, dead and unused > 365 days (or never)', 'LIQUIDATE'],
-          ['Non-sales item, otherwise', 'CONSUME'],
+          ['Non-sales item (or sales item issued more than sold in 12 months), dead and unused > 365 days (or never)', 'LIQUIDATE'],
+          ['Non-sales item (or sales item issued more than sold in 12 months), otherwise', 'CONSUME'],
           ['Slow but still selling (10% off; 20% if > 24 months cover)', 'PROMOTION'],
           ['Dead and unused > 365 days (or never)', 'LIQUIDATE'],
           ['Dead, unused up to 365 days (25–30% off)', 'PROMOTION'],
-        ], recRule), note: `First matching rule wins. Open PO qty ${po ? round(po.openQty, 2) : 0}; used elsewhere: ${others.length ? others.slice(0, 3).map(([w]) => w).join(', ') : 'no'}; non-sales item: ${nonSales ? 'yes' : 'no'}.` },
+        ], recRule), note: `First matching rule wins. Open PO qty ${po ? round(po.openQty, 2) : 0}; used elsewhere: ${others.length ? others.slice(0, 3).map(([w]) => w).join(', ') : 'no'}; non-sales item: ${nonSales ? 'yes' : 'no'} (${it.sellable ? `Sales Item in SAP; last 12 months sold ${round(mix.sale, 2)} vs issued to production/goods issue ${round(mix.issue, 2)} — ${mix.issue > mix.sale ? 'more issued, so treated as consumable' : 'not more issued, so treated as a sales item'}` : 'not flagged Sales Item in SAP'}).` },
         ...(coverMonths != null ? { coverMonths: { steps: [
           { label: 'Monthly usage', formula: 'used in last 12 months ÷ 12', value: round(monthly, 2), detail: `${round(here.s365, 2)} used in ${s.whsCode}` },
           { label: 'Cover', formula: 'on hand ÷ monthly usage', value: round(coverMonths, 1), detail: `${round(s.onHand, 2)} ÷ ${round(monthly, 2)}` }] } } : {}),
@@ -355,11 +365,11 @@ GROUPS: ${groupRows.slice(0, 8).map(g => `${g.group} ${fmtAmt(g.value)}`).join('
   for (const r of liqRows) liqGrp.set(r.group ?? '—', (liqGrp.get(r.group ?? '—') || 0) + r.value);
   const liqGroups = [...liqGrp.entries()].sort((a, z) => z[1] - a[1]);
   const liqValue = byRec[3].value;
-  const liqNever = sumOf(liqRows.filter(r => r.daysSinceSale == null)), liqNonSales = sumOf(liqRows.filter(r => r.itemType === 'Non-sales'));
+  const liqNever = sumOf(liqRows.filter(r => r.daysSinceSale == null)), liqNonSales = sumOf(liqRows.filter(r => r.itemType !== 'Sales'));
   const liqInsight = liqRows.length
     ? `**${fmtAmt(liqValue)} in ${liqRows.length} lines should be cleared, returned or written down — ${pct(liqValue, flaggedValue)}% of dead + slow value.**\n\n` +
       `- Largest: ${topBy(liqRows, 'value', 3).map(lineTxt).join('; ')}.\n` +
-      `- Never used: ${fmtAmt(liqNever)}; non-sales (raw/packing) items: ${fmtAmt(liqNonSales)}. Biggest group: **${liqGroups[0][0]}** with ${fmtAmt(liqGroups[0][1])}.\n` +
+      `- Never used: ${fmtAmt(liqNever)}; non-sales or mostly-production items: ${fmtAmt(liqNonSales)}. Biggest group: **${liqGroups[0][0]}** with ${fmtAmt(liqGroups[0][1])}.\n` +
       `- Action: offer the top lines back to vendors or to clearance buyers, and agree the write-down of ${fmtAmt(liqValue)} with finance before month-end.`
     : '**Nothing to liquidate — no line is dead and unused for more than 365 days without another use.**';
 
@@ -457,7 +467,7 @@ GROUPS: ${groupRows.slice(0, 8).map(g => `${g.group} ${fmtAmt(g.value)}`).join('
           columns: [C.item, C.whs, C.group, C.value, C.days, { key: 'itemType', label: 'Item type' }],
           stats: [{ label: 'Lines', value: byRec[3].lines, fmt: 'int' }, { label: 'Distinct items', value: distinct(liqRows, 'itemCode'), fmt: 'int' },
             { label: 'Share of dead + slow', value: pct(liqValue, flaggedValue), fmt: 'pct' }, { label: 'Never used', value: round(liqNever), fmt: 'amt' },
-            { label: 'Non-sales items', value: round(liqNonSales), fmt: 'amt' }, { label: 'Item groups', value: liqGroups.length, fmt: 'int' }],
+            { label: 'Non-sales / production items', value: round(liqNonSales), fmt: 'amt' }, { label: 'Item groups', value: liqGroups.length, fmt: 'int' }],
           chart: liqGroups.length ? { title: 'Liquidation value by item group (top 10)', type: 'bar', horizontal: liqGroups.length > 5, fmt: 'amt',
             labels: liqGroups.slice(0, 10).map(([g]) => String(g)), series: [{ name: 'Liquidation value', values: liqGroups.slice(0, 10).map(([, v]) => round(v)), color: '#6B7280' }] } : null,
           insight: liqInsight } },
@@ -465,10 +475,10 @@ GROUPS: ${groupRows.slice(0, 8).map(g => `${g.group} ${fmtAmt(g.value)}`).join('
     chart: { title: 'Flagged stock value by time since last use', type: 'bar', labels: byBand.map(b => b.band), series: [{ name: 'Value', values: byBand.map(b => b.value), color: '#E9730C' }],
       desc: 'Value of dead and slow stock grouped by how long ago it was last sold or consumed — the further right, the harder it is to recover the value.' },
     tabs: [
-      { key: 'flagged', label: `Dead & slow (${rows.length})`, rows, columns: cols,
-        desc: 'Every dead or slow-moving item-warehouse line with its recommended action, largest value first — click Action or Class to see why.' },
-      { key: 'transfer', label: `Transfers (${byRec[1].lines})`, rows: rows.filter(r => r.recommendation === 'TRANSFER'), columns: cols,
-        desc: 'Lines that do not move here but sell in another warehouse — the detail column names the target warehouse and suggested quantity.' },
+      { key: 'flagged', label: `Dead & slow (${rows.length})`, rows, columns: cols, rowDetail: ROW_DETAIL,
+        desc: 'Every dead or slow-moving item-warehouse line with its recommended action, largest value first — click Action or Class to see why, or any other cell of a DEAD line for its last 10 out transactions and last 10 customers.' },
+      { key: 'transfer', label: `Transfers (${byRec[1].lines})`, rows: rows.filter(r => r.recommendation === 'TRANSFER'), columns: cols, rowDetail: ROW_DETAIL,
+        desc: 'Lines that do not move here but sell in another warehouse — the detail column names the target warehouse and suggested quantity. Click a DEAD row for its transaction history.' },
       { key: 'freeze', label: `Purchase freeze (${freeze.length})`, rows: freeze,
         desc: 'Dead or slow items that can still be purchased — block purchasing, and hold or cancel open POs (listed first).',
         columns: [{ key: 'class', label: 'Class', fmt: 'badge', hint: 'DEAD if any warehouse line is dead, otherwise SLOW' },
@@ -492,6 +502,145 @@ GROUPS: ${groupRows.slice(0, 8).map(g => `${g.group} ${fmtAmt(g.value)}`).join('
   };
 }
 
+// ── Row detail popup (click a line) ──────────────────────────────────────────
+// "Why DEAD": the item's stock and last use in every warehouse, classified with
+// the same rules as run() (cover uses gross sales/issues here, not net of returns).
+async function loadWhyDead(k, itemCode, { asOf, slowDays, deadDays }) {
+  await k.need('OITW', ['ItemCode', 'WhsCode', 'OnHand']);
+  const avg = await k.has('OITW', 'AvgPrice');
+  const stock = await k.run(`SELECT {WhsCode}, {OnHand}${avg ? ', {AvgPrice}' : ''} FROM @OITW WHERE {ItemCode} = ${k.lit(itemCode)} AND {OnHand} <> 0`);
+  const use = `T0.{TransType} IN (${DEMAND_OUT_TYPES.join(',')}) AND T0.{OutQty} > 0`;
+  const mv = await k.run(`SELECT T0.{Warehouse} AS {Warehouse},
+      MAX(CASE WHEN ${use} THEN T0.{DocDate} END) AS {LastUse},
+      MAX(CASE WHEN T0.{OutQty} > 0 THEN T0.{DocDate} END) AS {LastOut},
+      SUM(CASE WHEN ${use} AND T0.{DocDate} >= ${k.lit(since(asOf, 365))} THEN T0.{OutQty} ELSE 0 END) AS {Used12}
+    FROM @OINM T0 WHERE T0.{ItemCode} = ${k.lit(itemCode)} AND T0.{DocDate} <= ${k.lit(asOf)} GROUP BY T0.{Warehouse}`);
+  const byWhs = new Map(mv.map(r => [r.Warehouse, r]));
+  const whs = new Set([...stock.map(r => r.WhsCode), ...mv.filter(r => r.LastUse).map(r => r.Warehouse)]);
+  const onHandOf = new Map(stock.map(r => [r.WhsCode, r]));
+  return [...whs].map(w => {
+    const m = byWhs.get(w) || {}, s = onHandOf.get(w);
+    const onHand = num(s?.OnHand), lastUse = isoDate(m.LastUse), used12 = num(m.Used12);
+    const daysSince = lastUse ? daysBetween(lastUse, asOf) : null;
+    const coverMonths = used12 > 0 ? round(onHand / (used12 / 12), 1) : null;
+    const status = !onHand ? 'NO STOCK' : daysSince == null || daysSince >= deadDays ? 'DEAD'
+      : daysSince >= slowDays || coverMonths > 12 ? 'SLOW' : 'ACTIVE';
+    return { whsCode: w, onHand: round(onHand, 2), value: avg ? round(onHand * num(s?.AvgPrice)) : null, lastUse, daysSince,
+      lastOut: isoDate(m.LastOut), used12: round(used12, 2), coverMonths, status };
+  }).sort((a, z) => z.onHand - a.onHand);
+}
+
+// Last 10 outbound OINM movements of the item in its warehouse (all warehouses
+// when that one has none), dated on or before `cutoff` (as-of − dead days).
+async function loadOutTransactions(k, itemCode, whsCode, cutoff) {
+  await k.need('OINM', ['TransNum', 'ItemCode', 'Warehouse', 'DocDate', 'TransType', 'OutQty']);
+  const opt = {};
+  for (const c of ['BASE_REF', 'CardCode', 'CardName', 'CalcPrice', 'TransValue', 'JrnlMemo']) opt[c] = await k.has('OINM', c);
+  const cols = ['T0.{TransNum} AS {TransNum}', 'T0.{DocDate} AS {DocDate}', 'T0.{TransType} AS {TransType}', 'T0.{Warehouse} AS {Warehouse}', 'T0.{OutQty} AS {OutQty}',
+    opt.BASE_REF && 'T0.{BASE_REF} AS {BaseRef}', opt.CardCode && 'T0.{CardCode} AS {CardCode}', opt.CardName && 'T0.{CardName} AS {CardName}',
+    opt.CalcPrice && 'T0.{CalcPrice} AS {CalcPrice}', opt.TransValue && 'T0.{TransValue} AS {TransValue}', opt.JrnlMemo && 'T0.{JrnlMemo} AS {JrnlMemo}'].filter(Boolean);
+  const q = whs => k.run(`SELECT TOP 10 ${cols.join(', ')} FROM @OINM T0
+    WHERE T0.{ItemCode} = ${k.lit(itemCode)}${whs ? ` AND T0.{Warehouse} = ${k.lit(whs)}` : ''} AND T0.{OutQty} > 0 AND T0.{DocDate} <= ${k.lit(cutoff)}
+    ORDER BY T0.{DocDate} DESC, T0.{TransNum} DESC`);
+  let rows = whsCode ? await q(whsCode) : [];
+  const allWhs = !rows.length;
+  if (allWhs) rows = await q('');
+  return {
+    allWhs,
+    rows: rows.map(r => {
+      const qty = num(r.OutQty), cost = num(r.CalcPrice);
+      const value = opt.TransValue ? Math.abs(num(r.TransValue)) : qty * cost;
+      return { date: isoDate(r.DocDate), type: transName(r.TransType), docNum: r.BaseRef ?? '', whsCode: r.Warehouse,
+        cardCode: r.CardCode || '', cardName: r.CardName || '', qty: round(qty, 3),
+        unitCost: round(qty ? value / qty : cost, 4), value: round(value), memo: r.JrnlMemo || '' };
+    }),
+  };
+}
+
+// Sales lines of one item: deliveries + A/R invoices not copied from a delivery
+// (so delivered-then-invoiced stock is counted once). Cancelled documents excluded.
+const SALES_DOCS = [['ODLN', 'DLN1', 'Delivery', ''], ['OINV', 'INV1', 'A/R Invoice', ' AND T1.{BaseType} <> 15']];
+
+// The last 10 customers who bought the item (any warehouse), latest first.
+async function loadItemCustomers(k, itemCode) {
+  const agg = new Map();
+  for (const [head, line, , notCopied] of SALES_DOCS) {
+    await k.need(head, ['DocEntry', 'DocNum', 'DocDate', 'CardCode', 'CardName', 'CANCELED']);
+    await k.need(line, ['DocEntry', 'ItemCode', 'Quantity', 'LineTotal', 'BaseType']);
+    const rows = await k.run(`SELECT T0.{CardCode} AS {CardCode}, MAX(T0.{CardName}) AS {CardName}, MAX(T0.{DocDate}) AS {LastDate},
+        SUM(T1.{Quantity}) AS {Qty}, SUM(T1.{LineTotal}) AS {Rev}, COUNT(DISTINCT T0.{DocEntry}) AS {Docs}
+      FROM @${head} T0 INNER JOIN @${line} T1 ON T1.{DocEntry} = T0.{DocEntry}
+      WHERE T1.{ItemCode} = ${k.lit(itemCode)} AND T0.{CANCELED} = 'N'${notCopied} GROUP BY T0.{CardCode}`);
+    for (const r of rows) {
+      const e = agg.get(r.CardCode) || { cardCode: r.CardCode, cardName: r.CardName || '', lastDate: null, totalQty: 0, revenue: 0, docs: 0 };
+      const d = isoDate(r.LastDate);
+      if (!e.lastDate || d > e.lastDate) e.lastDate = d;
+      e.totalQty += num(r.Qty); e.revenue += num(r.Rev); e.docs += num(r.Docs);
+      agg.set(r.CardCode, e);
+    }
+  }
+  const top = [...agg.values()].sort((a, z) => String(z.lastDate).localeCompare(String(a.lastDate))).slice(0, 10);
+  if (!top.length) return { customers: [], total: 0 };
+  // Latest sale line per customer: document, warehouse, qty and price.
+  const inCards = top.map(c => k.lit(c.cardCode)).join(',');
+  const latest = new Map();
+  for (const [head, line, label, notCopied] of SALES_DOCS) {
+    const whs = await k.has(line, 'WhsCode'), price = await k.has(line, 'Price');
+    const rows = await k.run(`SELECT TOP 100 T0.{CardCode} AS {CardCode}, T0.{DocNum} AS {DocNum}, T0.{DocDate} AS {DocDate}, T1.{Quantity} AS {Qty}, T1.{LineTotal} AS {LineTotal}
+        ${whs ? ', T1.{WhsCode} AS {WhsCode}' : ''}${price ? ', T1.{Price} AS {Price}' : ''}
+      FROM @${head} T0 INNER JOIN @${line} T1 ON T1.{DocEntry} = T0.{DocEntry}
+      WHERE T1.{ItemCode} = ${k.lit(itemCode)} AND T0.{CANCELED} = 'N'${notCopied} AND T0.{CardCode} IN (${inCards})
+      ORDER BY T0.{DocDate} DESC, T0.{DocEntry} DESC`);
+    for (const r of rows) {
+      const d = isoDate(r.DocDate), prev = latest.get(r.CardCode);
+      if (prev && prev.date >= d) continue;
+      const qty = num(r.Qty);
+      latest.set(r.CardCode, { date: d, doc: `${label} ${r.DocNum}`, whs: r.WhsCode || '', qty, price: price ? num(r.Price) : qty ? num(r.LineTotal) / qty : 0 });
+    }
+  }
+  return {
+    total: agg.size,
+    customers: top.map(c => {
+      const l = latest.get(c.cardCode) || {};
+      return { ...c, totalQty: round(c.totalQty, 3), revenue: round(c.revenue), lastDoc: l.doc || '', lastWhs: l.whs || '',
+        lastQty: l.qty != null ? round(l.qty, 3) : null, lastPrice: l.price != null ? round(l.price, 4) : null };
+    }),
+  };
+}
+
+// A customer's last 10 sales documents with us (invoices, deliveries, credit memos).
+const CUST_DOCS = [['OINV', 'INV1', 'A/R Invoice', 1], ['ODLN', 'DLN1', 'Delivery', 1], ['ORIN', 'RIN1', 'A/R Credit Memo', -1]];
+async function loadCustomerDocs(k, cardCode, itemCode) {
+  const docs = [];
+  for (const [head, line, label, sign] of CUST_DOCS) {
+    await k.need(head, ['DocEntry', 'DocNum', 'DocDate', 'CardCode', 'CardName', 'CANCELED', 'DocStatus', 'DocTotal']);
+    const rows = await k.run(`SELECT TOP 10 T0.{DocEntry} AS {DocEntry}, T0.{DocNum} AS {DocNum}, T0.{DocDate} AS {DocDate}, T0.{CardName} AS {CardName},
+        T0.{DocStatus} AS {DocStatus}, T0.{DocTotal} AS {DocTotal}
+      FROM @${head} T0 WHERE T0.{CardCode} = ${k.lit(cardCode)} AND T0.{CANCELED} = 'N'
+      ORDER BY T0.{DocDate} DESC, T0.{DocEntry} DESC`);
+    for (const r of rows) docs.push({ head, line, sign, docEntry: r.DocEntry, type: label, docNum: r.DocNum, date: isoDate(r.DocDate),
+      cardName: r.CardName || '', status: r.DocStatus === 'C' ? 'CLOSED' : 'OPEN', total: round(sign * num(r.DocTotal)) });
+  }
+  docs.sort((a, z) => String(z.date).localeCompare(String(a.date)) || num(z.docEntry) - num(a.docEntry));
+  const last = docs.slice(0, 10);
+  // Line summary for the documents shown: item count, first items, qty of the clicked item.
+  for (const [head, line] of CUST_DOCS) {
+    const mine = last.filter(d => d.head === head);
+    if (!mine.length) continue;
+    await k.need(line, ['DocEntry', 'ItemCode', 'Quantity']);
+    const rows = await k.run(`SELECT T1.{DocEntry} AS {DocEntry}, T1.{ItemCode} AS {ItemCode}, T1.{Quantity} AS {Qty}
+      FROM @${line} T1 WHERE T1.{DocEntry} IN (${mine.map(d => num(d.docEntry)).join(',')})`);
+    for (const d of mine) {
+      const ls = rows.filter(r => num(r.DocEntry) === num(d.docEntry));
+      const codes = [...new Set(ls.map(r => r.ItemCode).filter(Boolean))];
+      d.lines = ls.length;
+      d.items = codes.slice(0, 3).join(', ') + (codes.length > 3 ? ` +${codes.length - 3} more` : '');
+      d.itemQty = itemCode ? round(ls.filter(r => r.ItemCode === itemCode).reduce((s, r) => s + num(r.Qty), 0), 3) || null : null;
+    }
+  }
+  return last.map(({ head, line, sign, ...d }) => d);
+}
+
 export function createDeadStockAgentRouter(deps) {
   return createInsightRouter(deps, {
     slug: 'deadstock', title: 'Dead Stock Agent',
@@ -499,5 +648,100 @@ export function createDeadStockAgentRouter(deps) {
     persona: 'You are an inventory controller reducing dead and slow-moving stock in SAP Business One.',
     aiTask: 'Review this dead and slow-moving stock analysis. Prioritise the disposition plan (freeze purchases, transfers, promotions, liquidation) by value, with item codes and warehouses.',
     run,
+    extra(router, h) {
+      const fail = (res, e) => res.status(e instanceof AgentDataError ? 400 : 500).json({ ok: false, error: e.message });
+
+      // Row popup: last 10 out transactions of the line + last 10 customers of the item.
+      router.post('/item-history', h.requireAuth, async (req, res) => {
+        try {
+          const row = req.body?.row || {};
+          const itemCode = String(row.itemCode || '').trim(), whsCode = String(row.whsCode || '').trim();
+          if (!itemCode) return res.status(400).json({ ok: false, error: 'Item code missing.' });
+          if (row.class !== 'DEAD') return res.status(400).json({ ok: false, error: 'Transaction history is shown for DEAD lines only.' });
+          // Same as-of date and dead threshold as the user's last Analyze run.
+          const params = h.lastFor(req)?.params || {};
+          const asOf = isoDate(params.asOf) || todayISO(), { deadDays } = thresholds(params);
+          const cutoff = addDays(asOf, -deadDays);
+          const k = h.kit();
+          const outs = await loadOutTransactions(k, itemCode, whsCode, cutoff);
+          const { slowDays } = thresholds(params);
+          const whys = await loadWhyDead(k, itemCode, { asOf, slowDays, deadDays });
+          const me = whys.find(w => w.whsCode === whsCode) || {};
+          const active = whys.filter(w => w.whsCode !== whsCode && w.lastUse && w.daysSince < deadDays);
+          const recRule = row.explain?.recommendation?.rules?.find(r => r.hit);
+          const whyNotes = [
+            me.lastUse
+              ? `**DEAD in ${whsCode}** — the last sale or consumption from ${whsCode} was on **${me.lastUse}**, ${me.daysSince} days before ${asOf}. The dead threshold is **${deadDays} days**.`
+              : `**DEAD in ${whsCode}** — this item has **never been sold or consumed from ${whsCode}** (up to ${asOf}). Never used counts as dead, whatever the threshold (${deadDays} days).`,
+            `"Used" means stock leaving **this warehouse** on an A/R invoice, delivery, goods issue or production issue. Inventory transfers, receipts and other movements do not count.`,
+            me.lastOut && me.lastOut !== me.lastUse
+              ? `Stock last left ${whsCode} on ${me.lastOut}, but not as a sale or consumption (for example an inventory transfer), so it does not reset the clock.` : null,
+            `Each item-warehouse line is judged on its own: ${me.onHand != null ? `${whsCode} holds ${me.onHand}` : `the ${whsCode} line`} and is dead even if other warehouses still sell the item.`,
+            active.length
+              ? `The item is still active elsewhere: ${active.map(w => `**${w.whsCode}** (last used ${w.lastUse}, ${w.used12} in 12 months)`).join(', ')}.` : 'No other warehouse has used this item recently either.',
+            row.recommendation ? `**Recommended action: ${row.recommendation}**${recRule ? ` — rule: ${recRule.rule}` : ''}. ${row.detail || ''}` : null,
+          ].filter(Boolean);
+          const sales = await loadItemCustomers(k, itemCode);
+          res.json({
+            ok: true, title: `${itemCode}${row.itemName ? ` — ${row.itemName}` : ''}`,
+            subtitle: [whsCode && `Warehouse ${whsCode}`, row.class, row.recommendation].filter(Boolean).join(' · '),
+            stats: [
+              { label: 'On hand', value: row.onHand ?? null, fmt: 'num' }, { label: 'Stock value', value: row.value ?? null, fmt: 'amt' },
+              { label: 'Last used', value: row.lastSale || 'Never' }, { label: 'Customers (all time)', value: sales.total, fmt: 'int' },
+            ],
+            tabs: [
+              { key: 'why', label: 'Why DEAD', notes: whyNotes,
+                desc: `Stock and last use of ${itemCode} in every warehouse, as of ${asOf}. DEAD = never used or ≥ ${deadDays} days; SLOW = ≥ ${slowDays} days or more than 12 months of cover.`,
+                columns: [{ key: 'whsCode', label: 'Whs', sub: 'mark' }, { key: 'status', label: 'Status', fmt: 'badge', badge: { ACTIVE: 'green', 'NO STOCK': 'grey' } },
+                  { key: 'onHand', label: 'On hand', fmt: 'num' }, { key: 'value', label: 'Value', fmt: 'amt' },
+                  { key: 'lastUse', label: 'Last sale / use', fmt: 'date' }, { key: 'daysSince', label: 'Days since', fmt: 'int' },
+                  { key: 'lastOut', label: 'Last stock out (any)', fmt: 'date' }, { key: 'used12', label: 'Used 12m', fmt: 'num' }, { key: 'coverMonths', label: 'Cover (mo)', fmt: 'num' }],
+                rows: whys.map(w => (w.whsCode === whsCode ? { ...w, mark: '◀ this line' } : w)) },
+              { key: 'out', label: `Last 10 out transactions (${outs.rows.length})`,
+                desc: `${outs.allWhs && whsCode
+                  ? `No outbound movement from ${whsCode} — showing the latest outbound movements of this item in all warehouses`
+                  : `Latest stock movements out of ${whsCode || 'all warehouses'} (deliveries, invoices, goods issues, transfers, production issues)`}, dated ${cutoff} or earlier (${deadDays}+ days before ${asOf}, the dead threshold).`,
+                empty: `No outbound movement of this item dated ${cutoff} or earlier (${deadDays}+ days before ${asOf}).`,
+                columns: [{ key: 'date', label: 'Date', fmt: 'date' }, { key: 'type', label: 'Transaction' }, { key: 'docNum', label: 'Doc no.' },
+                  { key: 'whsCode', label: 'Whs' }, { key: 'cardCode', label: 'Partner', sub: 'cardName' }, { key: 'qty', label: 'Qty out', fmt: 'num' },
+                  { key: 'unitCost', label: 'Unit cost', fmt: 'price' }, { key: 'value', label: 'Value', fmt: 'amt' }, { key: 'memo', label: 'Remarks', wrap: true }],
+                rows: outs.rows },
+              { key: 'sales', label: `Last 10 sales — customers (${sales.customers.length})`,
+                desc: 'Customers who most recently bought this item, any warehouse (deliveries + A/R invoices not copied from a delivery). Click a customer to see their last 10 transactions with us.',
+                empty: 'No customer has bought this item.',
+                columns: [{ key: 'cardCode', label: 'Customer', sub: 'cardName' }, { key: 'lastDate', label: 'Last sale', fmt: 'date' },
+                  { key: 'lastDoc', label: 'Last document', sub: 'lastWhs' }, { key: 'lastQty', label: 'Last qty', fmt: 'num' }, { key: 'lastPrice', label: 'Last price', fmt: 'price' },
+                  { key: 'docs', label: 'Documents', fmt: 'int' }, { key: 'totalQty', label: 'Total qty', fmt: 'num' }, { key: 'revenue', label: 'Revenue', fmt: 'amt' }],
+                rows: sales.customers,
+                drill: { endpoint: '/api/dead-stock-agent/customer-history', from: ['cardCode', 'cardName'], extra: { itemCode } } },
+            ],
+          });
+        } catch (e) { fail(res, e); }
+      });
+
+      // Drill from a customer: their last 10 sales documents with us.
+      router.post('/customer-history', h.requireAuth, async (req, res) => {
+        try {
+          const cardCode = String(req.body?.row?.cardCode || '').trim(), itemCode = String(req.body?.itemCode || '').trim();
+          if (!cardCode) return res.status(400).json({ ok: false, error: 'Customer code missing.' });
+          const docs = await loadCustomerDocs(h.kit(), cardCode, itemCode);
+          const name = req.body?.row?.cardName || docs[0]?.cardName || '';
+          res.json({
+            ok: true, title: `${name ? `${name} ` : ''}(${cardCode})`,
+            subtitle: 'Last 10 transactions with us — A/R invoices, deliveries and A/R credit memos (cancelled documents excluded).',
+            stats: [
+              { label: 'Documents shown', value: docs.length, fmt: 'int' }, { label: 'Total (incl. tax)', value: round(docs.reduce((s, d) => s + d.total, 0)), fmt: 'amt' },
+              { label: 'Latest', value: docs[0]?.date || '—' }, ...(itemCode ? [{ label: `With ${itemCode}`, value: docs.filter(d => d.itemQty).length, fmt: 'int' }] : []),
+            ],
+            tabs: [{ key: 'docs', label: `Last 10 transactions (${docs.length})`, empty: 'No sales documents for this customer.',
+              columns: [{ key: 'date', label: 'Date', fmt: 'date' }, { key: 'type', label: 'Document' }, { key: 'docNum', label: 'Doc no.' },
+                { key: 'status', label: 'Status', fmt: 'badge', badge: { OPEN: 'amber', CLOSED: 'grey' } }, { key: 'total', label: 'Total (incl. tax)', fmt: 'amt' },
+                { key: 'lines', label: 'Lines', fmt: 'int' }, { key: 'items', label: 'Items', wrap: true },
+                ...(itemCode ? [{ key: 'itemQty', label: `${itemCode} qty`, fmt: 'num' }] : [])],
+              rows: docs }],
+          });
+        } catch (e) { fail(res, e); }
+      });
+    },
   });
 }

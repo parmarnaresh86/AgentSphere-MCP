@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<script src="/app-locale.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Bank Reconciliation — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  if(!t){window.location.replace('/login.html');return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace('/login.html');}}).catch(()=>{});
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--green-bg:#EAF5EE;--red:#BB0000;--red-bg:#FFEBEB;--orange:#E9730C;--orange-bg:#FEF3E8;
+  --font:'Segoe UI',system-ui,sans-serif;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{min-height:100%;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);font-size:13px}
+button,input,select{font-family:inherit}
+
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;position:sticky;top:0}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:#0f766e;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
+.shell-spacer{flex:1}
+.shell-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-weight:600;white-space:nowrap}
+.shell-badge.loading{background:rgba(233,115,12,.6)}
+.shell-badge.ready{background:rgba(16,126,62,.6)}
+.shell-badge.error{background:rgba(187,0,0,.6)}
+
+.wrap{padding:14px;max-width:1500px;margin:0 auto}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);margin-bottom:14px;min-width:0}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card-hd h3{font-size:13.5px;font-weight:600}
+.card-hd .sub{color:var(--muted);font-size:11.5px}
+.card-bd{padding:12px 14px}
+.step{width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.spacer{flex:1}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+
+.drop{border:2px dashed #bcc3ca;border-radius:8px;padding:26px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--blue);background:var(--blue-light);color:var(--blue)}
+.drop b{color:var(--text)}
+
+.form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fg input,.fg select{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:12.5px;color:var(--text);outline:none}
+.fg input:focus,.fg select:focus{border-color:var(--blue);background:var(--white)}
+.fg input.num{text-align:right;width:150px}
+.chk{display:flex;align-items:center;gap:6px;height:30px;font-size:12.5px}
+.btn{height:30px;padding:0 12px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:12px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--blue-mid)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.checks{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pill{font-size:11.5px;padding:3px 9px;border-radius:12px;font-weight:600}
+.pill.ok{background:var(--green-bg);color:var(--green)}
+.pill.bad{background:var(--red-bg);color:var(--red)}
+.pill.warn{background:var(--orange-bg);color:var(--orange)}
+.pill.info{background:var(--blue-light);color:var(--blue-mid)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.kpi .k-l{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.kpi .k-v{font-size:21px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .k-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+.kpi.good{border-color:#9fd3b2;background:var(--green-bg)} .kpi.good .k-v{color:var(--green)}
+.kpi.bad{border-color:#f0a8a8;background:var(--red-bg)} .kpi.bad .k-v{color:var(--red)}
+
+.grid2{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,4fr);gap:14px}
+.grid2 .card{margin-bottom:0}
+.stmt{width:100%;border-collapse:collapse;font-size:13px}
+.stmt td{padding:7px 14px;border-bottom:1px solid #f0f0f0}
+.stmt td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stmt tr.hd td{font-weight:700;background:#fafafa}
+.stmt tr.sub td:first-child{padding-left:28px;color:var(--muted)}
+.stmt tr.res td{font-weight:700;font-size:14px}
+.stmt tr.diff.ok td{background:var(--green-bg);color:var(--green)}
+.stmt tr.diff.bad td{background:var(--red-bg);color:var(--red)}
+.stmt a{color:var(--blue);cursor:pointer;text-decoration:none}
+
+.tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{border:none;background:none;padding:9px 12px;font-size:12.5px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--border);background:#fbfbfb}
+.toolbar input[type=search]{height:28px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);min-width:200px}
+.sel-info{font-size:12px;color:var(--muted)}
+.tbl{overflow:auto;max-height:560px}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t th{position:sticky;top:0;background:#f7f7f7;text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;padding:7px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+table.t td{padding:6px 10px;border-bottom:1px solid #f2f2f2;vertical-align:top}
+table.t td.num,table.t th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.t tr:hover td{background:#fafcff}
+table.t tr.flag td{background:#fff6f6}
+table.t td.desc{max-width:420px}
+.badge{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:9px;white-space:nowrap}
+.b-high{background:var(--green-bg);color:var(--green)}
+.b-medium{background:var(--orange-bg);color:var(--orange)}
+.b-manual{background:var(--blue-light);color:var(--blue-mid)}
+.b-open{background:var(--red-bg);color:var(--red)}
+.b-excl{background:#eee;color:#555}
+.b-prior{background:#f3e8ff;color:#7e22ce}
+.muted{color:var(--muted)}
+.ai-box{padding:12px 16px;line-height:1.55;font-size:13px}
+.ai-box h1,.ai-box h2,.ai-box h3{font-size:14px;margin:10px 0 4px}
+.ai-box ul,.ai-box ol{padding-left:20px}
+.ai-box table{border-collapse:collapse;margin:6px 0}.ai-box td,.ai-box th{border:1px solid var(--border);padding:3px 8px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#32363a;color:#fff;padding:9px 16px;border-radius:6px;font-size:12.5px;z-index:99;display:none;max-width:90vw}
+.hidden{display:none!important}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shell-bar">
+  <div class="shell-icon">🏦</div>
+  <div><div class="shell-title">Bank Reconciliation</div><div class="shell-subtitle">Scan the bank statement · match it with the SAP bank ledger</div></div>
+  <div class="shell-spacer"></div>
+  <span class="shell-badge" id="status">Ready</span>
+</div>
+
+<div class="wrap">
+  <!-- 1. Scan -->
+  <div class="card">
+    <div class="card-hd"><span class="step">1</span><h3>Scan bank statement</h3><span class="sub">PDF (digital or scanned) or a photo — every page is read</span></div>
+    <div class="card-bd">
+      <div class="drop" id="drop"><b>Drop the bank statement here</b> or click to choose a file<br/><span id="drop-file" style="font-size:12px"></span></div>
+      <input type="file" id="file" accept="application/pdf,image/png,image/jpeg,image/webp" class="hidden"/>
+      <div id="stmt-hd" class="hidden" style="margin-top:14px">
+        <div class="form">
+          <div class="fg"><label>Bank</label><input id="s-bank" style="width:170px"/></div>
+          <div class="fg"><label>Account no</label><input id="s-acc" style="width:170px"/></div>
+          <div class="fg"><label>Period from</label><input type="date" id="s-from"/></div>
+          <div class="fg"><label>Period to</label><input type="date" id="s-to"/></div>
+          <div class="fg"><label>Opening balance</label><input id="s-open" class="num"/></div>
+          <div class="fg"><label>Closing balance</label><input id="s-close" class="num"/></div>
+        </div>
+        <div class="checks" id="s-checks"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Reconcile -->
+  <div class="card" id="card-reco">
+    <div class="card-hd"><span class="step">2</span><h3>Reconcile with SAP</h3><span class="sub">Journal lines of the bank G/L account, plus earlier lines not yet reconciled in SAP</span></div>
+    <div class="card-bd">
+      <div class="form">
+        <div class="fg"><label>Bank G/L account</label><select id="acct" style="min-width:320px"><option value="">Loading accounts…</option></select></div>
+        <div class="fg"><label>Carry-forward look-back (days)</label><input type="number" id="lookback" value="90" min="0" max="730" style="width:110px"/></div>
+        <label class="chk"><input type="checkbox" id="use-ai" checked/> AI-assisted matching for leftovers</label>
+        <button class="btn primary" id="btn-reco" disabled>Reconcile</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Results -->
+  <div id="results" class="hidden">
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div class="card">
+        <div class="card-hd"><h3>Bank reconciliation statement</h3><span class="sub" id="stmt-sub"></span><span class="spacer"></span>
+          <button class="btn" id="btn-xlsx">⬇ Excel</button></div>
+        <table class="stmt" id="reco-stmt"></table>
+      </div>
+      <div class="card">
+        <div class="card-hd"><h3>AI review</h3><span class="spacer"></span><button class="btn" id="btn-ai">✦ Review reconciliation</button></div>
+        <div class="ai-box" id="ai"><span class="muted">Ask the agent to review the open items, stale cheques and entries still to be booked in SAP.</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tabs" id="tabs"></div>
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Filter rows…"/>
+        <span class="sel-info" id="sel-info"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-match" title="Select bank and SAP lines whose totals are equal">Match selected</button>
+        <button class="btn" id="btn-excl" title="Leave out of the reconciliation (e.g. cleared in an earlier statement)">Exclude selected</button>
+        <button class="btn" id="btn-unmatch">Undo selected</button>
+        <button class="btn" id="btn-csv">CSV</button>
+      </div>
+      <div class="tbl" id="tbl"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><h3>Manual reconciling items</h3><span class="sub">Carry-forwards from last month's reco or items not in this statement</span></div>
+      <div class="card-bd">
+        <div class="form">
+          <div class="fg"><label>Category</label><select id="m-cat"></select></div>
+          <div class="fg"><label>Date</label><input type="date" id="m-date"/></div>
+          <div class="fg"><label>Description</label><input id="m-desc" style="width:300px"/></div>
+          <div class="fg"><label>Amount</label><input id="m-amt" class="num"/></div>
+          <button class="btn" id="btn-madd">Add item</button>
+        </div>
+        <div id="m-list" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const TOKEN = () => localStorage.getItem('hanny_token') || '';
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const money = v => v == null || v === '' || !Number.isFinite(+v) ? '—' : (+v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const parseNum = s => { const n = Number(String(s ?? '').replace(/[, ]/g, '')); return Number.isFinite(n) ? n : null; };
+  const r2 = n => Math.round((+n || 0) * 100) / 100;
+  const fmtD = d => { if (!d) return '—'; const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }); };
+  const ageDays = (d, to) => d && to ? Math.round((Date.parse(to) - Date.parse(d)) / 864e5) : null;
+
+  function setStatus(text, cls) { const s = $('status'); s.textContent = text; s.className = 'shell-badge ' + (cls || ''); }
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
+  async function api(path, opts = {}) {
+    const isForm = opts.body instanceof FormData;
+    const r = await fetch('/api/bank-reco' + path, { ...opts,
+      headers: { ...(isForm ? {} : { 'Content-Type': 'application/json' }), 'x-auth-token': TOKEN() },
+      body: opts.body == null ? undefined : isForm ? opts.body : JSON.stringify(opts.body) });
+    if (r.status === 401) { localStorage.removeItem('hanny_token'); location.replace('/login.html'); throw new Error('Session expired'); }
+    if (opts.raw) { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText); return r; }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) throw new Error(j.error || r.statusText);
+    return j;
+  }
+
+  // ── State ───────────────────────────────────────────────────────────────
+  let ST = null;          // scanned statement
+  let ACCOUNTS = [];
+  let R = null;           // reconcile response
+  let matches = [], excluded = new Map(), manual = [];
+  let tab = 'issuedNotPresented', sel = new Set();
+  let me = '';
+  fetch('/auth/me', { headers: { 'x-auth-token': TOKEN() } }).then(r => r.json()).then(j => { me = j.user?.name || j.user?.username || j.username || j.name || ''; }).catch(() => {});
+
+  // ── Accounts ────────────────────────────────────────────────────────────
+  async function loadAccounts() {
+    try {
+      const r = await api('/accounts');
+      ACCOUNTS = r.accounts || [];
+      $('acct').innerHTML = '<option value="">— choose the bank G/L account —</option>' + ACCOUNTS.map(a => {
+        const house = a.house?.length ? ` · ${a.house.map(h => `${h.bank || ''} ${h.accNo || ''}`.trim()).join(', ')}` : '';
+        return `<option value="${esc(a.code)}">${esc(a.formatCode || a.code)} — ${esc(a.name)}${esc(house)}</option>`;
+      }).join('');
+      if (!ACCOUNTS.length) $('acct').innerHTML = '<option value="">No cash / bank G/L accounts found in SAP</option>';
+    } catch (e) { $('acct').innerHTML = `<option value="">Could not load accounts: ${esc(e.message)}</option>`; }
+    updateRecoBtn();
+  }
+  function updateRecoBtn() { $('btn-reco').disabled = !(ST && $('acct').value); }
+  $('acct').addEventListener('change', updateRecoBtn);
+
+  // ── 1. Scan ─────────────────────────────────────────────────────────────
+  const drop = $('drop');
+  drop.addEventListener('click', () => $('file').click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) scan(e.dataTransfer.files[0]); });
+  $('file').addEventListener('change', e => { if (e.target.files[0]) scan(e.target.files[0]); e.target.value = ''; });
+
+  async function scan(file) {
+    setStatus('Reading statement…', 'loading');
+    $('drop-file').textContent = `${file.name} — reading every page, this can take a minute for long statements…`;
+    const fd = new FormData(); fd.append('statement', file);
+    try {
+      const r = await api('/scan', { method: 'POST', body: fd });
+      ST = r.statement; R = null; $('results').classList.add('hidden');
+      $('drop-file').textContent = `${file.name} · ${ST.transactions.length} transactions read`;
+      $('s-bank').value = ST.bankName || ''; $('s-acc').value = ST.accountNumber || '';
+      $('s-from').value = ST.periodFrom || ''; $('s-to').value = ST.periodTo || '';
+      $('s-open').value = ST.openingBalance ?? ''; $('s-close').value = ST.closingBalance ?? '';
+      $('stmt-hd').classList.remove('hidden');
+      renderChecks();
+      if (r.suggestedAccount && ACCOUNTS.some(a => a.code === r.suggestedAccount)) { $('acct').value = r.suggestedAccount; toast('Bank G/L account picked from the statement account number — please confirm.'); }
+      updateRecoBtn();
+      setStatus('Statement read', 'ready');
+    } catch (e) { setStatus('Scan failed', 'error'); $('drop-file').textContent = e.message; }
+  }
+
+  function renderChecks() {
+    const c = ST.check || {};
+    const p = [];
+    p.push(`<span class="pill info">${c.rows} rows · in ${money(c.credits)} · out ${money(c.debits)}</span>`);
+    p.push(c.rowIssues ? `<span class="pill bad">${c.rowIssues} row(s) break the running balance — check them in the Bank statement tab</span>` : '<span class="pill ok">Running balance ties on every row</span>');
+    p.push(c.closingOk ? '<span class="pill ok">Opening + movements = closing</span>' : `<span class="pill bad">Opening + movements = ${money(c.computedClosing)}, statement says ${money(ST.closingBalance)}</span>`);
+    if (c.corrected) p.push(`<span class="pill warn">${c.corrected} misread amount(s) corrected from the running balance — marked in the Bank statement tab</span>`);
+    if (c.derivedOpening) p.push('<span class="pill warn">Opening balance derived from the first row</span>');
+    if (c.signFlipped) p.push('<span class="pill info">Overdrawn (Dr) balances shown as negative</span>');
+    if (c.truncated) p.push('<span class="pill bad">Statement too long — the last rows may be missing; split the PDF and scan in parts</span>');
+    $('s-checks').innerHTML = p.join('');
+  }
+
+  // ── 2. Reconcile ────────────────────────────────────────────────────────
+  $('btn-reco').addEventListener('click', async () => {
+    const btn = $('btn-reco'); btn.disabled = true; setStatus('Reconciling…', 'loading');
+    const statement = { ...ST, bankName: $('s-bank').value, accountNumber: $('s-acc').value, periodFrom: $('s-from').value, periodTo: $('s-to').value,
+      openingBalance: parseNum($('s-open').value), closingBalance: parseNum($('s-close').value) };
+    try {
+      R = await api('/reconcile', { method: 'POST', body: { statement, account: $('acct').value, from: $('s-from').value, to: $('s-to').value,
+        lookbackDays: +$('lookback').value, useAI: $('use-ai').checked } });
+      R.bankMap = new Map(R.bank.map(b => [b.id, b])); R.sapMap = new Map(R.sap.map(s => [s.id, s]));
+      R.glName = ACCOUNTS.find(a => a.code === R.account)?.name || '';
+      matches = R.matches; excluded = new Map(R.excluded.map(x => [x.id, x.reason])); manual = []; sel.clear();
+      $('m-cat').innerHTML = R.categories.map(c => `<option value="${c.key}">${c.sign < 0 ? 'Less' : 'Add'}: ${esc(c.label)}</option>`).join('');
+      $('results').classList.remove('hidden');
+      tab = 'issuedNotPresented'; render();
+      setStatus(Math.abs(summary().difference) < 0.005 ? 'Reconciled' : 'Difference to explain', Math.abs(summary().difference) < 0.005 ? 'ready' : 'error');
+      if (R.aiMatched) toast(`AI matched ${R.aiMatched} more item(s) — shown as "ai" in the Matched tab, please verify.`);
+      $('results').scrollIntoView({ behavior: 'smooth' });
+    } catch (e) { setStatus('Error', 'error'); toast(e.message); }
+    finally { btn.disabled = false; }
+  });
+
+  // ── Derived reco ────────────────────────────────────────────────────────
+  function matchedIds() { const s = new Set(); matches.forEach(m => { m.bank.forEach(i => s.add(i)); m.sap.forEach(i => s.add(i)); }); return s; }
+  function catOf(row) { return R.categories.find(c => c.side === row.side && c.dir === row.dir).key; }
+  function openItems() {
+    const done = matchedIds();
+    return [...R.bank.map(b => ({ ...b, side: 'bank' })), ...R.sap.map(s => ({ ...s, side: 'sap' }))]
+      .filter(r => !done.has(r.id) && !excluded.has(r.id)).map(r => ({ ...r, category: catOf(r) }));
+  }
+  function summary() {
+    const items = openItems();
+    const cats = R.categories.map(c => {
+      const rows = items.filter(i => i.category === c.key), extra = manual.filter(m => m.category === c.key);
+      return { ...c, rows, manual: extra, total: r2(rows.reduce((s, r) => s + r.amount, 0) + extra.reduce((s, m) => s + m.amount, 0)) };
+    });
+    const computed = r2(R.bankClose + cats.reduce((s, c) => s + c.sign * c.total, 0));
+    return { cats, items, computed, difference: r2(computed - R.sapClose) };
+  }
+
+  function render() { renderKpis(); renderStmt(); renderTabs(); renderTable(); renderManual(); }
+
+  function renderKpis() {
+    const S = summary(), ok = Math.abs(S.difference) < 0.005;
+    const nb = R.bank.length, mb = R.bank.filter(b => matchedIds().has(b.id)).length;
+    $('kpis').innerHTML = [
+      ['Balance as per bank', money(R.bankClose), `${R.statement.bankName || 'Statement'} · ${fmtD(R.to)}`],
+      ['Balance as per SAP', money(R.sapClose), `G/L ${esc(R.account)} · opening ${money(R.sapOpening)}`],
+      ['Auto-matched', `${mb} / ${nb}`, `${nb ? Math.round(mb / nb * 100) : 0}% of statement lines`],
+      ['Open items', S.items.length + manual.length, `${S.items.filter(i => i.side === 'sap').length} SAP · ${S.items.filter(i => i.side === 'bank').length} bank${manual.length ? ` · ${manual.length} manual` : ''}`],
+      ['Difference', money(S.difference), ok ? 'Reconciled ✓' : 'Still to explain', ok ? 'good' : 'bad'],
+    ].map(([l, v, s, cls]) => `<div class="kpi ${cls || ''}"><div class="k-l">${l}</div><div class="k-v">${v}</div><div class="k-s">${s}</div></div>`).join('');
+  }
+
+  function renderStmt() {
+    const S = summary(), ok = Math.abs(S.difference) < 0.005;
+    $('stmt-sub').textContent = `${fmtD(R.from)} – ${fmtD(R.to)} · SAP via ${R.source === 'db' ? 'DB Direct' : 'Service Layer'}`;
+    const rows = [`<tr class="hd"><td>Balance as per bank statement</td><td class="v">${money(R.bankClose)}</td></tr>`];
+    for (const c of S.cats) rows.push(`<tr class="sub"><td>${c.sign < 0 ? 'Less' : 'Add'}: <a data-goto="${c.key}">${esc(c.label)}</a> (${c.rows.length + c.manual.length})</td><td class="v">${c.sign < 0 ? '(' + money(c.total) + ')' : money(c.total)}</td></tr>`);
+    rows.push(`<tr class="res"><td>Balance as per books (computed)</td><td class="v">${money(S.computed)}</td></tr>`);
+    rows.push(`<tr class="hd"><td>Book balance in SAP</td><td class="v">${money(R.sapClose)}</td></tr>`);
+    rows.push(`<tr class="res diff ${ok ? 'ok' : 'bad'}"><td>Difference</td><td class="v">${money(S.difference)}</td></tr>`);
+    if (!ok) rows.push(`<tr><td colspan="2" class="muted" style="font-size:12px">${R.carryForward
+      ? 'Check prior-period items: widen the look-back, exclude lines that cleared in earlier statements, or add last month\'s outstanding items as manual items.'
+      : `${R.lastSapRecon ? `SAP External Reconciliation for this account only runs up to ${fmtD(R.lastSapRecon)}` : 'This G/L account is not reconciled in SAP (External Reconciliation)'}, so only this period's lines were compared — add last month's outstanding items as manual items.`}</td></tr>`);
+    $('reco-stmt').innerHTML = rows.join('');
+  }
+  $('reco-stmt').addEventListener('click', e => { const a = e.target.closest('[data-goto]'); if (a) { tab = a.dataset.goto; sel.clear(); renderTabs(); renderTable(); } });
+
+  // ── Tables ──────────────────────────────────────────────────────────────
+  const sapText = s => [s.memo, s.lineMemo].filter(Boolean).join(' — ') || '—';
+  const sapRef = s => [s.chequeNo && `Chq ${s.chequeNo}`, s.trsfrRef, s.ref3, s.ref1, s.ref2].filter(Boolean).join(' · ');
+  const CB = id => `<input type="checkbox" data-sel="${esc(id)}" ${sel.has(id) ? 'checked' : ''}/>`;
+
+  function tabsDef() {
+    const S = summary();
+    const t = S.cats.map(c => ({ key: c.key, label: `${c.label} (${c.rows.length})` }));
+    t.push({ key: 'matched', label: `Matched (${matches.length})` }, { key: 'excluded', label: `Excluded (${excluded.size})` },
+      { key: 'bank', label: `Bank statement (${R.bank.length})` }, { key: 'sap', label: `SAP ledger (${R.sap.length})` });
+    return t;
+  }
+  function renderTabs() { $('tabs').innerHTML = tabsDef().map(t => `<button class="tab ${t.key === tab ? 'active' : ''}" data-tab="${t.key}">${esc(t.label)}</button>`).join(''); }
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; tab = b.dataset.tab; renderTabs(); renderTable(); });
+
+  function rowsFor() {
+    const q = $('q').value.trim().toLowerCase();
+    const done = matchedIds();
+    let head, rows;
+    const cat = R.categories.find(c => c.key === tab);
+    if (cat) {
+      const items = summary().items.filter(i => i.category === tab);
+      if (cat.side === 'sap') {
+        head = ['', 'Date', 'Age', 'JE', 'Remarks', 'Party / offset', 'Reference', 'Creator', ['Amount', 'num']];
+        rows = items.map(s => ({ text: `${sapText(s)} ${s.partner} ${s.contraName} ${sapRef(s)} ${s.amount}`, csv: [s.date, s.jeNo, sapText(s), s.partner || s.contraName, sapRef(s), s.amount],
+          cells: [CB(s.id), fmtD(s.date), ageBadge(s), esc(s.jeNo), `<span class="desc">${esc(sapText(s))}</span>`, esc(s.partner || s.contraName || s.contra), esc(sapRef(s)), esc(s.creator), money(s.amount)] }));
+      } else {
+        head = ['', 'Date', 'Narration', 'Reference', 'OCR check', ['Amount', 'num']];
+        rows = items.map(b => ({ text: `${b.description} ${b.reference} ${b.amount}`, csv: [b.date, b.description, b.reference || b.chequeNo, b.amount], flag: !!b.flag,
+          cells: [CB(b.id), fmtD(b.date), esc(b.description), esc(b.reference || b.chequeNo), esc(b.flag || ''), money(b.amount)] }));
+      }
+    } else if (tab === 'matched') {
+      head = ['', 'Method', 'Bank lines', ['Bank amount', 'num'], 'SAP lines', ['SAP amount', 'num'], 'Note'];
+      rows = matches.map(m => {
+        const bs = m.bank.map(i => R.bankMap.get(i)), ss = m.sap.map(i => R.sapMap.get(i));
+        const bt = bs.map(b => `${fmtD(b.date)} · ${b.description}`).join('\n'), st = ss.map(s => `${fmtD(s.date)} · JE ${s.jeNo} · ${sapText(s)}`).join('\n');
+        const ba = r2(bs.reduce((x, b) => x + b.amount, 0)), sa = r2(ss.reduce((x, s) => x + s.amount, 0));
+        return { text: `${bt} ${st} ${m.method} ${ba}`, csv: [m.method, bt, ba, st, sa, m.note],
+          cells: [CB(m.id), `<span class="badge b-${m.method === 'manual' ? 'manual' : m.confidence}">${esc(m.method)}</span>`,
+            esc(bt).replace(/\n/g, '<br/>'), money(ba), esc(st).replace(/\n/g, '<br/>'), money(sa), esc(m.note || '')] };
+      });
+    } else if (tab === 'excluded') {
+      head = ['', 'Side', 'Date', 'Description', 'Reason', ['Amount', 'num']];
+      rows = [...excluded].map(([id, reason]) => { const r = R.sapMap.get(id) || R.bankMap.get(id), isSap = R.sapMap.has(id);
+        const d = isSap ? `JE ${r.jeNo} · ${sapText(r)}` : r.description;
+        return { text: `${d} ${reason}`, csv: [isSap ? 'SAP' : 'Bank', r.date, d, reason, r.amount], cells: [CB(id), isSap ? 'SAP' : 'Bank', fmtD(r.date), esc(d), esc(reason), money(r.amount)] }; });
+    } else if (tab === 'bank') {
+      head = ['Date', 'Narration', 'Reference', ['Withdrawal', 'num'], ['Deposit', 'num'], ['Balance', 'num'], 'Status', 'OCR check'];
+      rows = R.bank.map(b => ({ text: `${b.description} ${b.reference} ${b.amount}`, flag: !!b.flag, csv: [b.date, b.description, b.reference || b.chequeNo, b.debit, b.credit, b.balance, status(b.id, done), b.flag || ''],
+        cells: [fmtD(b.date), esc(b.description), esc(b.reference || b.chequeNo), b.debit ? money(b.debit) : '', b.credit ? money(b.credit) : '', money(b.balance), statusBadge(b.id, done), esc(b.flag || '')] }));
+    } else {
+      head = ['Date', 'JE', 'Remarks', 'Party / offset', 'Reference', ['Debit', 'num'], ['Credit', 'num'], 'Status'];
+      rows = R.sap.map(s => ({ text: `${sapText(s)} ${s.partner} ${sapRef(s)} ${s.amount}`, csv: [s.date, s.jeNo, sapText(s), s.partner || s.contraName, sapRef(s), s.debit, s.credit, status(s.id, done)],
+        cells: [fmtD(s.date), esc(s.jeNo), esc(sapText(s)), esc(s.partner || s.contraName || s.contra), esc(sapRef(s)), s.debit ? money(s.debit) : '', s.credit ? money(s.credit) : '', statusBadge(s.id, done)] }));
+    }
+    if (q) rows = rows.filter(r => r.text.toLowerCase().includes(q));
+    return { head, rows };
+  }
+  function ageBadge(s) {
+    const a = ageDays(s.date, R.to);
+    if (s.date < R.from) return `<span class="badge b-prior" title="Booked before this statement period">${a}d · prior</span>`;
+    return a > 90 ? `<span class="badge b-open" title="Older than 3 months — stale">${a}d</span>` : `${a}d`;
+  }
+  const status = (id, done) => done.has(id) ? 'Matched' : excluded.has(id) ? 'Excluded' : 'Open';
+  const statusBadge = (id, done) => ({ Matched: '<span class="badge b-high">Matched</span>', Excluded: '<span class="badge b-excl">Excluded</span>', Open: '<span class="badge b-open">Open</span>' })[status(id, done)];
+
+  function renderTable() {
+    const { head, rows } = rowsFor();
+    const isCat = R.categories.some(c => c.key === tab), hasSel = isCat || tab === 'matched' || tab === 'excluded';
+    $('btn-match').classList.toggle('hidden', !isCat); $('btn-excl').classList.toggle('hidden', !isCat); $('btn-unmatch').classList.toggle('hidden', !(tab === 'matched' || tab === 'excluded'));
+    $('btn-unmatch').textContent = tab === 'matched' ? 'Unmatch selected' : 'Restore selected';
+    $('tbl').innerHTML = rows.length ? `<table class="t"><thead><tr>${head.map(h => Array.isArray(h) ? `<th class="num">${h[0]}</th>` : `<th>${h}</th>`).join('')}</tr></thead><tbody>${
+      rows.slice(0, 2000).map(r => `<tr class="${r.flag ? 'flag' : ''}">${r.cells.map((c, i) => `<td class="${Array.isArray(head[i]) ? 'num' : ''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+      : `<div class="empty">${isCat ? 'Nothing open in this category.' : 'No rows.'}</div>`;
+    renderSel(hasSel);
+  }
+  function renderSel(show) {
+    if (!show || !sel.size) { $('sel-info').textContent = show ? 'Tick rows across the category tabs to match them manually.' : ''; return; }
+    const b = [...sel].map(i => R.bankMap.get(i)).filter(Boolean), s = [...sel].map(i => R.sapMap.get(i)).filter(Boolean);
+    const sb = r2(b.reduce((x, r) => x + r.amount, 0)), ss = r2(s.reduce((x, r) => x + r.amount, 0));
+    $('sel-info').textContent = `${sel.size} selected · bank ${money(sb)} (${b.length}) · SAP ${money(ss)} (${s.length})` + (b.length && s.length ? ` · gap ${money(r2(sb - ss))}` : '');
+  }
+  $('tbl').addEventListener('change', e => { const c = e.target.closest('[data-sel]'); if (!c) return; c.checked ? sel.add(c.dataset.sel) : sel.delete(c.dataset.sel); renderSel(true); });
+  $('q').addEventListener('input', () => R && renderTable());
+
+  $('btn-match').addEventListener('click', () => {
+    const b = [...sel].map(i => R.bankMap.get(i)).filter(Boolean), s = [...sel].map(i => R.sapMap.get(i)).filter(Boolean);
+    if (!b.length || !s.length) return toast('Select at least one bank line and one SAP line (switch tabs to tick both).');
+    if (new Set([...b, ...s].map(x => x.dir)).size > 1) return toast('Pair money-in with money-in: bank deposits ↔ SAP receipts, bank withdrawals ↔ SAP payments.');
+    const gap = r2(b.reduce((x, r) => x + r.amount, 0) - s.reduce((x, r) => x + r.amount, 0));
+    if (Math.abs(gap) >= 0.005) return toast(`Totals differ by ${money(gap)} — the difference is itself a reconciling item; match only equal totals.`);
+    matches.push({ id: `M${Date.now()}`, bank: b.map(x => x.id), sap: s.map(x => x.id), method: 'manual', confidence: 'manual', note: `Matched by ${me || 'user'}` });
+    sel.clear(); render();
+  });
+  $('btn-excl').addEventListener('click', () => {
+    if (!sel.size) return toast('Select the rows to exclude.');
+    const why = prompt('Reason for excluding these lines from the reconciliation:', 'Cleared in an earlier statement');
+    if (why == null) return;
+    sel.forEach(id => excluded.set(id, `${why} (${me || 'user'})`)); sel.clear(); render();
+  });
+  $('btn-unmatch').addEventListener('click', () => {
+    if (!sel.size) return toast('Select rows first.');
+    if (tab === 'matched') matches = matches.filter(m => !sel.has(m.id)); else sel.forEach(id => excluded.delete(id));
+    sel.clear(); render();
+  });
+  $('btn-csv').addEventListener('click', () => {
+    const { head, rows } = rowsFor(), q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const h = head.map(x => Array.isArray(x) ? x[0] : x).filter(Boolean);
+    const csv = [h.map(q).join(','), ...rows.map(r => r.csv.map(q).join(','))].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+    a.download = `bank-reco-${tab}-${R.to}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  // ── Manual items ────────────────────────────────────────────────────────
+  $('btn-madd').addEventListener('click', () => {
+    const amount = parseNum($('m-amt').value);
+    if (!amount || amount <= 0) return toast('Enter a positive amount.');
+    if (!$('m-desc').value.trim()) return toast('Enter a description.');
+    manual.push({ id: Date.now(), category: $('m-cat').value, date: $('m-date').value, description: $('m-desc').value.trim(), amount: r2(amount) });
+    $('m-amt').value = ''; $('m-desc').value = ''; render();
+  });
+  function renderManual() {
+    $('m-list').innerHTML = manual.length ? `<table class="t"><thead><tr><th>Category</th><th>Date</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>${
+      manual.map(m => `<tr><td>${esc(R.categories.find(c => c.key === m.category).label)}</td><td>${fmtD(m.date)}</td><td>${esc(m.description)}</td><td class="num">${money(m.amount)}</td>
+        <td><button class="btn" data-mdel="${m.id}">Remove</button></td></tr>`).join('')}</tbody></table>` : '<span class="muted">No manual items.</span>';
+  }
+  $('m-list').addEventListener('click', e => { const b = e.target.closest('[data-mdel]'); if (b) { manual = manual.filter(m => String(m.id) !== b.dataset.mdel); render(); } });
+
+  // ── Export / AI ─────────────────────────────────────────────────────────
+  function payload() {
+    const S = summary(), done = matchedIds();
+    return {
+      bankName: R.statement.bankName, accountNumber: R.statement.accountNumber, glAccount: R.account, glName: R.glName,
+      from: R.from, to: R.to, preparedBy: me, bankClose: R.bankClose, sapClose: R.sapClose, sapOpening: R.sapOpening,
+      items: S.items, manual,
+      matched: matches.map(m => { const bs = m.bank.map(i => R.bankMap.get(i)), ss = m.sap.map(i => R.sapMap.get(i));
+        return { id: m.id, method: m.method, note: m.note, bankDate: bs[0]?.date, bankText: bs.map(b => b.description).join(' | '), bankAmount: r2(bs.reduce((x, b) => x + b.amount, 0)),
+          sapDate: ss[0]?.date, sapText: ss.map(s => `JE ${s.jeNo} ${sapText(s)}`).join(' | '), sapAmount: r2(ss.reduce((x, s) => x + s.amount, 0)) }; }),
+      statementRows: R.bank.map(b => ({ ...b, status: status(b.id, done) })),
+    };
+  }
+  $('btn-xlsx').addEventListener('click', async e => {
+    const btn = e.currentTarget; btn.disabled = true;
+    try {
+      const r = await api('/export', { method: 'POST', body: payload(), raw: true });
+      const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `Bank Reco ${R.to}.xlsx`;
+      const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (err) { toast(err.message); }
+    finally { btn.disabled = false; }
+  });
+  $('btn-ai').addEventListener('click', async e => {
+    const btn = e.currentTarget; btn.disabled = true; $('ai').innerHTML = '<span class="muted">Reviewing the reconciliation…</span>';
+    const S = summary();
+    const brief = { period: `${R.from} to ${R.to}`, bank: R.statement.bankName, glAccount: `${R.account} ${R.glName}`, bankClose: R.bankClose, sapClose: R.sapClose,
+      computedBooks: S.computed, difference: S.difference, matchedCount: matches.length, lowConfidenceMatches: matches.filter(m => m.confidence !== 'high').length,
+      ocrRowIssues: ST?.check?.rowIssues || 0,
+      categories: S.cats.map(c => ({ category: c.label, total: c.total, count: c.rows.length + c.manual.length,
+        items: [...c.rows.map(r => ({ date: r.date, ageDays: ageDays(r.date, R.to), amount: r.amount, text: r.side === 'sap' ? `JE ${r.jeNo} ${sapText(r)} ${r.partner || ''} ${sapRef(r)}` : r.description })),
+          ...c.manual.map(m => ({ date: m.date, amount: m.amount, text: `manual: ${m.description}` }))].slice(0, 40) })) };
+    try {
+      const r = await api('/insights', { method: 'POST', body: brief });
+      $('ai').innerHTML = r.available ? (window.marked ? marked.parse(r.text.replace(/</g, '&lt;')) : `<pre>${esc(r.text)}</pre>`)
+        : '<span class="muted">AI is not configured on this server — the statement and tables above still have the full reconciliation.</span>';
+    } catch (err) { $('ai').innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`; }
+    finally { btn.disabled = false; }
+  });
+
+  loadAccounts();
+})();
+</script>
+</body>
+</html>

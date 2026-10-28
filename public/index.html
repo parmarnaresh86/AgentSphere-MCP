@@ -14,6 +14,23 @@
     .then(r => { if (!r.ok) { localStorage.removeItem('hanny_token'); window.location.replace('/login.html'); } })
     .catch(() => {});
 })();
+// ── Phones: sorters land on the mobile GRPO Sorting screen ──────
+// (supervisors / admins keep the full app; "?app=1" — e.g. Back from the
+// sorting screen — opens the full app for the rest of the browser session)
+window.isPhoneView = function () {
+  try { return matchMedia('(max-width: 760px)').matches || (matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600); }
+  catch (e) { return false; }
+};
+(function(){
+  try {
+    if (new URLSearchParams(location.search).get('app') === '1') { sessionStorage.setItem('gsort_full_app', '1'); return; }
+    if (!localStorage.getItem('hanny_token') || sessionStorage.getItem('gsort_full_app') === '1' || !window.isPhoneView()) return;
+    const u = JSON.parse(localStorage.getItem('hanny_user') || '{}') || {};
+    const perms = Array.isArray(u.permissions) ? u.permissions : [];
+    const sorter = perms.includes('purchase.workflow.grpo_sorting') && !perms.includes('purchase.workflow.grpo_sorting_supervise') && !u.isSuperAdmin;
+    if (sorter) window.location.replace('/grpo-sorting.html');
+  } catch (e) { /* stay on the app */ }
+})();
 </script>
 <script>
 // ── UI theme ─────────────────────────────────────────────────
@@ -2327,6 +2344,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showQCompPanel()" id="nav-qcomp" data-perm="sales.workflow.quote_compare" style="cursor:pointer"><span class="dot-icon" data-fi="compare" style="background:#7c3aed"></span>Quotation Compare</div>
         <div class="nav-subitem" onclick="showQ2OPanel()" id="nav-q2o" data-perm="sales.workflow.quote_to_order" style="cursor:pointer"><span class="dot-icon" data-fi="customer-order-entry" style="background:#0e7490"></span>Quot → Order</div>
         <div class="nav-subitem" onclick="showOrderConfirmationPanel()" id="nav-soc" data-perm="sales.workflow.order_confirmation" style="cursor:pointer"><span class="dot-icon" data-fi="validate" style="background:#107e3e"></span>Order Confirmation</div>
+        <div class="nav-subitem" onclick="showLoadPlannerPanel()" id="nav-load-planner" data-perm="sales.workflow.load_planner" style="cursor:pointer"><span class="dot-icon" data-fi="shipping-status" style="background:#0f4c81"></span>Load Planner</div>
         <div class="nav-subitem" onclick="showO2DPanel()" id="nav-o2d" data-perm="sales.workflow.order_to_delivery" style="cursor:pointer"><span class="dot-icon" data-fi="shipping-status" style="background:#b45309"></span>Order → Delivery</div>
         <div class="nav-subitem" onclick="showD2ARInvPanel()" id="nav-d2arinv" data-perm="sales.workflow.delivery_to_arinv" style="cursor:pointer"><span class="dot-icon" data-fi="sales-document" style="background:#0369a1"></span>Delivery → AR Inv</div>
         <div class="nav-subitem" onclick="showARInv2ARCMPanel()" id="nav-arinv2arcm" data-perm="sales.workflow.arinv_to_arcm" style="cursor:pointer"><span class="dot-icon" data-fi="undo" style="background:#9f1239"></span>AR Inv → Credit</div>
@@ -2394,6 +2412,10 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showPOAgentPanel()" id="nav-po-agent" data-perm="purchase.workflow.po_agent" style="cursor:pointer"><span class="dot-icon" data-fi="cart" style="background:#7B5EA7"></span>Purchase Order</div>
         <div class="nav-subitem" onclick="showPRtoPOPanel()" id="nav-pr-to-po" data-perm="purchase.workflow.pr_to_po" style="cursor:pointer"><span class="dot-icon" data-fi="cart-approval" style="background:#1a5c2e"></span>PR → PO</div>
         <div class="nav-subitem" onclick="showPOtoGRPOPanel()" id="nav-po-to-grpo" data-perm="purchase.workflow.po_to_grpo" style="cursor:pointer"><span class="dot-icon" data-fi="inbox" style="background:#0f766e"></span>PO → GRPO</div>
+        <div class="nav-subitem" onclick="showGrpoSortingPanel()" id="nav-grpo-sorting" data-perm="purchase.workflow.grpo_sorting" style="cursor:pointer"><span class="dot-icon" data-fi="sap-box" style="background:#0f766e"></span>GRPO Sorting</div>
+        <div class="nav-subitem" onclick="showSortingAnalyticsPanel()" id="nav-sorting-analytics" data-perm="purchase.workflow.sorting_analytics" style="cursor:pointer"><span class="dot-icon" data-fi="line-chart-time-axis" style="background:#0f766e"></span>Sorting Analytics</div>
+        <div class="nav-subitem" onclick="showPutawayAnalyticsPanel()" id="nav-putaway-analytics" data-perm="purchase.workflow.putaway_analytics" style="cursor:pointer"><span class="dot-icon" data-fi="outbox" style="background:#0f766e"></span>Putaway Analytics</div>
+        <div class="nav-subitem" onclick="showWarehouseTwinPanel()" id="nav-warehouse-twin" data-perm="purchase.workflow.warehouse_twin" style="cursor:pointer"><span class="dot-icon" data-fi="inventory" style="background:#0f766e"></span>Warehouse Digital Twin</div>
         <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-grpo-apinv" data-perm="purchase.workflow.grpo_to_apinv" style="cursor:pointer"><span class="dot-icon" data-fi="document-text" style="background:#1d4ed8"></span>GRPO → AP Inv</div>
         <div class="nav-subitem" onclick="showAPServicePanel()" id="nav-apinv-service" data-perm="purchase.workflow.apinv_service" style="cursor:pointer"><span class="dot-icon" data-fi="expense-report" style="background:#1d4ed8"></span>AP Service Invoice</div>
         <div class="nav-subitem" onclick="showThreeWayMatchPanel()" id="nav-three-way-match" data-perm="purchase.workflow.three_way_match" style="cursor:pointer"><span class="dot-icon" data-fi="accounting-document-verification" style="background:#0f766e"></span>Three-Way AP Invoice</div>
@@ -2439,6 +2461,8 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showApipPanel('approvals')" id="nav-apip-approvals" data-perm="apip.approvals" style="cursor:pointer"><span class="dot-icon" data-fi="payment-approval" style="background:#16a34a"></span>Invoice Approval</div>
         <div class="nav-subitem" onclick="showApipPanel('stages')" id="nav-apip-stages" data-perm="apip.stages" style="cursor:pointer"><span class="dot-icon" data-fi="process" style="background:#0891b2"></span>Approval Stage</div>
         <div class="nav-subitem" onclick="showApipPanel('master')" id="nav-apip-master" data-perm="apip.master" style="cursor:pointer"><span class="dot-icon" data-fi="key-user-settings" style="background:#E9730C"></span>Approval Master</div>
+        <div class="nav-subitem" onclick="showApipPanel('vitems')" id="nav-apip-vitems" data-perm="apip.vitems" style="cursor:pointer"><span class="dot-icon" data-fi="product" style="background:#0d9488"></span>Vendor Item Mapping</div>
+        <div class="nav-subitem" onclick="showApipPanel('vexpense')" id="nav-apip-vexpense" data-perm="apip.vexpense" style="cursor:pointer"><span class="dot-icon" data-fi="accounting-document-verification" style="background:#b45309"></span>Vendor Expense G/L</div>
         <div class="nav-subitem" onclick="showApipPanel('mail')" id="nav-apip-mail" data-perm="apip.mail" style="cursor:pointer"><span class="dot-icon" data-fi="email" style="background:#1d4ed8"></span>Mail Configuration</div>
         <div class="nav-subitem" onclick="showApipPanel('settings')" id="nav-apip-settings" data-perm="apip.settings" style="cursor:pointer"><span class="dot-icon" data-fi="settings" style="background:#64748b"></span>Settings</div>
       </div>
@@ -2609,6 +2633,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showOcrPoScanPanel()" id="nav-ocr-po-scan" data-perm="ai.ocr.po_scan" style="cursor:pointer"><span class="dot-icon" data-fi="camera" style="background:#6366f1"></span>Scan PO</div>
         <div class="nav-subitem" onclick="showOcrExpensePanel()" id="nav-ocr-expense" data-perm="ai.ocr.expense" style="cursor:pointer"><span class="dot-icon" data-fi="expense-report" style="background:#f59e0b"></span>Scan Expense Invoice</div>
         <div class="nav-subitem" onclick="showScanAPInvPanel()" id="nav-ocr-apinv" data-perm="ai.ocr.apinv" style="cursor:pointer"><span class="dot-icon" data-fi="pdf-attachment" style="background:#1d4ed8"></span>Scan A/P Invoice</div>
+        <div class="nav-subitem" onclick="showBankRecoPanel()" id="nav-ocr-bank-reco" data-perm="ai.ocr.bank_reco" style="cursor:pointer"><span class="dot-icon" data-fi="money-bills" style="background:#0f766e"></span>Bank Reconciliation</div>
         <div class="nav-subitem" onclick="showOcrInwardPanel()" id="nav-ocr-inward" data-perm="ai.ocr.inward" style="cursor:pointer"><span class="dot-icon" data-fi="journey-arrive" style="background:#16a34a"></span>Scan Inward</div>
         <div class="nav-subitem" onclick="showOcrGatePassPanel()" id="nav-ocr-gatepass" data-perm="ai.ocr.gatepass" style="cursor:pointer"><span class="dot-icon" data-fi="visits" style="background:#0891b2"></span>Scan Gate Pass</div>
         <div class="nav-subitem" onclick="showOcrDocumentPanel()" id="nav-ocr-document" data-perm="ai.ocr.document" style="cursor:pointer"><span class="dot-icon" data-fi="attachment-text-file" style="background:#64748b"></span>Scan Document Mode</div>
@@ -3512,7 +3537,20 @@ document.addEventListener('DOMContentLoaded', () => {});
 window.addEventListener('load', () => {
   restoreLastSession();
   document.querySelectorAll('.mode-btn').forEach(btn =>
-    btn.addEventListener('click', () => setMode(btn.dataset.mode))
+    btn.addEventListener('click', () => {
+      // Top-bar "Chat" leaves any open workflow and returns to the main chat screen.
+      // showChatPanel's list doesn't name every agent, so also hide whatever workflow
+      // panel is still shown inline in the main area (the chat's own history / GPT
+      // drawers open by class, not inline display, and are left alone).
+      if (btn.dataset.mode === 'chat' && typeof window.showChatPanel === 'function') {
+        window.showChatPanel();
+        document.querySelectorAll('.main > [id$="-panel"]').forEach(p => {
+          if (p.style.display && p.style.display !== 'none') p.style.display = 'none';
+        });
+        document.querySelectorAll('.nav-subitem.active').forEach(n => n.classList.remove('active'));
+      }
+      setMode(btn.dataset.mode);
+    })
   );
   document.querySelectorAll('.answer-mode-btn').forEach(btn =>
     btn.addEventListener('click', () => setAnswerMode(btn.dataset.mode))
@@ -9838,7 +9876,7 @@ function showChatPanel() {
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','ai-credits-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
     'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel','fin-reports-panel',
-    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel'];
+    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel','grpo-sorting-panel','sorting-analytics-panel','putaway-analytics-panel','load-planner-panel','bank-reco-panel','warehouse-twin-panel'];
   ALL_PANELS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('messages').style.display = 'flex';
   const bb = document.querySelector('.bottom-bar');
@@ -9867,7 +9905,7 @@ document.addEventListener('keydown', e => {
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','ai-credits-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
     'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel','fin-reports-panel',
-    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel']
+    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel','grpo-sorting-panel','sorting-analytics-panel','putaway-analytics-panel','load-planner-panel','bank-reco-panel','warehouse-twin-panel']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   if (anyOpen) showChatPanel();
 });
@@ -9897,6 +9935,98 @@ function showInventoryDashboardPanel() {
   if (panel) panel.style.display = 'flex';
   const frame = document.getElementById('inv-dashboard-frame');
   if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/inventory-dashboard.html';
+}
+
+function showGrpoSortingPanel() {
+  // phones: the full-screen mobile sorting page instead of the panel inside the desktop shell
+  if (window.isPhoneView && window.isPhoneView()) { window.location.href = '/grpo-sorting.html'; return; }
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-grpo-sorting')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('grpo-sorting-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('grpo-sorting-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/grpo-sorting.html';
+}
+
+function showSortingAnalyticsPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-sorting-analytics')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('sorting-analytics-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('sorting-analytics-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/sorting-analytics.html';
+}
+
+function showBankRecoPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-ocr-bank-reco')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('bank-reco-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('bank-reco-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/bank-reco.html';
+}
+
+function showPutawayAnalyticsPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-putaway-analytics')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('putaway-analytics-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('putaway-analytics-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/putaway-analytics.html';
+}
+
+function showWarehouseTwinPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-warehouse-twin')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('warehouse-twin-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('warehouse-twin-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/warehouse-twin.html';
+}
+
+function showLoadPlannerPanel() {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-load-planner')?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('load-planner-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('load-planner-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/load-planner.html';
 }
 
 function showCompanySetupPanel() {
@@ -27313,6 +27443,28 @@ BRAND BREAKDOWN:\n${brands}`;
   <iframe id="inv-dashboard-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
 </div><!-- /#inv-dashboard-panel -->
 
+<div id="grpo-sorting-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <iframe id="grpo-sorting-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
+</div><!-- /#grpo-sorting-panel -->
+
+<div id="sorting-analytics-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <iframe id="sorting-analytics-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
+</div><!-- /#sorting-analytics-panel -->
+
+<div id="bank-reco-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <iframe id="bank-reco-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
+</div><!-- /#bank-reco-panel -->
+
+<div id="putaway-analytics-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <iframe id="putaway-analytics-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
+</div><!-- /#putaway-analytics-panel -->
+<div id="warehouse-twin-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <iframe id="warehouse-twin-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
+</div><!-- /#warehouse-twin-panel -->
+<div id="load-planner-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <iframe id="load-planner-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
+</div><!-- /#load-planner-panel -->
+
 <div id="db-builder-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
   <div style="background:var(--shell,#1a2535);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2)">
     <div style="font-size:14.5px;font-weight:700;color:#fff">🗄️ DB Query Builder</div>
@@ -42143,13 +42295,12 @@ function urMarkUnsaved() {
 window.urResetToRole = function() {
   if (!_urData) return;
   if (!confirm(`Reset ${_urData.username || 'this user'}'s rights to role defaults?\nAll individual overrides will be removed.`)) return;
-  // Uncheck all overrides
-  document.querySelectorAll('#ur-perms-grid input[type=checkbox]').forEach(cb => {
-    const key = cb.dataset.perm;
-    cb.checked = _urData.rolePerms.includes(key);
-  });
+  // Drop all overrides — the grid is rendered from _urData, so it must be
+  // updated too or the re-render below puts the old overrides straight back.
+  _urData.overrides = [];
+  _urData.effective = [..._urData.rolePerms];
+  urRenderPermsGrid();
   urMarkUnsaved();
-  urRenderPermsGrid(); // re-render to clear override visual hints
 };
 
 // ── Save ─────────────────────────────────────────────────────────────────────
@@ -43633,6 +43784,8 @@ function renderEntityGrid(entities) {
           style="flex:1;background:${running?'#93c5fd':'#0070F2'};color:#fff;border:none;border-radius:6px;padding:7px;font-size:12.5px;font-weight:600;cursor:${running?'not-allowed':'pointer'}">
           ${running ? '⏳ Syncing…' : `⟳ Sync ${e.label}`}
         </button>
+        <button onclick="dsShowDetails('${e.key}')" ${never ? 'disabled' : ''} title="View the cached ${e.label} records"
+          style="background:${never?'#f3f4f6':'#fff'};color:${never?'#d1d5db':'#0070F2'};border:1px solid ${never?'#e5e7eb':'#bfdbfe'};border-radius:6px;padding:7px 10px;font-size:12.5px;font-weight:600;cursor:${never?'not-allowed':'pointer'}">👁 Details</button>
         <button onclick="dsWipeOne('${e.key}','${e.label.replace(/'/g,"\\'")}')" id="ds-wipe-${e.key}"
           ${running || never ? 'disabled' : ''} title="Wipe cached ${e.label} — forces a full re-sync next time"
           style="background:${running||never?'#f3f4f6':'#fef2f2'};color:${running||never?'#d1d5db':'#dc2626'};border:1px solid ${running||never?'#e5e7eb':'#fecaca'};border-radius:6px;padding:7px 10px;font-size:12.5px;cursor:${running||never?'not-allowed':'pointer'}">🗑</button>
@@ -43706,6 +43859,158 @@ window.dsWipeOne = async function(key, label) {
     if (data.ok) { dsLog(`✅ ${label} wiped — sync again to reload it`); await dsRefreshStatus(); }
     else dsLog(`❌ Wipe failed: ${data.error}`);
   } catch(e) { dsLog(`❌ Error: ${e.message}`); }
+};
+
+// ── Details viewer — cached rows of one entity in a popup table ─────────────
+// Paging, search, column filters and sorting all run server-side
+// (GET /api/sync/data/:entity), so large entities like Items stay fast.
+const _dsDet = { entity: '', page: 1, size: 50, q: '', sort: '', dir: 'asc', filters: {}, timer: null };
+const dsEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+window.dsShowDetails = function(entity) {
+  Object.assign(_dsDet, { entity, page: 1, q: '', sort: '', dir: 'asc', filters: {} });
+  let ov = document.getElementById('ds-det-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'ds-det-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.onclick = ev => { if (ev.target === ov) dsCloseDetails(); };
+    ov.innerHTML = `<div style="background:#fff;border-radius:12px;width:min(1200px,100%);height:min(88vh,900px);display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
+      <div style="background:var(--shell,#1a2535);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div>
+          <div id="ds-det-title" style="font-size:14.5px;font-weight:700;color:#fff"></div>
+          <div id="ds-det-sub" style="font-size:11px;color:rgba(255,255,255,.5);margin-top:1px"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="dsDetExport()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer">⬇ Export CSV</button>
+          <button onclick="dsCloseDetails()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer">✕ Close</button>
+        </div>
+      </div>
+      <div style="padding:10px 18px;border-bottom:1px solid #e5e7eb;display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex-shrink:0;background:#f9fafb">
+        <input id="ds-det-q" type="search" placeholder="🔍 Search all columns…" oninput="dsDetSearch(this.value)"
+          style="flex:1;min-width:200px;border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:12.5px;outline:none">
+        <div id="ds-det-filters" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <button onclick="dsDetClearFilters()" style="background:#fff;border:1px solid #d1d5db;color:#374151;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer">Clear</button>
+      </div>
+      <div id="ds-det-body" style="flex:1;overflow:auto"></div>
+      <div style="padding:8px 18px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;flex-shrink:0;font-size:12px;color:#6b7280">
+        <div id="ds-det-info"></div>
+        <div style="display:flex;align-items:center;gap:6px">
+          Rows
+          <select id="ds-det-size" onchange="dsDetSetSize(this.value)" style="border:1px solid #d1d5db;border-radius:6px;padding:4px 6px;font-size:12px">
+            ${[25,50,100,250,500].map(n => `<option value="${n}" ${n===50?'selected':''}>${n}</option>`).join('')}
+          </select>
+          <div id="ds-det-pager" style="display:flex;gap:4px;align-items:center"></div>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && document.getElementById('ds-det-overlay')?.style.display === 'flex') dsCloseDetails(); });
+  }
+  ov.style.display = 'flex';
+  document.getElementById('ds-det-q').value = '';
+  document.getElementById('ds-det-size').value = String(_dsDet.size);
+  document.getElementById('ds-det-filters').innerHTML = '';
+  const ent = _dsStatus.find(x => x.key === entity);
+  document.getElementById('ds-det-title').textContent = `${ent?.icon || ''} ${ent?.label || entity}`;
+  document.getElementById('ds-det-sub').textContent = ent?.synced_at ? `Cached copy · last synced ${new Date(ent.synced_at).toLocaleString()}` : 'Cached copy';
+  dsDetLoad(true);
+};
+
+window.dsCloseDetails = function() {
+  const ov = document.getElementById('ds-det-overlay');
+  if (ov) ov.style.display = 'none';
+};
+
+function dsDetQuery(extra = {}) {
+  const p = new URLSearchParams({ page: _dsDet.page, size: _dsDet.size, q: _dsDet.q, sort: _dsDet.sort, dir: _dsDet.dir,
+    filters: JSON.stringify(_dsDet.filters), ...extra });
+  return `/api/sync/data/${encodeURIComponent(_dsDet.entity)}?${p}`;
+}
+
+async function dsDetLoad(rebuildFilters = false) {
+  const body = document.getElementById('ds-det-body');
+  body.style.opacity = '.5';
+  try {
+    const res = await fetch(dsDetQuery(), { headers: { 'x-auth-token': dsTok() } });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    Object.assign(_dsDet, { page: d.page, sort: d.sort, dir: d.dir });
+    if (rebuildFilters) dsDetRenderFilters(d.filterOptions || {});
+    dsDetRenderTable(d);
+  } catch (e) {
+    body.innerHTML = `<div style="margin:20px;padding:14px;background:#fef2f2;border-radius:8px;color:#b91c1c;font-size:13px">⚠️ ${dsEsc(e.message)}</div>`;
+  } finally {
+    body.style.opacity = '1';
+  }
+}
+
+function dsDetRenderFilters(opts) {
+  document.getElementById('ds-det-filters').innerHTML = Object.entries(opts).map(([col, vals]) =>
+    `<select data-col="${dsEsc(col)}" onchange="dsDetSetFilter(this.dataset.col, this.value)"
+      style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:12px;max-width:180px;background:#fff">
+      <option value="">${dsEsc(col)}: All</option>
+      ${vals.map(v => `<option value="${dsEsc(v)}">${dsEsc(col)}: ${dsEsc(v)}</option>`).join('')}
+    </select>`).join('');
+}
+
+function dsDetRenderTable(d) {
+  const body = document.getElementById('ds-det-body');
+  const th = 'position:sticky;top:0;background:#f3f4f6;padding:8px 10px;text-align:left;font-size:11.5px;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;white-space:nowrap;cursor:pointer;user-select:none';
+  const td = 'padding:7px 10px;font-size:12px;color:#111827;border-bottom:1px solid #f3f4f6;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis';
+  const isNum = v => typeof v === 'number';
+  body.innerHTML = !d.rows.length
+    ? '<div style="text-align:center;color:#9ca3af;padding:50px;font-size:13px">No matching records</div>'
+    : `<table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="${th};cursor:default;color:#9ca3af">#</th>
+          ${d.columns.map(c => `<th style="${th}" data-col="${dsEsc(c)}" onclick="dsDetSort(this.dataset.col)">${dsEsc(c)}${d.sort === c ? (d.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')}
+        </tr></thead>
+        <tbody>${d.rows.map((r, i) => `<tr onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <td style="${td};color:#9ca3af">${(d.page - 1) * d.size + i + 1}</td>
+          ${d.columns.map(c => `<td style="${td};${isNum(r[c]) ? 'text-align:right' : ''}" title="${dsEsc(r[c])}">${isNum(r[c]) ? r[c].toLocaleString() : dsEsc(r[c])}</td>`).join('')}
+        </tr>`).join('')}</tbody>
+      </table>`;
+  const from = d.total ? (d.page - 1) * d.size + 1 : 0, to = Math.min(d.page * d.size, d.total);
+  document.getElementById('ds-det-info').textContent = `Showing ${from.toLocaleString()}–${to.toLocaleString()} of ${d.total.toLocaleString()} records`;
+  const btn = (label, page, disabled) => `<button ${disabled ? 'disabled' : ''} onclick="dsDetGo(${page})"
+    style="border:1px solid #d1d5db;background:${disabled ? '#f3f4f6' : '#fff'};color:${disabled ? '#d1d5db' : '#374151'};border-radius:6px;padding:4px 9px;font-size:12px;cursor:${disabled ? 'default' : 'pointer'}">${label}</button>`;
+  document.getElementById('ds-det-pager').innerHTML =
+    btn('«', 1, d.page <= 1) + btn('‹', d.page - 1, d.page <= 1) +
+    `<span style="padding:0 6px">Page <input type="number" min="1" max="${d.pages}" value="${d.page}" onchange="dsDetGo(this.value)"
+      style="width:52px;border:1px solid #d1d5db;border-radius:6px;padding:3px 5px;font-size:12px"> of ${d.pages}</span>` +
+    btn('›', d.page + 1, d.page >= d.pages) + btn('»', d.pages, d.page >= d.pages);
+}
+
+window.dsDetSearch = function(v) {
+  clearTimeout(_dsDet.timer);
+  _dsDet.timer = setTimeout(() => { _dsDet.q = v.trim(); _dsDet.page = 1; dsDetLoad(); }, 300);
+};
+window.dsDetSetFilter = function(col, v) {
+  if (v) _dsDet.filters[col] = v; else delete _dsDet.filters[col];
+  _dsDet.page = 1; dsDetLoad();
+};
+window.dsDetClearFilters = function() {
+  _dsDet.q = ''; _dsDet.filters = {}; _dsDet.page = 1;
+  document.getElementById('ds-det-q').value = '';
+  document.querySelectorAll('#ds-det-filters select').forEach(s => { s.value = ''; });
+  dsDetLoad();
+};
+window.dsDetSort = function(col) {
+  _dsDet.dir = _dsDet.sort === col && _dsDet.dir === 'asc' ? 'desc' : 'asc';
+  _dsDet.sort = col; _dsDet.page = 1; dsDetLoad();
+};
+window.dsDetGo = function(p) { _dsDet.page = Math.max(1, parseInt(p) || 1); dsDetLoad(); };
+window.dsDetSetSize = function(n) { _dsDet.size = parseInt(n) || 50; _dsDet.page = 1; dsDetLoad(); };
+window.dsDetExport = async function() {
+  try {
+    const res = await fetch(dsDetQuery({ format: 'csv' }), { headers: { 'x-auth-token': dsTok() } });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    const url = URL.createObjectURL(await res.blob());
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${_dsDet.entity}.csv` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { alert(`Export failed: ${e.message}`); }
 };
 
 // ── Wipe ALL cached master data for the active company — destructive, confirm first ─

@@ -379,11 +379,17 @@ body{
   } catch {}
 })();
 
+// ── Where to go after login: ?next=/page.html (same-site paths only), else the app
+const NEXT_URL = (() => {
+  try { const n = new URLSearchParams(location.search).get('next') || ''; return /^\/(?!\/)[\w\-./?=&%#]*$/.test(n) && !/^\/login\.html/i.test(n) ? n : '/'; }
+  catch { return '/'; }
+})();
+
 // ── Already logged in? Redirect ──────────────────────────────
 const storedToken = localStorage.getItem('hanny_token');
 if (storedToken) {
   fetch('/auth/me', { headers: { 'x-auth-token': storedToken } })
-    .then(r => { if (r.ok) window.location.replace('/'); })
+    .then(r => { if (r.ok) window.location.replace(NEXT_URL); })
     .catch(() => {});
 }
 
@@ -428,7 +434,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     localStorage.setItem('hanny_user',  JSON.stringify({ id: data.id, username: data.username, fullName: data.fullName, role: data.role, permissions: data.permissions || [], isSuperAdmin: data.isSuperAdmin || false }));
     okEl.textContent = `Welcome, ${data.fullName || data.username}! Redirecting…`;
     okEl.style.display = 'block';
-    setTimeout(() => window.location.replace('/'), 800);
+    setTimeout(() => window.location.replace(NEXT_URL), 800);
   } catch (err) {
     errEl.textContent = 'Network error — server unreachable';
     errEl.style.display = 'block';
