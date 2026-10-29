@@ -42242,11 +42242,11 @@ function urRenderPermsGrid() {
     else if (!active && isOvr && fromRole) { bg='#fff7ed'; border='#f97316'; textColor='#9a3412'; hint='<span style="font-size:9px;margin-left:auto;color:#f97316;font-weight:600">-override</span>'; }
     else if (active) { bg='#f0fdf4'; border='#10b981'; textColor='#065f46'; }
     else { bg='#fff'; border='#e5e7eb'; textColor='#9ca3af'; }
-    return `<label onclick="${isSA?'':'urTogglePerm(this,\''+p.key+'\')'}"
+    return `<label
       style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid ${border};border-radius:7px;
              cursor:${isSA?'not-allowed':'pointer'};background:${bg};transition:all .12s;user-select:none">
       <input type="checkbox" data-perm="${p.key}" ${active?'checked':''} ${isSA?'disabled':''}
-        style="accent-color:#0070F2;width:14px;height:14px;flex-shrink:0" onchange="urMarkUnsaved()">
+        style="accent-color:#0070F2;width:14px;height:14px;flex-shrink:0" onchange="urTogglePerm(this)">
       <span style="font-size:12.5px;color:${textColor};font-weight:${active?'600':'400'}">${p.label}</span>
       ${hint}
     </label>`;
@@ -42270,14 +42270,14 @@ function urRenderPermsGrid() {
   document.getElementById('ur-perms-grid').innerHTML = html;
 }
 
-window.urTogglePerm = function(label, key) {
-  const cb = label.querySelector('input[type=checkbox]');
-  if (!cb || cb.disabled) return;
-  cb.checked = !cb.checked;
+// The <label> toggles the checkbox natively; this only restyles it on change.
+window.urTogglePerm = function(cb) {
+  const label = cb.closest('label');
+  if (!label || cb.disabled) return;
   urMarkUnsaved();
   // Update visual state
   const { rolePerms } = _urData || {};
-  const fromRole = rolePerms?.includes(key);
+  const fromRole = rolePerms?.includes(cb.dataset.perm);
   const active   = cb.checked;
   if (active && !fromRole) { label.style.background='#eff6ff'; label.style.borderColor='#3b82f6'; }
   else if (!active && fromRole) { label.style.background='#fff7ed'; label.style.borderColor='#f97316'; }
