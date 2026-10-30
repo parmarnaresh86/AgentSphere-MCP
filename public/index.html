@@ -2283,6 +2283,20 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showMasterPanel('service_call')" id="nav-master-service-call" data-perm="master.service_call" style="cursor:pointer"><span class="dot-icon" data-fi="crm-service-manager" style="background:#0e7490"></span>Service Call</div>
       </div>
     </div>
+    <div class="nav-group">
+      <div class="nav-group-header" data-group="master-excel" data-fi="attachment-text-file">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          Excel Import
+        </span>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="nav-group-body" id="grp-master-excel">
+        <div class="nav-subitem" onclick="showExcelImportPanel('item')" id="nav-xl-item" data-perm="master.excel_import.item" style="cursor:pointer"><span class="dot-icon" data-fi="product" style="background:#0f766e"></span>Item Master Import</div>
+        <div class="nav-subitem" onclick="showExcelImportPanel('bp')" id="nav-xl-bp" data-perm="master.excel_import.bp" style="cursor:pointer"><span class="dot-icon" data-fi="customer-and-supplier" style="background:#1d4ed8"></span>Business Partner Import</div>
+        <div class="nav-subitem" onclick="showExcelImportPanel('bom')" id="nav-xl-bom" data-perm="master.excel_import.bom" style="cursor:pointer"><span class="dot-icon" data-fi="tree" style="background:#d97706"></span>BOM Import</div>
+      </div>
+    </div>
   </div>
 
   <!-- ══ 2b. SERVICE CALL ════════════════════════════════════ -->
@@ -2344,6 +2358,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showQCompPanel()" id="nav-qcomp" data-perm="sales.workflow.quote_compare" style="cursor:pointer"><span class="dot-icon" data-fi="compare" style="background:#7c3aed"></span>Quotation Compare</div>
         <div class="nav-subitem" onclick="showQ2OPanel()" id="nav-q2o" data-perm="sales.workflow.quote_to_order" style="cursor:pointer"><span class="dot-icon" data-fi="customer-order-entry" style="background:#0e7490"></span>Quot → Order</div>
         <div class="nav-subitem" onclick="showOrderConfirmationPanel()" id="nav-soc" data-perm="sales.workflow.order_confirmation" style="cursor:pointer"><span class="dot-icon" data-fi="validate" style="background:#107e3e"></span>Order Confirmation</div>
+        <div class="nav-subitem" onclick="showExcelImportPanel('order')" id="nav-so-excel-import" data-perm="sales.workflow.so_excel_import" style="cursor:pointer"><span class="dot-icon" data-fi="attachment-text-file" style="background:#107e3e"></span>SO Excel Import</div>
         <div class="nav-subitem" onclick="showLoadPlannerPanel()" id="nav-load-planner" data-perm="sales.workflow.load_planner" style="cursor:pointer"><span class="dot-icon" data-fi="shipping-status" style="background:#0f4c81"></span>Load Planner</div>
         <div class="nav-subitem" onclick="showO2DPanel()" id="nav-o2d" data-perm="sales.workflow.order_to_delivery" style="cursor:pointer"><span class="dot-icon" data-fi="shipping-status" style="background:#b45309"></span>Order → Delivery</div>
         <div class="nav-subitem" onclick="showD2ARInvPanel()" id="nav-d2arinv" data-perm="sales.workflow.delivery_to_arinv" style="cursor:pointer"><span class="dot-icon" data-fi="sales-document" style="background:#0369a1"></span>Delivery → AR Inv</div>
@@ -2418,6 +2433,7 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         <div class="nav-subitem" onclick="showWarehouseTwinPanel()" id="nav-warehouse-twin" data-perm="purchase.workflow.warehouse_twin" style="cursor:pointer"><span class="dot-icon" data-fi="inventory" style="background:#0f766e"></span>Warehouse Digital Twin</div>
         <div class="nav-subitem" onclick="showGRPOtoAPInvPanel()" id="nav-grpo-apinv" data-perm="purchase.workflow.grpo_to_apinv" style="cursor:pointer"><span class="dot-icon" data-fi="document-text" style="background:#1d4ed8"></span>GRPO → AP Inv</div>
         <div class="nav-subitem" onclick="showAPServicePanel()" id="nav-apinv-service" data-perm="purchase.workflow.apinv_service" style="cursor:pointer"><span class="dot-icon" data-fi="expense-report" style="background:#1d4ed8"></span>AP Service Invoice</div>
+        <div class="nav-subitem" onclick="showExcelImportPanel('apservice')" id="nav-xl-apinv" data-perm="purchase.workflow.apinv_excel_import" style="cursor:pointer"><span class="dot-icon" data-fi="attachment-text-file" style="background:#b45309"></span>AP Expense Import (Excel)</div>
         <div class="nav-subitem" onclick="showThreeWayMatchPanel()" id="nav-three-way-match" data-perm="purchase.workflow.three_way_match" style="cursor:pointer"><span class="dot-icon" data-fi="accounting-document-verification" style="background:#0f766e"></span>Three-Way AP Invoice</div>
         <div class="nav-subitem" onclick="showAPCMPanel()" id="nav-apinv-apcm" data-perm="purchase.workflow.apinv_to_apcm" style="cursor:pointer"><span class="dot-icon" data-fi="undo" style="background:#b91c1c"></span>AP Inv → Credit</div>
         <div class="nav-subitem" onclick="showOutPayPanel()" id="nav-outpmt" data-perm="purchase.workflow.outgoing_payment" style="cursor:pointer"><span class="dot-icon" data-fi="batch-payments" style="background:#1e40af"></span>Outgoing Payment</div>
@@ -2522,6 +2538,10 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Customer Aging Detail
       <span style="margin-left:auto;font-size:9px;background:rgba(16,185,129,.65);color:#fff;padding:1px 5px;border-radius:8px;font-weight:700">LIVE</span>
+    </div>
+    <div class="nav-item" id="nav-xl-salary" data-perm="finance.salary_jv_import" onclick="showExcelImportPanel('je')" style="cursor:pointer" title="Salary register / salary slips (Excel) → one journal entry per employee, salary heads mapped to G/L accounts" data-fi="money-bills">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
+      Salary → Journal Entry
     </div>
   </div>
 
@@ -9876,7 +9896,7 @@ function showChatPanel() {
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','ai-credits-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
     'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel','fin-reports-panel',
-    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel','grpo-sorting-panel','sorting-analytics-panel','putaway-analytics-panel','load-planner-panel','bank-reco-panel','warehouse-twin-panel'];
+    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel','grpo-sorting-panel','sorting-analytics-panel','putaway-analytics-panel','load-planner-panel','bank-reco-panel','warehouse-twin-panel','excel-import-panel'];
   ALL_PANELS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('messages').style.display = 'flex';
   const bb = document.querySelector('.bottom-bar');
@@ -9905,7 +9925,7 @@ document.addEventListener('keydown', e => {
     'user-rights-panel','data-sync-panel','activity-agent-panel','prompt-activity-panel','financial-dashboard-panel','customer-aging-panel',
     'company-setup-panel','developer-settings-panel','ai-credits-panel','roles-perms-panel','user-management-panel','db-builder-panel','udt-panel',
     'query-library-panel','schema-registry-panel','create-agent-panel','custom-agent-panel','custom-transaction-panel','custom-api-panel','local-table-panel','workflow-run-panel','insight-agent-panel','fin-reports-panel',
-    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel','grpo-sorting-panel','sorting-analytics-panel','putaway-analytics-panel','load-planner-panel','bank-reco-panel','warehouse-twin-panel']
+    'vendor-payment-aging-panel','purchase-analysis-panel','sales-analysis-panel','inv-dashboard-panel','soc-panel','grpo-sorting-panel','sorting-analytics-panel','putaway-analytics-panel','load-planner-panel','bank-reco-panel','warehouse-twin-panel','excel-import-panel']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   if (anyOpen) showChatPanel();
 });
@@ -9968,6 +9988,25 @@ function showSortingAnalyticsPanel() {
   const frame = document.getElementById('sorting-analytics-frame');
   if (frame && frame.getAttribute('src') === 'about:blank') frame.src = '/sorting-analytics.html';
 }
+
+// One panel for every Excel import agent; the iframe switches agent by ?type=.
+const EXCEL_IMPORT_NAV = { order: 'nav-so-excel-import', item: 'nav-xl-item', bp: 'nav-xl-bp', bom: 'nav-xl-bom', apservice: 'nav-xl-apinv', je: 'nav-xl-salary' };
+function showExcelImportPanel(type) {
+  showChatPanel();
+  document.getElementById('messages').style.display = 'none';
+  const bb = document.querySelector('.bottom-bar'); if (bb) bb.style.display = 'none';
+  const ia = document.querySelector('.input-area'); if (ia) ia.style.display = 'none';
+  document.querySelectorAll('.nav-item,.nav-subitem').forEach(n => n.classList.remove('active'));
+  document.getElementById(EXCEL_IMPORT_NAV[type])?.classList.add('active');
+  const main = document.querySelector('.main');
+  const panel = document.getElementById('excel-import-panel');
+  if (panel && main && panel.parentElement !== main) main.appendChild(panel);
+  if (panel) panel.style.display = 'flex';
+  const frame = document.getElementById('excel-import-frame');
+  const src = `/excel-import.html?type=${type}`;
+  if (frame && frame.getAttribute('src') !== src) frame.src = src;
+}
+function showSoExcelImportPanel() { showExcelImportPanel('order'); }
 
 function showBankRecoPanel() {
   showChatPanel();
@@ -27454,6 +27493,9 @@ BRAND BREAKDOWN:\n${brands}`;
 <div id="bank-reco-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
   <iframe id="bank-reco-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
 </div><!-- /#bank-reco-panel -->
+<div id="excel-import-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
+  <iframe id="excel-import-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>
+</div><!-- /#excel-import-panel -->
 
 <div id="putaway-analytics-panel" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;background:#f8f9fa">
   <iframe id="putaway-analytics-frame" src="about:blank" style="flex:1;border:none;width:100%;height:100%;background:#fff"></iframe>

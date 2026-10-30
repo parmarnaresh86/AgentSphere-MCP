@@ -44,6 +44,7 @@ import { createPOtoGRPOAgentRouter } from './controllers/po-to-grpo-agent.mjs';
 import { createGRPOtoAPInvAgentRouter } from './controllers/grpo-to-apinv-agent.mjs';
 import { createScanAPInvAgentRouter } from './controllers/scan-apinv-agent.mjs';
 import { createBankRecoRouter } from './controllers/bank-reco-agent.mjs';
+import { createExcelImportRouter } from './controllers/excel-import-agent.mjs';
 import { createAPInvServiceAgentRouter } from './controllers/apinv-service-agent.mjs';
 import { createOcrPoScanAgentRouter }   from './controllers/ocr-po-scan-agent.mjs';
 import { createApipRouter, startApipIntake } from './controllers/ap-invoice-processing-agent.mjs';
@@ -6960,6 +6961,11 @@ app.use('/api/quotation-comparison', createQuotationComparisonRouter({ requireAu
 app.use('/api/quotation-order',    createQuotationToOrderRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/order-delivery',     createOrderToDeliveryRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/order-confirmation', createOrderConfirmationRouter({ requireAuth, getActiveSap }));
+// Excel Import agents — upload sheet → map to SAP fields → validate → post (UI: public/excel-import.html?type=…)
+for (const [path, type] of [['so-excel-import', 'order'], ['item-excel-import', 'item'], ['bp-excel-import', 'bp'],
+  ['bom-excel-import', 'bom'], ['apinv-excel-import', 'apservice'], ['salary-jv-import', 'je']]) {
+  app.use(`/api/${path}`, createExcelImportRouter({ requireAuth, getActiveSap, getActiveConfig }, type));
+}
 app.use('/api/delivery-arinv',     createDeliveryToARInvRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/arinv-arcm',         createARInvToARCMRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
 app.use('/api/incoming-payment',   createIncomingPaymentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));

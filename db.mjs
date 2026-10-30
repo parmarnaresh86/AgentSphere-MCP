@@ -557,6 +557,9 @@ export const ALL_PERMISSIONS = [
   { key: 'master.supplier',      label: 'Supplier Master',      section: 'Master Data' },
   { key: 'master.bom',           label: 'Bill of Material',     section: 'Master Data' },
   { key: 'master.service_call',  label: 'Service Call',         section: 'Master Data' },
+  { key: 'master.excel_import.item', label: 'Item Master Import (Excel)',      section: 'Master Data', group: 'Excel Import' },
+  { key: 'master.excel_import.bp',   label: 'Business Partner Import (Excel)', section: 'Master Data', group: 'Excel Import' },
+  { key: 'master.excel_import.bom',  label: 'Bill of Materials Import (Excel)', section: 'Master Data', group: 'Excel Import' },
 
   // Service Call
   { key: 'service.sc_view',    label: 'Service Call Dashboard', section: 'Service Call' },
@@ -580,6 +583,9 @@ export const ALL_PERMISSIONS = [
   { key: 'sales.workflow.quote_to_order',    label: 'Quot → Order',       section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.order_confirmation', label: 'Order Confirmation', section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.load_planner',      label: 'Load Planner',       section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.so_excel_import',   label: 'Sales Order Excel Import', section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'sales.workflow.so_excel_import_templates', label: 'Sales Order Excel Import — Manage Templates', section: 'Sales — O2C', group: 'AI Workflow' },
+  { key: 'tools.excel_import_templates', label: 'Excel Import — Manage Templates (all import agents)', section: 'Tools' },
   { key: 'sales.workflow.order_to_delivery', label: 'Order → Delivery',   section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.delivery_to_arinv', label: 'Delivery → AR Inv',  section: 'Sales — O2C', group: 'AI Workflow' },
   { key: 'sales.workflow.arinv_to_arcm',     label: 'AR Inv → Credit',    section: 'Sales — O2C', group: 'AI Workflow' },
@@ -611,6 +617,7 @@ export const ALL_PERMISSIONS = [
   { key: 'purchase.workflow.po_to_grpo',      label: 'PO → GRPO',              section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.grpo_to_apinv',   label: 'GRPO → AP Inv',          section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.apinv_service',   label: 'AP Service Invoice',     section: 'Purchase — P2P', group: 'AI Workflow' },
+  { key: 'purchase.workflow.apinv_excel_import', label: 'A/P Expense Invoice Import (Excel)', section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.three_way_match', label: '3-Way Match',            section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.apinv_to_apcm',   label: 'AP Inv → Credit',        section: 'Purchase — P2P', group: 'AI Workflow' },
   { key: 'purchase.workflow.outgoing_payment',label: 'Outgoing Payment',       section: 'Purchase — P2P', group: 'AI Workflow' },
@@ -635,6 +642,7 @@ export const ALL_PERMISSIONS = [
   { key: 'finance.ap_aging',            label: 'AP Aging',              section: 'Finance', group: 'AR & Collections' },
   { key: 'finance.financial_dashboard', label: 'Financial Dashboard',   section: 'Finance' },
   { key: 'finance.customer_aging',      label: 'Customer Aging Detail', section: 'Finance' },
+  { key: 'finance.salary_jv_import',    label: 'Salary → Journal Entry (Excel)', section: 'Finance' },
   { key: 'finance.reports.balance_sheet', label: 'Balance Sheet',        section: 'Finance', group: 'Financial Reports' },
   { key: 'finance.reports.profit_loss',   label: 'Profit & Loss',        section: 'Finance', group: 'Financial Reports' },
   { key: 'finance.reports.trial_balance', label: 'Trial Balance',        section: 'Finance', group: 'Financial Reports' },
@@ -999,6 +1007,20 @@ const ONE_TIME_GRANTS = [
   // Load Planner (reads open SOs, simulates container / pallet loading) → admins and order-to-delivery users.
   { name: 'sales.workflow.load_planner.v1', trigger: ['admin.roles','sales.workflow.order_to_delivery','sales.workflow.order_confirmation'],
     keys: ['sales.workflow.load_planner'] },
+  // Sales Order Excel Import (posts SOs) → admins and whoever can already post sales orders.
+  { name: 'sales.workflow.so_excel_import.v1', trigger: ['admin.roles','sales.workflow.sales_order'],
+    keys: ['sales.workflow.so_excel_import'] },
+  // Excel import agents → admins and whoever already maintains that master / posts that document.
+  { name: 'master.excel_import.v1', trigger: ['admin.roles'], keys: ['master.excel_import.item', 'master.excel_import.bp', 'master.excel_import.bom'] },
+  { name: 'master.excel_import.item.v1', trigger: ['master.item'], keys: ['master.excel_import.item'] },
+  { name: 'master.excel_import.bp.v1', trigger: ['master.customer', 'master.supplier'], keys: ['master.excel_import.bp'] },
+  { name: 'master.excel_import.bom.v1', trigger: ['master.bom'], keys: ['master.excel_import.bom'] },
+  { name: 'purchase.workflow.apinv_excel_import.v1', trigger: ['admin.roles', 'purchase.workflow.apinv_service'], keys: ['purchase.workflow.apinv_excel_import'] },
+  { name: 'finance.salary_jv_import.v1', trigger: ['admin.roles'], keys: ['finance.salary_jv_import'] },
+  { name: 'tools.excel_import_templates.v1', trigger: ['admin.roles', 'sales.workflow.so_excel_import_templates'], keys: ['tools.excel_import_templates'] },
+  // Designing import templates (column → SAP field mapping) → admins only to start with.
+  { name: 'sales.workflow.so_excel_import_templates.v1', trigger: ['admin.roles'],
+    keys: ['sales.workflow.so_excel_import_templates'] },
   // Inventory Dashboard & Reports (read-only) → whoever can already see Stock Levels.
   { name: 'inventory.dashboard.v1', trigger: ['inventory.stock_levels'],
     keys: ['inventory.dashboard'] },
@@ -2380,6 +2402,275 @@ export const promptRepo = {
   },
   clear(userId, kind) {
     return db.prepare(`DELETE FROM user_prompts WHERE user_id=? AND kind=?`).run(userId, kind).changes;
+  },
+};
+
+// ── Excel Import agents (Sales Orders, Items, Business Partners, BOMs, A/P service
+//    invoices, salary journal entries) ─────────────────────────────────────────────
+// One row per uploaded sheet (the acknowledgement) and one per record found in it
+// (a sales order, an item, a journal entry …). doc_type says which agent owns the
+// row; every query is scoped to company + doc_type. Lines, header fields and
+// validation issues are kept as JSON. The summary columns (card_code = record code,
+// card_name = its name, doc_date / due_date, num_at_card = reference) feed the lists.
+// status: ready | failed (pending tab) · missing (missing-data tab) · posting · posted
+db.exec(`
+  CREATE TABLE IF NOT EXISTS so_import_batches (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    company         TEXT NOT NULL DEFAULT '',
+    file_name       TEXT DEFAULT '',
+    sheet_name      TEXT DEFAULT '',
+    uploaded_by     TEXT DEFAULT '',
+    uploaded_at     TEXT NOT NULL,
+    row_count       INTEGER NOT NULL DEFAULT 0,
+    order_count     INTEGER NOT NULL DEFAULT 0,
+    line_count      INTEGER NOT NULL DEFAULT 0,
+    ready_count     INTEGER NOT NULL DEFAULT 0,
+    missing_count   INTEGER NOT NULL DEFAULT 0,
+    duplicate_count INTEGER NOT NULL DEFAULT 0,
+    superseded_count INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_so_import_batches_company ON so_import_batches(company, id DESC);
+
+  CREATE TABLE IF NOT EXISTS so_import_orders (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id      INTEGER NOT NULL REFERENCES so_import_batches(id) ON DELETE CASCADE,
+    company       TEXT NOT NULL DEFAULT '',
+    order_key     TEXT NOT NULL,
+    card_code     TEXT DEFAULT '',
+    card_name     TEXT DEFAULT '',
+    doc_date      TEXT,
+    due_date      TEXT,
+    num_at_card   TEXT DEFAULT '',
+    line_count    INTEGER NOT NULL DEFAULT 0,
+    total         REAL NOT NULL DEFAULT 0,
+    header_json   TEXT NOT NULL DEFAULT '{}',
+    lines_json    TEXT NOT NULL DEFAULT '[]',
+    issues_json   TEXT NOT NULL DEFAULT '[]',
+    status        TEXT NOT NULL DEFAULT 'ready',
+    error         TEXT DEFAULT '',
+    sap_doc_entry INTEGER,
+    sap_doc_num   INTEGER,
+    posted_at     TEXT,
+    posted_by     TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_so_import_orders_status ON so_import_orders(company, status);
+  CREATE INDEX IF NOT EXISTS idx_so_import_orders_key    ON so_import_orders(company, order_key);
+
+  CREATE TABLE IF NOT EXISTS so_import_templates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company     TEXT NOT NULL DEFAULT '',
+    name        TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    is_default  INTEGER NOT NULL DEFAULT 0,
+    json        TEXT NOT NULL DEFAULT '{}',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    updated_by  TEXT DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS idx_so_import_templates_company ON so_import_templates(company);
+`);
+// Each upload keeps a snapshot of the template it was read with, so later edits
+// to the template never change how already-imported records are shown or posted.
+// doc_type: rows from before the other agents existed are sales orders.
+(function migrateImportTables() {
+  const add = {
+    so_import_batches: { template_id: 'INTEGER', template_name: `TEXT DEFAULT ''`, template_json: 'TEXT', doc_type: `TEXT NOT NULL DEFAULT 'order'` },
+    so_import_orders: { doc_type: `TEXT NOT NULL DEFAULT 'order'` },
+    so_import_templates: { doc_type: `TEXT NOT NULL DEFAULT 'order'` },
+  };
+  for (const [table, cols] of Object.entries(add)) {
+    const have = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+    for (const [c, t] of Object.entries(cols)) if (!have.includes(c)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${c} ${t}`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_so_import_orders_type ON so_import_orders(company, doc_type, status)`);
+})();
+// A post cut off by a restart may or may not have reached SAP — never retry it blindly.
+db.prepare(`UPDATE so_import_orders SET status='failed',
+  error='Posting was interrupted — check SAP for this record before posting it again.' WHERE status='posting'`).run();
+
+const soiNow = () => new Date().toISOString();
+const soiRow = r => r && ({
+  id: r.id, batchId: r.batch_id, orderKey: r.order_key, cardCode: r.card_code, cardName: r.card_name,
+  docDate: r.doc_date, dueDate: r.due_date, numAtCard: r.num_at_card, lineCount: r.line_count, total: r.total,
+  status: r.status, error: r.error || '', docEntry: r.sap_doc_entry, docNum: r.sap_doc_num,
+  postedAt: r.posted_at, postedBy: r.posted_by, createdAt: r.created_at, updatedAt: r.updated_at,
+  fileName: r.file_name, issues: JSON.parse(r.issues_json || '[]'),
+  templateId: r.template_id ?? null, templateName: r.template_name || '',
+  cells: r.header_json ? (JSON.parse(r.header_json).cells || {}) : {},
+  mode: r.header_json ? (JSON.parse(r.header_json).mode || 'create') : 'create',
+});
+const soiFull = r => ({ ...soiRow(r), header: JSON.parse(r.header_json || '{}'), lines: JSON.parse(r.lines_json || '[]'),
+  template: r.template_json ? JSON.parse(r.template_json) : null });
+const soiTpl = r => r && ({ id: r.id, name: r.name, description: r.description || '', isDefault: !!r.is_default,
+  ...JSON.parse(r.json || '{}'), updatedAt: r.updated_at, updatedBy: r.updated_by || '' });
+const SOI_TABS = { pending: ['ready', 'failed', 'posting'], posted: ['posted'], missing: ['missing'] };
+const soiSummary = (o, s) => ({ card_code: s.code || '', card_name: s.name || '', doc_date: s.date || null, due_date: s.due || null, num_at_card: s.ref || '' });
+
+// Every method takes the scope { company, type } first.
+export const importRepo = {
+  // Saves the upload. A key already posted is kept as a duplicate (missing tab);
+  // unposted copies from earlier uploads are replaced by the new one.
+  saveBatch(sc, meta, orders) {
+    const now = soiNow();
+    const postedOf = db.prepare(`SELECT sap_doc_num FROM so_import_orders WHERE company=? AND doc_type=? AND order_key=? AND status IN ('posted','posting') LIMIT 1`);
+    const dropOld = db.prepare(`DELETE FROM so_import_orders WHERE company=? AND doc_type=? AND order_key=? AND status IN ('ready','failed','missing')`);
+    const ins = db.prepare(`INSERT INTO so_import_orders
+      (batch_id, company, doc_type, order_key, card_code, card_name, doc_date, due_date, num_at_card, line_count, total,
+       header_json, lines_json, issues_json, status, created_at, updated_at)
+      VALUES (@batch_id,@company,@doc_type,@order_key,@card_code,@card_name,@doc_date,@due_date,@num_at_card,@line_count,@total,
+       @header_json,@lines_json,@issues_json,@status,@now,@now)`);
+    return db.transaction(() => {
+      const batchId = db.prepare(`INSERT INTO so_import_batches (company, doc_type, file_name, sheet_name, uploaded_by, uploaded_at, row_count, line_count,
+          template_id, template_name, template_json)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(sc.company, sc.type, meta.fileName, meta.sheetName, meta.uploadedBy, now, meta.rowCount, meta.lineCount,
+          meta.template.id, meta.template.name, JSON.stringify(meta.template)).lastInsertRowid;
+      let ready = 0, missing = 0, duplicates = 0, superseded = 0;
+      for (const o of orders) {
+        const posted = postedOf.get(sc.company, sc.type, o.orderKey);
+        if (posted) {
+          o.issues.unshift({ local: true, message: `${meta.noun} ${o.orderKey} is already posted to SAP${posted.sap_doc_num ? ` (${meta.docLabel} ${posted.sap_doc_num})` : ''}` });
+          duplicates++;
+        } else superseded += dropOld.run(sc.company, sc.type, o.orderKey).changes;
+        const status = o.issues.length ? 'missing' : 'ready';
+        status === 'ready' ? ready++ : missing++;
+        ins.run({ batch_id: batchId, company: sc.company, doc_type: sc.type, order_key: o.orderKey, ...soiSummary(o, o.summary),
+          line_count: o.lineCount ?? o.lines.length, total: o.total ?? 0, header_json: JSON.stringify(o.header), lines_json: JSON.stringify(o.lines),
+          issues_json: JSON.stringify(o.issues), status, now });
+      }
+      db.prepare(`UPDATE so_import_batches SET order_count=?, ready_count=?, missing_count=?, duplicate_count=?, superseded_count=? WHERE id=?`)
+        .run(orders.length, ready, missing, duplicates, superseded, batchId);
+      return { batchId: Number(batchId), ready, missing, duplicates, superseded, uploadedAt: now };
+    })();
+  },
+  // templateId: only records imported with that template. q also matches any mapped header value.
+  list(sc, tab, { q = '', limit = 2000, templateId = null } = {}) {
+    const statuses = SOI_TABS[tab] || SOI_TABS.pending;
+    const like = `%${String(q).trim()}%`;
+    return db.prepare(`SELECT o.*, b.file_name, b.template_id, b.template_name FROM so_import_orders o JOIN so_import_batches b ON b.id=o.batch_id
+      WHERE o.company=? AND o.doc_type=? AND o.status IN (${statuses.map(() => '?').join(',')}) AND (? IS NULL OR b.template_id=?)
+        AND (?='%%' OR o.order_key LIKE ? OR o.card_code LIKE ? OR o.card_name LIKE ? OR o.num_at_card LIKE ? OR CAST(o.sap_doc_num AS TEXT) LIKE ?
+             OR o.header_json LIKE ?)
+      ORDER BY ${tab === 'posted' ? 'o.posted_at DESC' : 'o.id DESC'} LIMIT ?`)
+      .all(sc.company, sc.type, ...statuses, templateId, templateId, like, like, like, like, like, like, like, limit).map(soiRow);
+  },
+  // Latest snapshot of each template that imported records (the columns the tabs show).
+  templateSnapshots(sc, ids) {
+    if (!ids.length) return [];
+    return db.prepare(`SELECT template_id, template_json FROM so_import_batches
+      WHERE company=? AND doc_type=? AND template_id IN (${ids.map(() => '?').join(',')}) AND template_json IS NOT NULL ORDER BY id DESC`)
+      .all(sc.company, sc.type, ...ids).map(r => ({ id: r.template_id, ...JSON.parse(r.template_json) }));
+  },
+  // Batches saved without a template id (before templates existed) belong to the template of the same name.
+  linkBatches(sc, templates) {
+    const up = db.prepare(`UPDATE so_import_batches SET template_id=? WHERE company=? AND doc_type=? AND template_id IS NULL AND template_name=?`);
+    for (const t of templates) up.run(t.id, sc.company, sc.type, t.name);
+  },
+  counts(sc) {
+    const rows = db.prepare(`SELECT status, COUNT(*) n, SUM(total) v FROM so_import_orders WHERE company=? AND doc_type=? GROUP BY status`).all(sc.company, sc.type);
+    const by = Object.fromEntries(rows.map(r => [r.status, r]));
+    const n = s => by[s]?.n || 0, v = s => by[s]?.v || 0;
+    return { pending: n('ready') + n('failed') + n('posting'), ready: n('ready'), failed: n('failed'), posting: n('posting'),
+      posted: n('posted'), missing: n('missing'), pendingValue: v('ready') + v('failed'), postedValue: v('posted') };
+  },
+  get(sc, id) {
+    const r = db.prepare(`SELECT o.*, b.file_name, b.template_json FROM so_import_orders o JOIN so_import_batches b ON b.id=o.batch_id
+      WHERE o.company=? AND o.doc_type=? AND o.id=?`).get(sc.company, sc.type, id);
+    return r && soiFull(r);
+  },
+  // Rows to re-validate (missing / failed), with lines.
+  getMany(sc, ids, statuses) {
+    if (!ids.length) return [];
+    return db.prepare(`SELECT o.*, b.file_name, b.template_json FROM so_import_orders o JOIN so_import_batches b ON b.id=o.batch_id
+      WHERE o.company=? AND o.doc_type=? AND o.id IN (${ids.map(() => '?').join(',')}) AND o.status IN (${statuses.map(() => '?').join(',')})`)
+      .all(sc.company, sc.type, ...ids, ...statuses).map(soiFull);
+  },
+  // Every record of a tab with its lines and template (Excel export).
+  listFull(sc, tab, limit = 5000) {
+    return this.list(sc, tab, { limit }).map(o => this.get(sc, o.id));
+  },
+  // Sales orders stored before templates existed (flat header / line keys).
+  legacy() {
+    return db.prepare(`SELECT o.id, o.batch_id, o.order_key, o.header_json, o.lines_json FROM so_import_orders o
+      WHERE o.doc_type='order' AND o.header_json NOT LIKE '{"cells"%'`).all();
+  },
+  rewriteJson(id, header, lines) {
+    db.prepare(`UPDATE so_import_orders SET header_json=?, lines_json=? WHERE id=?`).run(JSON.stringify(header), JSON.stringify(lines), id);
+  },
+  setBatchTemplate(batchId, tpl) {
+    db.prepare(`UPDATE so_import_batches SET template_id=?, template_name=?, template_json=? WHERE id=? AND template_json IS NULL`)
+      .run(tpl.id, tpl.name, JSON.stringify(tpl), batchId);
+  },
+
+  // ── Templates ──
+  templates(sc) {
+    return db.prepare(`SELECT * FROM so_import_templates WHERE company=? AND doc_type=? ORDER BY is_default DESC, name COLLATE NOCASE`)
+      .all(sc.company, sc.type).map(soiTpl);
+  },
+  template(sc, id) {
+    return soiTpl(db.prepare(`SELECT * FROM so_import_templates WHERE company=? AND doc_type=? AND id=?`).get(sc.company, sc.type, id));
+  },
+  saveTemplate(sc, tpl, user) {
+    const now = soiNow();
+    const json = JSON.stringify({ dateFormat: tpl.dateFormat, layout: tpl.layout, options: tpl.options || {}, columns: tpl.columns });
+    return db.transaction(() => {
+      let id = tpl.id;
+      if (id) {
+        const ch = db.prepare(`UPDATE so_import_templates SET name=?, description=?, json=?, updated_at=?, updated_by=? WHERE company=? AND doc_type=? AND id=?`)
+          .run(tpl.name, tpl.description || '', json, now, user || '', sc.company, sc.type, id).changes;
+        if (!ch) return null;
+      } else {
+        id = Number(db.prepare(`INSERT INTO so_import_templates (company, doc_type, name, description, json, created_at, updated_at, updated_by)
+          VALUES (?,?,?,?,?,?,?,?)`).run(sc.company, sc.type, tpl.name, tpl.description || '', json, now, now, user || '').lastInsertRowid);
+      }
+      const hasDefault = db.prepare(`SELECT 1 FROM so_import_templates WHERE company=? AND doc_type=? AND is_default=1`).get(sc.company, sc.type);
+      if (tpl.isDefault || !hasDefault) this.setDefaultTemplate(sc, id);
+      return this.template(sc, id);
+    })();
+  },
+  setDefaultTemplate(sc, id) {
+    db.prepare(`UPDATE so_import_templates SET is_default=CASE WHEN id=? THEN 1 ELSE 0 END WHERE company=? AND doc_type=?`).run(id, sc.company, sc.type);
+  },
+  deleteTemplate(sc, id) {
+    const t = this.template(sc, id);
+    if (!t) return false;
+    db.prepare(`DELETE FROM so_import_templates WHERE company=? AND doc_type=? AND id=?`).run(sc.company, sc.type, id);
+    if (t.isDefault) {
+      const next = db.prepare(`SELECT id FROM so_import_templates WHERE company=? AND doc_type=? ORDER BY id LIMIT 1`).get(sc.company, sc.type);
+      if (next) this.setDefaultTemplate(sc, next.id);
+    }
+    return true;
+  },
+  // ready/failed → posting, atomically, so two users can never post the same record.
+  claim(sc, ids) {
+    const up = db.prepare(`UPDATE so_import_orders SET status='posting', error='', updated_at=? WHERE company=? AND doc_type=? AND id=? AND status IN ('ready','failed')`);
+    return db.transaction(() => ids.filter(id => up.run(soiNow(), sc.company, sc.type, id).changes > 0))();
+  },
+  markPosted(id, docEntry, docNum, user) {
+    const now = soiNow();
+    db.prepare(`UPDATE so_import_orders SET status='posted', error='', sap_doc_entry=?, sap_doc_num=?, posted_at=?, posted_by=?, updated_at=? WHERE id=?`)
+      .run(docEntry ?? null, docNum ?? null, now, user || '', now, id);
+  },
+  markFailed(id, error) {
+    db.prepare(`UPDATE so_import_orders SET status='failed', error=?, updated_at=? WHERE id=?`).run(String(error || '').slice(0, 2000), soiNow(), id);
+  },
+  revalidated(id, o) {
+    const s = soiSummary(o, o.summary || {});
+    db.prepare(`UPDATE so_import_orders SET header_json=?, lines_json=?, issues_json=?, total=?, line_count=?, card_code=?, card_name=?, doc_date=?, due_date=?, num_at_card=?,
+      status=?, error='', updated_at=? WHERE id=? AND status IN ('missing','failed')`)
+      .run(JSON.stringify(o.header), JSON.stringify(o.lines), JSON.stringify(o.issues), o.total ?? 0, o.lineCount ?? o.lines.length,
+        s.card_code, s.card_name, s.doc_date, s.due_date, s.num_at_card, o.issues.length ? 'missing' : 'ready', soiNow(), id);
+  },
+  remove(sc, ids) {
+    if (!ids.length) return 0;
+    return db.prepare(`DELETE FROM so_import_orders WHERE company=? AND doc_type=? AND id IN (${ids.map(() => '?').join(',')}) AND status IN ('ready','failed','missing')`)
+      .run(sc.company, sc.type, ...ids).changes;
+  },
+  batches(sc, limit = 30) {
+    return db.prepare(`SELECT b.*,
+        (SELECT COUNT(*) FROM so_import_orders o WHERE o.batch_id=b.id AND o.status='posted') AS posted_now
+      FROM so_import_batches b WHERE b.company=? AND b.doc_type=? ORDER BY b.id DESC LIMIT ?`).all(sc.company, sc.type, limit);
   },
 };
 

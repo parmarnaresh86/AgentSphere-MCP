@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<script src="/app-locale.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<title>Excel Import — SAP B1</title>
+<script>
+(function(){
+  const t=localStorage.getItem('hanny_token');
+  if(!t){window.location.replace('/login.html');return;}
+  fetch('/auth/me',{headers:{'x-auth-token':t}}).then(r=>{if(!r.ok){localStorage.removeItem('hanny_token');window.location.replace('/login.html');}}).catch(()=>{});
+})();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --shell:#354A5E;--blue:#0070F2;--blue-light:#E8F4FF;--blue-mid:#0064D9;
+  --bg:#F5F6F7;--white:#FFFFFF;--text:#32363A;--muted:#6A6D70;--border:#E5E5E5;
+  --green:#107E3E;--green-bg:#EAF5EE;--red:#BB0000;--red-bg:#FFEBEB;--orange:#E9730C;--orange-bg:#FEF3E8;
+  --purple:#7e22ce;--purple-bg:#f3e8ff;
+  --font:'Segoe UI',system-ui,sans-serif;--mono:Consolas,'Cascadia Mono',monospace;--r:4px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+html,body{min-height:100%;background:var(--bg)}
+body{font-family:var(--font);color:var(--text);font-size:13px}
+button,input,select{font-family:inherit}
+
+.shell-bar{background:var(--shell);height:44px;padding:0 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:30;position:sticky;top:0}
+.shell-back{color:rgba(255,255,255,.75);text-decoration:none;font-size:12px;padding:4px 10px;border-radius:var(--r);border:1px solid rgba(255,255,255,.2);white-space:nowrap}
+.shell-back:hover{background:rgba(255,255,255,.1);color:#fff}
+.shell-icon{width:28px;height:28px;border-radius:4px;background:#0070F2;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px}
+.shell-title{font-size:14px;font-weight:600;color:#fff}
+.shell-subtitle{font-size:11px;color:rgba(255,255,255,.55)}
+.shell-spacer{flex:1}
+.shell-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-weight:600;white-space:nowrap}
+.shell-badge.loading{background:rgba(233,115,12,.6)}
+.shell-badge.ready{background:rgba(16,126,62,.6)}
+.shell-badge.error{background:rgba(187,0,0,.6)}
+.views{display:flex;background:rgba(255,255,255,.1);border-radius:6px;padding:2px;margin-left:18px}
+.views button{border:none;background:none;color:rgba(255,255,255,.75);font-size:12.5px;padding:5px 14px;border-radius:4px;cursor:pointer}
+.views button.active{background:#fff;color:var(--shell);font-weight:600}
+
+.wrap{padding:14px;max-width:1560px;margin:0 auto}
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);margin-bottom:14px;min-width:0}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card-hd h3{font-size:13.5px;font-weight:600}
+.card-hd .sub{color:var(--muted);font-size:11.5px}
+.card-bd{padding:12px 14px}
+.step{width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.spacer{flex:1}
+.empty{padding:34px;text-align:center;color:var(--muted)}
+.muted{color:var(--muted)}
+.mono{font-family:var(--mono);font-size:11.5px}
+
+.up-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px;align-items:stretch}
+.drop{border:2px dashed #bcc3ca;border-radius:8px;padding:26px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s;display:flex;flex-direction:column;justify-content:center;gap:4px;min-height:150px}
+.drop:hover,.drop.over{border-color:var(--blue);background:var(--blue-light);color:var(--blue)}
+.drop b{color:var(--text);font-size:13.5px}
+.drop .ic{font-size:26px}
+.tpl{border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:#fbfbfb;display:flex;flex-direction:column;gap:8px}
+.tpl h4{font-size:12.5px}
+.tpl p{font-size:12px;color:var(--muted);line-height:1.5}
+.cols{display:flex;flex-wrap:wrap;gap:4px;max-height:88px;overflow:auto}
+.col{font-size:10.5px;padding:2px 7px;border-radius:9px;background:#eef0f2;color:#475569;font-weight:600}
+.col.req{background:var(--blue-light);color:var(--blue-mid)}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.inp,.sel{height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--white);font-size:12.5px;color:var(--text);outline:none}
+.inp:focus,.sel:focus{border-color:var(--blue)}
+
+.btn{height:30px;padding:0 12px;border:1px solid var(--border);background:var(--white);border-radius:var(--r);font-size:12px;cursor:pointer;color:var(--text);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--blue-mid);color:#fff}
+.btn.success{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+.btn.success:hover{background:#0b6b33;color:#fff}
+.btn.danger:hover{border-color:var(--red);color:var(--red)}
+.btn.sm{height:26px;padding:0 9px;font-size:11.5px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 14px;cursor:pointer;transition:.12s;border-left:4px solid var(--border)}
+.kpi:hover{box-shadow:var(--shadow)}
+.kpi .k-l{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.kpi .k-v{font-size:22px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .k-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+.kpi.k-pend{border-left-color:var(--orange)} .kpi.k-pend .k-v{color:var(--orange)}
+.kpi.k-post{border-left-color:var(--green)} .kpi.k-post .k-v{color:var(--green)}
+.kpi.k-miss{border-left-color:var(--red)} .kpi.k-miss .k-v{color:var(--red)}
+.kpi.k-fail{border-left-color:var(--purple)} .kpi.k-fail .k-v{color:var(--purple)}
+
+/* acknowledgement */
+.ack{border:1.5px solid #9fd3b2;background:linear-gradient(180deg,#f3fbf6,#fff 60%);border-radius:8px;margin-bottom:14px;box-shadow:var(--shadow)}
+.ack.warn{border-color:#f4c38f;background:linear-gradient(180deg,#fff8f0,#fff 60%)}
+.ack-hd{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ack-ic{width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+.ack.warn .ack-ic{background:var(--orange)}
+.ack-hd h3{font-size:14px}
+.ack-hd .sub{font-size:11.5px;color:var(--muted)}
+.ack-bd{padding:12px 14px;display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px}
+.fact{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+.fact .l{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fact .v{font-size:17px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.fact.g .v{color:var(--green)} .fact.r .v{color:var(--red)} .fact.o .v{color:var(--orange)}
+.meta{font-size:12px;color:var(--muted);line-height:1.7}
+.meta b{color:var(--text);font-weight:600}
+.maplist{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.mapc{font-size:10.5px;padding:2px 7px;border-radius:9px;background:var(--green-bg);color:var(--green);font-weight:600}
+.mapc.ign{background:#eee;color:#666}
+.ack-issues{font-size:12px}
+.ack-issues li{margin:3px 0 3px 16px}
+
+/* tabs + table */
+.tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{border:none;background:none;padding:11px 14px;font-size:13px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.tab .cnt{font-size:10.5px;padding:1px 7px;border-radius:9px;font-weight:700}
+.tab[data-tab=pending] .cnt{background:var(--orange-bg);color:var(--orange)}
+.tab[data-tab=posted] .cnt{background:var(--green-bg);color:var(--green)}
+.tab[data-tab=missing] .cnt{background:var(--red-bg);color:var(--red)}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--border);background:#fbfbfb}
+.toolbar input[type=search]{height:30px;padding:0 9px;border:1px solid var(--border);border-radius:var(--r);min-width:240px;font-size:12.5px;outline:none}
+.toolbar input[type=search]:focus{border-color:var(--blue)}
+.sel-info{font-size:12px;color:var(--muted)}
+.tbl{overflow:auto;max-height:620px}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t th{position:sticky;top:0;z-index:1;background:#f7f7f7;text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+table.t td{padding:7px 10px;border-bottom:1px solid #f2f2f2;vertical-align:top}
+table.t td.num,table.t th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.t tr.o-row>td{white-space:nowrap}
+table.t tr.o-row>td.cell{max-width:220px;overflow:hidden;text-overflow:ellipsis}
+table.t tr.o-row>td .issue-txt,table.t tr.o-row>td .err-txt{white-space:normal;min-width:240px}
+table.t tr.o-row{cursor:pointer}
+table.t tr.o-row:hover td{background:#fafcff}
+table.t tr.o-row.open td{background:#f2f8ff}
+table.t td.ck,table.t th.ck{width:30px;text-align:center}
+.caret{display:inline-block;width:12px;color:var(--muted);transition:.15s}
+tr.open .caret{transform:rotate(90deg)}
+.okey{font-weight:600;color:var(--text)}
+.cust b{font-weight:600}
+.cust span{display:block;color:var(--muted);font-size:11.5px}
+.badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap}
+.b-ready{background:var(--blue-light);color:var(--blue-mid)}
+.b-failed{background:var(--purple-bg);color:var(--purple)}
+.b-posting{background:var(--orange-bg);color:var(--orange)}
+.b-posted{background:var(--green-bg);color:var(--green)}
+.b-missing{background:var(--red-bg);color:var(--red)}
+.issue-txt{color:var(--red);font-size:12px;max-width:440px}
+.issue-txt .more{color:var(--muted)}
+.err-txt{color:var(--purple);font-size:12px;max-width:440px}
+.docno{font-weight:700;color:var(--green)}
+
+tr.detail>td{background:#fbfdff;padding:0!important}
+.detail-in{padding:10px 14px 14px 44px}
+.d-head{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--muted);margin-bottom:8px;align-items:center}
+.d-head b{color:var(--text);font-weight:600}
+.d-issues{background:var(--red-bg);border:1px solid #f0a8a8;border-radius:6px;padding:8px 12px;margin-bottom:10px;color:var(--red);font-size:12px}
+.d-issues ul{margin-left:16px}
+.d-err{background:#faf5ff;border:1px solid #d8b4fe;border-radius:6px;padding:8px 12px;margin-bottom:10px;color:var(--purple);font-size:12px}
+.lines-wrap{overflow:auto}
+table.lines{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid var(--border)}
+table.lines th{background:#f4f6f8;text-align:left;font-weight:600;color:var(--muted);font-size:11px;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+table.lines th small{display:block;font-weight:400;font-family:var(--mono);font-size:10px;color:#94a3b8}
+table.lines td{padding:5px 8px;border-bottom:1px solid #f2f2f2}
+table.lines tr.bad td{background:#fff6f6}
+table.lines td.num,table.lines th.num{text-align:right;font-variant-numeric:tabular-nums}
+.l-iss{color:var(--red);font-size:11.5px}
+pre.payload{background:#1e293b;color:#e2e8f0;border-radius:6px;padding:10px 12px;font-size:11.5px;max-height:320px;overflow:auto;margin-top:10px}
+
+.progress{height:6px;background:#eef0f2;border-radius:3px;overflow:hidden;margin-top:6px}
+.progress>div{height:100%;background:var(--green);transition:width .2s}
+
+.hist{width:100%;border-collapse:collapse;font-size:12px}
+.hist th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;padding:6px 10px;border-bottom:1px solid var(--border);background:#f7f7f7}
+.hist td{padding:6px 10px;border-bottom:1px solid #f2f2f2}
+.hist td.num,.hist th.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ── Template mapper ── */
+.tpl-list{width:100%;border-collapse:collapse;font-size:12.5px}
+.tpl-list th{text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;padding:8px 12px;border-bottom:1px solid var(--border);background:#f7f7f7}
+.tpl-list td{padding:8px 12px;border-bottom:1px solid #f2f2f2;vertical-align:middle}
+.tpl-list tr.cur td{background:#f2f8ff}
+.tpl-list .acts{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.star{color:#f59e0b;font-size:11px;font-weight:700}
+
+.ed-hd{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:12px 14px;border-bottom:1px solid var(--border)}
+.mapper{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 110px minmax(0,1.25fr);padding:12px 14px 6px}
+.mp{border:1px solid var(--border);border-radius:8px;background:#fff;display:flex;flex-direction:column;min-height:0;z-index:2}
+.mp-hd{padding:9px 12px;border-bottom:1px solid var(--border);background:#f7f9fb;border-radius:8px 8px 0 0}
+.mp-hd h4{font-size:12.5px;display:flex;align-items:center;gap:6px}
+.mp-hd .sub{font-size:11px;color:var(--muted);margin-top:2px}
+.mp-tools{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center}
+.mp-tools .inp{height:28px;flex:1;min-width:120px}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{border:1px solid var(--border);background:#fff;border-radius:12px;font-size:11px;padding:2px 9px;cursor:pointer;color:var(--muted)}
+.chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.mp-list{overflow:auto;height:470px;padding:6px}
+.grp{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 6px 4px;position:sticky;top:-6px;background:#fff;z-index:1}
+.xi,.si{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #edf0f3;border-radius:6px;margin-bottom:4px;cursor:pointer;background:#fff;transition:background .1s,border-color .1s;min-height:38px}
+.xi:hover,.si:hover{border-color:#b9d7fb;background:#f7fbff}
+.xi.sel,.si.sel{border-color:var(--orange);background:var(--orange-bg);box-shadow:0 0 0 1px var(--orange)}
+.xi.mapped{border-left:3px solid var(--blue)}
+.si.mapped{border-right:3px solid var(--blue)}
+.si.drop-on{border-color:var(--blue);background:var(--blue-light)}
+.xi .nm,.si .nm{font-weight:600;font-size:12.5px;line-height:1.25}
+.xi .ex,.si .fd{font-size:11px;color:var(--muted);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.si .fd{font-family:var(--mono);font-size:10.5px}
+.xi .grow,.si .grow{flex:1;min-width:0}
+.xi .tag,.si .tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;white-space:nowrap}
+.tag.core{background:var(--red-bg);color:var(--red)}
+.tag.hdr{background:#e0f2fe;color:#0369a1}
+.tag.lin{background:#ecfccb;color:#4d7c0f}
+.tag.udf{background:var(--purple-bg);color:var(--purple)}
+.tag.ty{background:#f1f5f9;color:#64748b}
+.tag.ok{background:var(--blue-light);color:var(--blue-mid)}
+.xi .x{border:none;background:none;color:#94a3b8;cursor:pointer;font-size:13px;padding:0 2px}
+.xi .x:hover{color:var(--red)}
+.xi .grip{color:#cbd5e1;cursor:grab;font-size:12px}
+svg.links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
+svg.links path{fill:none;stroke:var(--blue);stroke-width:1.8;opacity:.75}
+svg.links path.cur{stroke:var(--orange);stroke-width:2.6;opacity:1}
+svg.links path.off{stroke-dasharray:4 4;opacity:.35}
+svg.links circle{fill:var(--blue)}
+svg.links circle.cur{fill:var(--orange)}
+.gutter{display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:11px;text-align:center;padding:0 6px}
+.hint{font-size:11.5px;color:var(--muted);padding:2px 14px 10px}
+.hint b{color:var(--text)}
+.checks{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px}
+.pill{font-size:11px;padding:3px 9px;border-radius:12px;font-weight:600}
+.pill.ok{background:var(--green-bg);color:var(--green)}
+.pill.bad{background:var(--red-bg);color:var(--red)}
+.maps{overflow:auto;border-top:1px solid var(--border)}
+table.mt{width:100%;border-collapse:collapse;font-size:12px}
+table.mt th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;padding:7px 8px;border-bottom:1px solid var(--border);background:#f7f7f7;white-space:nowrap}
+table.mt td{padding:5px 8px;border-bottom:1px solid #f2f2f2;vertical-align:middle}
+table.mt tr.cur td{background:var(--orange-bg)}
+table.mt .inp{height:27px;font-size:12px;width:100%}
+table.mt td.c{text-align:center}
+.arrow{color:var(--blue);font-weight:700}
+.custom-form{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid var(--border);background:#fbfbfb;border-radius:0 0 8px 8px}
+.custom-form .inp,.custom-form .sel{height:28px;font-size:12px}
+.err-box{margin:0 14px 10px;background:var(--red-bg);border:1px solid #f0a8a8;color:var(--red);border-radius:6px;padding:8px 12px;font-size:12px}
+.err-box ul{margin-left:16px}
+.ro-note{margin:0 14px 10px;background:var(--blue-light);color:var(--blue-mid);border-radius:6px;padding:8px 12px;font-size:12px}
+
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:90}
+.modal{background:#fff;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.25);width:min(540px,92vw)}
+.modal-hd{padding:14px 18px;border-bottom:1px solid var(--border);font-size:14.5px;font-weight:600}
+.modal-bd{padding:14px 18px;font-size:13px;line-height:1.6}
+.modal-ft{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.res-list{max-height:280px;overflow:auto;margin-top:8px;border:1px solid var(--border);border-radius:6px}
+.res-list div{padding:6px 10px;border-bottom:1px solid #f2f2f2;font-size:12px}
+.res-list .ok{color:var(--green)} .res-list .bad{color:var(--red)}
+
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#32363a;color:#fff;padding:9px 16px;border-radius:6px;font-size:12.5px;z-index:99;display:none;max-width:90vw}
+.hidden{display:none!important}
+@media (max-width:1000px){.up-grid,.ack-bd{grid-template-columns:1fr}.mapper{grid-template-columns:1fr 40px 1fr}}
+</style>
+<script>
+// Embedded in the main app (iframe panel): close the panel there instead of
+// loading the app inside the iframe. Standalone: follow the link to the app.
+function goBack() {
+  if (window.__soiDirty?.() && !confirm('The template mapping has unsaved changes. Leave anyway?')) return false;
+  try {
+    if (window.top !== window.self && typeof window.parent.showChatPanel === 'function') { window.parent.showChatPanel(); return false; }
+  } catch {}
+  return true;
+}
+</script>
+</head>
+<body>
+<div class="shell-bar">
+  <a class="shell-back" href="/" onclick="return goBack()" title="Back">← Back</a>
+  <div class="shell-icon" id="sh-icon">📥</div>
+  <div><div class="shell-title" id="sh-title">Excel Import</div><div class="shell-subtitle" id="sh-sub">Map Excel columns to SAP fields · validate · post through the Service Layer</div></div>
+  <div class="views" id="views">
+    <button data-view="import" class="active">📥 Import</button>
+    <button data-view="templates">🧩 Templates &amp; mapping</button>
+  </div>
+  <div class="shell-spacer"></div>
+  <span class="shell-badge" id="company"></span>
+  <span class="shell-badge" id="status">Ready</span>
+</div>
+
+<!-- ═════════════════════════ IMPORT VIEW ═════════════════════════ -->
+<div class="wrap" id="view-import">
+  <div class="kpis">
+    <div class="kpi k-pend" data-go="pending"><div class="k-l">Pending</div><div class="k-v" id="k-pend">0</div><div class="k-s" id="k-pend-s">0 ready to post</div></div>
+    <div class="kpi k-post" data-go="posted"><div class="k-l">Posted to SAP</div><div class="k-v" id="k-post">0</div><div class="k-s" id="k-post-s">Created in SAP</div></div>
+    <div class="kpi k-miss" data-go="missing"><div class="k-l">Missing data</div><div class="k-v" id="k-miss">0</div><div class="k-s">Fix in the sheet and upload again</div></div>
+    <div class="kpi k-fail" data-go="pending"><div class="k-l">Rejected by SAP</div><div class="k-v" id="k-fail">0</div><div class="k-s">In Pending — retry after fixing</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="step">1</span><h3 id="up-title">Upload Excel sheet</h3><span class="sub" id="up-sub">.xlsx or .csv · read with the chosen template</span></div>
+    <div class="card-bd">
+      <div class="up-grid">
+        <div class="drop" id="drop">
+          <div class="ic">📄</div>
+          <b>Drop the Excel file here</b> or click to choose
+          <span id="drop-file" style="font-size:12px"></span>
+        </div>
+        <div class="tpl">
+          <div class="fg"><label>Template</label>
+            <select class="sel" id="tpl-pick"></select></div>
+          <p id="tpl-desc"></p>
+          <div class="cols" id="cols"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn" id="btn-tpl">⬇ Download Excel template</button>
+            <button class="btn" id="btn-goto-tpl">🧩 Open mapping</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" class="hidden"/>
+    </div>
+  </div>
+
+  <div id="ack" class="hidden"></div>
+
+  <div class="card">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="pending">⏳ Pending <span class="cnt" id="c-pending">0</span></button>
+      <button class="tab" data-tab="posted">✅ Posted <span class="cnt" id="c-posted">0</span></button>
+      <button class="tab" data-tab="missing">⚠️ Missing data <span class="cnt" id="c-missing">0</span></button>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search key, code, name, reference, any mapped value…"/>
+      <select class="sel" id="tab-tpl" title="Show the records of one template, with that template's columns"></select>
+      <span class="sel-info" id="sel-info"></span>
+      <span class="spacer"></span>
+      <button class="btn success" id="btn-post" data-for="pending" disabled>▶ Post selected to SAP</button>
+      <button class="btn" id="btn-recheck" data-for="missing pending" disabled title="Check again in SAP after fixing customer / item master data">↻ Re-check with SAP</button>
+      <button class="btn danger" id="btn-del" data-for="pending missing" disabled>🗑 Remove</button>
+      <button class="btn" id="btn-xlsx">⬇ Excel</button>
+      <button class="btn" id="btn-refresh" title="Refresh">⟳</button>
+    </div>
+    <div id="post-progress" class="hidden" style="padding:8px 14px;border-bottom:1px solid var(--border)">
+      <div style="font-size:12px" id="post-progress-txt"></div>
+      <div class="progress"><div id="post-progress-bar" style="width:0"></div></div>
+    </div>
+    <div class="tbl" id="tbl"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><h3>Upload history</h3><span class="sub">Acknowledgement of every sheet received</span><span class="spacer"></span><button class="btn" id="btn-hist">Show</button></div>
+    <div id="hist" class="hidden" style="overflow:auto"></div>
+  </div>
+</div>
+
+<!-- ═════════════════════════ TEMPLATES VIEW ═════════════════════════ -->
+<div class="wrap hidden" id="view-templates">
+  <div class="card">
+    <div class="card-hd"><h3>Import templates</h3><span class="sub" id="tpl-sub">Each template maps the columns of one Excel layout to SAP Service Layer fields</span>
+      <span class="spacer"></span>
+      <span class="edit-only"><button class="btn" id="btn-new-xl">📄 New from Excel sample</button>
+      <button class="btn primary" id="btn-new">＋ New template</button></span>
+    </div>
+    <div id="tpl-table"></div>
+  </div>
+
+  <div class="card hidden" id="editor">
+    <div class="ed-hd">
+      <div class="fg"><label>Template name</label><input class="inp" id="e-name" style="width:240px"/></div>
+      <div class="fg" style="flex:1;min-width:220px"><label>Description</label><input class="inp" id="e-desc"/></div>
+      <div class="fg"><label>Dates in the sheet</label><select class="sel" id="e-datefmt">
+        <option value="DMY">Day / Month / Year (30/10/2026)</option><option value="MDY">Month / Day / Year (10/30/2026)</option><option value="YMD">Year-Month-Day (2026-10-30)</option></select></div>
+      <div class="fg"><label>Sheet layout</label><select class="sel" id="e-layout">
+        <option value="table">Table — heading row, one row per line (all sheets)</option><option value="form">Form — one sheet per record (label | value)</option></select></div>
+      <label style="display:flex;align-items:center;gap:6px;height:30px;font-size:12.5px"><input type="checkbox" id="e-default"/> Default template</label>
+      <label style="display:flex;align-items:center;gap:6px;height:30px;font-size:12.5px" id="e-upd-wrap" class="hidden"><input type="checkbox" id="e-update"/> Update existing records</label>
+      <span class="spacer"></span>
+      <span class="edit-only" style="display:flex;gap:6px">
+        <button class="btn" id="e-sample" title="Read the headings of a customer's sheet into the Excel side">📄 Load Excel sample</button>
+        <button class="btn" id="e-automap" title="Match unmapped Excel columns to SAP fields by name">✨ Auto-map</button>
+        <button class="btn primary" id="e-save">💾 Save template</button>
+      </span>
+      <button class="btn" id="e-close">Close</button>
+    </div>
+    <div id="e-opts" class="ed-hd hidden" style="padding-top:0;border-bottom:none"></div>
+    <div id="e-ro" class="ro-note hidden">Read-only — you can view this mapping, but changing templates needs the “Manage Templates” permission.</div>
+    <div id="e-errors" class="err-box hidden"></div>
+    <div class="checks" id="e-checks"></div>
+
+    <div class="mapper" id="mapper">
+      <div class="mp">
+        <div class="mp-hd"><h4>📄 Excel columns <span class="tag ty" id="x-count">0</span></h4><div class="sub">Source — headings in the customer's sheet</div></div>
+        <div class="mp-tools edit-only">
+          <input class="inp" id="x-add" placeholder="Add a column heading and press Enter"/>
+          <button class="btn sm" id="x-add-btn">Add</button>
+        </div>
+        <div class="mp-list" id="x-list"></div>
+      </div>
+      <div class="gutter" id="gutter">Click an Excel column, then a SAP field — or drag it across</div>
+      <div class="mp">
+        <div class="mp-hd"><h4>🔷 SAP Service Layer — <span id="s-title">Orders</span> <span class="tag ty" id="s-count">0</span></h4><div class="sub" id="s-sub">Target — header and line fields, UDFs</div></div>
+        <div class="mp-tools">
+          <input class="inp" id="s-q" type="search" placeholder="Search SAP fields…"/>
+          <div class="chips" id="s-chips"></div>
+        </div>
+        <div class="mp-list" id="s-list"></div>
+        <div class="custom-form edit-only">
+          <input class="inp" id="cf-name" placeholder="Other field e.g. U_Region" style="flex:1;min-width:130px"/>
+          <select class="sel" id="cf-level"><option value="header">Header</option><option value="line">Line</option></select>
+          <select class="sel" id="cf-type"><option value="text">Text</option><option value="number">Number</option><option value="int">Whole number</option><option value="date">Date</option><option value="yesno">Yes / No</option></select>
+          <button class="btn sm" id="cf-add">＋ Add field</button>
+        </div>
+      </div>
+      <svg class="links" id="links"></svg>
+    </div>
+    <div class="hint" id="e-hint"></div>
+
+    <div class="maps" id="maps"></div>
+  </div>
+</div>
+
+<div id="modal" class="modal-bg hidden"><div class="modal">
+  <div class="modal-hd" id="m-title"></div>
+  <div class="modal-bd" id="m-body"></div>
+  <div class="modal-ft" id="m-foot"></div>
+</div></div>
+<input type="file" id="sample-file" accept=".xlsx,.csv" class="hidden"/>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const TOKEN = () => localStorage.getItem('hanny_token') || '';
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const money = v => v == null || v === '' || !Number.isFinite(+v) ? '—' : (+v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const qty = v => v == null || v === '' ? '—' : (+v).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+  const fmtD = d => { if (!d) return '—'; const x = new Date(String(d).slice(0, 10) + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
+  const fmtDT = d => { if (!d) return '—'; const x = new Date(d); return isNaN(x) ? d : x.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
+  const norm = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const STATUS = { ready: 'Ready', failed: 'Rejected', posting: 'Posting…', posted: 'Posted', missing: 'Missing data' };
+  const TYPE = new URLSearchParams(location.search).get('type') || 'order';
+  const BASE = { order: 'so-excel-import', item: 'item-excel-import', bp: 'bp-excel-import', bom: 'bom-excel-import', apservice: 'apinv-excel-import', je: 'salary-jv-import' }[TYPE] || 'so-excel-import';
+  let TI = { noun: 'Record', nouns: 'records', docLabel: 'Doc', listLabels: {}, tables: {}, options: {} };   // the agent, from /meta
+  const nounL = () => TI.noun.toLowerCase();
+  const plural = n => (n === 1 ? nounL() : TI.nouns);
+
+  function setStatus(text, cls) { const s = $('status'); s.textContent = text; s.className = 'shell-badge ' + (cls || ''); }
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4500); }
+  async function api(path, opts = {}) {
+    const isForm = opts.body instanceof FormData;
+    const r = await fetch(`/api/${BASE}` + path, { ...opts,
+      headers: { ...(isForm ? {} : { 'Content-Type': 'application/json' }), 'x-auth-token': TOKEN() },
+      body: opts.body == null ? undefined : isForm ? opts.body : JSON.stringify(opts.body) });
+    if (r.status === 401) { localStorage.removeItem('hanny_token'); location.replace('/login.html'); throw new Error('Session expired'); }
+    if (r.status === 404 && !String(r.headers.get('content-type')).includes('json'))
+      throw new Error('The server has not loaded this import agent yet — restart the AgentSphere server (Restart.bat) and try again.');
+    if (opts.raw) { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText); return r; }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) { const e = new Error(j.error || r.statusText); e.errors = j.errors; throw e; }
+    return j;
+  }
+  async function download(path, fallbackName) {
+    const r = await api(path, { raw: true });
+    const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallbackName;
+    const url = URL.createObjectURL(await r.blob());
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  function modal(title, body, buttons) {
+    return new Promise(resolve => {
+      $('m-title').textContent = title;
+      $('m-body').innerHTML = body;
+      $('m-foot').innerHTML = '';
+      buttons.forEach(b => {
+        const el = Object.assign(document.createElement('button'), { className: 'btn ' + (b.cls || ''), textContent: b.label });
+        el.onclick = () => { $('modal').classList.add('hidden'); resolve(b.value); };
+        $('m-foot').appendChild(el);
+      });
+      $('modal').classList.remove('hidden');
+    });
+  }
+
+  // ── Shared state ────────────────────────────────────────────────────────
+  let company = '', canEdit = false, TEMPLATES = [], FIELDS = null;
+  let tab = 'pending', rows = [], sel = new Set(), open = new Set(), details = new Map(), busy = false, showPayload = new Set(), VIEWS = {};
+
+  // ── Views ───────────────────────────────────────────────────────────────
+  let view = 'import';
+  $('views').addEventListener('click', e => { const b = e.target.closest('button'); if (b) switchView(b.dataset.view); });
+  async function switchView(v) {
+    if (v === view) return;
+    if (view === 'templates' && ED && ED.dirty && !(await confirmDiscard())) return;
+    view = v;
+    document.querySelectorAll('#views button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+    $('view-import').classList.toggle('hidden', v !== 'import');
+    $('view-templates').classList.toggle('hidden', v !== 'templates');
+    if (v === 'templates') { renderTplTable(); if (ED) requestAnimationFrame(drawLinks); }
+    else { closeEditor(true); loadMeta(); }
+  }
+
+  function setCounts(c) {
+    if (!c) return;
+    $('c-pending').textContent = c.pending; $('c-posted').textContent = c.posted; $('c-missing').textContent = c.missing;
+    $('k-pend').textContent = c.pending; $('k-pend-s').textContent = `${c.ready} ready to post${TI.valueLabel ? ` · ${money(c.pendingValue)}` : ''}`;
+    $('k-post').textContent = c.posted; $('k-post-s').textContent = `${TI.nouns[0].toUpperCase() + TI.nouns.slice(1)} in SAP${TI.valueLabel ? ` · ${money(c.postedValue)}` : ''}`;
+    $('k-miss').textContent = c.missing; $('k-fail').textContent = c.failed + (c.posting ? ` (+${c.posting} posting)` : '');
+  }
+
+  async function loadMeta() {
+    try {
+      const m = await api('/meta');
+      company = m.company; canEdit = m.canEditTemplates; $('company').textContent = m.company;
+      if (m.type) applyType(m.type);
+      TEMPLATES = m.templates;
+      document.querySelectorAll('.edit-only').forEach(el => el.classList.toggle('hidden', !canEdit));
+      setCounts(m.counts);
+      const cur = $('tpl-pick').value;
+      $('tpl-pick').innerHTML = `<option value="auto">✨ Auto-detect from the sheet's headings</option>` +
+        TEMPLATES.map(t => `<option value="${t.id}">${esc(t.name)}${t.isDefault ? ' (default)' : ''} — ${t.columns} columns</option>`).join('');
+      if (cur && [...$('tpl-pick').options].some(o => o.value === cur)) $('tpl-pick').value = cur;
+      const curF = $('tab-tpl').value;
+      $('tab-tpl').innerHTML = `<option value="">All templates</option>` + TEMPLATES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+      if (curF && [...$('tab-tpl').options].some(o => o.value === curF)) $('tab-tpl').value = curF;
+      showTplColumns();
+      if (view === 'templates') renderTplTable();
+    } catch (e) { setStatus('Error', 'error'); toast(e.message); }
+  }
+  function applyType(t) {
+    TI = t;
+    document.title = `${t.title} — SAP B1`;
+    $('sh-icon').textContent = t.icon; $('sh-icon').style.background = t.color;
+    $('sh-title').textContent = t.title; $('sh-sub').textContent = t.subtitle;
+    $('up-title').textContent = t.uploadTitle || `Upload ${t.short.toLowerCase()} sheet`;
+    $('up-sub').textContent = '.xlsx or .csv · read with the chosen template (table rows, or one sheet per record)';
+    $('tpl-sub').textContent = `Each template maps the columns of one Excel layout to SAP Service Layer fields — ${t.headerLabel} / ${t.lineLabel}`;
+    $('s-title').textContent = t.short; $('s-sub').textContent = `Target — ${t.headerLabel}, ${t.lineLabel}, UDFs`;
+    $('cf-level').innerHTML = `<option value="header">Header (${t.tables.header})</option><option value="line">Line (${t.tables.line})</option>`;
+    $('e-hint').innerHTML = t.hasHeads
+      ? `Each Excel record (a row, or a sheet in <b>Form</b> layout) is one ${nounL()}. Map every salary head to <b>Salary head → JE line</b>, then give it a <b>G/L account</b> and <b>Debit / Credit</b> below; non-zero heads become the JE lines and the entry must balance. Rows with the same <b>group key</b> values become one ${nounL()}.`
+      : `Every Excel row is one line. <b>Header</b> fields (${t.tables.header}) must repeat on each row of a ${nounL()}; rows with the same <b>group key</b> values become one ${nounL()}. Click a SAP field with nothing selected to send it a <b>fixed value</b> on every ${nounL()}.`;
+    $('e-upd-wrap').classList.toggle('hidden', !t.updatable);
+  }
+  const pickedTplId = () => $('tpl-pick').value === 'auto' ? (TEMPLATES.find(t => t.isDefault) || TEMPLATES[0])?.id : Number($('tpl-pick').value);
+  async function showTplColumns() {
+    const id = pickedTplId();
+    if (!id) return;
+    try {
+      const { template: t } = await api(`/templates/${id}`);
+      const auto = $('tpl-pick').value === 'auto';
+      $('tpl-desc').textContent = auto
+        ? `Each upload is read with the template whose headings match best (${TEMPLATES.length} template${TEMPLATES.length > 1 ? 's' : ''}). Default: ${t.name}.`
+        : (t.description || 'Blue columns are required. Header fields repeat on every line of an order.');
+      $('cols').innerHTML = t.columns.filter(c => c.heading && c.target !== 'ignore')
+        .map(c => `<span class="col ${c.required ? 'req' : ''}" title="→ ${esc(c.target)}">${esc(c.heading)}</span>`).join('');
+    } catch (e) { $('cols').innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
+  }
+  $('tpl-pick').addEventListener('change', showTplColumns);
+  $('btn-tpl').onclick = () => { const id = pickedTplId(); id && download(`/templates/${id}/excel`, 'Template.xlsx').catch(e => toast(e.message)); };
+  $('btn-goto-tpl').onclick = async () => { await switchView('templates'); const id = pickedTplId(); if (id) openTemplate(id); };
+
+  // ═══════════════════════ IMPORT ═══════════════════════
+  const drop = $('drop');
+  drop.addEventListener('click', () => !busy && $('file').click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]); });
+  $('file').addEventListener('change', e => { if (e.target.files[0]) upload(e.target.files[0]); e.target.value = ''; });
+
+  async function upload(file) {
+    if (busy) return;
+    if (!/\.(xlsx|csv)$/i.test(file.name)) { toast('Please upload an .xlsx or .csv file'); return; }
+    busy = true;
+    $('drop-file').textContent = `Reading ${file.name} and checking it in SAP…`;
+    setStatus('Validating…', 'loading');
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      if ($('tpl-pick').value !== 'auto') fd.append('templateId', $('tpl-pick').value);
+      const r = await api('/upload', { method: 'POST', body: fd });
+      showAck(r.ack);
+      setCounts(r.counts);
+      $('drop-file').textContent = `Last file: ${file.name}`;
+      setStatus('Ready', 'ready');
+      switchTab(r.ack.ready ? 'pending' : 'missing');
+      if (!$('hist').classList.contains('hidden')) loadHistory();
+    } catch (e) {
+      $('drop-file').textContent = '';
+      setStatus('Upload failed', 'error');
+      $('ack').className = 'ack warn';
+      $('ack').innerHTML = `<div class="ack-hd"><div class="ack-ic">!</div><div><h3>File not accepted</h3><div class="sub">${esc(file.name)}</div></div></div>
+        <div class="card-bd" style="color:var(--red)">${esc(e.message)}</div>`;
+    } finally { busy = false; }
+  }
+
+  function showAck(a) {
+    const allGood = !a.missing;
+    const el = $('ack');
+    el.className = 'ack' + (allGood ? '' : ' warn');
+    el.innerHTML = `
+      <div class="ack-hd">
+        <div class="ack-ic">${allGood ? '✓' : '!'}</div>
+        <div><h3>Acknowledgement — file received · Batch #${a.batchId}</h3>
+          <div class="sub">${esc(a.fileName)} · sheet “${esc(a.sheetName)}” · template <b>${esc(a.template)}</b>${a.templateAuto ? ' (auto-detected)' : ''} · ${fmtDT(a.uploadedAt)} · by ${esc(a.uploadedBy || '—')} · company ${esc(a.company)}</div></div>
+        <span class="spacer"></span>
+        ${a.ready ? `<button class="btn primary" data-ack-go="pending">Review ${a.ready} pending</button>` : ''}
+        ${a.missing ? `<button class="btn" data-ack-go="missing">See ${a.missing} with missing data</button>` : ''}
+        <button class="btn" id="ack-close" title="Close">✕</button>
+      </div>
+      <div class="ack-bd">
+        <div>
+          <div class="facts">
+            <div class="fact"><div class="l">Rows read</div><div class="v">${a.rows}</div></div>
+            <div class="fact"><div class="l">${esc(TI.short)}</div><div class="v">${a.orders}</div></div>
+            <div class="fact"><div class="l">${TI.jeLines ? 'JE lines' : 'Lines'}</div><div class="v">${a.lines}</div></div>
+            ${a.updates ? `<div class="fact o"><div class="l">Will update</div><div class="v">${a.updates}</div></div>` : ''}
+            <div class="fact g"><div class="l">Ready to post</div><div class="v">${a.ready}</div></div>
+            <div class="fact r"><div class="l">Missing data</div><div class="v">${a.missing}</div></div>
+            <div class="fact o"><div class="l">Duplicates</div><div class="v">${a.duplicates}</div></div>
+          </div>
+          <div class="meta">
+            ${a.value != null && TI.valueLabel ? `${esc(TI.valueLabel)}: <b>${money(a.value)}</b> · ` : ''}Grouped by <b>${esc(a.groupedBy)}</b> ·
+            ${a.layout === 'form' ? `${a.sheets.length} sheet${a.sheets.length === 1 ? '' : 's'} read` : `header on row ${a.headerRow}${a.sheets.length > 1 ? ` of ${a.sheets.length} sheets` : ''}`}
+            ${a.skippedSheets?.length ? `<br/><span style="color:var(--orange)">Sheets without the template's labels (skipped): ${esc(a.skippedSheets.join(', '))}</span>` : ''}
+            ${a.updates ? `<br/><b>${a.updates}</b> ${plural(a.updates)} already exist in SAP and will be <b>updated</b>.` : ''}
+            ${a.superseded ? `<br/>Replaced <b>${a.superseded}</b> unposted ${plural(a.superseded)} from earlier uploads with the same key.` : ''}
+            ${a.truncated ? `<br/><span style="color:var(--red)">Only the first ${a.rows} rows were read.</span>` : ''}
+          </div>
+          <div class="meta" style="margin-top:6px">Columns mapped:
+            <div class="maplist">${a.columns.map(c => `<span class="mapc" title="${esc(c.heading)} → ${esc(c.field)}">${esc(c.heading)} → ${esc(c.field)}</span>`).join('')}
+            ${a.ignored.map(h => `<span class="mapc ign" title="Not in the template">${esc(h)}</span>`).join('')}</div>
+          </div>
+        </div>
+        <div class="ack-issues">
+          ${a.missingOrders.length ? `<b style="color:var(--red)">${esc(TI.short)} that need attention</b><ul>${a.missingOrders.map(m =>
+            `<li><b>${esc(m.orderKey)}</b> — ${esc(m.issue)}${m.more > 0 ? ` <span class="muted">(+${m.more} more)</span>` : ''}</li>`).join('')}</ul>
+            ${a.missing > a.missingOrders.length ? `<div class="muted" style="margin-top:4px">…and ${a.missing - a.missingOrders.length} more in the Missing data tab</div>` : ''}`
+          : `<b style="color:var(--green)">All ${esc(TI.nouns)} passed validation.</b><div class="muted" style="margin-top:4px">Review them in Pending and post to SAP.</div>`}
+        </div>
+      </div>`;
+    el.querySelectorAll('[data-ack-go]').forEach(b => b.onclick = () => switchTab(b.dataset.ackGo));
+    $('ack-close').onclick = () => el.classList.add('hidden');
+  }
+
+  // ── Tabs & table ────────────────────────────────────────────────────────
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if (b) switchTab(b.dataset.tab); });
+  document.querySelectorAll('.kpi[data-go]').forEach(k => k.onclick = () => switchTab(k.dataset.go));
+  function switchTab(t) {
+    tab = t; sel.clear(); open.clear();
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+    document.querySelectorAll('[data-for]').forEach(b => b.classList.toggle('hidden', !b.dataset.for.split(' ').includes(t)));
+    loadOrders();
+  }
+  let qTimer;
+  $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadOrders, 250); });
+  $('btn-refresh').onclick = () => loadOrders();
+  $('tab-tpl').addEventListener('change', () => { sel.clear(); open.clear(); loadOrders(); });
+  $('btn-xlsx').onclick = () => download(`/export?tab=${tab}`, `SO_Import_${tab}.xlsx`).catch(e => toast(e.message));
+
+  async function loadOrders() {
+    try {
+      const r = await api(`/orders?tab=${tab}&q=${encodeURIComponent($('q').value.trim())}&tpl=${$('tab-tpl').value}`);
+      rows = r.orders; VIEWS = r.templates || {}; setCounts(r.counts);
+      const ids = new Set(rows.map(o => o.id));
+      [...sel].forEach(id => !ids.has(id) && sel.delete(id));
+      render();
+    } catch (e) { $('tbl').innerHTML = `<div class="empty" style="color:var(--red)">${esc(e.message)}</div>`; }
+  }
+
+  function selectable(o) { return tab === 'posted' ? false : o.status !== 'posting'; }
+
+  // Columns of the order list. One template in view (picked, or every order shares it) →
+  // that template's order-level columns as mapped; otherwise the common columns + Template.
+  function listColumns() {
+    const ids = [...new Set(rows.map(o => o.templateId))];
+    const v = VIEWS[$('tab-tpl').value] || (ids.length === 1 && VIEWS[ids[0]]);
+    const cust = o => `<td class="cust"><b>${esc(o.cardCode || '—')}</b><span>${esc(o.cardName)}</span></td>`;
+    const keyHead = (v && v.columns.filter(c => c.groupKey).map(c => c.heading).join(' / ')) || (TYPE === 'order' ? 'Order No' : 'Key');
+    const cols = [{ th: `<th>${esc(keyHead)}</th>`, td: o => `<td><span class="caret">▶</span> <span class="okey">${esc(o.orderKey)}</span></td>` }];
+    if (v) {
+      // Columns empty on every order in view (e.g. an unused Branch column) are left out.
+      for (const c of v.columns.filter(c => !c.groupKey && rows.some(o => o.cells?.[c.id] != null && o.cells[c.id] !== '' || c.target === 'header.CardCode'))) {
+        const num = c.type === 'number' || c.type === 'int';
+        const sub = c.target.startsWith('info.') ? 'info only' : c.target.split('.')[1] || '';
+        cols.push({
+          th: `<th class="${num ? 'num' : ''}" title="${esc(c.field)}">${esc(c.heading)}<div class="mono muted" style="font-weight:400;font-size:10px">${esc(sub)}</div></th>`,
+          td: ['header.CardCode', 'header.ItemCode', 'header.TreeCode'].includes(c.target) ? cust
+            : o => { const t = fmtCell(o.cells?.[c.id], c.type); return `<td class="${num ? 'num' : 'cell'}" title="${esc(t)}">${esc(t) || '<span class="muted">—</span>'}</td>`; },
+        });
+      }
+      if (TYPE === 'order' && !v.columns.some(c => c.target === 'header.CardCode')) cols.push({ th: '<th>Customer</th>', td: cust });
+    } else {
+      cols.push(
+        { th: '<th>Template</th>', td: o => `<td><span class="tag ty">${esc(o.templateName || '—')}</span></td>` },
+        ...(TI.listLabels.code ? [{ th: `<th>${esc(TI.listLabels.code)}</th>`, td: cust }] : []),
+        ...(TI.listLabels.date ? [{ th: `<th>${esc(TI.listLabels.date)}</th>`, td: o => `<td>${fmtD(o.docDate)}</td>` }] : []),
+        ...(TI.listLabels.due ? [{ th: `<th>${esc(TI.listLabels.due)}</th>`, td: o => `<td>${fmtD(o.dueDate)}</td>` }] : []),
+        ...(TI.listLabels.ref ? [{ th: `<th>${esc(TI.listLabels.ref)}</th>`, td: o => `<td class="cell" title="${esc(o.numAtCard)}">${esc(o.numAtCard || '—')}</td>` }] : []));
+    }
+    cols.push(
+      { th: `<th class="num">${TI.jeLines ? 'JE lines' : 'Lines'}</th>`, td: o => `<td class="num">${o.lineCount}</td>` },
+      ...(TI.valueLabel ? [{ th: `<th class="num">${esc(TI.valueLabel)}</th>`, td: o => `<td class="num">${money(o.total)}</td>` }] : []));
+    if (tab === 'pending') cols.push(
+      { th: '<th>Status</th>', td: o => `<td><span class="badge b-${o.status}">${STATUS[o.status]}</span>${o.mode === 'update' ? ' <span class="badge b-posting" title="Exists in SAP — posting updates it">update</span>' : ''}</td>` },
+      { th: '<th>SAP message</th>', td: o => `<td>${o.status === 'failed' ? `<div class="err-txt">${esc(o.error)}</div>` : '<span class="muted">—</span>'}</td>` });
+    if (tab === 'posted') cols.push(
+      { th: '<th>In SAP</th>', td: o => `<td><span class="docno">${esc(TI.docLabel)} ${esc(o.docNum ?? '—')}</span>${o.mode === 'update' ? '<div class="muted" style="font-size:11px">updated</div>' : o.docEntry != null && o.docEntry !== o.docNum ? `<div class="muted" style="font-size:11px">DocEntry ${esc(o.docEntry)}</div>` : ''}</td>` },
+      { th: '<th>Posted</th>', td: o => `<td>${fmtDT(o.postedAt)}<div class="muted" style="font-size:11px">${esc(o.postedBy)}</div></td>` });
+    if (tab === 'missing') cols.push(
+      { th: '<th>What is missing / wrong</th>', td: o => `<td><div class="issue-txt">${esc(o.issues[0]?.message || '')}${o.issues.length > 1 ? ` <span class="more">+${o.issues.length - 1} more</span>` : ''}</div></td>` });
+    cols.push({ th: '<th>Source file</th>', td: o => `<td class="muted" style="font-size:11.5px">${esc(o.fileName)}</td>` });
+    return cols;
+  }
+
+  function render() {
+    updateSel();
+    if (!rows.length) {
+      const msg = { pending: `No ${TI.nouns} waiting to be posted. Upload a sheet to start.`, posted: 'Nothing posted yet.', missing: `No ${TI.nouns} with missing data. 🎉` }[tab];
+      $('tbl').innerHTML = `<div class="empty">${msg}${$('tab-tpl').value ? ' (for this template)' : ''}</div>`; return;
+    }
+    const canSel = tab !== 'posted';
+    const cols = listColumns();
+    const allSel = rows.filter(selectable).length && rows.filter(selectable).every(o => sel.has(o.id));
+    $('tbl').innerHTML = `<table class="t"><thead><tr>
+      ${canSel ? `<th class="ck"><input type="checkbox" id="ck-all" ${allSel ? 'checked' : ''}/></th>` : ''}${cols.map(c => c.th).join('')}</tr></thead>
+      <tbody>${rows.map(o => rowHtml(o, canSel, cols)).join('')}</tbody></table>`;
+    $('ck-all')?.addEventListener('change', e => { rows.filter(selectable).forEach(o => e.target.checked ? sel.add(o.id) : sel.delete(o.id)); render(); });
+    $('tbl').querySelectorAll('tr.o-row').forEach(tr => tr.addEventListener('click', e => {
+      const id = Number(tr.dataset.id);
+      if (e.target.matches('input[type=checkbox]')) { e.target.checked ? sel.add(id) : sel.delete(id); updateSel(); return; }
+      open.has(id) ? open.delete(id) : open.add(id);
+      render();
+    }));
+    $('tbl').querySelectorAll('[data-payload]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation(); const id = Number(b.dataset.payload); showPayload.has(id) ? showPayload.delete(id) : showPayload.add(id); render();
+    }));
+    open.forEach(id => { if (!details.has(id)) loadDetail(id); });
+  }
+
+  function rowHtml(o, canSel, cols) {
+    const isOpen = open.has(o.id);
+    const ck = canSel ? `<td class="ck"><input type="checkbox" ${sel.has(o.id) ? 'checked' : ''} ${selectable(o) ? '' : 'disabled'}/></td>` : '';
+    return `<tr class="o-row ${isOpen ? 'open' : ''}" data-id="${o.id}">${ck}${cols.map(c => c.td(o)).join('')}</tr>
+      ${isOpen ? `<tr class="detail"><td colspan="${cols.length + (canSel ? 1 : 0)}"><div class="detail-in">${detailHtml(o.id)}</div></td></tr>` : ''}`;
+  }
+
+  async function loadDetail(id) {
+    try { const r = await api(`/orders/${id}`); details.set(id, r.order); render(); }
+    catch (e) { details.set(id, { error: e.message }); render(); }
+  }
+
+  const fmtCell = (v, type) => v == null || v === '' ? '' : type === 'date' ? fmtD(v) : (type === 'number' || type === 'int') ? qty(v) : v === 'tYES' ? 'Yes' : v === 'tNO' ? 'No' : String(v);
+
+  function detailHtml(id) {
+    const d = details.get(id);
+    if (!d) return '<span class="muted">Loading lines…</span>';
+    if (d.error) return `<span style="color:var(--red)">${esc(d.error)}</span>`;
+    const cols = (d.template?.columns || []).filter(c => c.level);
+    const hCols = cols.filter(c => c.level === 'header'), lCols = cols.filter(c => c.level === 'line');
+    const orderIssues = d.issues.filter(i => !i.line);
+    const hc = d.header.cells || {};
+    return `
+      <div class="d-head">
+        <span>Template <b>${esc(d.template?.name || '—')}</b></span>
+        ${hCols.filter(c => c.target !== 'head' && hc[c.id] != null && hc[c.id] !== '').map(c => `<span title="${esc(c.field)}">${esc(c.heading)} <b>${esc(fmtCell(hc[c.id], c.type))}</b></span>`).join('')}
+        ${d.status === 'posted' ? `<span>SAP Sales Order <b style="color:var(--green)">${esc(d.docNum)}</b></span>` : ''}
+        <span class="spacer"></span><button class="btn sm" data-payload="${d.id}">{ } ${showPayload.has(d.id) ? 'Hide' : 'Show'} SAP payload</button>
+      </div>
+      ${d.status === 'failed' ? `<div class="d-err"><b>SAP rejected this order:</b> ${esc(d.error)}</div>` : ''}
+      ${orderIssues.length ? `<div class="d-issues"><b>Order issues</b><ul>${orderIssues.map(i => `<li>${esc(i.message)}</li>`).join('')}</ul></div>` : ''}
+      ${d.header.updateNote ? `<div class="d-err" style="background:var(--orange-bg);border-color:#f4c38f;color:var(--orange)">${esc(d.header.updateNote)}</div>` : ''}
+      ${d.header.jeLines ? jeLinesHtml(d) : ''}
+      ${d.header.jeLines && !d.lines.length ? '' : `<div class="lines-wrap"><table class="lines"><thead><tr><th>#</th><th>Row</th>
+        ${lCols.map(c => `<th title="${esc(c.field)}">${esc(c.heading)}<small>${esc(c.field)}</small></th>`).join('')}
+        ${TI.valueLabel && !TI.jeLines ? '<th class="num">Line total</th>' : ''}<th>Issues</th></tr></thead>
+      <tbody>${d.lines.map(l => {
+        const s = l.sap || {};
+        const tot = s.LineTotal != null ? +s.LineTotal : s.UnitPrice != null ? (+s.Quantity || 0) * (+s.UnitPrice) * (1 - (+s.DiscountPercent || 0) / 100) : s.Price != null ? (+s.Quantity || 0) * (+s.Price) : null;
+        return `<tr class="${l.issues?.length ? 'bad' : ''}"><td>${l.lineNo}</td><td class="muted">${l.row}</td>
+          ${lCols.map(c => `<td class="${c.type === 'number' || c.type === 'int' ? 'num' : ''}">${esc(fmtCell(l.cells?.[c.id], c.type))}</td>`).join('')}
+          ${TI.valueLabel && !TI.jeLines ? `<td class="num">${tot == null ? '<span class="muted" title="SAP takes the price list price">price list</span>' : money(tot)}</td>` : ''}
+          <td>${l.issues?.length ? `<div class="l-iss">${l.issues.map(esc).join('<br/>')}</div>` : ''}</td></tr>`;
+      }).join('')}</tbody></table></div>`}
+      ${showPayload.has(d.id) ? `<pre class="payload">${esc(d.method)}\n${esc(JSON.stringify(d.payload, null, 2))}</pre>` : ''}`;
+  }
+
+  function jeLinesHtml(d) {
+    const L = d.header.jeLines || [];
+    const dr = L.reduce((s, l) => s + (+l.Debit || 0), 0), cr = L.reduce((s, l) => s + (+l.Credit || 0), 0);
+    const ok = Math.abs(dr - cr) < 0.005;
+    return `<div class="d-head"><span>Remarks <b>${esc(d.header.memo || '')}</b></span></div>
+      <div class="lines-wrap" style="margin-bottom:10px"><table class="lines"><thead><tr><th>#</th><th>Salary head / line</th><th>G/L account</th>
+        <th class="num">Debit</th><th class="num">Credit</th><th>Line remarks</th><th>Cost center</th></tr></thead><tbody>
+      ${L.map((l, i) => `<tr><td>${i + 1}</td><td><b>${esc(l.head || 'Journal line')}</b></td><td class="mono">${esc(l.accountLabel || l.AccountCode || l.ShortName || '—')}</td>
+        <td class="num">${l.Debit ? money(l.Debit) : ''}</td><td class="num">${l.Credit ? money(l.Credit) : ''}</td><td>${esc(l.LineMemo || '')}</td><td>${esc(l.CostingCode || '')}</td></tr>`).join('')}
+      <tr style="font-weight:700;background:${ok ? 'var(--green-bg)' : 'var(--red-bg)'}"><td></td><td colspan="2">${ok ? '✓ Balanced' : '✗ Not balanced'}</td>
+        <td class="num">${money(dr)}</td><td class="num">${money(cr)}</td><td colspan="2">${ok ? '' : `Difference ${money(dr - cr)}`}</td></tr></tbody></table></div>`;
+  }
+
+  function updateSel() {
+    const n = sel.size;
+    const chosen = rows.filter(o => sel.has(o.id));
+    $('sel-info').textContent = n ? `${n} selected${TI.valueLabel ? ` · ${money(chosen.reduce((s, o) => s + o.total, 0))}` : ''}` : `${rows.length} ${plural(rows.length)}`;
+    $('btn-post').disabled = busy || !n;
+    $('btn-del').disabled = busy || !n;
+    $('btn-recheck').disabled = busy || !(tab === 'missing' ? n : chosen.some(o => o.status === 'failed'));
+  }
+
+  $('btn-post').onclick = async () => {
+    const ids = rows.filter(o => sel.has(o.id) && ['ready', 'failed'].includes(o.status)).map(o => o.id);
+    if (!ids.length) return;
+    const val = rows.filter(o => ids.includes(o.id)).reduce((s, o) => s + o.total, 0);
+    const upd = rows.filter(o => ids.includes(o.id) && o.mode === 'update').length;
+    const go = await modal(`Post ${TI.nouns} to SAP`,
+      `Send <b>${ids.length}</b> ${plural(ids.length)}${TI.valueLabel ? ` (${esc(TI.valueLabel.toLowerCase())} <b>${money(val)}</b>)` : ''} to SAP company <b>${esc(company)}</b>?${upd ? `<br/><b>${upd}</b> of them already exist and will be <b>updated</b>.` : ''}<br/><span class="muted">Each ${nounL()} is posted through the Service Layer. This writes to the live company database.</span>`,
+      [{ label: 'Cancel', value: false }, { label: `Post ${ids.length} ${plural(ids.length)}`, cls: 'success', value: true }]);
+    if (!go) return;
+    busy = true; updateSel();
+    setStatus('Posting to SAP…', 'loading');
+    $('post-progress').classList.remove('hidden');
+    const results = [];
+    const CHUNK = 5;
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        $('post-progress-txt').textContent = `Posting ${Math.min(i + CHUNK, ids.length)} of ${ids.length}…`;
+        $('post-progress-bar').style.width = `${(i / ids.length) * 100}%`;
+        const r = await api('/post', { method: 'POST', body: { ids: ids.slice(i, i + CHUNK) } });
+        results.push(...r.results);
+        r.skipped.forEach(id => results.push({ id, orderKey: rows.find(o => o.id === id)?.orderKey, ok: false, error: 'Skipped — already posted or being posted by someone else' }));
+        setCounts(r.counts);
+      }
+      $('post-progress-bar').style.width = '100%';
+    } catch (e) { toast(e.message); }
+    finally {
+      busy = false;
+      setTimeout(() => $('post-progress').classList.add('hidden'), 800);
+    }
+    const ok = results.filter(r => r.ok), bad = results.filter(r => !r.ok);
+    setStatus(bad.length ? `${bad.length} not posted` : 'Posted', bad.length ? 'error' : 'ready');
+    sel.clear(); details.clear();
+    await loadOrders();
+    modal('Posting result',
+      `<b style="color:var(--green)">${ok.length} posted</b>${bad.length ? ` · <b style="color:var(--red)">${bad.length} not posted</b> (kept in Pending with the SAP message)` : ''}
+       <div class="res-list">${results.map(r => r.ok
+         ? `<div class="ok">✓ <b>${esc(r.orderKey)}</b> → ${r.updated ? 'updated' : 'created'} in SAP: <b>${esc(TI.docLabel)} ${esc(r.docNum)}</b></div>`
+         : `<div class="bad">✗ <b>${esc(r.orderKey)}</b> — ${esc(r.error)}</div>`).join('')}</div>`,
+      [...(ok.length ? [{ label: 'View posted', value: 'posted' }] : []), { label: 'Close', cls: 'primary', value: null }])
+      .then(v => v && switchTab(v));
+  };
+
+  $('btn-recheck').onclick = async () => {
+    const ids = [...sel];
+    busy = true; updateSel(); setStatus('Checking in SAP…', 'loading');
+    try {
+      const r = await api('/recheck', { method: 'POST', body: { ids } });
+      setCounts(r.counts);
+      toast(`${r.checked} checked · ${r.nowReady} now ready to post · ${r.stillMissing} still missing data`);
+      setStatus('Ready', 'ready');
+    } catch (e) { toast(e.message); setStatus('Error', 'error'); }
+    finally { busy = false; sel.clear(); details.clear(); loadOrders(); }
+  };
+
+  $('btn-del').onclick = async () => {
+    const ids = [...sel];
+    const go = await modal(`Remove ${TI.nouns}`, `Remove <b>${ids.length}</b> unposted ${plural(ids.length)} from the import list? Nothing is changed in SAP.`,
+      [{ label: 'Cancel', value: false }, { label: 'Remove', cls: 'primary', value: true }]);
+    if (!go) return;
+    try { const r = await api('/delete', { method: 'POST', body: { ids } }); setCounts(r.counts); toast(`${r.removed} removed`); }
+    catch (e) { toast(e.message); }
+    sel.clear(); loadOrders();
+  };
+
+  $('btn-hist').onclick = () => {
+    const h = $('hist'); h.classList.toggle('hidden');
+    $('btn-hist').textContent = h.classList.contains('hidden') ? 'Show' : 'Hide';
+    if (!h.classList.contains('hidden')) loadHistory();
+  };
+  async function loadHistory() {
+    try {
+      const r = await api('/batches');
+      $('hist').innerHTML = r.batches.length ? `<table class="hist"><thead><tr><th>Batch</th><th>Received</th><th>File</th><th>Template</th><th>By</th>
+        <th class="num">Rows</th><th class="num">${esc(TI.short)}</th><th class="num">Lines</th><th class="num">Ready</th><th class="num">Missing</th><th class="num">Duplicates</th><th class="num">Posted so far</th></tr></thead>
+        <tbody>${r.batches.map(b => `<tr><td>#${b.id}</td><td>${fmtDT(b.uploaded_at)}</td><td>${esc(b.file_name)}<div class="muted" style="font-size:11px">${esc(b.sheet_name)}</div></td>
+          <td>${esc(b.template_name || '—')}</td><td>${esc(b.uploaded_by)}</td><td class="num">${b.row_count}</td><td class="num">${b.order_count}</td><td class="num">${b.line_count}</td>
+          <td class="num" style="color:var(--blue-mid)">${b.ready_count}</td><td class="num" style="color:var(--red)">${b.missing_count}</td>
+          <td class="num" style="color:var(--orange)">${b.duplicate_count}</td><td class="num" style="color:var(--green);font-weight:600">${b.posted_now}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No uploads yet.</div>';
+    } catch (e) { $('hist').innerHTML = `<div class="empty" style="color:var(--red)">${esc(e.message)}</div>`; }
+  }
+
+  // ═══════════════════════ TEMPLATES ═══════════════════════
+  function renderTplTable() {
+    $('tpl-table').innerHTML = TEMPLATES.length ? `<table class="tpl-list"><thead><tr><th>Template</th><th>Description</th><th>Columns</th><th>Last changed</th><th></th></tr></thead><tbody>
+      ${TEMPLATES.map(t => `<tr class="${ED && ED.id === t.id ? 'cur' : ''}"><td><b>${esc(t.name)}</b> ${t.isDefault ? '<span class="star">★ default</span>' : ''}</td>
+        <td class="muted">${esc(t.description)}</td><td>${t.columns}</td><td class="muted">${fmtDT(t.updatedAt)} ${esc(t.updatedBy)}</td>
+        <td><div class="acts">
+          <button class="btn sm primary" data-act="open" data-id="${t.id}">🧩 ${canEdit ? 'Edit mapping' : 'View mapping'}</button>
+          <button class="btn sm" data-act="excel" data-id="${t.id}">⬇ Excel</button>
+          ${canEdit ? `<button class="btn sm" data-act="copy" data-id="${t.id}">⧉ Copy</button>
+          ${t.isDefault ? '' : `<button class="btn sm" data-act="default" data-id="${t.id}">★ Make default</button>`}
+          <button class="btn sm danger" data-act="del" data-id="${t.id}">🗑</button>` : ''}
+        </div></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No templates yet.</div>';
+    $('tpl-table').querySelectorAll('[data-act]').forEach(b => b.onclick = () => tplAction(b.dataset.act, Number(b.dataset.id)));
+  }
+
+  async function tplAction(act, id) {
+    const t = TEMPLATES.find(x => x.id === id);
+    try {
+      if (act === 'open') return openTemplate(id);
+      if (act === 'excel') return download(`/templates/${id}/excel`, 'Template.xlsx');
+      if (act === 'copy') {
+        const { template } = await api(`/templates/${id}`);
+        return startEditor({ ...template, id: undefined, isDefault: false, name: `${template.name} (copy)` }, true);
+      }
+      if (act === 'default') { const r = await api(`/templates/${id}/default`, { method: 'POST' }); toast(`${t.name} is now the default`); await loadMeta(); return r; }
+      if (act === 'del') {
+        const go = await modal('Delete template', `Delete template <b>${esc(t.name)}</b>? ${esc(TI.short)} already imported with it keep their own copy of the mapping.`,
+          [{ label: 'Cancel', value: false }, { label: 'Delete', cls: 'primary', value: true }]);
+        if (!go) return;
+        await api(`/templates/${id}`, { method: 'DELETE' });
+        if (ED && ED.id === id) closeEditor(true);
+        toast('Template deleted'); await loadMeta();
+      }
+    } catch (e) { toast(e.message); }
+  }
+
+  $('btn-new').onclick = () => guard(() => startEditor({ name: 'New template', description: '', dateFormat: 'DMY', isDefault: false, columns: [] }, true));
+  $('btn-new-xl').onclick = () => guard(() => { startEditor({ name: 'New template', description: '', dateFormat: 'DMY', isDefault: false, columns: [] }, true); $('sample-file').click(); });
+  async function guard(fn) { if (ED && ED.dirty && !(await confirmDiscard())) return; fn(); }
+  const confirmDiscard = () => modal('Unsaved changes', 'The mapping has changes that are not saved. Discard them?',
+    [{ label: 'Keep editing', value: false }, { label: 'Discard', cls: 'primary', value: true }]);
+
+  async function openTemplate(id) {
+    if (ED && ED.dirty && ED.id !== id && !(await confirmDiscard())) return;
+    try { const { template } = await api(`/templates/${id}`); startEditor(template, false); }
+    catch (e) { toast(e.message); }
+  }
+
+  // ── Mapper state ────────────────────────────────────────────────────────
+  // excel: source columns [{k, heading, example}]
+  // maps:  links [{k (excel key) | null for a fixed value, target, type, required, groupKey, def, aliases}]
+  let ED = null, sGroup = 'all', dragK = null, keySeq = 0;
+  const newKey = () => `x${Date.now().toString(36)}${(keySeq++).toString(36)}`;
+
+  async function loadFields() {
+    if (FIELDS) return FIELDS;
+    const r = await api('/sap-fields');
+    FIELDS = { list: [...r.fields.filter(f => f.target !== 'ignore'), ...r.udfs], udfError: r.udfError };
+    return FIELDS;
+  }
+  const fieldOf = target => FIELDS.list.find(f => f.target === target) || ED?.custom.find(f => f.target === target);
+  const isMulti = target => target.startsWith('info.') || target === 'head';
+
+  async function startEditor(t, dirty) {
+    await loadFields().catch(e => { toast(`Could not load SAP fields: ${e.message}`); FIELDS = { list: [] }; });
+    ED = { id: t.id, excel: [], maps: [], custom: [], dirty: !!dirty, sel: null, selMap: null, errors: [] };
+    for (const c of t.columns || []) {
+      const k = c.id || newKey();
+      if (c.heading) ED.excel.push({ k, heading: c.heading, example: c.example || '' });
+      if (c.target && c.target !== 'ignore') {
+        ED.maps.push({ k: c.heading ? k : null, target: c.target, type: c.type, required: !!c.required, groupKey: !!c.groupKey, def: c.default || '', aliases: (c.aliases || []).join(', '),
+          ...(c.target === 'head' ? { account: c.account || '', side: c.side || '' } : {}) });
+        if (!FIELDS.list.some(f => f.target === c.target) && !ED.custom.some(f => f.target === c.target)) {
+          const [level, field] = c.target.split('.');
+          ED.custom.push({ target: c.target, level, field, label: field, type: c.type, custom: true });
+        }
+      }
+    }
+    $('e-name').value = t.name || ''; $('e-desc').value = t.description || ''; $('e-datefmt').value = t.dateFormat || 'DMY'; $('e-default').checked = !!t.isDefault;
+    $('e-layout').value = t.layout || 'table'; $('e-update').checked = t.options?.onExisting === 'update';
+    const opts = Object.entries(TI.options || {});
+    $('e-opts').innerHTML = opts.map(([k, o]) => `<div class="fg" style="flex:1;min-width:260px"><label>${esc(o.label)}</label>
+      <input class="inp" data-opt="${esc(k)}" value="${esc(t.options?.[k] ?? o.default ?? '')}"/><span class="muted" style="font-size:11px">${esc(o.hint || '')}</span></div>`).join('');
+    $('e-opts').classList.toggle('hidden', !opts.length);
+    ['e-name', 'e-desc', 'e-datefmt', 'e-default', 'e-layout', 'e-update'].forEach(id => { $(id).disabled = !canEdit; });
+    $('e-opts').querySelectorAll('input').forEach(el => { el.disabled = !canEdit; el.addEventListener('input', () => { ED.dirty = true; }); });
+    $('e-ro').classList.toggle('hidden', canEdit);
+    $('e-errors').classList.add('hidden');
+    $('editor').classList.remove('hidden');
+    renderTplTable();
+    renderEditor();
+    $('editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function closeEditor(force) {
+    if (!ED) return;
+    if (!force && ED.dirty) return;
+    ED = null; $('editor').classList.add('hidden'); renderTplTable();
+  }
+  $('e-close').onclick = async () => { if (ED?.dirty && !(await confirmDiscard())) return; closeEditor(true); };
+  ['e-name', 'e-desc', 'e-datefmt', 'e-default', 'e-layout', 'e-update'].forEach(id => $(id).addEventListener('input', () => { if (ED) ED.dirty = true; }));
+
+  const mapOfX = k => ED.maps.find(m => m.k === k);
+  const mapsOfT = target => ED.maps.filter(m => m.target === target);
+
+  function renderEditor() { renderExcel(); renderSap(); renderMaps(); renderChecks(); requestAnimationFrame(drawLinks); }
+
+  function renderExcel() {
+    $('x-count').textContent = ED.excel.length;
+    $('x-list').innerHTML = ED.excel.length ? ED.excel.map(x => {
+      const m = mapOfX(x.k), f = m && fieldOf(m.target);
+      return `<div class="xi ${m ? 'mapped' : ''} ${ED.sel === x.k ? 'sel' : ''}" data-x="${esc(x.k)}" draggable="${canEdit}">
+        ${canEdit ? '<span class="grip">⋮⋮</span>' : ''}
+        <div class="grow"><div class="nm">${esc(x.heading)}</div><div class="ex">${x.example ? `e.g. ${esc(x.example)}` : '&nbsp;'}</div></div>
+        ${m ? `<span class="tag ok" title="${esc(f?.label || m.target)}">→ ${esc(f?.field || f?.label || m.target)}</span>` : '<span class="tag ty">not mapped</span>'}
+        ${canEdit ? `<button class="x" data-xdel="${esc(x.k)}" title="Remove column">✕</button>` : ''}
+      </div>`;
+    }).join('') : `<div class="empty" style="padding:24px 10px">No Excel columns yet.<br/>Type a heading above, or <b>Load Excel sample</b> to read them from a customer's sheet.</div>`;
+  }
+
+  function sapGroups() {
+    const q = norm($('s-q').value);
+    const all = [...FIELDS.list, ...ED.custom];
+    const match = f => !q || norm(f.label).includes(q) || norm(f.field || f.target).includes(q);
+    const groups = [
+      ['special', TI.hasHeads ? 'Salary heads, key & information' : 'Record key & information', all.filter(f => f.special)],
+      ['header', TI.headerLabel, all.filter(f => !f.special && !f.udf && !f.custom && f.level === 'header')],
+      ['line', TI.lineLabel, all.filter(f => !f.special && !f.udf && !f.custom && f.level === 'line')],
+      ['udf', 'User-defined fields (UDF)', all.filter(f => f.udf)],
+      ['custom', 'Other fields you added', all.filter(f => f.custom)],
+    ];
+    return groups.map(([k, label, list]) => [k, label, list.filter(match)]).filter(([k, , list]) => list.length && (sGroup === 'all' || sGroup === k));
+  }
+  function renderSap() {
+    const counts = { all: 0, special: 0, header: 0, line: 0, udf: 0, custom: 0 };
+    const all = [...FIELDS.list, ...ED.custom];
+    all.forEach(f => { counts.all++; counts[f.special ? 'special' : f.udf ? 'udf' : f.custom ? 'custom' : f.level]++; });
+    $('s-count').textContent = counts.all;
+    $('s-chips').innerHTML = [['all', 'All'], ['header', 'Header'], ['line', 'Lines'], ['udf', 'UDF'], ['special', 'Key / info'], ...(counts.custom ? [['custom', 'Other']] : [])]
+      .map(([k, l]) => `<span class="chip ${sGroup === k ? 'on' : ''}" data-g="${k}">${l} ${counts[k] ?? ''}</span>`).join('');
+    const groups = sapGroups();
+    $('s-list').innerHTML = (groups.length ? groups.map(([k, label, list]) => `<div class="grp">${label}</div>` + list.map(f => {
+      const used = mapsOfT(f.target);
+      const lvl = f.level === 'header' ? `<span class="tag hdr">${esc(TI.tables.header)}</span>` : f.level === 'line' ? `<span class="tag lin">${esc(TI.tables.line)}</span>` : '';
+      return `<div class="si ${used.length ? 'mapped' : ''} ${ED.selMap != null && ED.maps[ED.selMap]?.target === f.target ? 'sel' : ''}" data-t="${esc(f.target)}">
+        <div class="grow"><div class="nm">${esc(f.label)}</div><div class="fd">${f.special ? ({ key: `groups rows into one ${nounL()}`, head: 'amount column → one JE line with its own G/L account' }[f.target] || 'kept for display, not sent to SAP') : esc(f.field || f.target.split('.')[1])}</div></div>
+        ${f.core ? `<span class="tag core" title="SAP needs this to create the ${esc(nounL())}">SAP required</span>` : ''}${f.choices ? `<span class="tag ty" title="Accepted values">${esc(f.choices.join(' / '))}</span>` : ''}
+        ${f.udf ? '<span class="tag udf">UDF</span>' : ''}${lvl}<span class="tag ty">${esc(f.type)}</span>
+        ${used.length ? `<span class="tag ok">${used.length > 1 ? used.length + ' cols' : used[0].k ? '✓' : '= fixed'}</span>` : ''}
+      </div>`;
+    }).join('')).join('') : '<div class="empty">No SAP field matches the search.</div>')
+      + (FIELDS.udfError ? `<div class="muted" style="font-size:11px;padding:6px">UDFs could not be read from SAP (${esc(FIELDS.udfError)}). Add them below by name, e.g. U_Region.</div>` : '');
+  }
+
+  function renderMaps() {
+    const m = ED.maps;
+    if (!m.length) { $('maps').innerHTML = '<div class="empty">No mappings yet — link an Excel column to a SAP field above.</div>'; return; }
+    const dis = canEdit ? '' : 'disabled';
+    $('maps').innerHTML = `<table class="mt"><thead><tr><th>#</th><th>Excel column</th><th></th><th>SAP field</th><th>Level</th><th>Type</th>
+      <th title="An empty cell sends the record to Missing data">Required</th><th title="Rows with the same group-key values become one record">Group key</th>${TI.hasHeads ? '<th>G/L account (for heads)</th><th>Dr / Cr</th>' : ''}
+      <th>Default / fixed value</th><th>Also accepted headings (comma-separated)</th><th></th></tr></thead><tbody>
+      ${m.map((x, i) => {
+        const f = fieldOf(x.target) || { label: x.target, level: '', type: x.type };
+        const xc = x.k && ED.excel.find(e => e.k === x.k);
+        return `<tr class="${ED.selMap === i ? 'cur' : ''}" data-mi="${i}">
+          <td class="muted">${i + 1}</td>
+          <td>${xc ? `<input class="inp" data-f="heading" value="${esc(xc.heading)}" ${dis}/>` : '<span class="muted">(fixed value — no column)</span>'}</td>
+          <td class="arrow">→</td>
+          <td><b>${esc(f.label)}</b><div class="mono muted">${esc(f.special ? '' : (f.field || x.target))}</div></td>
+          <td>${f.level === 'header' ? '<span class="tag hdr">Header</span>' : f.level === 'line' ? '<span class="tag lin">Line</span>' : ''}</td>
+          <td>${f.custom ? `<select class="sel" data-f="type" style="height:27px;font-size:12px" ${dis}>${['text', 'number', 'int', 'date', 'yesno'].map(t => `<option ${t === x.type ? 'selected' : ''}>${t}</option>`).join('')}</select>` : `<span class="tag ty">${esc(f.type)}</span>`}</td>
+          <td class="c"><input type="checkbox" data-f="required" ${x.required ? 'checked' : ''} ${dis}/></td>
+          <td class="c">${f.level === 'header' && x.target !== 'head' ? `<input type="checkbox" data-f="groupKey" ${x.groupKey || x.target === 'key' ? 'checked' : ''} ${x.target === 'key' || !canEdit ? 'disabled' : ''}/>` : ''}</td>
+          ${TI.hasHeads ? (x.target === 'head'
+            ? `<td><input class="inp" data-f="account" value="${esc(x.account || '')}" placeholder="account no. or name" ${dis} style="${x.account ? '' : 'border-color:var(--red)'}"/></td>
+               <td><select class="sel" data-f="side" style="height:27px;font-size:12px;${x.side ? '' : 'border-color:var(--red)'}" ${dis}><option value="">—</option><option value="D" ${x.side === 'D' ? 'selected' : ''}>Debit</option><option value="C" ${x.side === 'C' ? 'selected' : ''}>Credit</option></select></td>`
+            : '<td></td><td></td>') : ''}
+          <td><input class="inp" data-f="def" value="${esc(x.def)}" placeholder="${xc ? 'used when the cell is empty' : 'value sent on every order'}" ${dis}/></td>
+          <td>${xc ? `<input class="inp" data-f="aliases" value="${esc(x.aliases)}" placeholder="other names this column may have" ${dis}/>` : ''}</td>
+          <td>${canEdit ? `<button class="btn sm danger" data-unmap="${i}" title="Remove this mapping">✕</button>` : ''}</td></tr>`;
+      }).join('')}</tbody></table>`;
+  }
+
+  function renderChecks() {
+    const core = FIELDS.list.filter(f => f.core);
+    const mapped = new Set(ED.maps.map(m => m.target));
+    const pills = core.map(f => `<span class="pill ${mapped.has(f.target) ? 'ok' : 'bad'}">${mapped.has(f.target) ? '✓' : '✗'} ${esc(f.label)}</span>`);
+    const gk = ED.maps.some(m => m.groupKey || m.target === 'key');
+    pills.push(`<span class="pill ${gk ? 'ok' : 'bad'}">${gk ? '✓' : '✗'} Group key</span>`);
+    if (TI.hasHeads) {
+      const heads = ED.maps.filter(m => m.target === 'head');
+      const bad = heads.filter(m => !m.account || !m.side).length;
+      pills.push(`<span class="pill ${heads.length && !bad ? 'ok' : 'bad'}">${heads.length && !bad ? '✓' : '✗'} Salary heads ${heads.length}${bad ? ` (${bad} without account / side)` : ''}</span>`);
+    }
+    const unm = ED.excel.filter(x => !mapOfX(x.k)).length;
+    $('e-checks').innerHTML = `<span class="muted" style="font-size:11.5px;align-self:center">SAP needs:</span>${pills.join('')}
+      <span class="muted" style="font-size:11.5px;align-self:center;margin-left:8px">${ED.maps.length} mapped · ${unm} Excel column${unm === 1 ? '' : 's'} not mapped (ignored)</span>`;
+  }
+
+  // ── Lines between the two panels ────────────────────────────────────────
+  function drawLinks() {
+    const svg = $('links');
+    if (!ED || $('editor').classList.contains('hidden')) { svg.innerHTML = ''; return; }
+    const box = $('mapper').getBoundingClientRect();
+    const xl = $('x-list').getBoundingClientRect(), sl = $('s-list').getBoundingClientRect();
+    const clamp = (y, r) => Math.max(r.top + 4, Math.min(r.bottom - 4, y));
+    let out = '';
+    ED.maps.forEach((m, i) => {
+      if (!m.k) return;
+      const a = $('x-list').querySelector(`[data-x="${CSS.escape(m.k)}"]`), b = $('s-list').querySelector(`[data-t="${CSS.escape(m.target)}"]`);
+      if (!a || !b) return;
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const ya = ra.top + ra.height / 2, yb = rb.top + rb.height / 2;
+      const off = ya !== clamp(ya, xl) || yb !== clamp(yb, sl);
+      const x1 = ra.right - box.left, y1 = clamp(ya, xl) - box.top, x2 = rb.left - box.left, y2 = clamp(yb, sl) - box.top;
+      const dx = Math.max(40, (x2 - x1) / 2);
+      const cur = ED.selMap === i || ED.sel === m.k ? 'cur' : '';
+      out += `<path class="${cur} ${off ? 'off' : ''}" d="M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}"/>`
+        + (off ? '' : `<circle class="${cur}" cx="${x1}" cy="${y1}" r="3.5"/><circle class="${cur}" cx="${x2}" cy="${y2}" r="3.5"/>`);
+    });
+    svg.innerHTML = out;
+    $('gutter').style.visibility = out ? 'hidden' : 'visible';
+  }
+  ['x-list', 's-list'].forEach(id => $(id).addEventListener('scroll', () => requestAnimationFrame(drawLinks)));
+  window.addEventListener('resize', () => requestAnimationFrame(drawLinks));
+  window.addEventListener('scroll', () => requestAnimationFrame(drawLinks));
+
+  // ── Linking ─────────────────────────────────────────────────────────────
+  function link(k, target) {
+    if (!canEdit) return;
+    const f = fieldOf(target);
+    if (!f) return;
+    ED.maps = ED.maps.filter(m => m.k !== k);                            // one SAP field per Excel column
+    const taken = !isMulti(target) && ED.maps.findIndex(m => m.target === target);
+    let prev = null;
+    if (taken !== false && taken >= 0) { prev = ED.maps[taken]; ED.maps.splice(taken, 1); }  // a SAP field takes one column
+    ED.maps.push({ k, target, type: f.type, required: prev?.required ?? (!!f.core || target === 'key'), groupKey: target === 'key' || !!prev?.groupKey,
+      def: prev?.def || '', aliases: prev?.aliases || '', ...(target === 'head' ? { account: '', side: '' } : {}) });
+    ED.sel = null; ED.selMap = ED.maps.length - 1; ED.dirty = true;
+    ensureGroupKey();
+    renderEditor();
+  }
+  // A sheet without an Order No column: one sales order per customer PO number.
+  // (Other agents: the first SAP-required header field, e.g. Item Code / BP Code / Parent Item.)
+  function ensureGroupKey() {
+    if (ED.maps.some(m => m.groupKey || m.target === 'key')) return;
+    const keyField = { order: 'header.NumAtCard', item: 'header.ItemCode', bp: 'header.CardCode', bom: 'header.TreeCode', apservice: 'header.NumAtCard', je: 'header.Reference' }[TYPE];
+    const po = ED.maps.find(m => m.target === keyField);
+    if (po) { po.groupKey = true; po.required = true; toast(`Records are grouped by ${fieldOf(keyField)?.label || keyField} (change it in the Group key column)`); }
+  }
+  // 30/10/2026 → day first, 10/30/2026 → month first, judged from the sample values of date columns.
+  function guessDateFormat() {
+    let dmy = 0, mdy = 0;
+    for (const m of ED.maps) {
+      if (fieldOf(m.target)?.type !== 'date' || !m.k) continue;
+      const ex = ED.excel.find(x => x.k === m.k)?.example || '';
+      const p = ex.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-]\d{2,4}$/);
+      if (p && +p[1] > 12) dmy++;
+      if (p && +p[2] > 12) mdy++;
+    }
+    const fmt = mdy > dmy ? 'MDY' : dmy > mdy ? 'DMY' : null;
+    if (fmt && fmt !== $('e-datefmt').value) { $('e-datefmt').value = fmt; return fmt; }
+    return null;
+  }
+  $('x-list').addEventListener('click', e => {
+    const del = e.target.closest('[data-xdel]');
+    if (del) { const k = del.dataset.xdel; ED.excel = ED.excel.filter(x => x.k !== k); ED.maps = ED.maps.filter(m => m.k !== k); ED.sel = null; ED.selMap = null; ED.dirty = true; return renderEditor(); }
+    const it = e.target.closest('[data-x]'); if (!it) return;
+    const k = it.dataset.x;
+    ED.sel = ED.sel === k ? null : k;
+    const mi = ED.maps.findIndex(m => m.k === k); ED.selMap = mi >= 0 ? mi : null;
+    renderEditor();
+  });
+  $('s-list').addEventListener('click', e => {
+    const it = e.target.closest('[data-t]'); if (!it) return;
+    const t = it.dataset.t;
+    if (ED.sel) return link(ED.sel, t);
+    const mi = ED.maps.findIndex(m => m.target === t);
+    if (mi >= 0) { ED.selMap = mi; renderEditor(); return; }
+    if (!canEdit || t === 'key' || isMulti(t)) { toast('Select an Excel column on the left first, then click the SAP field'); return; }
+    // No Excel column selected → the field gets a fixed value on every order.
+    const f = fieldOf(t);
+    ED.maps.push({ k: null, target: t, type: f.type, required: false, groupKey: false, def: '', aliases: '' });
+    ED.selMap = ED.maps.length - 1; ED.dirty = true;
+    renderEditor();
+    $('maps').querySelector(`tr[data-mi="${ED.selMap}"] [data-f="def"]`)?.focus();
+    toast(`${f.label}: type the fixed value to send on every order`);
+  });
+  $('x-list').addEventListener('dragstart', e => { const it = e.target.closest('[data-x]'); if (!it || !canEdit) return; dragK = it.dataset.x; e.dataTransfer.effectAllowed = 'link'; e.dataTransfer.setData('text/plain', dragK); });
+  $('x-list').addEventListener('dragend', () => { dragK = null; document.querySelectorAll('.si.drop-on').forEach(x => x.classList.remove('drop-on')); });
+  $('s-list').addEventListener('dragover', e => { const it = e.target.closest('[data-t]'); if (!it || !dragK) return; e.preventDefault(); document.querySelectorAll('.si.drop-on').forEach(x => x !== it && x.classList.remove('drop-on')); it.classList.add('drop-on'); });
+  $('s-list').addEventListener('dragleave', e => { e.target.closest?.('[data-t]')?.classList.remove('drop-on'); });
+  $('s-list').addEventListener('drop', e => { const it = e.target.closest('[data-t]'); if (!it || !dragK) return; e.preventDefault(); link(dragK, it.dataset.t); dragK = null; });
+  $('s-q').addEventListener('input', () => { renderSap(); requestAnimationFrame(drawLinks); });
+  $('s-chips').addEventListener('click', e => { const c = e.target.closest('[data-g]'); if (!c) return; sGroup = c.dataset.g; renderSap(); requestAnimationFrame(drawLinks); });
+
+  // Mapping table edits
+  $('maps').addEventListener('input', e => {
+    const tr = e.target.closest('tr[data-mi]'), f = e.target.dataset.f; if (!tr || !f) return;
+    const m = ED.maps[Number(tr.dataset.mi)];
+    if (f === 'heading') { const x = ED.excel.find(x => x.k === m.k); if (x) x.heading = e.target.value; renderExcel(); requestAnimationFrame(drawLinks); }
+    else if (f === 'required' || f === 'groupKey') m[f] = e.target.checked;
+    else if (f === 'account' || f === 'side') { m[f] = e.target.value; e.target.style.borderColor = e.target.value ? '' : 'var(--red)'; }
+    else m[f] = e.target.value;
+    ED.dirty = true;
+    if (f === 'groupKey') renderChecks();
+  });
+  $('maps').addEventListener('click', e => {
+    const un = e.target.closest('[data-unmap]');
+    if (un) { ED.maps.splice(Number(un.dataset.unmap), 1); ED.selMap = null; ED.dirty = true; return renderEditor(); }
+    const tr = e.target.closest('tr[data-mi]');
+    if (tr && !e.target.matches('input,select')) { const i = Number(tr.dataset.mi); ED.selMap = ED.selMap === i ? null : i; ED.sel = null; renderSap(); renderMaps(); renderExcel(); requestAnimationFrame(drawLinks); }
+  });
+
+  // Excel columns: add by hand / from a sample sheet
+  function addExcel(heading, example = '') {
+    heading = String(heading || '').trim();
+    if (!heading) return null;
+    const ex = ED.excel.find(x => norm(x.heading) === norm(heading));
+    if (ex) { if (example && !ex.example) ex.example = example; return ex; }
+    const x = { k: newKey(), heading, example };
+    ED.excel.push(x); ED.dirty = true;
+    return x;
+  }
+  $('x-add').addEventListener('keydown', e => { if (e.key === 'Enter') $('x-add-btn').click(); });
+  $('x-add-btn').onclick = () => { if (addExcel($('x-add').value)) { $('x-add').value = ''; renderEditor(); $('x-list').scrollTop = 1e6; } };
+  $('e-sample').onclick = () => $('sample-file').click();
+  $('sample-file').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f || !ED) return;
+    setStatus('Reading headings…', 'loading');
+    try {
+      const fd = new FormData(); fd.append('file', f); fd.append('layout', $('e-layout').value);
+      const r = await api('/templates/detect', { method: 'POST', body: fd });
+      let added = 0, mapped = 0;
+      for (const c of r.columns) {
+        const before = ED.excel.length;
+        const x = addExcel(c.heading, c.example);
+        if (ED.excel.length > before) added++;
+        if (x && c.target && c.target !== 'ignore' && !mapOfX(x.k) && (isMulti(c.target) || !mapsOfT(c.target).length) && fieldOf(c.target)) {
+          ED.maps.push({ k: x.k, target: c.target, type: fieldOf(c.target).type, required: c.required, groupKey: c.groupKey, def: '', aliases: '',
+            ...(c.target === 'head' ? { account: '', side: '' } : {}) }); mapped++;
+        }
+      }
+      if (/^New template$/.test($('e-name').value)) $('e-name').value = f.name.replace(/\.[^.]+$/, '').slice(0, 80);
+      ED.dirty = true;
+      const fmt = guessDateFormat();
+      ensureGroupKey();
+      renderEditor();
+      setStatus('Ready', 'ready');
+      toast(`Sheet “${r.sheet}”, heading row ${r.headerRow}: ${added} column${added === 1 ? '' : 's'} added, ${mapped} matched to SAP automatically`
+        + (fmt ? ` · dates look like ${fmt === 'MDY' ? 'month/day/year' : 'day/month/year'}` : ''));
+    } catch (err) { setStatus('Error', 'error'); toast(err.message); }
+  });
+  $('e-automap').onclick = () => {
+    let n = 0;
+    for (const x of ED.excel) {
+      if (mapOfX(x.k)) continue;
+      const h = norm(x.heading);
+      const f = [...FIELDS.list, ...ED.custom].find(f => !f.special && (norm(f.label) === h || norm(f.field) === h || (f.aliases || []).includes(h)) && !mapsOfT(f.target).length);
+      if (f) { ED.maps.push({ k: x.k, target: f.target, type: f.type, required: !!f.core, groupKey: false, def: '', aliases: '' }); n++; }
+    }
+    ED.dirty = ED.dirty || n > 0;
+    renderEditor();
+    toast(n ? `${n} column${n === 1 ? '' : 's'} matched by name` : 'No more columns could be matched by name — link them by hand');
+  };
+  $('cf-add').onclick = () => {
+    let name = $('cf-name').value.trim().replace(/^U_?/i, m => m ? 'U_' : '');
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return toast('Use the Service Layer property name, e.g. U_Region or Project');
+    const level = $('cf-level').value, target = `${level}.${name}`;
+    if (fieldOf(target)) { sGroup = 'all'; $('s-q').value = name; renderSap(); return toast(`${name} is already in the list`); }
+    ED.custom.push({ target, level, field: name, label: name, type: $('cf-type').value, custom: true });
+    $('cf-name').value = ''; sGroup = 'custom'; renderSap(); requestAnimationFrame(drawLinks);
+    if (ED.sel) link(ED.sel, target);
+  };
+
+  // ── Save ────────────────────────────────────────────────────────────────
+  function editorToTemplate() {
+    const columns = [];
+    for (const x of ED.excel) {
+      const m = mapOfX(x.k);
+      const al = m ? m.aliases.split(',').map(s => s.trim()).filter(Boolean) : [];
+      columns.push(m
+        ? { id: x.k, heading: x.heading, aliases: al, target: m.target, type: m.type, required: m.required, groupKey: m.groupKey || m.target === 'key', default: m.def, example: x.example,
+            ...(m.target === 'head' ? { account: m.account || '', side: m.side || '' } : {}) }
+        : { id: x.k, heading: x.heading, aliases: [], target: 'ignore', example: x.example });
+    }
+    ED.maps.filter(m => !m.k).forEach((m, i) => columns.push({ id: `fixed${i + 1}`, heading: '', aliases: [], target: m.target, type: m.type, required: false, groupKey: m.groupKey, default: m.def }));
+    const options = { onExisting: $('e-update').checked ? 'update' : 'error' };
+    document.querySelectorAll('#e-opts [data-opt]').forEach(el => { options[el.dataset.opt] = el.value; });
+    return { name: $('e-name').value.trim(), description: $('e-desc').value.trim(), dateFormat: $('e-datefmt').value, layout: $('e-layout').value, isDefault: $('e-default').checked, options, columns };
+  }
+  $('e-save').onclick = async () => {
+    const body = editorToTemplate();
+    try {
+      const r = ED.id ? await api(`/templates/${ED.id}`, { method: 'PUT', body }) : await api('/templates', { method: 'POST', body });
+      ED.id = r.template.id; ED.dirty = false;
+      $('e-errors').classList.add('hidden');
+      toast(`Template “${r.template.name}” saved`);
+      await loadMeta();
+      startEditor(r.template, false);
+    } catch (e) {
+      const list = e.errors || [e.message];
+      $('e-errors').innerHTML = `<b>The template was not saved:</b><ul>${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+      $('e-errors').classList.remove('hidden');
+      requestAnimationFrame(drawLinks);
+    }
+  };
+  window.addEventListener('beforeunload', e => { if (ED?.dirty) { e.preventDefault(); e.returnValue = ''; } });
+  window.__soiDirty = () => !!ED?.dirty;
+
+  loadMeta();
+  switchTab('pending');
+})();
+</script>
+</body>
+</html>
