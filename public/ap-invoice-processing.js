@@ -94,6 +94,12 @@
     const v = r => Array.isArray(r.value) && r.op !== 'between' ? r.value.map(x => x.name ? `${x.code} ${x.name}` : x.code).join(', ') : r.op === 'between' ? `${fmt(r.value[0], 0)} and ${fmt(r.value[1], 0)}` : typeof r.value === 'boolean' ? (r.value ? 'yes' : 'no') : fmt(r.value, 0);
     return arr(c?.rules).map(r => ['any', 'all', 'none'].includes(r.op) ? `${N[r.field] || r.field}: ${L[r.op]} ${v(r)}` : (r.field === 'hasBase' ? `${N.hasBase}: ${v(r)}` : `${N[r.field] || r.field} ${L[r.op]} ${v(r)}`)).map(esc).join(c?.match === 'any' ? ' <b>OR</b> ' : ' <b>AND</b> ');
   }
+  // Refresh button: disabled with a spinning icon while loading; stamp shows when the list was last loaded.
+  async function withRefresh(btn, stampEl, fn) {
+    if (btn) { btn.disabled = true; btn.classList.add('busy'); }
+    try { await fn(); if (stampEl) stampEl.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`; }
+    finally { if (btn) { btn.disabled = false; btn.classList.remove('busy'); } }
+  }
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   // ── Icons ──────────────────────────────────────────────────────────────────
@@ -210,6 +216,8 @@ textarea.apip-in{min-height:64px;resize:vertical}
 .apip-pill.indigo{background:var(--ap-ind-bg);color:var(--ap-ind)}.apip-pill.purple{background:var(--ap-p-bg);color:var(--ap-p)}
 .apip-pill.spin::before{content:'';width:8px;height:8px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:apipspin .8s linear infinite}
 .apip-err-ic{display:inline-flex;color:var(--ap-bad);vertical-align:middle;margin-left:5px;cursor:help}
+.apip-btn.busy svg{animation:apip-rot .8s linear infinite}@keyframes apip-rot{to{transform:rotate(360deg)}}
+.apip-stamp{font-size:11.5px;color:var(--ap-mut);white-space:nowrap}
 .apip-seg{display:inline-flex;border:1px solid var(--ap-line);border-radius:8px;overflow:hidden;background:#fff}
 .apip-seg button{border:0;background:none;padding:6px 14px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ap-mut);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .apip-seg button+button{border-left:1px solid var(--ap-line)}
@@ -800,6 +808,8 @@ textarea.apip-in{min-height:64px;resize:vertical}
        <div class="apip-card apip-dropwrap" id="apip-qcard">
          <div class="apip-ch"><h3>Invoice List</h3><div class="sp"></div>
            ${searchBox('apip-qsearch', 'Search by invoice name...', S.queueSearch)}
+           <span class="apip-stamp" id="apip-qstamp"></span>
+           <button class="apip-btn" id="apip-qref" title="Reload the list">${I.redo} Refresh</button>
            <button class="apip-btn" id="apip-upl">${I.upload} Upload PDFs</button>
            <button class="apip-btn pri" id="apip-pall">${I.play} Process All Pending (0)</button>
            <input type="file" id="apip-file" accept="application/pdf,.pdf" multiple style="display:none">
@@ -817,6 +827,8 @@ textarea.apip-in{min-height:64px;resize:vertical}
     tabsEl.addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (b && b.dataset.t !== S.queueTab) { S.queueTab = b.dataset.t; renderTabs(); tblEl.innerHTML = loading(); load(); } });
     $('#apip-qsearch').addEventListener('input', debounce(e => { S.queueSearch = e.target.value.trim(); load(); }, 300));
     $('#apip-upl').onclick = () => fileIn.click();
+    $('#apip-qref').onclick = () => refreshNow();
+    const refreshNow = () => withRefresh($('#apip-qref'), $('#apip-qstamp'), load);
     fileIn.onchange = () => { const f = [...fileIn.files]; fileIn.value = ''; upload(f); };
     let dragN = 0;
     card.addEventListener('dragenter', e => { e.preventDefault(); dragN++; card.classList.add('drag'); });
@@ -951,7 +963,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
     });
 
     renderTabs();
-    load();
+    refreshNow();
     every(5000, () => { if (Q.busyAll || Q.rows.some(r => String(r.processingStatus).toLowerCase() === 'processing')) load(); });
   }
 
@@ -1531,12 +1543,13 @@ textarea.apip-in{min-height:64px;resize:vertical}
     const nm = u.name || u.fullName || u.displayName || u.username || 'User';
     const initials = String(nm).split(/\s+/).map(s => s[0]).join('').slice(0, 2).toUpperCase();
     const A = { rows: [], counts: {}, err: '' };
-    bodyEl.innerHTML = pageHead('Invoice Approvals', 'Review and approve invoices pending your approval', `<button class="apip-btn" data-a="refresh">${I.redo} Refresh</button>`) +
+    bodyEl.innerHTML = pageHead('Invoice Approvals', 'Review and approve invoices pending your approval', `<span class="apip-stamp" id="apip-astamp"></span><button class="apip-btn" data-a="refresh" title="Reload the list">${I.redo} Refresh</button>`) +
       `<div class="apip-card"><div class="apip-who"><div class="apip-av">${esc(initials)}</div><div><div style="font-size:11.5px;color:var(--ap-mut)">Logged in as</div><div style="font-weight:700;font-size:14px">${esc(nm)}</div><div style="font-size:12px;color:var(--ap-mut)">${esc(u.role || u.roleName || '')}${u.email ? ' · ' + esc(u.email) : ''}</div></div></div></div>
        <div class="apip-card"><div class="apip-ch"><h3>Invoice Status</h3><div class="sp"></div>${searchBox('apip-asearch', 'Search invoices or vendors...', S.apprSearch)}</div>
          <div class="apip-tabs" id="apip-atabs"></div><div id="apip-atbl">${loading()}</div></div>`;
     const tabsEl = bodyEl.querySelector('#apip-atabs'), tblEl = bodyEl.querySelector('#apip-atbl');
-    bodyEl.querySelector('[data-a=refresh]').onclick = () => load();
+    const refreshNow = () => withRefresh(bodyEl.querySelector('[data-a=refresh]'), bodyEl.querySelector('#apip-astamp'), load);
+    bodyEl.querySelector('[data-a=refresh]').onclick = () => refreshNow();
     const renderTabs = () => { tabsEl.innerHTML = APPR_TABS.map(t => `<button data-t="${t.k}" class="${S.apprTab === t.k ? 'on' : ''}"><span class="apip-dot" style="background:${t.c}"></span>${t.l}${A.counts[t.k] != null ? ` <span class="apip-badge">${A.counts[t.k]}</span>` : ''}</button>`).join(''); };
     tabsEl.addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (b) { S.apprTab = b.dataset.t; renderTabs(); tblEl.innerHTML = loading(); load(); } });
     bodyEl.querySelector('#apip-asearch').addEventListener('input', debounce(e => { S.apprSearch = e.target.value.trim(); load(); }, 300));
@@ -1568,7 +1581,7 @@ textarea.apip-in{min-height:64px;resize:vertical}
         }).join('')}</tbody></table></div>`;
     }
     renderTabs();
-    load();
+    refreshNow();
   }
 
   // ═════════════════════════════════════════════════════════════════════════
