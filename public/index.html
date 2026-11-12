@@ -2543,6 +2543,22 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
       Salary → Journal Entry
     </div>
+    <div class="nav-group">
+      <div class="nav-group-header" data-group="fin-expense" data-fi="expense-report">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 1 .7V2l-1 .7-3-2-3 2-3-2-3 2-3-2z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
+          Employee Expenses
+        </span>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="nav-group-body" id="grp-fin-expense">
+        <div class="nav-subitem" onclick="showExpensePanel('mine')" id="nav-exp-mine" data-perm="expense.claims" style="cursor:pointer" title="Upload bills (PDF or photo), check the amounts and submit for approval"><span class="dot-icon" data-fi="expense-report" style="background:#0b6bcb"></span>My Expense Claims</div>
+        <div class="nav-subitem" onclick="showExpensePanel('approvals')" id="nav-exp-approvals" data-perm="expense.approvals" style="cursor:pointer" title="Approve or reject employee expense claims"><span class="dot-icon" data-fi="validate" style="background:#d97706"></span>Expense Approval</div>
+        <div class="nav-subitem" onclick="showExpensePanel('all')" id="nav-exp-all" data-perm="expense.all" style="cursor:pointer" title="All claims; post approved claims to SAP as a journal entry"><span class="dot-icon" data-fi="accounting-document-verification" style="background:#15803d"></span>All Claims &amp; Post JV</div>
+        <div class="nav-subitem" onclick="showExpensePanel('master')" id="nav-exp-master" data-perm="expense.master" style="cursor:pointer" title="Who approves expense claims: templates, rules and stages"><span class="dot-icon" data-fi="receipt" style="background:#7c3aed"></span>Expense Approval Master</div>
+        <div class="nav-subitem" onclick="showExpensePanel('settings')" id="nav-exp-settings" data-perm="expense.settings" style="cursor:pointer" title="Payable / expense G/L accounts, categories, login → SAP employee"><span class="dot-icon" data-fi="settings" style="background:#475569"></span>Expense Settings</div>
+      </div>
+    </div>
   </div>
 
   <!-- ══ 6. INVENTORY ════════════════════════════════════════════ -->
@@ -9892,7 +9908,7 @@ function showChatPanel() {
   const ALL_PANELS = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -9921,7 +9937,7 @@ document.addEventListener('keydown', e => {
   const anyOpen = ['workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel',
     'forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -33354,7 +33370,7 @@ table.st tfoot td{position:sticky;bottom:0;background:var(--surface-2);font-weig
     ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
      'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
      'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-     'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+     'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar'), ia = document.querySelector('.input-area');
@@ -34096,7 +34112,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -34568,7 +34584,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -35769,7 +35785,7 @@ window.roAskFollowUp = function() {
     const hide = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     hide.forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
@@ -36009,7 +36025,7 @@ window.roAskFollowUp = function() {
     const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -36655,7 +36671,7 @@ window.roAskFollowUp = function() {
     const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
-      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
+      'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
     const ia = document.querySelector('.input-area');
@@ -37585,7 +37601,7 @@ window.roAskFollowUp = function() {
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
       'product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel',
-      'po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+      'po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
       'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel'];
     HIDE.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     const bb = document.querySelector('.bottom-bar');
@@ -38016,7 +38032,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -38251,7 +38267,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
       'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -38413,7 +38429,7 @@ window.roAskFollowUp = function() {
     const HIDE_ALL = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
       'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
       'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+      'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
       'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
       'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
       'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -38469,7 +38485,7 @@ window.roAskFollowUp = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel',
     'product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -39129,7 +39145,7 @@ window.roAskFollowUp = function() {
     'messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'apcm-panel','soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
     'master-item-panel','master-customer-panel','master-supplier-panel',
@@ -39201,7 +39217,7 @@ window.roAskFollowUp = function() {
     'demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel',
     'dynamic-pricing-panel','product-forecast-panel','rush-orders-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -39478,7 +39494,7 @@ window.roAskFollowUp = function() {
 
   window.showSQPanel = function(){
     ['messages','product-forecast-panel','rush-orders-panel','soa-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
+     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel',
      'qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
     const bb=document.querySelector('.bottom-bar'); const ia=document.querySelector('.input-area');
@@ -40029,7 +40045,7 @@ window.roAskFollowUp = function() {
 
   window.showQCompPanel = function(){
     ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
+     'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel',
      'soa-panel','sq-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel']
       .forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
     const bb=document.querySelector('.bottom-bar'); const ia=document.querySelector('.input-area');
@@ -40331,7 +40347,7 @@ window.roAskFollowUp = function() {
   const STEP_LABEL = { INIT:'READY', SELECT_CUSTOMER:'CUSTOMER', SELECT_SOURCE:'DOCUMENT', REVIEW_LINES:'REVIEW', DONE:'DONE' };
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel',
@@ -41237,7 +41253,7 @@ window.roAskFollowUp = function() {
   function el(id){ return document.getElementById(id); }
 
   const ALL_PANELS = ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','outpmt-panel','three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel','master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','data-sync-panel'];
 
   window.showInPayPanel = function(){
@@ -41544,7 +41560,7 @@ window.roAskFollowUp = function() {
   function el(id){ return document.getElementById(id); }
 
   const ALL_PANELS = ['messages','product-forecast-panel','rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel'];
 
   window.showOutPayPanel=function(){
@@ -42178,7 +42194,7 @@ window.showUserRightsPanel = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -42436,7 +42452,7 @@ window.showDataSyncPanel = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel','sc-wizard-panel','user-rights-panel','financial-dashboard-panel','customer-aging-panel'];
@@ -42464,7 +42480,7 @@ window.showFinancialDashboard = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel',
@@ -42488,7 +42504,7 @@ window.showCustomerAgingDashboard = function() {
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel',
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel','production-agent-panel',
     'mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel','po-agent-panel','inv-agent-panel','pr-agent-panel',
-    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
+    'pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel','apcm-panel','soa-panel','sq-panel','qcomp-panel',
     'q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel','inpmt-panel','outpmt-panel',
     'three-way-match-panel','master-item-panel','master-customer-panel','master-supplier-panel',
     'master-bom-panel','master-service-call-panel','svc-call-panel','sc-view-panel','sc-form-panel',
@@ -44132,7 +44148,7 @@ window.showPromptActivity = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -44341,7 +44357,7 @@ window.showActivityAgent = function() {
     'b1-forecast-panel','forecast-dashboard-panel','procurement-agent-panel',
     'production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','shipment-delay-panel','order-intelligence-panel',
-    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','apsv-panel',
+    'po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
     'ocr-po-scan-panel','ocr-expense-panel','ocr-inward-panel','ocr-gatepass-panel','ocr-document-panel','apcm-panel',
     'soa-panel','sq-panel','qcomp-panel','q2o-panel','o2d-panel','d2arinv-panel','arinv2arcm-panel',
     'inpmt-panel','outpmt-panel','three-way-match-panel',
@@ -45453,6 +45469,7 @@ window.almReset = almReset;
 <script src="/agent-kpi-help.js"></script>
 <script src="/ocr-workbench.js"></script>
 <script src="/ap-invoice-processing.js"></script>
+<script src="/expense-claims.js"></script>
 <script>
 // ── Launchpad deep link ──────────────────────────────────────
 // /?open=<sidebar item id> | form=<data-form> | prompt=<data-prompt> |

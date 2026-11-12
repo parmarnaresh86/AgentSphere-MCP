@@ -48,6 +48,8 @@ import { createExcelImportRouter } from './controllers/excel-import-agent.mjs';
 import { createAPInvServiceAgentRouter } from './controllers/apinv-service-agent.mjs';
 import { createOcrPoScanAgentRouter }   from './controllers/ocr-po-scan-agent.mjs';
 import { createApipRouter, startApipIntake } from './controllers/ap-invoice-processing-agent.mjs';
+import { createExpenseClaimRouter } from './controllers/expense-claim-agent.mjs';
+import { listPrincipals, roleIdByName } from './lib/apip-store.mjs';
 import { createOcrExpenseAgentRouter }  from './controllers/ocr-expense-agent.mjs';
 import { createOcrInwardAgentRouter }   from './controllers/ocr-inward-agent.mjs';
 import { createOcrGatePassAgentRouter } from './controllers/ocr-gatepass-agent.mjs';
@@ -6929,6 +6931,8 @@ const apipDeps = { requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap
   AI_PROVIDER: APIP_AZURE ? 'azure' : AI_PROVIDER, USE_AI: APIP_AZURE || USE_AI, cacheRepo, getActiveCompanyId, db };
 app.use('/api/apip', createApipRouter(apipDeps));
 startApipIntake(apipDeps);
+// ── Employee Expense Claims (bill upload → OCR → approval → SAP Journal Entry) ──
+app.use('/api/expense', createExpenseClaimRouter({ ...apipDeps, userPermRepo, listPrincipals, roleIdByName }));
 app.use('/api/custom-agents', createCustomAgentsRouter({
   requireAuth, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI, customAgentsRepo, getActiveSap,
   SAP_B1_SCHEMA, executeSQL, isConnected, schemaRepo, getActiveCompanyId, localTablesRepo,
