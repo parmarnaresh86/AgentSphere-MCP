@@ -427,6 +427,7 @@
     </li>
     <li><a href="#fin-inv">Finance &amp; Inventory</a>
       <ol>
+        <li><a href="#expense-claims">Employee Expense Claims</a></li>
         <li><a href="#inv-workflow">Inventory AI Workflow Agents</a></li>
         <li><a href="#inv-dashboard">Inventory Dashboard</a></li>
       </ol>
@@ -1554,6 +1555,23 @@
       <tr><td><strong>Inventory Dashboard</strong></td><td>Stock, ledger, valuation, aging, dead-stock and item-profit reports (see <a href="#inv-dashboard">8.2</a>)</td></tr>
     </tbody>
   </table>
+
+  <h3 id="expense-claims">8.0 Employee Expense Claims</h3>
+  <p><span class="path">Finance → Employee Expenses</span> lets employees claim business expenses from their bills. Approved claims are posted to SAP as one <strong>Journal Entry</strong>: each bill is debited to its expense G/L, and the total is credited to the Employee Reimbursement Payable G/L, with the employee's name and SAP employee ID on the entry.</p>
+  <ol class="steps">
+    <li><strong>My Expense Claims → ＋ New Expense Claim:</strong> give the claim a title, e.g. "Client visit — Chicago".</li>
+    <li><strong>Add bills:</strong> drop PDFs or phone photos (JPG, PNG) onto the claim. Each bill is read automatically: date, merchant, bill number, amount, tax and a suggested category. The bill is shown next to the lines so you can check it; <strong>↻ Re-read</strong> reads a bill again. Correct anything that is wrong, choose a category for each line, then click <strong>Save</strong>.</li>
+    <li><strong>Submit for approval.</strong> Missing dates, amounts or categories are highlighted first. Bills older than the set limit, and bills that look the same as one on another of your claims, are flagged as warnings.</li>
+    <li><strong>Approval:</strong> approvers see the claim under <strong>Expense Approval</strong> and click <strong>Approve</strong> or <strong>Reject</strong> (a reason is required). A rejected claim goes back to the employee to correct and resubmit. Nobody can approve their own claim.</li>
+    <li><strong>Post:</strong> finance opens <strong>All Claims &amp; Post JV → Ready to post</strong>, opens the claim, chooses the posting date and clicks <strong>Post Journal Entry to SAP</strong>. The journal entry number is shown on the claim. A claim can be posted only once.</li>
+  </ol>
+  <h4>Setting it up (finance / administrator)</h4>
+  <ul>
+    <li><strong>Expense Settings:</strong> choose the <strong>Employee Reimbursement Payable G/L</strong> (credit), a default expense G/L, and a G/L for each expense category (Travel, Meals, Fuel…). Optionally post automatically when a claim is fully approved, or switch approval off.</li>
+    <li><strong>Logins → SAP employees:</strong> link each AgentSphere login to its SAP employee (Employee master). Employees whose login is not linked cannot submit claims. The SAP reporting manager is shown next to each employee.</li>
+    <li><strong>Expense Approval Master:</strong> create at least one approval template. Each stage has approvers: users, roles, or <strong>Employee's reporting manager (SAP)</strong>. Stages can have rules, for example a director stage only when the claim total is more than 1,000. When several templates match, the one with the lowest priority number is used.</li>
+  </ul>
+  <div class="callout info"><strong>ℹ️ Who sees what</strong>Employees see only their own claims. Approvers see the claims they approve. Only users with <em>All Expense Claims &amp; Post JV</em> see every claim and can post. These permissions are under <span class="path">Admin → Roles &amp; Permissions → Finance → Employee Expenses</span>.</div>
 
   <h3 id="inv-workflow">8.1 Inventory AI Workflow Agents</h3>
   <p><span class="path">Inventory → AI Workflow</span> has five guided agents. They all post live to SAP B1 and share one layout: a chat on the left and a <strong>📦 Document Builder</strong> on the right that previews the document as you build it. Each menu item has its own permission. Without it the screen shows <span class="badge grey">NO ACCESS</span>.</p>

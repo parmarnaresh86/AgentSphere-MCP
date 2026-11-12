@@ -643,6 +643,12 @@ export const ALL_PERMISSIONS = [
   { key: 'finance.financial_dashboard', label: 'Financial Dashboard',   section: 'Finance' },
   { key: 'finance.customer_aging',      label: 'Customer Aging Detail', section: 'Finance' },
   { key: 'finance.salary_jv_import',    label: 'Salary → Journal Entry (Excel)', section: 'Finance' },
+  // Employee Expenses — enforced server-side by controllers/expense-claim-agent.mjs
+  { key: 'expense.claims',    label: 'My Expense Claims (submit own bills)',  section: 'Finance', group: 'Employee Expenses' },
+  { key: 'expense.approvals', label: 'Expense Approval',                       section: 'Finance', group: 'Employee Expenses' },
+  { key: 'expense.all',       label: 'All Expense Claims & Post JV',           section: 'Finance', group: 'Employee Expenses' },
+  { key: 'expense.master',    label: 'Expense Approval Master',                section: 'Finance', group: 'Employee Expenses' },
+  { key: 'expense.settings',  label: 'Expense Settings & Employee Mapping',    section: 'Finance', group: 'Employee Expenses' },
   { key: 'finance.reports.balance_sheet', label: 'Balance Sheet',        section: 'Finance', group: 'Financial Reports' },
   { key: 'finance.reports.profit_loss',   label: 'Profit & Loss',        section: 'Finance', group: 'Financial Reports' },
   { key: 'finance.reports.trial_balance', label: 'Trial Balance',        section: 'Finance', group: 'Financial Reports' },
@@ -1050,6 +1056,16 @@ const ONE_TIME_GRANTS = [
   { name: 'ai.ocr.bank_reco.v1', trigger: ['admin.roles','finance.financial_dashboard','finance.reports.trial_balance'],
     keys: ['ai.ocr.bank_reco'] },
   // AP Invoice Processing menu → admins and whoever can already scan A/P invoices.
+  // Employee Expenses → the whole module for admins only (finance keys such as salary JV or trial balance are
+  // also held by ordinary user roles, so they can't identify finance); admins grant "All Claims & Post JV",
+  // "Approval Master" and "Settings" to finance roles themselves. Every role that can use the app gets
+  // "My Expense Claims" and "Expense Approval" (an inbox only — it lists claims the user may approve).
+  { name: 'expense.v1', trigger: ['admin.roles'],
+    keys: ['expense.claims','expense.approvals','expense.all','expense.master','expense.settings'] },
+  // Undo expense.v1 as first shipped (it also matched the 'user' role through finance.salary_jv_import):
+  // keep only claims + approvals on roles that cannot manage roles.
+  { name: 'expense.v1.fix', revokeFromNonAdmin: ['expense.all','expense.master','expense.settings'], trigger: [], keys: [] },
+  { name: 'expense.claims.v1', trigger: ['home'], keys: ['expense.claims','expense.approvals'] },
   { name: 'apip.v1', trigger: ['admin.roles','ai.ocr.apinv'],
     keys: ['apip.dashboard','apip.queue','apip.approvals','apip.stages','apip.master','apip.mail','apip.settings'] },
   // Vendor Item Mapping / Vendor Expense G/L → whoever can already change AP Invoice Processing settings.
@@ -1076,11 +1092,19 @@ for (const g of ONE_TIME_GRANTS) {
     const insRole = db.prepare(`INSERT OR IGNORE INTO role_permissions(role_id,perm_key) VALUES(?,?)`);
     for (const role of roleRepo.list.all()) {
       if (role.name === 'superadmin') continue;
-      if (roleRepo.getPermissions(role.id).some(k => g.trigger.includes(k))) g.keys.forEach(k => insRole.run(role.id, k));
+      const perms = roleRepo.getPermissions(role.id);
+      if (perms.some(k => g.trigger.includes(k))) g.keys.forEach(k => insRole.run(role.id, k));
+      // corrective entries: take keys back from roles that cannot manage roles
+      if (g.revokeFromNonAdmin && !perms.includes('admin.roles') && role.name !== 'admin') {
+        const del = db.prepare(`DELETE FROM role_permissions WHERE role_id=? AND perm_key=?`);
+        g.revokeFromNonAdmin.forEach(k => del.run(role.id, k));
+      }
     }
-    const insUser = db.prepare(`INSERT OR IGNORE INTO user_permissions(user_id,perm_key,granted) VALUES(?,?,1)`);
-    const users = db.prepare(`SELECT DISTINCT user_id FROM user_permissions WHERE granted=1 AND perm_key IN (${g.trigger.map(() => '?').join(',')})`).all(...g.trigger);
-    for (const u of users) g.keys.forEach(k => insUser.run(u.user_id, k));
+    if (g.trigger.length) {
+      const insUser = db.prepare(`INSERT OR IGNORE INTO user_permissions(user_id,perm_key,granted) VALUES(?,?,1)`);
+      const users = db.prepare(`SELECT DISTINCT user_id FROM user_permissions WHERE granted=1 AND perm_key IN (${g.trigger.map(() => '?').join(',')})`).all(...g.trigger);
+      for (const u of users) g.keys.forEach(k => insUser.run(u.user_id, k));
+    }
     db.prepare(`INSERT INTO permission_grants_applied(name) VALUES(?)`).run(g.name);
   })();
   console.log(`✓ Permission grant '${g.name}' applied`);

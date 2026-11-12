@@ -541,6 +541,13 @@ const SPACES = [
    {o:'nav-customer-aging',t:'Customer Aging Detail',s:'Per-customer aging matrix',i:'customer-financial-fact-sheet',perm:'finance.customer_aging'},
    {o:'nav-xl-salary',t:'Salary → Journal Entry',s:'Salary register / slips → one JE per employee',i:'money-bills',perm:'finance.salary_jv_import'},
   ]},
+  {title:'Employee Expenses',tiles:[
+   {o:'nav-exp-mine',t:'My Expense Claims',s:'Upload bills, submit for approval',i:'expense-report',perm:'expense.claims'},
+   {o:'nav-exp-approvals',t:'Expense Approval',s:'Approve or reject claims',i:'validate',perm:'expense.approvals'},
+   {o:'nav-exp-all',t:'All Claims & Post JV',s:'Post approved claims to SAP',i:'accounting-document-verification',perm:'expense.all'},
+   {o:'nav-exp-master',t:'Expense Approval Master',s:'Approval templates and stages',i:'receipt',perm:'expense.master'},
+   {o:'nav-exp-settings',t:'Expense Settings',s:'G/L accounts, categories, employees',i:'settings',perm:'expense.settings'},
+  ]},
   {title:'Financial Reports',tiles:[
    {o:'nav-fin-bs',t:'Balance Sheet',s:'As at period end',i:'business-objects-experience',perm:'finance.reports.balance_sheet'},
    {o:'nav-fin-pl',t:'Profit & Loss',s:'Period and year to date',i:'trend-up',perm:'finance.reports.profit_loss'},
