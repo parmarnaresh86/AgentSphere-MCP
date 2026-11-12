@@ -554,8 +554,19 @@ async function buildMapped(ext, settings, row, sapIn) {
     const docs = await fetchOpenDocs(sap, CardCode);
     const poNo = String(ext.poNumber || '').replace(/\D/g, '');
     const po = poNo ? docs.pos.find(p => String(p.docNum) === poNo) : null;
-    let grpos = po ? docs.grpos.filter(g => g.lines.some(l => l.baseType === 22 && Number(l.baseEntry) === Number(po.docEntry))) : [];
-    if (!po && ext.invoiceNo) grpos = docs.grpos.filter(g => g.numAtCard && g.numAtCard.trim().toLowerCase() === String(ext.invoiceNo).trim().toLowerCase());
+    // A PO that has been fully received is CLOSED in SAP, yet its GRPOs are still open for invoicing —
+    // so resolve the printed PO number to DocEntry(s) whatever the PO status, then find GRPOs based on it.
+    let poEntries = po ? [Number(po.docEntry)] : [];
+    let closedPo = false;
+    if (!po && poNo) {
+      try {
+        const r = await withTimeout(sap.get('/PurchaseOrders', { $select: 'DocEntry,DocNum,DocumentStatus', $filter: `CardCode eq '${q(CardCode)}' and DocNum eq ${Number(poNo)}`, $top: 5 }), 15000, 'PO lookup');
+        poEntries = (r.value || []).map(x => Number(x.DocEntry));
+        closedPo = poEntries.length > 0;
+      } catch (e) { apipLog('WARN', `PO ${poNo} lookup: ${e.message}`); }
+    }
+    let grpos = poEntries.length ? docs.grpos.filter(g => g.lines.some(l => l.baseType === 22 && poEntries.includes(Number(l.baseEntry)))) : [];
+    if (!grpos.length && !po && ext.invoiceNo) grpos = docs.grpos.filter(g => g.numAtCard && g.numAtCard.trim().toLowerCase() === String(ext.invoiceNo).trim().toLowerCase());
     let baseDocs = grpos.length ? grpos.map(d => ({ ...d, type: 20 })) : (po ? [{ ...po, type: 22 }] : []);
     // an expense invoice can only be based on a service PO / GRPO
     if (expenseVendor) baseDocs = baseDocs.filter(d => d.docType === 'dDocument_Service');
@@ -573,11 +584,20 @@ async function buildMapped(ext, settings, row, sapIn) {
           }
           if (best && bs >= 0.5) cand = best;
         }
+        if (!cand && l.Quantity > 0) {
+          // vendor's own item names often share nothing with ours — fall back to the one open base line with the same quantity
+          const sameQty = pool.filter(p => p.left > 0 && Math.abs(p.left - l.Quantity) < 1e-6);
+          if (sameQty.length === 1) cand = sameQty[0];
+        }
         if (!cand) continue;
         linked++;
         cand.left -= l.Quantity;
         l.BaseType = cand.type; l.BaseEntry = cand.docEntry; l.BaseLine = cand.lineNum;
-        if (!l.ItemCode && cand.itemCode) { l.ItemCode = cand.itemCode; l.ItemDescription = cand.description || l.ItemDescription; }
+        // the base document's item is what SAP expects on a linked line
+        if (cand.itemCode && l.ItemCode !== cand.itemCode) {
+          if (l.ItemCode) warnings.push(`Line "${l.ocrDescription}": item ${l.ItemCode} replaced by ${cand.itemCode} from ${cand.type === 20 ? 'GRPO' : 'PO'} ${cand.docNum} line ${cand.lineNum + 1}.`);
+          l.ItemCode = cand.itemCode; l.ItemDescription = cand.description || l.ItemDescription;
+        }
         if (cand.accountCode && !l.AccountCode) l.AccountCode = cand.accountCode;
         if (cand.warehouse) l.WarehouseCode = cand.warehouse;
         if (!l.TaxCode && cand.taxCode) l.TaxCode = cand.taxCode;
@@ -597,7 +617,8 @@ async function buildMapped(ext, settings, row, sapIn) {
           warnings.push(`Type set to ${docTypeLabel(baseType)} to match ${baseDocs[0].type === 20 ? 'GRPO' : 'PO'} ${baseDocs[0].docNum}.`);
         }
       } else warnings.push(`${baseDocs[0].type === 20 ? 'GRPO' : 'PO'} ${baseDocs[0].docNum} found but no invoice line could be linked to it.`);
-    } else if (ext.poNumber) warnings.push(`PO "${ext.poNumber}" printed on the invoice is not an open purchase order for ${CardCode}.`);
+    } else if (closedPo) warnings.push(`PO "${ext.poNumber}" is closed and has no open GRPO for ${CardCode} — it may already be invoiced or not yet received.`);
+    else if (ext.poNumber) warnings.push(`PO "${ext.poNumber}" printed on the invoice is not a purchase order of ${CardCode}.`);
   }
 
   // Service (expense) invoice: description as printed on the bill, G/L from the name match where nothing better was set

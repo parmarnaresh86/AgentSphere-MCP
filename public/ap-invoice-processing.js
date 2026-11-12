@@ -893,7 +893,8 @@ textarea.apip-in{min-height:64px;resize:vertical}
       const busy = ps === 'processing';
       const acts = [];
       if (ps === 'pending') acts.push(`<button class="apip-ib p" data-act="process" data-id="${id}" title="Process">${I.play}</button>`);
-      else if (ps === 'failed') acts.push(`<button class="apip-ib p" data-act="process" data-id="${id}" title="Re-process">${I.redo}</button>`);
+      else if (ps === 'failed' || (['processed', 'duplicate'].includes(ps) && !['PENDING', 'PARTIAL', 'APPROVED'].includes(as)))
+        acts.push(`<button class="apip-ib p" data-act="process" data-id="${id}" title="Re-process (read again and re-match with SAP)">${I.redo}</button>`);
       acts.push(`<button class="apip-ib" data-act="pdf" data-id="${id}" title="View PDF">${I.pdf}</button>`);
       acts.push(`<button class="apip-ib" data-act="json" data-id="${id}" title="View JSON" ${ps === 'pending' || busy ? 'disabled' : ''}>${I.code}</button>`);
       acts.push(`<button class="apip-ib r" data-act="delete" data-id="${id}" title="Delete" ${ps === 'posted' || busy ? 'disabled' : ''}>${I.trash}</button>`);
@@ -944,6 +945,8 @@ textarea.apip-in{min-height:64px;resize:vertical}
       if (act === 'view') return openInvoice(id, { back: 'queue' });
       if (act === 'miro') return openInvoice(id, { back: 'queue', focusPost: true });
       if (act === 'process') {
+        if (['processed', 'duplicate'].includes(String(row.processingStatus || '').toLowerCase())
+          && !await confirmDlg(`Re-process <b>${esc(row.fileName || id)}</b>? The invoice is read again and re-matched with SAP (vendor, items, PO / GRPO). Any changes you made to it are replaced.`, { okLabel: 'Re-process', okCls: 'ok' })) return;
         b.disabled = true; row.processingStatus = 'processing'; renderTable();
         try { await api('POST', `/queue/${enc(id)}/process`); toast(`Processed: ${row.fileName || id}`, 'ok'); }
         catch (er) { toast(`Processing failed: ${er.message}`, 'err', 6000); }
