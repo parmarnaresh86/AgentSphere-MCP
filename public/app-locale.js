@@ -26,6 +26,14 @@
   try { if (window.parent !== window && window.parent.APP_LOCALE) parentLocale = window.parent.APP_LOCALE; } catch {}
   window.APP_LOCALE = window.APP_LOCALE || parentLocale || 'en-US';
   window.appLocaleFor = window.appLocaleFor || localeFor;
+  // Currency follows the same rule: an iframe starts with the parent's.
+  try { if (!window.APP_CURRENCY && window.parent !== window && window.parent.APP_CURRENCY) window.APP_CURRENCY = window.parent.APP_CURRENCY; } catch {}
+  // Symbol for money amounts: the company's base currency, "$" until it is known.
+  // Letter symbols get a trailing space ("AED 1,234", "Rs 500"); "$" / "₹" don't.
+  window.appCurrencySymbol = () => {
+    const s = (window.APP_CURRENCY && (window.APP_CURRENCY.symbol || window.APP_CURRENCY.code)) || '$';
+    return /[A-Za-z.]$/.test(s) ? s + ' ' : s;
+  };
   const L = () => window.APP_LOCALE || 'en-US';
 
   // ── 1. Locale-less formatting → APP_LOCALE ──────────────────────────────────
@@ -167,12 +175,13 @@ input.app-date-picker{position:absolute!important;width:1px!important;height:1px
   // ── Currency → locale ───────────────────────────────────────────────────────
   window.setAppCurrency = cur => {
     if (cur && cur.code) window.APP_CURRENCY = cur;
+    // Pass it on even when the locale is unchanged: the symbol may differ (USD → AED).
+    try { document.querySelectorAll('iframe').forEach(f => f.contentWindow && f.contentWindow.setAppCurrency && f.contentWindow.setAppCurrency(cur)); } catch {}
     const next = localeFor(window.APP_CURRENCY);
     if (next === window.APP_LOCALE) return;
     window.APP_LOCALE = next;
     if (window.Chart && window.Chart.defaults) window.Chart.defaults.locale = next;
     document.querySelectorAll('input[data-app-date]').forEach(el => el.__appDateRefresh && el.__appDateRefresh());
-    try { document.querySelectorAll('iframe').forEach(f => f.contentWindow && f.contentWindow.setAppCurrency && f.contentWindow.setAppCurrency(cur)); } catch {}
   };
   // Chart.js reads its own default locale (the browser's) — pin it once it loads.
   const pinChart = () => { if (window.Chart && window.Chart.defaults && !window.Chart.__appLocale) { window.Chart.defaults.locale = L(); window.Chart.__appLocale = true; } };

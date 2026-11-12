@@ -180,7 +180,7 @@ table.sub tr.op td{background:#F7F9FB;font-style:italic}
 <div class="shell-bar">
   <a class="shell-back" href="/" onclick="return goBack()" title="Back">← Back</a>
   <div class="shell-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
-  <div><div class="shell-title">Inventory Dashboard &amp; Reports</div><div class="shell-subtitle">SAP B1 inventory journal (OINM) · live · <span id="curNote">Amounts in USD ($)</span></div></div>
+  <div><div class="shell-title">Inventory Dashboard &amp; Reports</div><div class="shell-subtitle">SAP B1 inventory journal (OINM) · live · <span id="curNote">Amounts in company currency</span></div></div>
   <div class="shell-spacer"></div>
   <span class="shell-badge" id="badge">Ready</span>
   <button class="shell-btn" onclick="exportCsv()" title="Export the current report to CSV / Excel">⬇ Export</button>
@@ -243,14 +243,14 @@ function setCurrency(c) {
   LOCALE = CUR.code === 'INR' ? 'en-IN' : 'en-US';
   if (window.Chart) Chart.defaults.locale = LOCALE;
   const el = document.getElementById('curNote');
-  if (el) el.textContent = 'Amounts in USD ($)';
+  if (el) el.textContent = `Amounts in ${CUR.code}${CUR.symbol && CUR.symbol !== CUR.code ? ` (${CUR.symbol})` : ''}`;
 }
 const fmtAmt = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString(LOCALE, { minimumFractionDigits:2, maximumFractionDigits:2 });
 const fmtQty = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString(LOCALE, { maximumFractionDigits:3 });
 const fmtInt = n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString(LOCALE);
 const fmtPct = n => n == null || isNaN(n) ? '—' : `${Number(n).toFixed(1)}%`;
-// Every amount on the dashboard carries the USD sign
-const sym = () => '$';
+// Every amount on the dashboard carries the company currency symbol
+const sym = () => { const s = CUR.symbol || CUR.code || '$'; return /[A-Za-z.]$/.test(s) ? s + ' ' : s; };
 const fmtMoney = n => n == null || isNaN(n) ? '—' : `${n < 0 ? '-' : ''}${sym()}${fmtAmt(Math.abs(n))}`;
 const fmtShort = n => {
   const a = Math.abs(n), sg = n < 0 ? '-' : '';

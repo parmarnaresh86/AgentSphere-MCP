@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentSphere Brochure</title>
+<link rel="icon" href="/assets/agentsphere-logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0a1f3d; --navy2:#0f3561; --ink:#14233b; --muted:#5b6b82; --line:#e3e9f2; --bg:#eef2f8;
+  --teal:#0e8ea3; --cyan:#22c3d6; --green:#1fae74; --orange:#f39200; --red:#ec5a3a;
+  --violet:#7457ff; --pink:#e2448f; --gold:#f5b400; --blue:#2f6bff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);font-family:"Plus Jakarta Sans","Segoe UI",Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+.toolbar{position:fixed;top:16px;right:16px;z-index:50;display:flex;gap:8px}
+.toolbar a,.toolbar button{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;border:0;font:700 13px inherit;font-family:inherit;cursor:pointer;text-decoration:none;box-shadow:0 6px 18px rgba(10,31,61,.25)}
+.toolbar .dl{background:linear-gradient(135deg,var(--orange),var(--red));color:#fff}
+.toolbar .pr{background:#fff;color:var(--navy)}
+.toolbar svg{width:16px;height:16px}
+
+/* ── A4 pages ───────────────────────────────────────── */
+.page{width:210mm;height:297mm;margin:24px auto;background:#fff;position:relative;overflow:hidden;box-shadow:0 10px 40px rgba(10,31,61,.15);padding:15mm 15mm 18mm;display:flex;flex-direction:column}
+.page-foot{position:absolute;left:15mm;right:15mm;bottom:7mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5pt;color:var(--muted)}
+.page-foot img{height:24px}
+.page-foot b{color:var(--navy)}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-size:8.5pt;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--c,var(--teal))}
+.kicker::before{content:"";width:22px;height:3px;border-radius:2px;background:var(--c,var(--teal))}
+h2{font-size:25pt;line-height:1.12;font-weight:800;color:var(--navy);margin:6px 0 8px;letter-spacing:-.01em}
+h2 em{font-style:normal;background:linear-gradient(90deg,var(--c,var(--teal)),var(--c2,var(--violet)));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:11.5pt;line-height:1.55;color:var(--muted);max-width:165mm}
+h3{font-size:12pt;font-weight:800;color:var(--navy);margin-bottom:4px}
+p{font-size:9.5pt;line-height:1.55}
+
+/* ── Workflow ribbon ───────────────────────────────── */
+.flow{display:flex;align-items:stretch;gap:0;margin:14px 0 4px}
+.flow .st{flex:1;position:relative;background:var(--sc);color:#fff;padding:10px 10px 10px 18px;font-size:8.6pt;font-weight:700;line-height:1.25;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,0 100%,12px 50%)}
+.flow .st:first-child{clip-path:polygon(0 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,0 100%);padding-left:12px;border-radius:8px 0 0 8px}
+.flow .st:last-child{clip-path:polygon(0 0,100% 0,100% 100%,0 100%,12px 50%);border-radius:0 8px 8px 0}
+.flow .st small{display:block;font-weight:500;opacity:.85;font-size:7.4pt;margin-top:2px}
+
+/* ── Feature cards ─────────────────────────────────── */
+.cards{display:grid;gap:11px}
+.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:1fr 1fr 1fr}.c4{grid-template-columns:repeat(4,1fr)}
+.card{border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:#fff;position:relative}
+.card .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px;margin-bottom:7px;background:var(--ib,#e8f7fa)}
+.card h4{font-size:10.5pt;line-height:1.3;font-weight:800;color:var(--navy);margin-bottom:4px}
+.card p{font-size:8.9pt;line-height:1.5;color:var(--muted)}
+.card.hl{background:linear-gradient(135deg,var(--navy),var(--navy2));border:0;color:#fff}
+.card.hl h4{color:#fff}.card.hl p{color:rgba(255,255,255,.78)}
+.tagrow{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.tag{font-size:7.4pt;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--tb,#eef3fb);color:var(--tc,var(--navy2))}
+
+/* ── Split layouts ─────────────────────────────────── */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.split.wide{grid-template-columns:1.15fr .85fr}
+.checks{list-style:none;display:grid;gap:6px}
+.checks li{font-size:9.4pt;line-height:1.45;padding-left:22px;position:relative}
+.checks li::before{content:"✓";position:absolute;left:0;top:0;width:15px;height:15px;border-radius:50%;background:var(--c,var(--teal));color:#fff;font-size:8pt;font-weight:800;display:grid;place-items:center}
+.checks b{color:var(--navy)}
+
+/* ── Screen frames (screenshot or illustration) ───── */
+.shot{border-radius:12px;overflow:hidden;box-shadow:0 14px 34px rgba(10,31,61,.22);border:1px solid #d5deea;background:#fff}
+.shot .bar{height:22px;background:#e9eef6;display:flex;align-items:center;gap:5px;padding:0 9px}
+.shot .bar i{width:8px;height:8px;border-radius:50%;background:#ff6058}.shot .bar i:nth-child(2){background:#ffbd2e}.shot .bar i:nth-child(3){background:#28c940}
+.shot .bar span{margin-left:8px;font-size:7pt;color:#6a7a90;font-weight:600}
+.shot img.real{display:block;width:100%}
+.shot.has-real .mock{display:none}
+.cap{line-height:1.4;font-size:7.8pt;color:var(--muted);margin-top:6px;text-align:center;font-style:italic}
+
+/* mock primitives */
+.mock{display:flex;font-size:7.4pt;min-height:150px}
+.m-side{width:24%;background:#10284a;padding:8px 6px;display:flex;flex-direction:column;gap:5px}
+.m-side b{height:6px;border-radius:3px;background:rgba(255,255,255,.18)}
+.m-side b.on{background:var(--cyan)}
+.m-main{flex:1;padding:8px;background:#f5f8fc;display:flex;flex-direction:column;gap:6px}
+.m-head{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,#354a5e,#1a2d40);color:#fff;border-radius:5px;padding:5px 7px;font-weight:700;font-size:7pt}
+.m-head .pill{background:rgba(255,255,255,.2);border-radius:8px;padding:1px 6px;font-size:6pt}
+.m-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.m-kpi{background:#fff;border-radius:5px;padding:5px;border-top:3px solid var(--k,var(--teal))}
+.m-kpi small{display:block;color:#7b8aa0;font-size:5.6pt}
+.m-kpi strong{font-size:9pt;color:var(--navy)}
+.m-row{display:flex;gap:6px}
+.m-panel{background:#fff;border-radius:5px;padding:6px;flex:1}
+.m-panel .t{font-weight:700;color:var(--navy);font-size:6.4pt;margin-bottom:4px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:52px}
+.bars span{flex:1;border-radius:2px 2px 0 0;background:linear-gradient(180deg,var(--b1,var(--cyan)),var(--b2,var(--blue)))}
+.lines i{display:block;height:5px;border-radius:3px;background:#e4eaf3;margin:4px 0}
+.lines i.s{width:60%}.lines i.m{width:80%}
+.donut{width:52px;height:52px;border-radius:50%;background:conic-gradient(var(--teal) 0 38%,var(--orange) 0 62%,var(--violet) 0 80%,var(--green) 0);position:relative;margin:auto}
+.donut::after{content:"";position:absolute;inset:13px;border-radius:50%;background:#fff}
+.chat{display:flex;flex-direction:column;gap:5px}
+.bub{max-width:78%;padding:5px 7px;border-radius:8px;line-height:1.35}
+.bub.u{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:2px}
+.bub.a{background:#fff;border:1px solid #e1e8f2;border-bottom-left-radius:2px;color:var(--ink)}
+.mt{width:100%;border-collapse:collapse;font-size:6pt}
+.mt td{padding:3px 4px;border-bottom:1px solid #edf1f7}
+.mt tr:first-child td{background:#e7f0fb;font-weight:700;color:var(--navy)}
+.chip{display:inline-block;padding:2px 6px;border-radius:7px;font-size:5.8pt;font-weight:700;background:#e8f7ee;color:#0f7a4c}
+.chip.r{background:#fde8e4;color:#b8341a}.chip.o{background:#fff1dc;color:#a35f00}.chip.b{background:#e6efff;color:#2950c7}
+.btn{display:inline-block;padding:3px 8px;border-radius:5px;background:var(--blue);color:#fff;font-weight:700;font-size:6.2pt}
+.ring{width:56px;height:56px;border-radius:50%;background:conic-gradient(var(--green) 0 93%,#e4eaf3 0);display:grid;place-items:center;margin:2px auto}
+.ring b{width:42px;height:42px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:9pt;color:var(--green)}
+
+/* ── Cover ─────────────────────────────────────────── */
+.cover{padding:0;color:#fff;background:
+  radial-gradient(60% 45% at 85% 18%,rgba(34,195,214,.45),transparent 70%),
+  radial-gradient(50% 40% at 10% 80%,rgba(116,87,255,.45),transparent 70%),
+  radial-gradient(40% 30% at 70% 85%,rgba(243,146,0,.35),transparent 70%),
+  linear-gradient(160deg,#061430 0%,#0a2a55 55%,#0b3f63 100%)}
+.cover .orbit{position:absolute;border:1.5px solid rgba(255,255,255,.12);border-radius:50%}
+.cover .node{position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 14px 4px rgba(34,195,214,.8)}
+.cover-in{position:relative;z-index:2;padding:16mm 15mm 0;display:flex;flex-direction:column;height:100%}
+.logo-badge{background:#fff;border-radius:18px;padding:10px 16px;display:inline-flex;box-shadow:0 10px 30px rgba(0,0,0,.25);align-self:flex-start}
+.logo-badge img{height:70px}
+.cover h1{font-size:37pt;line-height:1.05;font-weight:800;margin:14mm 0 5mm;letter-spacing:-.02em}
+.cover h1 span{background:linear-gradient(90deg,#5ee7f2,#a993ff 55%,#ffb347);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cover .sub{font-size:12.5pt;line-height:1.5;color:rgba(255,255,255,.85);max-width:150mm}
+.cover .pills{display:flex;flex-wrap:wrap;gap:7px;margin-top:7mm}
+.cover .pills span{border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);padding:5px 11px;border-radius:999px;font-size:8.5pt;font-weight:600}
+.cover .hero{margin-top:9mm;transform:perspective(900px) rotateX(6deg);transform-origin:top}
+.cover .hero .shot{border:1px solid rgba(255,255,255,.25)}
+.cover-foot{position:absolute;left:0;right:0;bottom:0;padding:7mm 15mm;display:flex;justify-content:space-between;align-items:center;background:rgba(3,10,25,.55);z-index:3}
+.cover-foot img{height:56px}
+.cover-foot div{font-size:8.5pt;color:rgba(255,255,255,.75);text-align:right;line-height:1.5}
+.cover-foot b{color:#fff;font-size:10pt}
+
+/* ── Stats band ───────────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.stat{border-radius:14px;padding:12px;color:#fff;background:var(--sg)}
+.stat strong{display:block;font-size:22pt;font-weight:800;line-height:1}
+.stat span{display:block;font-size:8.6pt;line-height:1.35;margin-top:6px;opacity:.92}
+
+/* ── Architecture diagram ─────────────────────────── */
+.arch{display:grid;grid-template-columns:1fr 26px 1.25fr 26px 1fr;align-items:stretch;margin:12px 0}
+.arch .col{border-radius:14px;padding:11px;display:flex;flex-direction:column;gap:6px}
+.arch .col h4{font-size:9pt;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
+.arch .it{background:rgba(255,255,255,.75);border-radius:8px;padding:6px 8px;font-size:8.2pt;font-weight:600;display:flex;gap:6px;align-items:center}
+.arch .ar{display:grid;place-items:center;color:var(--teal);font-size:18pt;font-weight:800}
+.arch .in{background:#e8f6fb}.arch .in h4{color:var(--teal)}
+.arch .core{background:linear-gradient(160deg,var(--navy),#123f6e);color:#fff}
+.arch .core h4{color:#5ee7f2}.arch .core .it{background:rgba(255,255,255,.1);color:#fff}
+.arch .out{background:#fff4e2}.arch .out h4{color:#c26f00}
+
+/* ── Outcome band (bottom of each content page) ─── */
+.grow{flex:1;min-height:12px}
+.outcome{margin-bottom:9mm;border-radius:16px;padding:13px 16px;color:#fff;background:linear-gradient(120deg,var(--c,var(--teal)),var(--c2,var(--violet)));box-shadow:0 10px 26px rgba(10,31,61,.18)}
+.outcome .ot{font-size:8pt;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.85;margin-bottom:8px}
+.outcome .og{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.outcome .og div{display:flex;gap:8px;align-items:flex-start;font-size:10pt;font-weight:700;line-height:1.3}
+.outcome .og div::before{content:"✓";flex:none;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.25);display:grid;place-items:center;font-size:10pt}
+/* cover module strip */
+.modstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:9mm}
+.modstrip div{border-radius:12px;padding:9px 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);font-size:8.6pt;font-weight:700;display:flex;gap:7px;align-items:center}
+.modstrip div i{font-style:normal;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;background:var(--mi);font-size:12px}
+.bigline{font-size:32pt;font-weight:800;line-height:1.05;letter-spacing:-.02em;margin:7mm 0 3mm;background:linear-gradient(90deg,#5ee7f2,#a993ff 50%,#ffb347);-webkit-background-clip:text;background-clip:text;color:transparent}
+.about{border-radius:16px;padding:14px 16px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2)}
+.about-h{font-size:8.5pt;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#ffb347;margin-bottom:6px}
+.about p{font-size:9pt;line-height:1.55;color:rgba(255,255,255,.82)}
+.about .facts{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:10px}
+.about .facts div{border-radius:10px;padding:8px;background:rgba(255,255,255,.08);text-align:center}
+.about .facts b{display:block;font-size:14pt;font-weight:800;background:linear-gradient(90deg,#5ee7f2,#a993ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.about .facts span{font-size:7.4pt;color:rgba(255,255,255,.75)}
+/* ── Back cover ───────────────────────────────────── */
+.back{color:#fff;background:linear-gradient(160deg,#061430,#0b3a63 60%,#0e6f86);justify-content:space-between}
+.back h2{color:#fff;font-size:30pt}
+.back .lead{color:rgba(255,255,255,.82)}
+.back .cta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10mm 0}
+.back .cta div{border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.06);border-radius:14px;padding:12px}
+.back .cta b{display:block;font-size:11pt;margin:4px 0}
+.back .cta p{color:rgba(255,255,255,.75);font-size:8.6pt}
+.back .logos{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.18);padding-top:8mm}
+.back .logos img.st{height:58px}
+
+@page{size:A4;margin:0}
+@media print{
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{background:#fff}
+  .toolbar{display:none}
+  .page{margin:0;box-shadow:none;break-after:page}
+}
+@media screen and (max-width:820px){
+  .page{transform-origin:top left;margin:12px}
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <a class="dl" href="/AgentSphere-Brochure.pdf" download>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Download PDF</a>
+  <button class="pr" type="button" onclick="window.print()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    Print</button>
+</div>
+
+<!-- ═════════════ 1. COVER ═════════════ -->
+<section class="page cover">
+  <div class="orbit" style="width:190mm;height:190mm;right:-70mm;top:-60mm"></div>
+  <div class="orbit" style="width:130mm;height:130mm;right:-40mm;top:-30mm"></div>
+  <div class="orbit" style="width:240mm;height:240mm;left:-150mm;bottom:-120mm"></div>
+  <div class="node" style="right:42mm;top:22mm"></div>
+  <div class="node" style="right:18mm;top:70mm"></div>
+  <div class="node" style="left:24mm;bottom:70mm;box-shadow:0 0 14px 4px rgba(169,147,255,.9)"></div>
+  <div class="cover-in">
+    <div class="logo-badge"><img src="/assets/agentsphere-logo.svg" alt="AgentSphere"></div>
+    <h1>Your SAP Business One,<br>now with an <span>AI workforce.</span></h1>
+    <p class="sub">AgentSphere puts more than 100 AI agents, dashboards and smart workflows on top of SAP Business One. Ask questions in plain language, scan documents straight into SAP and let agents prepare, check and post your daily transactions.</p>
+    <div class="pills"><span>💬 Talk to your ERP</span><span>🤖 Agentic workflows</span><span>📄 Document AI</span><span>📊 Live insights</span><span>🏢 Multi-company</span></div>
+    <div class="hero">
+      <div class="shot" data-shot="home">
+        <div class="bar"><i></i><i></i><i></i><span>AgentSphere · My Home</span></div>
+        <div class="mock" style="min-height:300px">
+          <div class="m-side"><b class="on"></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
+          <div class="m-main">
+            <div class="m-head">My Home · Insights <span class="pill">Live from SAP B1</span></div>
+            <div class="m-kpis">
+              <div class="m-kpi" style="--k:var(--green)"><small>Revenue YTD</small><strong>4.2 Cr</strong></div>
+              <div class="m-kpi" style="--k:var(--blue)"><small>Gross margin</small><strong>31.4%</strong></div>
+              <div class="m-kpi" style="--k:var(--orange)"><small>DSO</small><strong>48 d</strong></div>
+              <div class="m-kpi" style="--k:var(--violet)"><small>Cash &amp; bank</small><strong>62 L</strong></div>
+            </div>
+            <div class="m-row">
+              <div class="m-panel"><div class="t">Sales trend</div><div class="bars"><span style="height:40%"></span><span style="height:55%"></span><span style="height:48%"></span><span style="height:70%"></span><span style="height:64%"></span><span style="height:82%"></span><span style="height:76%"></span><span style="height:95%"></span></div></div>
+              <div class="m-panel" style="flex:.6"><div class="t">Expense mix</div><div class="donut"></div></div>
+              <div class="m-panel"><div class="t">Ask AgentSphere</div><div class="chat"><div class="bub u">top 5 customers this year</div><div class="bub a">Here are your top 5 customers by sales…</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modstrip">
+      <div><i style="--mi:#2f6bff">🛒</i>Sales · O2C</div>
+      <div><i style="--mi:#1fae74">📦</i>Purchase · P2P</div>
+      <div><i style="--mi:#7457ff">💰</i>Finance &amp; Credit</div>
+      <div><i style="--mi:#0e8ea3">🏭</i>Inventory &amp; Supply</div>
+      <div><i style="--mi:#f39200">📄</i>Document AI</div>
+      <div><i style="--mi:#e2448f">🏷️</i>Pricing &amp; Pipeline</div>
+      <div><i style="--mi:#119eb3">📈</i>Forecasting</div>
+      <div><i style="--mi:#ec5a3a">🧩</i>AI Studio</div>
+    </div>
+  </div>
+  <div class="cover-foot">
+    <img src="/assets/silvertouch-logo.svg" alt="Silver Touch Technologies">
+    <div><b>Agentic AI for SAP Business One</b><br>A product of Silver Touch Technologies Limited</div>
+  </div>
+</section>
+
+<!-- ═════════════ 2. WHY AGENTSPHERE ═════════════ -->
+<section class="page">
+  <span class="kicker">Why AgentSphere</span>
+  <h2>From ERP screens to <em>AI colleagues</em></h2>
+  <p class="lead">Your team spends hours searching reports, re-typing documents and chasing approvals. AgentSphere turns SAP Business One into a system you can talk to, with agents that understand your data, follow your business rules and finish the work, while SAP stays your single source of truth.</p>
+
+  <div class="stats">
+    <div class="stat" style="--sg:linear-gradient(135deg,#0e8ea3,#22c3d6)"><strong>100+</strong><span>apps, agents &amp; dashboards</span></div>
+    <div class="stat" style="--sg:linear-gradient(135deg,#7457ff,#a993ff)"><strong>8</strong><span>business areas, O2C to finance</span></div>
+    <div class="stat" style="--sg:linear-gradient(135deg,#f39200,#ec5a3a)"><strong>5</strong><span>AI engines incl. GPT-4o &amp; Claude</span></div>
+    <div class="stat" style="--sg:linear-gradient(135deg,#1fae74,#5ad39b)"><strong>Live</strong><span>on SAP B1 HANA &amp; SQL Server</span></div>
+  </div>
+
+  <div class="cards c3">
+    <div class="card"><div class="ic" style="--ib:#e3f6fa">💬</div><h4>Talk to your ERP</h4><p>Ask "overdue invoices over 60 days" or "top items this quarter" and get tables, charts and insights in seconds.</p></div>
+    <div class="card"><div class="ic" style="--ib:#efeaff">🤖</div><h4>Agents that do the work</h4><p>Guided agents build quotations, orders, deliveries, invoices, payments and stock transfers, then post them to SAP.</p></div>
+    <div class="card"><div class="ic" style="--ib:#fff1df">📄</div><h4>Document AI</h4><p>Scan supplier invoices, POs, expense bills, challans, gate passes and bank statements. The data is read, matched and ready to post.</p></div>
+    <div class="card"><div class="ic" style="--ib:#e6f7ee">📊</div><h4>Live business insight</h4><p>Finance, sales, purchase and inventory dashboards read straight from SAP, with an AI analyst built in.</p></div>
+    <div class="card"><div class="ic" style="--ib:#fde9f2">🧠</div><h4>Decisions, not just data</h4><p>Credit risk, cash-flow forecasts, payment runs, pricing and reorder suggestions, each with the reasoning shown.</p></div>
+    <div class="card hl"><div class="ic" style="--ib:rgba(255,255,255,.15)">🛡️</div><h4>Enterprise ready</h4><p>Roles and permissions per menu item, multi-company switching, AI usage limits and full audit trails.</p></div>
+  </div>
+
+  <div style="margin-top:12px" class="split">
+    <div>
+      <span class="kicker" style="--c:var(--violet)">Built for every role</span>
+      <ul class="checks" style="--c:var(--violet);margin-top:8px">
+        <li><b>Sales teams</b> create quotes and orders in a chat, with customer prices filled in automatically.</li>
+        <li><b>Purchase &amp; stores</b> move from PR to PO to GRPO to invoice in a few clicks.</li>
+        <li><b>Finance</b> chases the right customers, plans payments and closes the month faster.</li>
+        <li><b>Management</b> asks questions in plain language and gets clear answers.</li>
+      </ul>
+    </div>
+    <div class="card" style="background:linear-gradient(135deg,#f3f7ff,#eefaf8)">
+      <h4>Works with what you have</h4>
+      <p style="margin-bottom:6px">AgentSphere connects to the SAP Business One Service Layer and, optionally, directly to your HANA or SQL Server database. Nothing to migrate: your documents, masters and approvals stay in SAP.</p>
+      <div class="tagrow"><span class="tag">SAP B1 Service Layer</span><span class="tag">SAP HANA</span><span class="tag">MS SQL Server</span><span class="tag">Azure OpenAI</span><span class="tag">Anthropic Claude</span></div>
+    </div>
+  </div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Agentic AI for SAP Business One</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 3. HOW IT WORKS ═════════════ -->
+<section class="page">
+  <span class="kicker">How it works</span>
+  <h2>Ask, scan or click.<br><em>The agents take it from there.</em></h2>
+  <p class="lead">Every request flows through the AgentSphere agent layer. It understands what you need, checks it against SAP master data and your business rules, then answers or posts the document live in SAP Business One.</p>
+
+  <div class="arch">
+    <div class="col in"><h4>You</h4>
+      <div class="it">💬 Ask in chat or by voice</div><div class="it">📎 Upload or email a document</div><div class="it">🖱️ Open a guided agent</div><div class="it">📥 Import Excel</div></div>
+    <div class="ar">➜</div>
+    <div class="col core"><h4>AgentSphere agents</h4>
+      <div class="it">🧠 Understand intent (GPT-4o / Claude)</div><div class="it">🔎 Match customers, vendors, items</div><div class="it">✅ Check stock, price, credit &amp; rules</div><div class="it">⚙️ Build &amp; validate the document</div><div class="it">🔐 Respect roles &amp; approvals</div></div>
+    <div class="ar">➜</div>
+    <div class="col out"><h4>SAP Business One</h4>
+      <div class="it">📑 Documents posted live</div><div class="it">📊 Dashboards &amp; insights</div><div class="it">🔔 Alerts &amp; activities</div><div class="it">📧 Vendor &amp; customer emails</div></div>
+  </div>
+
+  <div class="split wide" style="margin-top:6px">
+    <div>
+      <div class="shot" data-shot="ai-chat">
+        <div class="bar"><i></i><i></i><i></i><span>AI Chat</span></div>
+        <div class="mock" style="min-height:270px">
+          <div class="m-side"><b class="on"></b><b></b><b></b><b></b><b></b><b></b></div>
+          <div class="m-main">
+            <div class="chat">
+              <div class="bub u">Show customers overdue more than 60 days</div>
+              <div class="bub a"><b>Overdue &gt; 60 days</b> · 12 customers, ₹ 38.6 L
+                <table class="mt" style="margin-top:4px"><tr><td>Customer</td><td>Overdue</td><td>Days</td></tr><tr><td>Sunrise Traders</td><td>9.8 L</td><td><span class="chip r">94</span></td></tr><tr><td>Vega Industries</td><td>6.1 L</td><td><span class="chip o">71</span></td></tr><tr><td>Orbit Retail</td><td>4.4 L</td><td><span class="chip o">66</span></td></tr></table></div>
+              <div class="bub u">Draft a reminder for Sunrise Traders</div>
+              <div class="bub a">Done. Here's a firm but friendly reminder listing all 4 open invoices…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">AI Chat answers from live SAP data, with tables, charts and follow-up actions.</div>
+    </div>
+    <div>
+      <h3>One assistant, five engines</h3>
+      <p style="color:var(--muted);margin-bottom:8px">Pick the engine that fits the question. Common questions are answered instantly at no AI cost.</p>
+      <ul class="checks">
+        <li><b>Standard:</b> instant answers for stock, sales, aging and open documents.</li>
+        <li><b>GPT-4o &amp; Claude:</b> free-form questions across all modules.</li>
+        <li><b>DB SQL:</b> the AI writes read-only SQL on HANA or SQL Server.</li>
+        <li><b>Analytics V2:</b> conversational analytics with AI insight reports.</li>
+      </ul>
+      <div class="card" style="margin-top:10px;--ib:#fff1df"><h4>🎤 Hands-free</h4><p>Speak your question, attach a PDF or photo, and get spoken replies. Save favourite prompts and reuse them.</p></div>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>No new system to learn</div><div>SAP stays your single source of truth</div><div>Answers grounded in your live data</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · How it works</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 4. ORDER TO CASH ═════════════ -->
+<section class="page" style="--c:var(--blue);--c2:var(--cyan)">
+  <span class="kicker">Sales · Order to Cash</span>
+  <h2>From enquiry to cash, <em>in one conversation</em></h2>
+  <p class="lead">Guided sales agents carry each document forward: copy, check and post, with customer prices, stock availability and credit checked along the way.</p>
+  <div class="flow">
+    <div class="st" style="--sc:#2f6bff">Quotation<small>AI price check</small></div>
+    <div class="st" style="--sc:#3a7bff">Sales Order<small>Customer pricing</small></div>
+    <div class="st" style="--sc:#0e8ea3">Confirmation<small>Email to customer</small></div>
+    <div class="st" style="--sc:#119eb3">Load Planning<small>3D container fit</small></div>
+    <div class="st" style="--sc:#1fae74">Delivery<small>Batch / serial / bin</small></div>
+    <div class="st" style="--sc:#18a06a">A/R Invoice<small>Copy from delivery</small></div>
+    <div class="st" style="--sc:#f39200">Payment<small>Match receipts</small></div>
+  </div>
+
+  <div class="split" style="margin-top:12px">
+    <div>
+      <div class="shot" data-shot="sales-order">
+        <div class="bar"><i></i><i></i><i></i><span>Sales Order Agent</span></div>
+        <div class="mock" style="min-height:285px">
+          <div class="m-main">
+            <div class="m-head">🛒 Sales Order Agent <span class="pill">REVIEW</span></div>
+            <div class="m-panel"><div class="t">📋 Sales Order Ready to Post · ACME Paper (C00459)</div>
+              <table class="mt"><tr><td>#</td><td>Item</td><td>Qty</td><td>Price</td><td>Tax</td></tr><tr><td>1</td><td>Kraft Paper 80 GSM</td><td>120</td><td>42.50</td><td>GST18</td></tr><tr><td>2</td><td>Duplex Board 300</td><td>60</td><td>88.00</td><td>GST18</td></tr><tr><td>3</td><td>Corrugated Roll</td><td>15</td><td>1,240</td><td>GST12</td></tr></table>
+              <div style="display:flex;gap:6px;margin-top:6px"><span class="chip">✓ Customer price</span><span class="chip b">Stock OK</span><span class="chip">Credit OK</span></div>
+              <div style="margin-top:7px"><span class="btn">✅ Post Sales Order</span></div>
+            </div>
+            <div class="chat"><div class="bub a">✅ Sales Order <b>#10482</b> created successfully. 🖨️ Print</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">The Sales Order Agent posts orders with customer-specific prices filled in automatically.</div>
+    </div>
+    <div class="cards" style="gap:8px">
+      <div class="card"><h4>🧾 Quote to order in minutes</h4><p>Pick a customer, add items with prices from SAP price lists, special prices and discounts, then post.</p></div>
+      <div class="card"><h4>📧 Customer POs become orders</h4><p>Upload a customer PO PDF, or let the mailbox watcher read emailed POs. The agent matches the customer, checks credit and stock, and creates the order.</p></div>
+      <div class="card"><h4>🚚 Deliver and invoice with copy-from</h4><p>Open orders flow to delivery, A/R invoice and credit memo, with batch, serial and bin selection built in.</p></div>
+      <div class="card"><h4>📦 Load Planner</h4><p>Plans containers and trucks in 3D, with a step-by-step loading sequence for the team.</p></div>
+    </div>
+  </div>
+  <div class="cards c3" style="margin-top:10px">
+    <div class="card"><h4>📊 Sales Analysis</h4><p>Sales, margins, back orders and customer balances by brand, territory and salesperson.</p></div>
+    <div class="card"><h4>⚖️ Quotation Compare</h4><p>Two quotations side by side, with differences in quantity and price highlighted.</p></div>
+    <div class="card"><h4>💳 Incoming Payments</h4><p>Pick open invoices, apply the receipt and post, all from one guided screen.</p></div>
+  </div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>Orders posted from a single chat</div><div>Customer prices filled in from SAP</div><div>Customer POs turned into orders by AI</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Sales · Order to Cash</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 5. PROCURE TO PAY ═════════════ -->
+<section class="page" style="--c:var(--green);--c2:var(--teal)">
+  <span class="kicker">Purchase · Procure to Pay</span>
+  <h2>A smarter path from <em>request to payment</em></h2>
+  <p class="lead">Requests, orders, receipts and invoices move forward with copy-from agents, three-way matching and an AI invoice desk, so stores and accounts stop re-typing.</p>
+  <div class="flow">
+    <div class="st" style="--sc:#1fae74">Purchase Request<small>Any employee</small></div>
+    <div class="st" style="--sc:#18a06a">Purchase Order<small>Merge PRs</small></div>
+    <div class="st" style="--sc:#0e8ea3">Goods Receipt<small>GRPO &amp; sorting</small></div>
+    <div class="st" style="--sc:#119eb3">Putaway<small>Bins &amp; twin</small></div>
+    <div class="st" style="--sc:#7457ff">A/P Invoice<small>3-way match</small></div>
+    <div class="st" style="--sc:#f39200">Approval<small>Multi-stage</small></div>
+    <div class="st" style="--sc:#ec5a3a">Payment<small>Optimised run</small></div>
+  </div>
+
+  <div class="split wide" style="margin-top:12px">
+    <div class="cards c2" style="gap:8px">
+      <div class="card"><h4>🔁 PR → PO → GRPO</h4><p>Merge several purchase requests into one order, receive against it, and post with batches, serials and bins.</p></div>
+      <div class="card"><h4>⚖️ Three-way match</h4><p>PO, goods receipt and invoice are compared line by line. Price and quantity variances are flagged before posting.</p></div>
+      <div class="card"><h4>📥 AP Invoice Processing</h4><p>Invoices arrive by email or folder, are read by OCR and queued for review, then go through approval stages before they post.</p></div>
+      <div class="card"><h4>🏷️ GRPO Sorting</h4><p>Sort received goods into grades and record every sorted line in SAP for analytics.</p></div>
+      <div class="card"><h4>🏬 Warehouse Digital Twin</h4><p>See occupancy by aisle and level, with an AI brief on full aisles and misplaced fast movers.</p></div>
+      <div class="card"><h4>💸 Outgoing Payments</h4><p>Pay vendors from their open invoices, by bank, cheque or cash, in one guided step.</p></div>
+    </div>
+    <div>
+      <div class="shot" data-shot="ap-invoice">
+        <div class="bar"><i></i><i></i><i></i><span>AP Invoice Processing</span></div>
+        <div class="mock" style="min-height:290px">
+          <div class="m-main">
+            <div class="m-head">Invoice Queue <span class="pill">12 to review</span></div>
+            <div class="m-kpis">
+              <div class="m-kpi" style="--k:var(--blue)"><small>Received</small><strong>48</strong></div>
+              <div class="m-kpi" style="--k:var(--orange)"><small>In review</small><strong>12</strong></div>
+              <div class="m-kpi" style="--k:var(--violet)"><small>Approval</small><strong>7</strong></div>
+              <div class="m-kpi" style="--k:var(--green)"><small>Posted</small><strong>29</strong></div>
+            </div>
+            <div class="m-panel"><table class="mt"><tr><td>Vendor</td><td>Invoice</td><td>Match</td><td>Status</td></tr><tr><td>Delta Agro</td><td>INV-2231</td><td>98%</td><td><span class="chip">Ready</span></td></tr><tr><td>Nova Pharma</td><td>NP/884</td><td>81%</td><td><span class="chip o">Review</span></td></tr><tr><td>Orbit Supply</td><td>OS-17</td><td>64%</td><td><span class="chip r">Fix</span></td></tr><tr><td>Vega Ind.</td><td>V-5530</td><td>95%</td><td><span class="chip b">Approval</span></td></tr></table></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">The AP Invoice Processing queue: OCR, matching and approval in one place.</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:10px;background:linear-gradient(135deg,#eafaf2,#e8f6fb);border:0">
+    <h4>📈 Purchase Analysis &amp; AP Aging</h4><p>Spend, returns, price trends, on-time receipts and vendor balances, plus vendor payment aging with future remittance, all with an AI analyst you can question.</p>
+  </div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>Invoices matched before they post</div><div>Approvals routed stage by stage</div><div>No re-typing between documents</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Purchase · Procure to Pay</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 6. DOCUMENT AI ═════════════ -->
+<section class="page" style="--c:var(--orange);--c2:var(--pink)">
+  <span class="kicker">Document AI</span>
+  <h2>Paper in, <em>SAP documents out</em></h2>
+  <p class="lead">Drop a PDF or photo. AgentSphere reads every field, matches vendors, items and accounts against SAP, and shows a match score so you know exactly what to check before you post.</p>
+
+  <div class="split" style="margin-top:12px">
+    <div>
+      <div class="shot" data-shot="ocr-scan">
+        <div class="bar"><i></i><i></i><i></i><span>Scan A/P Invoice</span></div>
+        <div class="mock" style="min-height:250px">
+          <div style="width:42%;background:#dfe5ee;padding:9px"><div style="background:#fff;height:100%;border-radius:4px;padding:8px" class="lines"><b style="font-size:7pt;color:var(--navy)">TAX INVOICE</b><i></i><i class="m"></i><i class="s"></i><i></i><i class="m"></i><i></i><i class="s"></i><i class="m"></i><i></i><i class="s"></i></div></div>
+          <div class="m-main">
+            <div class="m-panel" style="display:flex;gap:8px;align-items:center"><div class="ring"><b>93%</b></div><div><b style="color:var(--green);font-size:8pt">Ready to post</b><div style="color:#7b8aa0">Vendor ✓ · Items ✓ · Totals ✓</div></div></div>
+            <div class="m-panel"><table class="mt"><tr><td>On document</td><td>SAP item</td><td>Qty</td><td></td></tr><tr><td>A4 copier paper</td><td>A00102</td><td>40</td><td><span class="chip">98%</span></td></tr><tr><td>Toner TN-2365</td><td>T00017</td><td>6</td><td><span class="chip">95%</span></td></tr><tr><td>Courier charges</td><td>G/L 5120</td><td>1</td><td><span class="chip o">82%</span></td></tr></table></div>
+            <div><span class="btn">Post to SAP</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">Side-by-side review: the document on the left, the SAP-matched form and match score on the right.</div>
+    </div>
+    <div class="cards" style="gap:8px">
+      <div class="card"><div class="ic" style="--ib:#fff1df">🧾</div><h4>Supplier &amp; expense invoices</h4><p>Matched to GRPOs or posted as service invoices with suggested G/L accounts and tax codes.</p></div>
+      <div class="card"><div class="ic" style="--ib:#e6efff">📦</div><h4>Purchase orders &amp; customer POs</h4><p>Supplier quotes become purchase orders; customer POs, uploaded or emailed, become sales orders.</p></div>
+      <div class="card"><div class="ic" style="--ib:#e6f7ee">🚛</div><h4>Inward challans &amp; gate passes</h4><p>Kept in digital registers with duplicate detection and links to open POs.</p></div>
+      <div class="card"><div class="ic" style="--ib:#efeaff">🏦</div><h4>Bank reconciliation</h4><p>Reads the bank statement, matches it with the SAP bank ledger, and produces the reconciliation statement for export to Excel.</p></div>
+    </div>
+  </div>
+  <div class="flow" style="margin-top:14px">
+    <div class="st" style="--sc:#f39200">Upload / Email<small>PDF, JPG, PNG, TIFF</small></div>
+    <div class="st" style="--sc:#ec7a2a">AI reads<small>Every field &amp; line</small></div>
+    <div class="st" style="--sc:#e2448f">Match to SAP<small>Vendor, item, G/L</small></div>
+    <div class="st" style="--sc:#7457ff">Match score<small>Ready · Review · Fix</small></div>
+    <div class="st" style="--sc:#2f6bff">Post<small>Live in SAP B1</small></div>
+  </div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>A match score before every post</div><div>Duplicate documents caught</div><div>Works with scans and phone photos</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Document AI</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 7. FINANCE ═════════════ -->
+<section class="page" style="--c:var(--violet);--c2:var(--pink)">
+  <span class="kicker">Finance &amp; Credit Intelligence</span>
+  <h2>A finance team <em>that never sleeps</em></h2>
+  <p class="lead">Eight finance agents analyse receivables, payables, cash and margins every time you open them. Each one shows its reasoning, so you can act with confidence.</p>
+
+  <div class="shot" data-shot="collections" style="margin-top:12px">
+    <div class="bar"><i></i><i></i><i></i><span>Collections &amp; Receivables Agent</span></div>
+    <div class="mock" style="min-height:225px">
+      <div class="m-main">
+        <div class="m-head">Collections &amp; Receivables <span class="pill">A/R · Updated 09:41</span></div>
+        <div class="m-kpis">
+          <div class="m-kpi" style="--k:var(--blue)"><small>Total receivables</small><strong>1.84 Cr</strong></div>
+          <div class="m-kpi" style="--k:var(--red)"><small>Overdue</small><strong>62.3 L</strong></div>
+          <div class="m-kpi" style="--k:var(--orange)"><small>DSO</small><strong>51 d</strong></div>
+          <div class="m-kpi" style="--k:var(--violet)"><small>Promises due ≤7d</small><strong>6</strong></div>
+        </div>
+        <div class="m-row">
+          <div class="m-panel" style="flex:1.6"><div class="t">Collection worklist</div><table class="mt"><tr><td>Priority</td><td>Customer</td><td>Overdue</td><td>Recommended action</td></tr><tr><td><span class="chip r">HIGH</span></td><td>Sunrise Traders</td><td>9.8 L</td><td>Final notice, credit hold</td></tr><tr><td><span class="chip r">HIGH</span></td><td>Vega Industries</td><td>6.1 L</td><td>Manager call, stop new orders</td></tr><tr><td><span class="chip o">MED</span></td><td>Orbit Retail</td><td>4.4 L</td><td>Phone for promise-to-pay</td></tr></table></div>
+          <div class="m-panel"><div class="t">Aging buckets</div><div class="bars" style="--b1:#a993ff;--b2:#7457ff"><span style="height:90%"></span><span style="height:62%"></span><span style="height:40%"></span><span style="height:28%"></span><span style="height:46%"></span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">Collections Agent: a prioritised worklist, with a recommended action for every customer.</div>
+
+  <div class="cards c4" style="margin-top:10px">
+    <div class="card"><h4>💰 Collections</h4><p>Who to chase first, AI-drafted reminders, promise-to-pay tracking.</p></div>
+    <div class="card"><h4>🌊 Cash Flow Forecast</h4><p>13-week view of inflows and outflows that flags shortfall weeks early.</p></div>
+    <div class="card"><h4>🛡️ Credit Risk</h4><p>A–E risk grades, a watchlist and suggested credit limits.</p></div>
+    <div class="card"><h4>🏦 Payment Optimisation</h4><p>The best payment run for your cash, capturing worthwhile discounts.</p></div>
+    <div class="card"><h4>📈 Profitability</h4><p>Gross profit by customer, item, salesperson, branch and more.</p></div>
+    <div class="card"><h4>🔍 Margin Leakage</h4><p>Finds below-cost sales, excess discounts, price anomalies and unbilled freight.</p></div>
+    <div class="card"><h4>🏅 Sales Commission</h4><p>Commission by sales, collections or margin, with clawbacks.</p></div>
+    <div class="card"><h4>🗓️ Month-End Close</h4><p>A 14-point close checklist with a readiness score.</p></div>
+  </div>
+  <div class="card hl" style="margin-top:10px"><h4>📑 Live financial statements</h4><p>Balance Sheet, Profit &amp; Loss, Trial Balance and a Financial Dashboard straight from SAP HANA, each with an AI narrative and follow-up questions. Salary registers post as journal entries from Excel.</p></div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>Know exactly who to call first</div><div>See cash gaps weeks ahead</div><div>Close the month with a checklist</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Finance &amp; Credit Intelligence</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 8. SUPPLY CHAIN ═════════════ -->
+<section class="page" style="--c:var(--teal);--c2:var(--green)">
+  <span class="kicker">Inventory &amp; Supply Chain</span>
+  <h2>Right stock, right place, <em>right time</em></h2>
+  <p class="lead">From automatic reorders to dead-stock clean-up, the supply-chain agents watch your inventory, vendors and production so problems surface before customers notice.</p>
+
+  <div class="split wide" style="margin-top:12px">
+    <div>
+      <div class="shot" data-shot="inventory-dashboard">
+        <div class="bar"><i></i><i></i><i></i><span>Inventory Dashboard &amp; Reports</span></div>
+        <div class="mock" style="min-height:265px">
+          <div class="m-main">
+            <div class="m-head">Inventory Dashboard <span class="pill">YTD · live</span></div>
+            <div class="m-kpis">
+              <div class="m-kpi" style="--k:var(--teal)"><small>Closing value</small><strong>3.6 Cr</strong></div>
+              <div class="m-kpi" style="--k:var(--green)"><small>Gross profit</small><strong>28.7%</strong></div>
+              <div class="m-kpi" style="--k:var(--red)"><small>Dead + slow</small><strong>41 L</strong></div>
+              <div class="m-kpi" style="--k:var(--violet)"><small>Turnover</small><strong>4.3×</strong></div>
+            </div>
+            <div class="m-row">
+              <div class="m-panel"><div class="t">Inward vs outward</div><div class="bars" style="--b1:#5ad39b;--b2:#1fae74"><span style="height:55%"></span><span style="height:70%"></span><span style="height:62%"></span><span style="height:85%"></span><span style="height:74%"></span><span style="height:92%"></span></div></div>
+              <div class="m-panel"><div class="t">Stock health</div><div class="donut" style="background:conic-gradient(var(--green) 0 72%,var(--orange) 0 88%,var(--red) 0)"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">Inventory Dashboard: stock, ledger, valuation, aging, dead stock and item profit.</div>
+    </div>
+    <div>
+      <span class="kicker" style="--c:var(--teal)">Automated replenishment</span>
+      <div class="flow" style="flex-direction:column;gap:5px;margin-top:8px">
+        <div class="st" style="--sc:#0e8ea3;clip-path:none;border-radius:8px;padding-left:12px">1 · MRP scan<small>Items below minimum, projected stock</small></div>
+        <div class="st" style="--sc:#119eb3;clip-path:none;border-radius:8px;padding-left:12px">2 · Draft POs by vendor<small>Rounded to order multiples</small></div>
+        <div class="st" style="--sc:#1fae74;clip-path:none;border-radius:8px;padding-left:12px">3 · SAP approval<small>Your approval templates apply</small></div>
+        <div class="st" style="--sc:#f39200;clip-path:none;border-radius:8px;padding-left:12px">4 · Post &amp; email vendor<small>Fully audited</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards c3" style="margin-top:10px">
+    <div class="card"><h4>🔄 Stock workflows</h4><p>Transfer requests, transfers, goods issues and receipts, with live stock checks and batch, serial and bin pickers.</p></div>
+    <div class="card"><h4>⚡ Rush Orders</h4><p>Urgency scores for open orders, with expedite approval and SAP alerts.</p></div>
+    <div class="card"><h4>🚢 Shipment Delays</h4><p>Predicts late POs from vendor history and shows the orders affected.</p></div>
+    <div class="card"><h4>🏭 Production Agent</h4><p>Production orders at risk from component shortages, with costing.</p></div>
+    <div class="card"><h4>⭐ Vendor Performance</h4><p>OTIF, price, quality and lead-time scorecards graded A–D.</p></div>
+    <div class="card"><h4>🎯 Inventory Optimisation</h4><p>Safety stock, min/max and ABC-XYZ classes, with dead-stock actions.</p></div>
+  </div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>Reorders drafted automatically</div><div>Late shipments flagged early</div><div>Dead stock found and actioned</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Inventory &amp; Supply Chain</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 9. SALES INTELLIGENCE & FORECAST ═════════════ -->
+<section class="page" style="--c:var(--pink);--c2:var(--orange)">
+  <span class="kicker">Pricing, Pipeline &amp; Forecasting</span>
+  <h2>Sell smarter. <em>Plan further ahead.</em></h2>
+  <p class="lead">AI agents protect your margins, keep the sales pipeline moving and forecast demand with statistical models, then explain every recommendation.</p>
+
+  <div class="split" style="margin-top:12px">
+    <div class="cards" style="gap:8px">
+      <div class="card"><div class="ic" style="--ib:#fde9f2">🏷️</div><h4>Dynamic Pricing</h4><p>Nine pricing rules suggest increases, holds or clearance prices per item. Apply a price to your SAP price list in one click.</p></div>
+      <div class="card"><div class="ic" style="--ib:#fff1df">💡</div><h4>Quotation Intelligence</h4><p>Checks every quoted price against cost, margin targets and price history, and recommends the right price.</p></div>
+      <div class="card"><div class="ic" style="--ib:#e6efff">📞</div><h4>Sales Follow-up</h4><p>Prioritises stale quotes, delayed orders and slipping opportunities, then drafts the email or creates the SAP task.</p></div>
+    </div>
+    <div>
+      <div class="shot" data-shot="dynamic-pricing">
+        <div class="bar"><i></i><i></i><i></i><span>Dynamic Pricing Agent</span></div>
+        <div class="mock" style="min-height:260px">
+          <div class="m-main">
+            <div class="m-head">Dynamic Pricing <span class="pill">Margin target 30%</span></div>
+            <div class="m-kpis">
+              <div class="m-kpi" style="--k:var(--green)"><small>▲ Increase</small><strong>84</strong></div>
+              <div class="m-kpi" style="--k:var(--red)"><small>▼ Decrease</small><strong>23</strong></div>
+              <div class="m-kpi" style="--k:var(--blue)"><small>● Hold</small><strong>311</strong></div>
+              <div class="m-kpi" style="--k:var(--violet)"><small>Avg change</small><strong>+4.1%</strong></div>
+            </div>
+            <div class="m-panel"><table class="mt"><tr><td>Item</td><td>Avg price</td><td>Suggested</td><td>Why</td></tr><tr><td>Kraft 80 GSM</td><td>42.50</td><td>46.10</td><td><span class="chip">Margin recovery</span></td></tr><tr><td>Duplex 300</td><td>88.00</td><td>81.80</td><td><span class="chip r">Overstock</span></td></tr><tr><td>Corr. Roll</td><td>1,240</td><td>1,339</td><td><span class="chip b">Shortage</span></td></tr></table></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">Dynamic Pricing: every suggested price comes with its reason.</div>
+      <div class="card" style="margin-top:10px"><div class="ic" style="--ib:#e6f7ee">🧩</div><h4>Order Intelligence</h4><p>Spots sales orders at risk of stock shortages before they are due, and shows which items are the bottleneck.</p></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px;background:linear-gradient(135deg,#fff4e6,#fdeef6);border:0">
+    <h3>📉 Forecasting that explains itself</h3>
+    <p style="color:var(--muted)">Choose from statistical models (moving averages, exponential smoothing, linear trend and Holt-Winters) with automatic best-model selection by accuracy. Forecast sales, demand and supply per item or item group, run a full S&amp;OP plan with order-by dates, and ask the Forecast AI what to do next.</p>
+    <div class="tagrow"><span class="tag" style="--tb:#fff;--tc:#c2410c">Demand Forecast</span><span class="tag" style="--tb:#fff;--tc:#c2410c">Forecast with B1</span><span class="tag" style="--tb:#fff;--tc:#c2410c">Forecast Dashboard</span><span class="tag" style="--tb:#fff;--tc:#be185d">Product Forecasting</span><span class="tag" style="--tb:#fff;--tc:#be185d">S&amp;OP Demand Plan</span></div>
+  </div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>Margins protected on every quote</div><div>No follow-up forgotten</div><div>Forecasts with accuracy scores</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Pricing, Pipeline &amp; Forecasting</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 10. PLATFORM ═════════════ -->
+<section class="page" style="--c:var(--blue);--c2:var(--violet)">
+  <span class="kicker">Platform &amp; AI Studio</span>
+  <h2>Build your own agents, <em>no coding required</em></h2>
+  <p class="lead">Describe what you need in plain language and AI Studio builds it: chat agents, transaction screens, SAP tables, data APIs and approval workflows, published straight to your menu.</p>
+
+  <div class="cards c3" style="margin-top:12px">
+    <div class="card" style="border-top:4px solid var(--blue)"><h4>💬 Chat Agents</h4><p>Custom assistants with their own persona, instructions and quick replies.</p></div>
+    <div class="card" style="border-top:4px solid var(--violet)"><h4>🧾 Form Designer</h4><p>Generate a transaction screen from a description, a screenshot or a PDF.</p></div>
+    <div class="card" style="border-top:4px solid var(--teal)"><h4>🗄️ Tables &amp; Fields</h4><p>Plan and create SAP user-defined tables and fields with AI.</p></div>
+    <div class="card" style="border-top:4px solid var(--green)"><h4>🔌 Data APIs</h4><p>Read-only APIs such as "overdue A/R by customer", tested before you publish.</p></div>
+    <div class="card" style="border-top:4px solid var(--orange)"><h4>🗃️ Local Tables</h4><p>Simple registers, such as a visitor log, stored in AgentSphere.</p></div>
+    <div class="card" style="border-top:4px solid var(--pink)"><h4>🔀 Workflows</h4><p>Step-by-step processes with forms, conditions and approvals.</p></div>
+  </div>
+
+  <div class="split" style="margin-top:14px">
+    <div>
+      <span class="kicker" style="--c:var(--blue)">Enterprise foundation</span>
+      <ul class="checks" style="--c:var(--blue);margin-top:8px">
+        <li><b>Roles &amp; permissions</b> on every menu item, plus per-user rights.</li>
+        <li><b>Multi-company:</b> switch SAP companies per user session.</li>
+        <li><b>AI credits &amp; usage</b> limits per user, with blocking and reporting.</li>
+        <li><b>Excel import</b> for items, business partners, BOMs, sales orders and A/P expenses.</li>
+        <li><b>Master data wizards</b> with GSTIN check and duplicate detection.</li>
+        <li><b>White-label branding</b>, Fiori or HANA theme, and day and night modes.</li>
+      </ul>
+    </div>
+    <div>
+      <span class="kicker" style="--c:var(--violet)">Developer tools</span>
+      <ul class="checks" style="--c:var(--violet);margin-top:8px">
+        <li><b>DB Query Builder</b> with AI-written, read-only SQL.</li>
+        <li><b>Reports &amp; KPIs</b> library with around 28 ready-made reports.</li>
+        <li><b>Schema Registry</b> that teaches the AI your UDFs and custom views.</li>
+        <li><b>Query Library</b> of reusable prompts and answers.</li>
+        <li><b>Data Sync</b> master-data cache for instant lookups.</li>
+        <li><b>Self-hosted</b> on your own server, close to your SAP.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <div class="outcome"><div class="ot">What your team gets</div><div class="og"><div>New screens without coding</div><div>Secure by role and by company</div><div>Runs on your own server</div></div></div>
+  <div class="page-foot"><span><b>AgentSphere</b> · Platform &amp; AI Studio</span><img src="/assets/agentsphere-logo.svg" alt=""></div>
+</section>
+
+<!-- ═════════════ 11. BACK COVER ═════════════ -->
+<section class="page back">
+  <div>
+    <div class="logo-badge"><img src="/assets/agentsphere-logo.svg" alt="AgentSphere"></div>
+    <h2 style="margin-top:12mm">Give every team in your company<br>an AI colleague.</h2>
+    <p class="lead">See AgentSphere working on your own SAP Business One data. Our team will connect it to a test company, walk through the agents that matter most to you, and plan a rollout that fits your business.</p>
+    <div class="bigline">Ask. Scan. Click. Done.</div>
+    <div class="cta">
+      <div>🚀<b>Live demo</b><p>A guided tour on your own SAP Business One company.</p></div>
+      <div>🧪<b>Proof of value</b><p>Start with one process, such as invoices or collections, and measure the gain.</p></div>
+      <div>🤝<b>Rollout &amp; support</b><p>Installation, configuration, training and ongoing support.</p></div>
+    </div>
+    <div class="about">
+      <div class="about-h">About Silver Touch Technologies</div>
+      <p>Established in 1995, Silver Touch Technologies Limited is a CMMI Level 5 and ISO 9001 certified IT company, listed on the NSE and BSE. With a pan-India presence and subsidiaries in the USA, UK and Canada, Silver Touch delivers enterprise software, ERP (SAP and Odoo), digital transformation, applied AI, cloud and managed security services, and is a business partner of SAP, Microsoft, Oracle, IBM and Cisco.</p>
+      <div class="facts">
+        <div><b>1995</b><span>Established</span></div>
+        <div><b>1400+</b><span>IT professionals</span></div>
+        <div><b>2000+</b><span>Clients worldwide</span></div>
+        <div><b>350+</b><span>ERP implementations</span></div>
+        <div><b>CMMI L5</b><span>&amp; ISO 9001 certified</span></div>
+      </div>
+    </div>
+    </div>
+  </div>
+  <div class="logos">
+    <div>
+      <div style="font-size:8.5pt;color:rgba(255,255,255,.65);margin-bottom:6px">Developed and supported by</div>
+      <img class="st" src="/assets/silvertouch-logo.svg" alt="Silver Touch Technologies">
+    </div>
+    <div style="text-align:right;font-size:9pt;line-height:1.6;color:rgba(255,255,255,.8)">
+      <b style="color:#fff;font-size:11pt">Silver Touch Technologies Limited</b><br>
+      ✉ <a href="mailto:sales@silvertouch.com" style="color:#5ee7f2;text-decoration:none">sales@silvertouch.com</a><br>
+      www.silvertouch.com<br>
+      <span style="font-size:7.5pt;color:rgba(255,255,255,.55)">SAP and SAP Business One are trademarks of SAP SE. Screens shown are illustrative.</span>
+    </div>
+  </div>
+</section>
+
+<script>
+// Each screen frame shows a real screenshot when /assets/brochure/<name>.png exists;
+// otherwise the built-in illustration stays.
+document.querySelectorAll('.shot[data-shot]').forEach(fr => {
+  const img = new Image();
+  img.className = 'real';
+  img.alt = fr.querySelector('.bar span')?.textContent || '';
+  img.onload = () => { fr.appendChild(img); fr.classList.add('has-real'); };
+  img.src = '/assets/brochure/' + fr.dataset.shot + '.png';
+});
+</script>
+</body>
+</html>

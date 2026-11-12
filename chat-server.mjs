@@ -3551,8 +3551,25 @@ app.put("/api/connections/:id", requireAuth, (req, res) => {
       const existing = connRepo.getById(Number(req.params.id));
       if (existing?.hana_password) hanaObj.password = existing.hana_password;
     }
-    connRepo.update(Number(req.params.id), name, base_url, company, sl_user, sl_password || '', hanaObj, schema_hint || '', dim_names || '');
+    const id = Number(req.params.id);
+    connRepo.update(id, name, base_url, company, sl_user, sl_password || '', hanaObj, schema_hint || '', dim_names || '');
     invalidateContextCache(company);
+    // Drop the pooled client so the next request logs in with the edited URL/credentials
+    _sapPool.delete(id);
+    if (connRepo.getActive()?.id === id) {
+      const conn = connRepo.getById(id);
+      sap._activeUrl = (conn.base_url || "").replace(/\/+$/, "");
+      sap.sessionId  = null;
+      sap.routeId    = null;
+      process.env.SAP_B1_BASE_URL = conn.base_url;
+      process.env.SAP_B1_COMPANY  = conn.company;
+      process.env.SAP_B1_USER     = conn.sl_user;
+      process.env.SAP_B1_PASSWORD = conn.sl_password;
+      process.env.SL_BASE_URL     = conn.base_url;
+      process.env.SL_COMPANY      = conn.company;
+      process.env.SL_USER         = conn.sl_user;
+      process.env.SL_PASSWORD     = conn.sl_password;
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3630,6 +3647,7 @@ app.delete("/api/connections/:id", requireAuth, (req, res) => {
   if (req.user.role !== "admin" && req.user.role !== "superadmin") return res.status(403).json({ error: "Admin only" });
   try {
     connRepo.delete.run(Number(req.params.id));
+    _sapPool.delete(Number(req.params.id));
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

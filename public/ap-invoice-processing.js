@@ -337,7 +337,20 @@ textarea.apip-in{min-height:64px;resize:vertical}
 .apip-inv-left iframe{flex:1;border:0;width:100%;background:#fff}
 .apip-split{width:7px;cursor:col-resize;background:var(--ap-line);flex-shrink:0}
 .apip-split:hover,.apip-split.drag{background:var(--ap-p)}
-.apip-inv-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.apip-inv-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.apip-posting{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.82);backdrop-filter:blur(2px);animation:apipin .2s ease-out}
+.apip-posting .box{background:var(--ap-card);border:1px solid var(--ap-line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.15);padding:24px 28px;min-width:280px;max-width:360px;text-align:center}
+.apip-posting .apip-spin{width:40px;height:40px;border-width:4px;margin-bottom:14px}
+.apip-posting h4{margin:0 0 4px;font-size:15px}
+.apip-posting .sub{font-size:12px;color:var(--ap-mut);margin-bottom:14px}
+.apip-posting ol{list-style:none;margin:0;padding:0;text-align:left;font-size:12.5px}
+.apip-posting li{display:flex;align-items:center;gap:8px;padding:4px 0;color:var(--ap-mut)}
+.apip-posting li::before{content:'';width:14px;height:14px;flex:none;border-radius:50%;border:2px solid #d1d5db}
+.apip-posting li.on{color:inherit;font-weight:600}
+.apip-posting li.on::before{border-color:var(--ap-p);border-right-color:transparent;animation:apipspin .8s linear infinite}
+.apip-posting li.done{color:#15803d}
+.apip-posting li.done::before{content:'✓';border-color:#15803d;background:#15803d;color:#fff;font-size:9px;line-height:10px;text-align:center;font-weight:700}
+.apip-posting .el{font-size:11px;color:var(--ap-mut);margin-top:12px}
 .apip-inv-scroll{flex:1;overflow:auto;padding:14px 16px 24px}
 .apip-inv-foot{flex-shrink:0;background:var(--ap-card);border-top:1px solid var(--ap-line);padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .apip-inv-foot .sp{flex:1}
@@ -1334,6 +1347,30 @@ textarea.apip-in{min-height:64px;resize:vertical}
     foot.onclick = e => { const b = e.target.closest('[data-f-act]'); if (b && !b.disabled) footAction(b.dataset.fAct, b); };
   }
 
+  // Blocking "Posting to SAP…" overlay over the invoice form, shown until SAP returns the document number.
+  function postingOverlay(asDraft) {
+    const host = bodyEl.querySelector('.apip-inv-right');
+    if (!host) return { step() {}, close() {} };
+    const steps = ['Saving invoice', asDraft ? 'Creating draft in SAP Business One' : 'Posting A/P Invoice to SAP Business One', 'Waiting for document number'];
+    const el = document.createElement('div');
+    el.className = 'apip-posting';
+    el.innerHTML = `<div class="box" role="status" aria-live="polite"><div class="apip-spin"></div>
+      <h4>${asDraft ? 'Creating draft…' : 'Posting to SAP…'}</h4><div class="sub">Please keep this window open.</div>
+      <ol>${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol><div class="el"></div></div>`;
+    host.appendChild(el);
+    const lis = el.querySelectorAll('li'), elapsed = el.querySelector('.el'), t0 = Date.now();
+    let cur = 0, tLast = null;
+    const step = i => { cur = i; lis.forEach((li, k) => { li.className = k < i ? 'done' : k === i ? 'on' : ''; }); };
+    step(0);
+    const tick = setInterval(() => {
+      const s = Math.round((Date.now() - t0) / 1000);
+      elapsed.textContent = s >= 3 ? `${s}s elapsed` : '';
+      // SAP has accepted the request but not answered yet: show the last step after a few seconds.
+      if (cur === 1 && !tLast) tLast = Date.now();
+      if (cur === 1 && Date.now() - tLast > 4000) step(2);
+    }, 500);
+    return { step, close() { clearInterval(tick); el.remove(); } };
+  }
   function setBusy(on) { bodyEl.querySelectorAll('#apip-inv-foot button').forEach(b => { if (on) { b.dataset.wasDis = b.disabled ? '1' : ''; b.disabled = true; } else b.disabled = b.dataset.wasDis === '1'; }); }
   function invMsg(html) { const h = bodyEl.querySelector('#apip-inv-msg'); if (h) { h.innerHTML = html; if (html) h.scrollIntoView({ block: 'nearest' }); } }
 
@@ -1381,9 +1418,14 @@ textarea.apip-in{min-height:64px;resize:vertical}
         }
       } else if (act === 'post') {
         if (!await confirmDlg(`Post this A/P Invoice to SAP Business One${inv.settings.postAsDraft ? ' <b>as a draft</b>' : ''}?<br><span style="color:#6b7280;font-size:12px">Total: <b>${fmt(inv.mapped.totals.total)} ${esc(inv.mapped.DocCurrency || '')}</b> · Vendor: <b>${esc(inv.mapped.CardCode || '—')}</b></span>`, { okLabel: 'Post to SAP', okCls: 'ok' })) { setBusy(false); return; }
-        await saveInvoice(true);
-        const d = await api('POST', `/invoice/${enc(inv.id)}/post`);
-        showPosted(d);
+        const ov = postingOverlay(inv.settings.postAsDraft);
+        try {
+          await saveInvoice(true);
+          ov.step(1);
+          const d = await api('POST', `/invoice/${enc(inv.id)}/post`);
+          ov.close();
+          showPosted(d);
+        } catch (e) { ov.close(); throw e; }
         return;
       }
     } catch (e) {

@@ -371,6 +371,10 @@ export function createSalesOrderAgentRouter(deps) {
       if (session.step === 'ADD_ITEM' && /^(done|finish(ed)?|review|no more( items)?|that'?s all)[.!]?$/i.test(msg)) {
         msg = JSON.stringify({ action: 'done_items' });
       }
+      // "Retry" after a failed post re-sends the same order.
+      if (session.step === 'REVIEW_FORM' && session._failedPost && /^retry[.!]?$/i.test(msg)) {
+        msg = JSON.stringify(session._failedPost);
+      }
       const msgL    = msg.toLowerCase();
 
       if (msg) session.history.push({ role: 'user', content: msg });
@@ -469,7 +473,10 @@ export function createSalesOrderAgentRouter(deps) {
               quickReplies = ['Create New Sales Order'];
               meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
             } catch (e) {
-              reply = `❌ **Failed to post Sales Order**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
+              session._failedPost = action;
+              reply = `<div style="color:#b91c1c;font-weight:700;margin-bottom:4px">❌ Failed to post Sales Order</div>
+                <div style="font-size:13px;margin-bottom:6px">SAP Error: <em>${escHtml(e.message)}</em></div>
+                <div style="font-size:13px">Click <strong>Retry</strong> to post it again, or <strong>Cancel</strong> to discard it.</div>`;
               quickReplies = ['Retry', 'Cancel'];
             }
           }

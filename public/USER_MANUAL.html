@@ -218,17 +218,23 @@
   .callout.tip { background: #e6f9ef; border-color: var(--success); color: #0a4a1a; }
   .callout.warn { background: #fff4e0; border-color: var(--warning); color: #7a3c00; }
   .callout.danger { background: #ffe8e8; border-color: var(--danger); color: #660000; }
-  .callout strong { display: block; margin-bottom: 4px; color: inherit; }
+  /* Only the leading <strong> is the callout title; bold words inside the text stay inline */
+  .callout > strong:first-child { display: block; margin-bottom: 4px; color: inherit; }
+  .callout strong { color: inherit; }
 
   /* Steps */
   .steps { counter-reset: step; list-style: none; padding: 0; }
-  .steps li { counter-increment: step; display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
-  .steps li::before {
+  /* Block layout (not flex): a flex <li> turns every <strong>/<em>/text run into its own column */
+  .steps > li { counter-increment: step; position: relative; padding-left: 40px; margin-bottom: 14px; min-height: 28px; }
+  .steps > li::before {
     content: counter(step); background: var(--primary); color: white;
     width: 26px; height: 26px; border-radius: 50%;
+    position: absolute; left: 0; top: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+    font-size: 13px; font-weight: 700;
   }
+  .steps > li ul { margin: 6px 0 2px; padding-left: 20px; list-style: disc; }
+  .steps > li ul li { margin-bottom: 4px; }
 
   /* Badges */
   .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
@@ -288,6 +294,8 @@
   }
   .pdf-download-btn:hover { background: var(--primary-dark); }
   .pdf-download-btn svg { width: 16px; height: 16px; }
+  .brochure-btn { right: 172px; text-decoration: none; background: linear-gradient(135deg, #f39200, #ec5a3a); }
+  .brochure-btn:hover { background: linear-gradient(135deg, #e08600, #d94e30); }
 
   @media (max-width: 760px) {
     .feature-grid { grid-template-columns: 1fr; }
@@ -298,6 +306,7 @@
     .mock-login-splash { display: none; }
     .ref-table { display: block; overflow-x: auto; }
     .pdf-download-btn { top: auto; bottom: 16px; right: 16px; }
+    .brochure-btn { bottom: 64px; right: 16px; }
   }
 
   @page { size: A4; margin: 12mm; }
@@ -314,6 +323,10 @@
 </style>
 </head>
 <body>
+<a class="pdf-download-btn brochure-btn" href="/brochure.html" target="_blank" title="AgentSphere product brochure">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+  Brochure
+</a>
 <button type="button" class="pdf-download-btn" onclick="downloadManualPdf()" title="Download this manual as a PDF">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
   Download PDF
@@ -337,8 +350,8 @@
   <h1>Run SAP Business One <em>with AgentSphere</em></h1>
   <div class="tagline">AgentSphere AI — SAP B1 AI Assistant · User Manual</div>
   <div class="meta">
-    <span>📄 Version 1.1</span>
-    <span>📅 October 2026</span>
+    <span>📄 Version 1.2</span>
+    <span>📅 November 2026</span>
     <span>🏢 Silvertouch Technologies</span>
   </div>
 </div>
@@ -376,6 +389,24 @@
         <li><a href="#ap-credit">AP Inv → Credit</a></li>
         <li><a href="#outgoing">Outgoing Payment</a></li>
         <li><a href="#p2p-reports">Quick Create &amp; Purchase Reports</a></li>
+        <li><a href="#grpo-sorting">GRPO Sorting</a></li>
+        <li><a href="#sorting-analytics">Sorting Analytics</a></li>
+        <li><a href="#putaway-analytics">Putaway Analytics</a></li>
+        <li><a href="#warehouse-twin">Warehouse Digital Twin</a></li>
+        <li><a href="#ap-aging">AP Aging Report</a></li>
+        <li><a href="#purchase-analysis">Purchase Analysis</a></li>
+      </ol>
+    </li>
+    <li><a href="#apip">AP Invoice Processing</a>
+      <ol>
+        <li><a href="#apip-dashboard">Processing Dashboard</a></li>
+        <li><a href="#apip-queue">Invoice Queue</a></li>
+        <li><a href="#apip-form">Reviewing an Invoice</a></li>
+        <li><a href="#apip-approvals">Invoice Approval</a></li>
+        <li><a href="#apip-templates">Approval Master &amp; Approval Stage</a></li>
+        <li><a href="#apip-mapping">Vendor Item Mapping &amp; Vendor Expense G/L</a></li>
+        <li><a href="#apip-mail">Mail Configuration</a></li>
+        <li><a href="#apip-settings">Settings</a></li>
       </ol>
     </li>
     <li><a href="#o2c">Sales — O2C</a>
@@ -388,25 +419,41 @@
         <li><a href="#credit-memo">AR Inv → Credit</a></li>
         <li><a href="#incoming">Incoming Payment</a></li>
         <li><a href="#o2c-reports">Quick Create, Quotation Compare &amp; Sales Reports</a></li>
+        <li><a href="#order-confirmation">Order Confirmation</a></li>
+        <li><a href="#load-planner">Load Planner</a></li>
+        <li><a href="#quot-compare">Quotation Compare</a></li>
+        <li><a href="#sales-analysis">Sales Analysis</a></li>
       </ol>
     </li>
-    <li><a href="#fin-inv">Finance &amp; Inventory</a></li>
+    <li><a href="#fin-inv">Finance &amp; Inventory</a>
+      <ol>
+        <li><a href="#inv-workflow">Inventory AI Workflow Agents</a></li>
+        <li><a href="#inv-dashboard">Inventory Dashboard</a></li>
+      </ol>
+    </li>
     <li><a href="#ai-agents">AI Agents</a>
       <ol>
         <li><a href="#ag-finance">Finance &amp; Credit</a></li>
         <li><a href="#ag-supply">Supply Chain (Rush Orders, Stock Reorder Monitor, …)</a></li>
-        <li><a href="#ag-ocr">OCR Processing</a></li>
-        <li><a href="#ag-sales">Sales &amp; Pricing (incl. Mail PO → SO)</a></li>
+        <li><a href="#ag-ocr">OCR Processing (Scan PO, Expense, Inward, Gate Pass, Document Mode, Bank Reconciliation)</a></li>
+        <li><a href="#ag-sales">Sales &amp; Pricing (Dynamic Pricing, Order Intelligence, Sales Follow-up, Quotation Intelligence, Mail PO → SO)</a></li>
       </ol>
     </li>
     <li><a href="#forecasting">Forecasting</a></li>
     <li><a href="#analytics">Analytics &amp; Reporting</a></li>
     <li><a href="#master-data">Master Data</a></li>
+    <li><a href="#excel-import">Excel Import</a>
+      <ol>
+        <li><a href="#xl-import">Importing a File</a></li>
+        <li><a href="#xl-templates">Templates &amp; Mapping</a></li>
+        <li><a href="#xl-types">What Each Import Expects</a></li>
+      </ol>
+    </li>
     <li><a href="#tools">Tools &amp; Developer Tools</a>
       <ol>
         <li><a href="#db-builder">DB Query Builder</a></li>
         <li><a href="#db-conn">DB Connection</a></li>
-        <li><a href="#other-tools">Data Sync, Query Library, Schema Registry, UDTs, Create Agent</a></li>
+        <li><a href="#other-tools">Data Sync, Query Library, Schema Registry, UDTs, Create Agent (AI Studio)</a></li>
       </ol>
     </li>
     <li><a href="#settings">Administration</a>
@@ -451,12 +498,13 @@
     <thead><tr><th>Sidebar Section</th><th>What it contains</th><th>Typical Users</th></tr></thead>
     <tbody>
       <tr><td><strong>AI Chat</strong> (home screen)</td><td>Natural-language questions, voice, document OCR, chat history</td><td>All users</td></tr>
-      <tr><td><strong>Master Data</strong></td><td>Item / Customer / Supplier Master wizards, GSTIN Check, BP Duplicate Check, Bill of Material, Service Call</td><td>Admin / Operations</td></tr>
-      <tr><td><strong>Sales — O2C</strong></td><td>Quick Create forms, AI Workflow agents (Quotation → Order → Delivery → AR Invoice → Credit / Receipt), Sales Reports</td><td>Sales team</td></tr>
-      <tr><td><strong>Purchase — P2P</strong></td><td>Quick Create forms, AI Workflow agents (PR → PO → GRPO → AP Invoice → Credit / Payment), three-way match, procurement analysis</td><td>Procurement team</td></tr>
-      <tr><td><strong>Finance</strong></td><td>AR/AP aging, Balance Sheet, Profit &amp; Loss, Trial Balance, Financial Dashboard, Customer Aging Detail</td><td>Finance / Management</td></tr>
+      <tr><td><strong>Master Data</strong></td><td>Item / Customer / Supplier Master wizards, GSTIN Check, BP Duplicate Check, Bill of Material, Service Call, Excel imports for items, business partners and BOMs</td><td>Admin / Operations</td></tr>
+      <tr><td><strong>Sales — O2C</strong></td><td>Quick Create forms, AI Workflow agents (Quotation → Order → Delivery → AR Invoice → Credit / Receipt), Order Confirmation, Load Planner, SO Excel Import, Sales Reports</td><td>Sales team</td></tr>
+      <tr><td><strong>Purchase — P2P</strong></td><td>Quick Create forms, AI Workflow agents (PR → PO → GRPO → AP Invoice → Credit / Payment), three-way match, GRPO sorting, putaway analytics, Warehouse Digital Twin, AP expense import, procurement analysis</td><td>Procurement / Warehouse</td></tr>
+      <tr><td><strong>AP Invoice Processing</strong></td><td>Automated supplier-invoice intake (folder, mail, upload), OCR, approval workflow and posting</td><td>Accounts payable / Approvers</td></tr>
+      <tr><td><strong>Finance</strong></td><td>AR/AP aging, Balance Sheet, Profit &amp; Loss, Trial Balance, Financial Dashboard, Customer Aging Detail, Salary → Journal Entry</td><td>Finance / Management</td></tr>
       <tr><td><strong>Inventory</strong></td><td>Stock levels, pick list, ATP, stock transfers, goods issue / receipt, Inventory Dashboard</td><td>Warehouse</td></tr>
-      <tr><td><strong>AI Agents</strong></td><td>Finance &amp; Credit, Supply Chain, OCR Processing, Sales &amp; Pricing agents</td><td>Managers / Planners</td></tr>
+      <tr><td><strong>AI Agents</strong></td><td>Finance &amp; Credit, Supply Chain, OCR Processing (incl. Bank Reconciliation), Sales &amp; Pricing agents</td><td>Managers / Planners</td></tr>
       <tr><td><strong>Forecast</strong></td><td>Demand Forecast, Forecast with B1, Forecast Dashboard</td><td>Planning</td></tr>
       <tr><td><strong>Tools</strong></td><td>AI Model selector, AI Chat Panel, Data Sync, Developer Tools (DB Query Builder, Query Library, Schema Registry, Reports &amp; KPIs, UDTs, DB Connection, Create Agent)</td><td>Power users / IT</td></tr>
       <tr><td><strong>Admin</strong></td><td>User Management, Roles &amp; Permissions, User Rights, Company Setup, Developer Settings, AI Credits &amp; Usage</td><td>System administrator</td></tr>
@@ -692,12 +740,13 @@
   <table class="ref-table">
     <thead><tr><th>Section</th><th>Groups and items</th></tr></thead>
     <tbody>
-      <tr><td><strong>Master Data</strong></td><td><em>Master Records:</em> Item Master, Customer Master, Supplier Master, GSTIN Check, BP Duplicate Check, Bill of Material, Service Call</td></tr>
-      <tr><td><strong>Sales — O2C</strong></td><td><em>Quick Create:</em> Quotation, Sales Order, Delivery, Confirm POD, AR Invoice, Incoming Payment, ATP Check<br><em>AI Workflow:</em> Sales Order, Sales Quotation, Quotation Compare, Quot → Order, Order → Delivery, Delivery → AR Inv, AR Inv → Credit, Incoming Payment, Sales Analysis<br><em>Sales Report:</em> Open Orders, Open Quotations, Top Customers, Monthly Trend, Quarterly Sales, Top Items, By Salesperson, By Gross Profit, By GP Margin, By Warehouse</td></tr>
-      <tr><td><strong>Purchase — P2P</strong></td><td><em>Quick Create:</em> Purchase Order, Goods Receipt PO, A/P Invoice, Pay Vendor<br><em>AI Workflow:</em> Purchase Request Agent, Purchase Order, PR → PO, PO → GRPO, GRPO → AP Inv, AP Service Invoice, Three-Way AP Invoice, AP Inv → Credit, Outgoing Payment, AP Aging Report, Purchase Analysis<br><em>Procurement Analysis:</em> Purchase Analysis, Top Vendors, Vendor List, Customer List</td></tr>
-      <tr><td><strong>Finance</strong></td><td><em>AR &amp; Collections:</em> AR Aging, Overdue 30 Days, Overdue 60 Days, AP Aging<br><em>Financial Reports:</em> Balance Sheet, Profit &amp; Loss, Trial Balance<br>Financial Dashboard, Customer Aging Detail</td></tr>
+      <tr><td><strong>Master Data</strong></td><td><em>Master Records:</em> Item Master, Customer Master, Supplier Master, GSTIN Check, BP Duplicate Check, Bill of Material, Service Call<br><em>Excel Import:</em> Item Master Import, Business Partner Import, BOM Import</td></tr>
+      <tr><td><strong>Sales — O2C</strong></td><td><em>Quick Create:</em> Quotation, Sales Order, Delivery, Confirm POD, AR Invoice, Incoming Payment, ATP Check<br><em>AI Workflow:</em> Sales Order, Sales Quotation, Quotation Compare, Quot → Order, Order Confirmation, SO Excel Import, Load Planner, Order → Delivery, Delivery → AR Inv, AR Inv → Credit, Incoming Payment, Sales Analysis<br><em>Sales Report:</em> Open Orders, Open Quotations, Top Customers, Monthly Trend, Quarterly Sales, Top Items, By Salesperson, By Gross Profit, By GP Margin, By Warehouse</td></tr>
+      <tr><td><strong>Purchase — P2P</strong></td><td><em>Quick Create:</em> Purchase Order, Goods Receipt PO, A/P Invoice, Pay Vendor<br><em>AI Workflow:</em> Purchase Request Agent, Purchase Order, PR → PO, PO → GRPO, GRPO Sorting, Sorting Analytics, Putaway Analytics, Warehouse Digital Twin, GRPO → AP Inv, AP Service Invoice, AP Expense Import (Excel), Three-Way AP Invoice, AP Inv → Credit, Outgoing Payment, AP Aging Report, Purchase Analysis<br><em>Procurement Analysis:</em> Purchase Analysis, Top Vendors, Vendor List, Customer List</td></tr>
+      <tr><td><strong>AP Invoice Processing</strong></td><td>Processing Dashboard, Invoice Queue, Invoice Approval, Approval Stage, Approval Master, Vendor Item Mapping, Vendor Expense G/L, Mail Configuration, Settings</td></tr>
+      <tr><td><strong>Finance</strong></td><td><em>AR &amp; Collections:</em> AR Aging, Overdue 30 Days, Overdue 60 Days, AP Aging<br><em>Financial Reports:</em> Balance Sheet, Profit &amp; Loss, Trial Balance<br>Financial Dashboard, Customer Aging Detail, Salary → Journal Entry</td></tr>
       <tr><td><strong>Inventory</strong></td><td><em>Stock &amp; Warehouse:</em> Stock Levels, In-Stock Items, Pick List, ATP Check<br><em>AI Workflow:</em> Stock Transfer Request, Transfer from Request, Stock Transfer (Direct), Goods Issue, Goods Receipt<br><em>Reports:</em> Inventory Dashboard</td></tr>
-      <tr><td><strong>AI Agents</strong></td><td><em>Finance &amp; Credit:</em> Collections &amp; Receivables, Cash Flow Forecast, Credit Risk, AP Payment Optimization, Profitability, Margin Leakage, Sales Commission, Month-End Closing<br><em>Supply Chain:</em> MRP Auto-PO, Stock Reorder Monitor, Purchase Three Way Match, Production Agent, Purchase Recommendation, Rush Orders, Shipment Delays, Supply Chain Demand Forecast, Inventory Optimization, Dead Stock, Vendor Performance<br><em>OCR Processing:</em> Scan PO, Scan Expense Invoice, Scan A/P Invoice, Scan Inward, Scan Gate Pass, Scan Document Mode<br><em>Sales &amp; Pricing:</em> Dynamic Pricing, Order Intelligence, Product Forecasting, Sales Follow-up, Quotation Intelligence, Mail PO → SO, PO → Sales Order</td></tr>
+      <tr><td><strong>AI Agents</strong></td><td><em>Finance &amp; Credit:</em> Collections &amp; Receivables, Cash Flow Forecast, Credit Risk, AP Payment Optimization, Profitability, Margin Leakage, Sales Commission, Month-End Closing<br><em>Supply Chain:</em> MRP Auto-PO, Stock Reorder Monitor, Purchase Three Way Match, Production Agent, Purchase Recommendation, Rush Orders, Shipment Delays, Supply Chain Demand Forecast, Inventory Optimization, Dead Stock, Vendor Performance<br><em>OCR Processing:</em> Scan PO, Scan Expense Invoice, Scan A/P Invoice, Scan Inward, Scan Gate Pass, Scan Document Mode, Bank Reconciliation<br><em>Sales &amp; Pricing:</em> Dynamic Pricing, Order Intelligence, Product Forecasting, Sales Follow-up, Quotation Intelligence, Mail PO → SO, PO → Sales Order</td></tr>
       <tr><td><strong>Forecast</strong></td><td><em>Forecasting Tools:</em> Demand Forecast, Forecast with B1, Forecast Dashboard</td></tr>
       <tr><td><strong>Tools</strong></td><td>AI Model, AI Chat Panel, Data Sync<br><em>Developer Tools:</em> DB Query Builder, Create UDT, View UDTs, Query Library, Schema Registry, Reports &amp; KPIs, DB Connection, Create Agent <span class="badge blue">ADMIN</span></td></tr>
       <tr><td><strong>Admin</strong></td><td>User Management, Roles &amp; Permissions, User Rights, Company Setup, Developer Settings, AI Credits &amp; Usage (administrators only)</td></tr>
@@ -750,7 +799,8 @@
       <tr><td><strong>Saved Prompts</strong></td><td>Searchable list of your saved prompts. Press <kbd>Enter</kbd> to run the first match.</td></tr>
       <tr><td><strong>⋮ Chat actions</strong></td><td><strong>Clear Chat</strong>, or <strong>Export Chat</strong> to download the conversation as a <code>.txt</code> file.</td></tr>
       <tr><td><strong>🕘 History</strong></td><td>Opens the <em>Chats</em> panel (<kbd>Ctrl</kbd>+<kbd>K</kbd>). Search, rename or continue past conversations. <strong>New Chat</strong> starts a fresh one.</td></tr>
-      <tr><td><strong>📋 Table Mode / ✨ AI Insight</strong></td><td>Shown when the <em>DB SQL</em> engine is active. Choose a plain table, or a table plus an AI commentary.</td></tr>
+      <tr><td><strong>📋 Table Mode / ✨ AI Insight</strong> (answer style)</td><td>Shown when the <em>DB SQL</em> engine is active. <strong>Table Mode</strong> (default) gives the standard answer: KPI tiles, chart, summary and data tables. <strong>AI Insight</strong> gives a detailed analysis with charts, tables, recommendations and follow-up questions. Your choice is remembered in the browser.</td></tr>
+      <tr><td><strong>Search chats…</strong></td><td>In the <em>Chats</em> history panel. Searches your own conversations by title and by the prompts you typed. Results are grouped Today, Yesterday, Previous 7 days, Previous 30 days and then by month; use <strong>✎</strong> to rename or <strong>🗑</strong> to delete a chat.</td></tr>
       <tr><td><strong>AI Chat Panel</strong> (Tools)</td><td>Slide-out general-purpose assistant on the right side ("Message AI Chat…").</td></tr>
     </tbody>
   </table>
@@ -914,7 +964,13 @@
 
   <!-- PO agent -->
   <h3 id="po-agent">5.2 Purchase Order Agent</h3>
-  <p><span class="path">Purchase — P2P → AI Workflow → Purchase Order</span> builds a new Purchase Order from scratch, without a PR. A <strong>PO Builder</strong> panel shows the order as you go. For a quick form instead of a guided agent, use <span class="path">Quick Create → Purchase Order</span>.</p>
+  <p><span class="path">Purchase — P2P → AI Workflow → Purchase Order</span> builds a new Purchase Order from scratch, without a PR. For a quick form instead of a guided agent, use <span class="path">Quick Create → Purchase Order</span>. The flow is the same as the <a href="#so-agent">Sales Order Agent</a>, with vendors in place of customers. The <strong>📦 PO Builder</strong> panel on the right shows the vendor, each line with its total, and the Subtotal, Tax and Grand Total as you build the order.</p>
+  <ol class="steps">
+    <li><strong>Vendor:</strong> choose from <em>Select Vendor</em> and click <strong>Select →</strong>, or type a vendor name or code in the chat to search SAP.</li>
+    <li><strong>Add Line Item:</strong> Item, Qty (default 1), <strong>Unit Price *</strong>, Disc%, Tax Code (filled from the item's purchase tax group, with the rate shown) and Warehouse. There is no automatic pricing, and <strong>every line needs a price greater than 0</strong>. A live preview shows Net / Tax / Line Total. Click <strong>+ Add Line</strong>, then <strong>✓ Done Adding Items</strong>. The running summary shows Subtotal, Tax and Grand Total.</li>
+    <li><strong>📋 Purchase Order Ready to Post:</strong> set the <strong>Delivery Date</strong> (default: today + 7 days) and optional <strong>Comments</strong>, then click <strong>✅ Post Purchase Order</strong>. The posting date is today; the delivery date is also used as the document date for tax.</li>
+    <li><strong>✅ Purchase Order Created Successfully</strong>, with <strong>🖨️ Print</strong> and <strong>Create New Purchase Order</strong>. If posting fails, correct the problem and click <strong>✅ Post Purchase Order</strong> again.</li>
+  </ol>
 
   <!-- PR to PO -->
   <h3 id="pr-to-po">5.3 PR → PO</h3>
@@ -1002,7 +1058,14 @@
   </ol>
 
   <h3 id="ap-service">5.8 AP Service Invoice</h3>
-  <p><span class="path">Purchase — P2P → AI Workflow → AP Service Invoice</span> posts a service-type A/P invoice with G/L-account lines. You can enter the lines yourself or copy them from an open service PO.</p>
+  <p><span class="path">Purchase — P2P → AI Workflow → AP Service Invoice</span> posts a service-type A/P invoice with G/L-account lines. You can enter the lines yourself or copy them from an open service PO. Steps: 1 Vendor › 2 Invoice Details › 3 Posted.</p>
+  <ol class="steps">
+    <li><strong>Step 1 — Select Vendor:</strong> filter and choose the vendor, then click <strong>Select →</strong>. Vendors with open service POs show <em>(N open)</em>. Shortcut: type a PO number in the chat (<em>123</em>, <em>PO 123</em> or <em>#123</em>) to load that service PO and its vendor directly.</li>
+    <li><strong>Step 2 — A/P Invoice (Service):</strong> choose a <strong>PO Number</strong> or <em>— None (enter lines manually) —</em>. Enter the <strong>Vendor Ref No.</strong> (supplier invoice number), <strong>Posting Date *</strong> and <strong>Document Date *</strong> (default today), and optionally the <strong>Due Date</strong>; blank uses the vendor's payment terms.</li>
+    <li><strong>Lines:</strong> G/L Account (type to search active, postable accounts), Description (filled from the account name), Amount, Tax Code and Free Text. <strong>+ Add Line</strong> adds a row and ✕ removes one. Lines copied from a PO are marked <em>🔗 PO line N</em> with the open amount. You can reduce the amount to invoice part of a line, but not raise it above the open amount. Totals show Total Before Tax, Tax and Total. When a PO is used, Remarks default to "Based on Purchase Order #N".</li>
+    <li>Click <strong>✅ Post A/P Invoice</strong>. The success card shows the invoice number and lines, with <strong>🖨️ Print</strong>; the printout has Prepared By / Approved By / Finance Manager signature lines. If SAP rejects it, fix the values in the form and click Post again. <strong>← Change Vendor</strong> goes back to step 1.</li>
+  </ol>
+  <p>Every line needs a G/L account from the list and an amount above 0, and the tax code must exist. Only the newest form in the chat can be posted.</p>
 
   <h3 id="ap-credit">5.9 AP Inv → Credit</h3>
   <p><span class="path">Purchase — P2P → AI Workflow → AP Inv → Credit</span> creates an A/P Credit Memo (return to vendor) from an open A/P Invoice, using the copy-from flow. Enter the <strong>Return Qty</strong>; the agent checks that the stock is available. Select batches, serials or bins from stock, enter the <strong>Vendor Ref No.</strong>, then click <strong>✅ Post A/P Credit Memo</strong>.</p>
@@ -1019,17 +1082,229 @@
   <h3 id="p2p-reports">5.11 Quick Create &amp; Purchase Reports</h3>
   <ul>
     <li><strong>Quick Create</strong> (plain SAP-style forms): Purchase Order, Goods Receipt PO, A/P Invoice, Pay Vendor.</li>
-    <li><strong>AP Aging Report</strong>: vendor payment aging, with an aging date and bucket size.</li>
-    <li><strong>Purchase Analysis</strong>: purchase dashboard built on the SAP A/P HANA views.</li>
+    <li><strong>AP Aging Report</strong>: vendor payment aging, with an aging date and bucket size (see <a href="#ap-aging">5.16</a>).</li>
+    <li><strong>Purchase Analysis</strong>: purchase dashboard built on the SAP A/P HANA views (see <a href="#purchase-analysis">5.17</a>).</li>
     <li><strong>Procurement Analysis</strong>: Top Vendors, Vendor List, Customer List (chat prompts).</li>
+    <li><strong>AP Expense Import (Excel)</strong>: post service-type A/P invoices from an Excel sheet. See <a href="#excel-import">Excel Import</a>.</li>
   </ul>
+
+  <p>Sections 5.12 to 5.15 cover the warehouse tools that follow a goods receipt. GRPO Sorting writes every sorted line to the SAP user table <strong>@SORTING</strong>; Sorting Analytics and Putaway Analytics read from SAP; the Warehouse Digital Twin is a simulation and never posts to SAP.</p>
+  <div class="workflow">
+    <div class="wf-step">Goods Receipt PO</div><div class="wf-arrow">→</div>
+    <div class="wf-step">GRPO Sorting</div><div class="wf-arrow">→</div>
+    <div class="wf-step">Putaway (in SAP)</div><div class="wf-arrow">→</div>
+    <div class="wf-step alt">Sorting &amp; Putaway Analytics</div>
+  </div>
+
+  <h3 id="grpo-sorting">5.12 GRPO Sorting</h3>
+  <p>Open <span class="path">Purchase — P2P → AI Workflow → GRPO Sorting</span>. Supervisors share out received GRPO lines among warehouse sorters, and sorters record the time spent on each line. Sorters see only the <strong>My Sorting</strong> tab; supervisors (the <em>GRPO Sorting — Supervisor</em> permission, or admin) also see <strong>Supervisor</strong> and <strong>Reports</strong>. On a phone, sorters get a full-screen sorting page that keeps the screen awake while a line is running.</p>
+
+  <h4>Sorter: My Sorting</h4>
+  <ol class="steps">
+    <li>Tap <strong>Clock In</strong>. The shift timer starts ("On shift since HH:MM"). If auto-assign is on, lines are added to your queue straight away.</li>
+    <li><strong>My queue</strong> lists your lines (item, GRPO and line number, vendor, warehouse, quantity). Tap <strong>Start</strong> on a line (or <strong>Resume</strong> if you paused it). Only one line can run at a time.</li>
+    <li>The running line appears in the orange <strong>Sorting now</strong> box with a live timer. Use <strong>Pause</strong> to stop the clock.</li>
+    <li>Tap <strong>Complete</strong>, enter the <strong>Sorted quantity</strong> (defaults to the received quantity) and any <strong>Notes (damage, shortage…)</strong>, then <strong>Complete</strong>. The line moves to <strong>Done this shift</strong> with its sort time.</li>
+    <li>At the end of the shift tap <strong>Clock Out</strong>. A running line is paused and your queued lines go back to the pool.</li>
+  </ol>
+
+  <h4>Supervisor</h4>
+  <ul>
+    <li><strong>Load Goods Receipt PO lines:</strong> choose <em>GRPO date from / To</em> (default last month) and click <strong>Load GRPO lines</strong>. Reloading is safe: lines already loaded keep their sorter and progress.</li>
+    <li><strong>Queue per sorter</strong> (1–100, default 5) and <strong>Auto-assign</strong> (<em>On — top up on clock-in &amp; completion</em> / <em>Off — manual only</em>), then <strong>Save</strong>. Auto-assign gives work to the least-loaded sorter first, keeps the same item with the same sorter, and otherwise hands out the oldest GRPO line.</li>
+    <li><strong>KPI tiles:</strong> Pending, Assigned, In progress, Done, Sorters on shift.</li>
+    <li><strong>On the floor:</strong> one card per sorter with shift status and queued / running / done counts. Supervisors can <strong>Clock in</strong> / <strong>Clock out</strong> a sorter, <strong>Auto-assign pending</strong> lines, or <strong>Rebalance</strong> (take back unstarted lines and share them out evenly).</li>
+    <li><strong>Sorting lines</strong> table: filter by Status, Sorter or text; tick lines and use <strong>Assign to…</strong> / <strong>Assign</strong>, <strong>Unassign</strong> or <strong>Select same items</strong>. Done lines can be <strong>Reopened</strong>.</li>
+    <li><strong>Sorters ↔ SAP employees:</strong> map each sorter to an SAP employee. The employee's first name (in capitals) is written to the <em>U_USER</em> field, and the SAP check column warns if that name is not one of U_USER's valid values.</li>
+    <li><strong>SAP @SORTING</strong> card: number of lines synced, waiting and failed, with <strong>Retry failed</strong>. The <em>SAP</em> column in the table shows ✓ synced, ⏳ waiting or ⚠ Error (hover for the message).</li>
+  </ul>
+
+  <h4>Reports</h4>
+  <p>Pick a date range (or Today / Last 7 / 30 / 90 days) and click <strong>Run</strong>. KPIs: Sorters, Lines done, Qty sorted, Sort time, Utilisation (sort time ÷ shift time), Qty / hour. Tables, each with <strong>CSV</strong> export: <em>Line-wise</em>, <em>User-wise</em> (shift time, idle, utilisation, qty/hour, avg per line), <em>Item-wise</em> (seconds per unit), <em>User × Item</em> and <em>Shifts (clock in / out)</em>.</p>
+  <div class="callout warn"><strong>⚠️ Before you start</strong>The user-defined table <strong>@SORTING</strong> must exist in SAP, and every sorter must be mapped to an SAP employee whose name is in the U_USER valid values; otherwise lines fail to sync. The screens refresh every 15 seconds.</div>
+
+  <h3 id="sorting-analytics">5.13 Sorting Analytics</h3>
+  <p><span class="path">Purchase — P2P → AI Workflow → Sorting Analytics</span> is a read-only view of sorting performance taken from SAP <strong>@SORTING</strong> (it does not use clock-in data).</p>
+  <ul>
+    <li><strong>Filters:</strong> GRPO date from / To with presets <em>1M 3M 6M 12M</em> (opens on 3M), Sorter, Vendor, Warehouse, then <strong>Run</strong>.</li>
+    <li><strong>KPI tiles:</strong> Lines sorted, Completion, Qty sorted, Sort hours, Avg min / line, Qty / sort hour, Sorters, Open backlog. Click a tile (or <strong>Details</strong>) for a <em>Data summary</em>, <em>How it's calculated</em> and an <em>✦ AI insight</em>, with <strong>Open full list</strong>.</li>
+    <li><strong>Charts:</strong> Lines sorted per day, Workload by sorter, Typical working window, Average minutes per line, and an <em>Activity by hour of day</em> heatmap (sorter × hour).</li>
+    <li><strong>Generate insights</strong> writes a short AI brief for the supervisor.</li>
+    <li><strong>Tables</strong> (filter + <strong>CSV</strong>): Sorter scorecard, Item-wise, Vendor-wise, Warehouse &amp; bin, Open backlog, All lines. Lines with no sorter show as <em>Unassigned</em>.</li>
+  </ul>
+
+  <h3 id="putaway-analytics">5.14 Putaway Analytics</h3>
+  <p><span class="path">Purchase — P2P → AI Workflow → Putaway Analytics</span> is a read-only view of putaway performance from the SAP putaway document (<strong>STTL_PUTAWAY</strong>), linked to the sorting line so the sorter and the sort-to-putaway wait are known. Putaway documents are entered in SAP; this screen posts nothing.</p>
+  <ul>
+    <li><strong>Filters:</strong> GRPO date range with <em>1M 3M 6M 12M</em>, Putaway user, From warehouse, To warehouse, Handling (All / Forklift / Manual), then <strong>Run</strong>.</li>
+    <li><strong>KPI tiles:</strong> Putaway documents (completed / in process / open), Lines put away, Qty put away, Avg min / line, Sort → putaway wait, Next-day putaway, Put away by own sorter, Ready, not put away, Forklift lines. Tiles open the same Details pop-up as Sorting Analytics.</li>
+    <li><strong>Charts:</strong> Lines put away per day, Workload by user, Wait from sorting to putaway, Average minutes per line, and a <em>Warehouse flow</em> heatmap (receiving → storage warehouse).</li>
+    <li><strong>Tables</strong> (filter + <strong>CSV</strong>): User scorecard, Putaway documents, Storage warehouse, Destination bins, Item-wise, Vendor-wise, Forklift vs manual, Backlog (<em>Sorted · ready</em> / <em>Not sorted</em>), All lines. <strong>Generate insights</strong> gives an AI brief.</li>
+  </ul>
+  <p>The forklift flag comes from the putaway line; if blank, the item's <em>Forklift Required?</em> field is used.</p>
+
+  <h3 id="warehouse-twin">5.15 Warehouse Digital Twin</h3>
+  <p><span class="path">Purchase — P2P → AI Workflow → Warehouse Digital Twin</span> shows racks and bins in 3D with the stock in each bin, and lets you try out re-slotting. <strong>All moves are simulated; nothing is posted to SAP.</strong> The badge shows whether you are looking at <em>live bin stock</em>, <em>simulated placement</em> or <em>demo data</em>.</p>
+  <ol class="steps">
+    <li><strong>Warehouse:</strong> pick the warehouse (bin-enabled ones are marked "· bins") and click <strong>Load</strong>. Totals: Bins, Occupied %, Free, Items, Total qty, Mixed bins. <strong>⟳ Refresh</strong> reloads stock from SAP.</li>
+    <li><strong>Find material:</strong> type an item code, name, batch or bin. Matching bins light up; click a result to fly the camera to it.</li>
+    <li><strong>Explore the 3D view:</strong> switch between <em>3D</em>, <em>Top</em> and <em>From dock</em> (<strong>Fit</strong> resets), colour bins by Item group, Item, Bin fill, Pick frequency or Items per bin, filter by aisle, and show or hide empty bins and labels. Drag to orbit, right-drag to pan, scroll to zoom. Click a bin to see its items, quantities, batches and 90-day picks, with <strong>◎ Fly here</strong> and <strong>✥ Move from here</strong>.</li>
+    <li><strong>Arrange (what-if):</strong> use <strong>✥ Move pallet</strong> (click the source bin, then the target; <kbd>Esc</kbd> cancels), or <strong>✦ Suggest re-slotting</strong>: <em>Fast mover</em> moves the top 20% of items by picks to levels 1–2 near the dock, and <em>Consolidate</em> merges an item spread over 3 or more part-full bins. Tick suggestions and click <strong>Apply selected</strong>.</li>
+    <li>Review <strong>Simulated moves</strong> (<strong>↶ Undo last</strong>, <strong>Reset all</strong>) and click <strong>⬇ Export move list (CSV)</strong> to hand the plan to the warehouse team, who post the actual transfers in SAP.</li>
+  </ol>
+  <ul>
+    <li><strong>Layout designer</strong> (saved per warehouse, shared by all users): how bin locations are read (bin sublevels or bin-code segments with a separator and segment roles), bin and aisle sizes, bin capacity, back-to-back or single rack rows, and <strong>+ Add planned aisle</strong> to test empty racks that do not exist yet. Use <strong>Apply</strong>, <strong>Save layout</strong> or <strong>Reset to defaults</strong>.</li>
+    <li><strong>Occupancy by aisle × level</strong> heatmap; click an aisle to isolate it.</li>
+    <li><strong>AI warehouse brief → Analyse</strong>: rule checks (occupancy above 80% / 90%, full aisles, mixed bins, fast movers above level 2, items spread over bins, stock in the system bin) plus an AI summary that takes your simulated moves into account.</li>
+  </ul>
+  <div class="callout info"><strong>ℹ️ Data source</strong>Real bin-level stock needs an active <a href="#db-conn">DB Connection</a>. With the Service Layer only, warehouse stock is spread over the bins by simulation (the bin panel says "Placement simulated"). With no SAP data at all a demo warehouse is shown.</div>
+
+  <h3 id="ap-aging">5.16 AP Aging Report</h3>
+  <p><span class="path">Purchase — P2P → AI Workflow → AP Aging Report</span> (<em>AP Aging — Vendor Payments</em>) shows open payables by due date. It is read-only and uses the SAP HANA view for vendor payment aging.</p>
+  <ul>
+    <li><strong>Filters:</strong> Aging Date (default today), Bucket Size (30, 45, 60 or 90 days; default 30), Vendor, Doc Type, Bucket and <strong>Overdue Only</strong>. Click <strong>Analyze</strong>. <strong>Clear</strong> resets the vendor, type, bucket and overdue filters.</li>
+    <li><strong>Buckets:</strong> <em>Future Remit</em> (not yet due), then four buckets of the chosen size and one for anything older. With 30 days: 0-30, 31-60, 61-90, 91-120 and 120+. Empty buckets are hidden.</li>
+    <li><strong>KPI tiles:</strong> Balance Due, Overdue Amount (% of balance), Future Remit and Vendors.</li>
+    <li><strong>Charts:</strong> Aging Bucket Breakdown (Balance / Overdue), Vendor-wise Balance Due, Top 10 Vendors by Overdue and Aging Mix — Top Vendors.</li>
+    <li><strong>Vendor Aging Detail</strong> table: Vendor, Balance Due, Overdue, Future Remit and Max Days, colour-coded beyond 30, 60 and 90 days. <strong>Show Buckets</strong> adds a column per bucket. Click a vendor to see its documents. <strong>⬇ Export CSV</strong> downloads the table.</li>
+    <li><strong>✨ AI Insight</strong> summarises the result. The <strong>Aging Assistant</strong> chat answers questions about the loaded data, for example "Vendors over 90 days" or "Cash flow risk".</li>
+  </ul>
+
+  <h3 id="purchase-analysis">5.17 Purchase Analysis</h3>
+  <p><span class="path">Purchase — P2P → AI Workflow → Purchase Analysis</span> is a read-only dashboard of spend, returns, prices, receipts and vendor balances, built on SAP HANA views.</p>
+  <ul>
+    <li><strong>Filters:</strong> From / To Date (default: year to date), Vendor, Item, Item Group. On the Purchases and By Document tabs, <strong>Documents</strong> chooses what is counted: Net Purchases (A/P invoices − credit memos, the default), A/P Invoices, A/P Credit Memos, Goods Receipts − Goods Returns or Purchase Orders (booked). Click <strong>Analyze</strong>.</li>
+    <li><strong>Tabs:</strong> Purchases, Returns, Avg Price, On-Time Receipt, By Document, Cycle Time, Received On Time and Vendor Balance (open PO, open GRPO and A/P balance). Each tab has its own KPI tiles. The other tabs load in the background after the first Analyze.</li>
+    <li><strong>Charts:</strong> top vendors, items or periods, the trend over the last 12 periods, a breakdown by vendor, item, brand or branch, and a ranking.</li>
+    <li><strong>Table:</strong> group by vendor, item or period, then search, sort and page through it. <strong>⬇ CSV</strong> exports it.</li>
+    <li><strong>✨ AI Insight</strong> per tab, and the <strong>Procurement AI</strong> chat, for example "Top 10 vendors by spend" or "Return rate analysis".</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════
+     6. AP INVOICE PROCESSING
+══════════════════════════════════════════ -->
+<div class="section" id="apip">
+  <h2 class="section-title"><span class="num">6</span> AP Invoice Processing</h2>
+
+  <p>The <strong>AP Invoice Processing</strong> section automates supplier invoices from arrival to posting. Invoices come in from a watched folder, a mailbox or a manual upload. They are read by OCR, mapped to SAP vendors, items or G/L accounts, optionally linked to a PO or GRPO, routed through approval, and posted to SAP as A/P Invoices or drafts. Every screen in the section is also available from the tab bar at the top of the panel.</p>
+
+  <div class="workflow">
+    <div class="wf-step">Folder / Mail / Upload</div><div class="wf-arrow">→</div>
+    <div class="wf-step">OCR + SAP mapping</div><div class="wf-arrow">→</div>
+    <div class="wf-step">Review &amp; Validate</div><div class="wf-arrow">→</div>
+    <div class="wf-step">Approval</div><div class="wf-arrow">→</div>
+    <div class="wf-step">A/P Invoice (or Draft)</div>
+  </div>
+
+  <h3 id="apip-dashboard">6.1 Processing Dashboard</h3>
+  <p><span class="path">AP Invoice Processing → Processing Dashboard</span> gives an overview of intake, OCR, approvals and posting. It refreshes itself every 10 seconds.</p>
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="label">Total Invoices</div><div class="value">128</div></div>
+    <div class="kpi-card warn"><div class="label">Pending</div><div class="value">9</div></div>
+    <div class="kpi-card danger"><div class="label">Failed</div><div class="value">2</div></div>
+    <div class="kpi-card success"><div class="label">Posted to SAP</div><div class="value">104</div></div>
+  </div>
+  <ul>
+    <li><strong>KPI tiles:</strong> Total Invoices, Pending, Processed, Failed, Posted to SAP, Approval Pending.</li>
+    <li><strong>Last 14 Days</strong> chart (Received, Posted, Failed) and <strong>Invoice Sources</strong> (Folder, Mail, Upload).</li>
+    <li><strong>Recent Invoices</strong>: click a row to open the invoice.</li>
+    <li><strong>Intake Status</strong>: shows whether the <em>Folder watcher</em> and <em>Mail poller</em> are Running or Stopped, with the last scan / check time. Use <strong>Start</strong>, <strong>Stop</strong> and <strong>Scan now</strong>.</li>
+    <li><strong>Live Log</strong> of processing events.</li>
+  </ul>
+
+  <h3 id="apip-queue">6.2 Invoice Queue</h3>
+  <p><span class="path">AP Invoice Processing → Invoice Queue</span> is where invoices are uploaded, processed, reviewed and posted. It has two tabs: <strong>Invoice Queue</strong> and <strong>Sent for Approval</strong>.</p>
+  <ol class="steps">
+    <li>Click <strong>Upload PDFs</strong>, or drag PDFs onto the <em>Invoice List</em> card. Up to 50 PDF files of 25 MB each per upload. Invoices from the watched folder and mailboxes appear here automatically.</li>
+    <li>If <em>Auto process</em> is on (the default), OCR runs as soon as the invoice arrives. Otherwise click the <strong>Process</strong> icon on a row, or <strong>Process All Pending (n)</strong>, which also retries failed invoices. Hover over a failed row's error icon to see why it failed.</li>
+    <li>Check the <strong>Type</strong> column (Item or Service). The type is detected automatically; you can change it while the invoice is editable. Changing it removes any PO/GRPO link.</li>
+    <li>Click the <strong>eye</strong> icon to open the invoice form (6.3), correct anything needed and click <strong>Save</strong>.</li>
+    <li>Click <strong>⚠ Send</strong> to send it for approval, or, once approved (or if approval is not required), click <strong>SAP</strong> to post it.</li>
+  </ol>
+  <p>Other row actions: <strong>View PDF</strong>, <strong>View JSON</strong> (tabs <em>Extracted (OCR)</em> and <em>Mapped (SAP)</em>) and <strong>Delete</strong> (not possible after posting). Columns: Sr. No, Invoice Name, Date, Type, Processing Status, Approval Status, Invoice From, Action.</p>
+  <table class="ref-table">
+    <thead><tr><th>Status</th><th>Values</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Processing</strong></td><td>Pending, Processing, Processed, Failed, Duplicate, Posted</td></tr>
+      <tr><td><strong>Approval</strong></td><td>Draft, Not Required, Pending, Partially Approved, Approved, Rejected</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="apip-form">6.3 Reviewing an Invoice (A/P Invoice form)</h3>
+  <p>The form shows the PDF on the left and the A/P Invoice on the right; drag the divider to resize. The top bar has <strong>Back</strong>, <strong>Sync Masters</strong> and <strong>Open PDF</strong>. An OCR summary and a <strong>Warnings</strong> list appear above the form.</p>
+  <ul>
+    <li><strong>Header:</strong> Vendor Code *, Vendor Ref No. *, Posting Date * (required), plus Vendor Name, Due Date, Document Date, Currency, Series, Discount % and any custom fields set up in Settings.</li>
+    <li><strong>Base Document:</strong> link a PO or GRPO from <em>Open Purchase Orders / GRPOs</em>. <strong>Copy lines</strong> replaces the lines with the base document's lines; <strong>Link only</strong> keeps your lines and links them. The agent links automatically when the PO number on the invoice is an open PO of that vendor, or when a GRPO's vendor reference equals the invoice number.</li>
+    <li><strong>Item lines:</strong> Item No., Description, OCR Text (with an <em>n% match</em> score), Qty, UoM, Unit Price, Disc %, Tax Code, Warehouse, Line Total, Base Ref.</li>
+    <li><strong>Service lines:</strong> G/L Account *, Service Description *, As Per Bill, Qty, Unit Price, Disc %, Tax Code, Line Total, Base Ref. A tag shows where the G/L came from (Vendor keyword rule, Vendor default G/L, Learned from correction, Matched by name, Default G/L, Selected by user).</li>
+    <li><strong>Totals:</strong> Total Before Discount, Discount, Tax, Total Payment Due, OCR Invoice Total and Difference. <em>⚠ mismatch</em> appears when the difference is above the Total Tolerance.</li>
+    <li><strong>Approval Timeline:</strong> each stage with its approvals, rejections and comments.</li>
+    <li>Footer: <strong>Save</strong>, <strong>Validate</strong>, <strong>Send for Approval</strong>, <strong>Post to SAP</strong>. After posting you see "A/P Invoice posted to SAP" (or "Draft created in SAP") with the document number.</li>
+  </ul>
+  <div class="callout tip"><strong>💡 The agent learns from your corrections</strong>When you save a corrected vendor, item or G/L account, it is remembered for that vendor's next invoice. Corrected items are also added to <a href="#apip-mapping">Vendor Item Mapping</a> with source <em>Learned</em>.</div>
+
+  <h4>Checks before posting</h4>
+  <table class="ref-table">
+    <thead><tr><th>Type</th><th>Checks</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge red">Error</span> (blocks posting)</td><td>Vendor missing, unknown, not a supplier or frozen; posting date missing; no lines; item missing (Item type) or G/L account / service description missing (Service type); quantity 0 or less; negative unit price; item or G/L not found in SAP; required custom field empty; <strong>duplicate</strong> (same vendor + invoice number already posted or already an A/P Invoice in SAP).</td></tr>
+      <tr><td><span class="badge orange">Warning</span></td><td>Price differs from the PO/GRPO price by more than the Price Tolerance %; quantity above the open quantity; total differs from the OCR total by more than the Total Tolerance; currency differs from the vendor's currency; Vendor Ref, tax code or warehouse empty.</td></tr>
+    </tbody>
+  </table>
+  <p>Posting needs the approval status <em>Approved</em> or <em>Not Required</em>, unless <em>Allow posting without approval</em> is on in Settings. The Item/Service type is locked once the invoice is in approval or posted.</p>
+
+  <h3 id="apip-approvals">6.4 Invoice Approval</h3>
+  <p><span class="path">AP Invoice Processing → Invoice Approval</span> is the approver's inbox. Tabs: <strong>Your Approval</strong>, <strong>Partially Approved</strong>, <strong>Approved</strong>, <strong>Rejected</strong>. Each row shows the stage ("Stage x of y"), status, progress ("n/m approved") and, once posted, the SAP document number.</p>
+  <ol class="steps">
+    <li>On <strong>Your Approval</strong>, click <strong>View</strong>. The invoice opens read-only (<em>Approval Review</em>) next to the PDF.</li>
+    <li>Click <strong>Approve</strong> (comment optional) or <strong>Reject</strong> (enter the reason).</li>
+    <li>When a stage has enough approvals it moves to the next stage. When it has enough rejections the invoice is <em>Rejected</em>. After the last stage the invoice is <em>Approved</em>, and it is posted automatically if <em>Auto post on final approval</em> is on.</li>
+  </ol>
+  <p>Only approvers of the current stage can act, and each approver can act once per stage.</p>
+
+  <h3 id="apip-templates">6.5 Approval Master &amp; Approval Stage</h3>
+  <p><span class="path">AP Invoice Processing → Approval Master</span> (<em>Approval Templates</em>) is where approval routes are set up. <span class="path">Approval Stage</span> is a read-only list of all stages across templates, with the number of invoices <strong>Pending</strong> at each stage; use <strong>Manage Templates</strong> to go back to the master.</p>
+  <ol class="steps">
+    <li>Click <strong>+ Create Template</strong>. Enter the <strong>Template Name *</strong>, <strong>Description *</strong> and optional <strong>Requestors</strong> (users or roles; leave empty for anyone).</li>
+    <li>Optional <strong>Additional Settings</strong>: Deviation % and Vendor Codes (comma separated).</li>
+    <li>Under <strong>When to use this template</strong>, set the <strong>Priority</strong> (lower number wins) and add conditions: <em>Apply when ALL / ANY of these are true</em>. Fields include Document total, Total before tax, Tax amount, Largest line amount, Deviation from bill total %, Vendor, Vendor group, Currency, Invoice type, Linked to PO / GRPO, and per-line Item group, Item, G/L account or Warehouse ("any line is", "every line is", "no line is"). A template with no conditions is the fallback for all other invoices.</li>
+    <li>Click <strong>Add Stage</strong> for each approval level: Stage Name *, Description *, <strong>Approvals Required</strong> and <strong>Rejectors Required</strong> (default 1 each), <strong>Invoice Total</strong> (the stage applies to invoices up to this amount), <strong>Approvers *</strong> (users or roles), and optional <em>Stage applies only when</em> conditions.</li>
+    <li>Save the template.</li>
+  </ol>
+  <div class="callout info"><strong>ℹ️ Which template and stages are used?</strong>If several templates match, the lowest Priority number wins, then the one with more conditions. In the <em>Send for Approval</em> dialog you can accept <em>Auto — &lt;template&gt;</em> or pick another template. Stages whose conditions do not match are skipped, and the chain ends at the first stage whose Invoice Total limit covers the invoice total.</div>
+
+  <h3 id="apip-mapping">6.6 Vendor Item Mapping &amp; Vendor Expense G/L</h3>
+  <ul>
+    <li><strong>Vendor Item Mapping</strong> maps the code or name a vendor prints on its invoices to your SAP item. Click <strong>+ Add Mapping</strong> and fill in Vendor *, Vendor Item Code and/or Vendor Item Name, Our Item * and UoM, then <strong>Save</strong> or <strong>Save &amp; Add Another</strong>. The list shows each mapping's Source (<em>Manual</em> or <em>Learned</em>) and how many times it was Used. Mappings are checked first when invoice lines are matched: exact code, then exact name, then a mapped name contained in the line text.</li>
+    <li><strong>Vendor Expense G/L</strong> sets the G/L accounts for a vendor's service (expense) invoices: a <strong>Default Expense G/L</strong>, <strong>Keyword Rules</strong> (if a line contains the keyword, use this G/L) and the switch <strong>Always treat as expense invoice</strong>, which skips item matching for that vendor. A default G/L or at least one rule is required.</li>
+  </ul>
+  <p>A service line gets its G/L account in this order: vendor keyword rule → your earlier correction → vendor default G/L → an expense account whose name matches the line text → the <em>Default G/L Account</em> in Settings.</p>
+
+  <h3 id="apip-mail">6.7 Mail Configuration</h3>
+  <p><span class="path">AP Invoice Processing → Mail Configuration</span> lists the IMAP mailboxes polled for PDF invoices. Click <strong>Add Mailbox</strong> and enter Name *, IMAP Host *, Port * (993), <em>Use TLS / SSL</em>, User *, Password *, Folder (INBOX), <strong>Subject Filter</strong> (a regular expression; blank means any subject), Poll Interval (seconds, default 60, minimum 10) and <em>Enabled</em>. Use <strong>Test</strong> to check the connection. Each mailbox card shows its last check and any error.</p>
+  <p>Only unread mails that have a PDF attachment and a matching subject are picked up; they are then marked as read. Mail intake must also be switched on in Settings.</p>
+
+  <h3 id="apip-settings">6.8 Settings</h3>
+  <table class="ref-table">
+    <thead><tr><th>Group</th><th>Settings (default)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Folder Intake</strong></td><td>Input, Processed and Failed folder paths (the input folder must be different from the other two), Poll Interval (30 s), <em>Watch input folder</em> (off). Processed PDFs move to the Processed or Failed folder.</td></tr>
+      <tr><td><strong>Mail Intake</strong></td><td><em>Enable mail intake</em> (off) and a link to Mail Configuration.</td></tr>
+      <tr><td><strong>Processing</strong></td><td>OCR Engine: <em>AI vision (recommended)</em> or <em>PDF text extraction</em>; Price Tolerance % (5); Total Tolerance amount (1); <em>Auto process</em> (on); <em>Duplicate check</em> (on).</td></tr>
+      <tr><td><strong>Approval</strong></td><td><em>Approval required</em> (on); <em>Auto send for approval</em> (off); <em>Allow posting without approval</em> (off); <em>Auto post on final approval</em> (off).</td></tr>
+      <tr><td><strong>SAP Posting</strong></td><td><em>Post as draft</em> (off); <em>Auto-detect Item / Service</em> (on); Default Series, Tax Code, Warehouse, G/L Account (for service invoices) and Doc Type (Item or Service).</td></tr>
+      <tr><td><strong>Custom Fields</strong></td><td><strong>Add Field</strong>: Key, Label, Type (text, number, date, select), Options, SAP Field (e.g. <code>U_xxx</code>) and Required. Custom fields appear on the invoice header and are posted to SAP.</td></tr>
+    </tbody>
+  </table>
+  <p>Click <strong>Save Settings</strong> to apply. Each of the nine menu items has its own permission (<code>apip.dashboard</code>, <code>apip.queue</code>, <code>apip.approvals</code>, … <code>apip.settings</code>), so you can give approvers only <em>Invoice Approval</em>.</p>
 </div>
 
 <!-- ══════════════════════════════════════════
      6. SALES — O2C
 ══════════════════════════════════════════ -->
 <div class="section" id="o2c">
-  <h2 class="section-title"><span class="num">6</span> Sales — O2C</h2>
+  <h2 class="section-title"><span class="num">7</span> Sales — O2C</h2>
 
   <p>The O2C agents live under <span class="path">Sales — O2C → AI Workflow</span>. The conversion agents use the copy-from flow described in <a href="#copy-flow">5.0</a>.</p>
 
@@ -1046,10 +1321,23 @@
     <div class="wf-step alt">Customer PO (email / PDF)</div><div class="wf-arrow">→</div><div class="wf-step alt">Sales Order</div>
   </div>
 
-  <h3 id="so-agent">6.1 Sales Order Agent</h3>
-  <p><span class="path">Sales — O2C → AI Workflow → Sales Order</span> builds a new Sales Order from scratch, without a quotation. To create orders from customer PO PDFs or emails, see <a href="#ag-sales">PO → Sales Order and Mail PO → SO</a>.</p>
+  <h3 id="so-agent">7.1 Sales Order Agent</h3>
+  <p><span class="path">Sales — O2C → AI Workflow → Sales Order</span> builds a new Sales Order from scratch, without a quotation. To create orders from customer PO PDFs or emails, see <a href="#ag-sales">PO → Sales Order and Mail PO → SO</a>. The header shows the step (Customer › Line Items › Review Order › Posted); <strong>Restart</strong> starts over.</p>
+  <ol class="steps">
+    <li><strong>Customer:</strong> in <em>Select Customer</em>, filter the list by code, name or city, choose the customer and click <strong>Select →</strong>. Or type a name or code in the chat box: SAP is searched live, and a single match is selected at once. The list shows up to 500 active customers from the local cache; if it is empty, run <span class="path">Tools → Data Sync</span>.</li>
+    <li><strong>Add Line Item:</strong> choose the <strong>Item</strong> and <strong>Qty</strong> (default 1). <strong>Unit Price</strong> shows <em>auto</em>: the customer's SAP price (price list, special prices, period and volume discounts) is fetched when you pick the item or change the quantity.
+      <ul>
+        <li><em>✓ Customer price</em>: the price came from the customer's price list.</li>
+        <li><em>⚠️ From &lt;list&gt;</em>: the customer's list has no price, so a base price list was used.</li>
+        <li><em>⚠️ No price found — enter manually</em>: type the price yourself.</li>
+      </ul>
+      A price you type is never overwritten. A blank price posts as 0. Set <strong>Disc%</strong>, <strong>Tax Code</strong> (filled from the item's sales tax group) and <strong>Warehouse</strong> (<em>— Default —</em> uses the item's default warehouse). Click <strong>+ Add Line</strong> for each item, then <strong>✓ Done Adding Items</strong>. Typing "done" or "review" does the same; typing other text searches for items.</li>
+    <li><strong>📋 Sales Order Ready to Post:</strong> check the lines, set the <strong>Delivery Date</strong> (default: today + 7 days), the optional <strong>Customer Reference</strong> (the customer's PO number, saved in SAP's <em>Customer Ref. No.</em>) and <strong>Comments</strong>. Click <strong>✅ Post Sales Order</strong>, or <strong>+ Add More Items</strong>.</li>
+    <li><strong>✅ Sales Order Created Successfully</strong> shows the SO number, totals and lines. <strong>🖨️ Print</strong> opens a print preview; <strong>Create New Sales Order</strong> starts the next one.</li>
+  </ol>
+  <div class="callout warn"><strong>⚠ If posting fails</strong>The message <em>"❌ Failed to post Sales Order — SAP Error: …"</em> is followed by <strong>Retry</strong> and <strong>Cancel</strong>. Fix the cause, then click <strong>Retry</strong> (or type "retry") to post the same order again; your lines are kept. To change the order first, edit it on the review card and click <strong>✅ Post Sales Order</strong>. <strong>Cancel</strong> discards the order. An error such as <em>connect ECONNREFUSED …:50000</em> means the SAP Service Layer can't be reached, not that the order is wrong (see <a href="#troubleshoot">Troubleshooting</a>).</div>
 
-  <h3 id="sales-quot">6.2 Sales Quotation Agent</h3>
+  <h3 id="sales-quot">7.2 Sales Quotation Agent</h3>
   <p>Open <span class="path">Sales — O2C → AI Workflow → Sales Quotation</span>. Step bar: Customer › Line Items › Review Quotation › Posted.</p>
 
   <div class="screen-mockup">
@@ -1080,7 +1368,7 @@
       </div>
     </div>
   </div>
-  <div class="caption">Figure 6.2 — Sales Quotation Agent: adding a line item</div>
+  <div class="caption">Figure 7.2 — Sales Quotation Agent: adding a line item</div>
 
   <ol class="steps">
     <li>Type the customer name or code, or choose from the dropdown, and click <strong>Select →</strong>.</li>
@@ -1089,7 +1377,7 @@
     <li>The quotation is created, valid for <strong>30 days</strong> from the posting date. Change the validity in SAP if you need a different date.</li>
   </ol>
 
-  <h3 id="quot-to-order">6.3 Quot → Order</h3>
+  <h3 id="quot-to-order">7.3 Quot → Order</h3>
   <p><span class="path">Sales — O2C → AI Workflow → Quot → Order</span>. Pick the customer, then one of their open quotations (the list shows <em>Valid Until</em>). In the review step:</p>
   <ul>
     <li>Header: <strong>Delivery Date *</strong> (required), <strong>Customer PO Ref</strong>, <strong>Payment Terms</strong>.</li>
@@ -1097,7 +1385,7 @@
     <li>Click <strong>✅ Post Sales Order</strong>.</li>
   </ul>
 
-  <h3 id="order-to-delivery">6.4 Order → Delivery</h3>
+  <h3 id="order-to-delivery">7.4 Order → Delivery</h3>
   <p><span class="path">Sales — O2C → AI Workflow → Order → Delivery</span> creates one Delivery from one Sales Order.</p>
   <ul>
     <li>Only <strong>Deliver Qty</strong> and <strong>Whse</strong> can be edited; price, discount and tax come from the order.</li>
@@ -1106,7 +1394,7 @@
     <li>Click <strong>✅ Post Delivery Note</strong>.</li>
   </ul>
 
-  <h3 id="delivery-to-inv">6.5 Delivery → AR Inv</h3>
+  <h3 id="delivery-to-inv">7.5 Delivery → AR Inv</h3>
   <p><span class="path">Sales — O2C → AI Workflow → Delivery → AR Inv</span>. Pick the customer and the open delivery.</p>
   <ul>
     <li>Set the <strong>Due Date</strong>, or leave it blank to use the payment terms.</li>
@@ -1114,7 +1402,7 @@
     <li>Click <strong>✅ Post A/R Invoice</strong>.</li>
   </ul>
 
-  <h3 id="credit-memo">6.6 AR Inv → Credit</h3>
+  <h3 id="credit-memo">7.6 AR Inv → Credit</h3>
   <p><span class="path">Sales — O2C → AI Workflow → AR Inv → Credit</span> (panel title "A/R Invoice → Credit Memo"). It creates a credit note for returns or adjustments.</p>
   <ol class="steps">
     <li>Select the customer. All customers are listed, with their open-invoice counts.</li>
@@ -1124,7 +1412,7 @@
     <li>Click <strong>✅ Post A/R Credit Memo</strong>. It is linked to the original invoice.</li>
   </ol>
 
-  <h3 id="incoming">6.7 Incoming Payment</h3>
+  <h3 id="incoming">7.7 Incoming Payment</h3>
   <p>Open <span class="path">Sales — O2C → AI Workflow → Incoming Payment</span>. Step bar: Customer › Invoices › Review › Posted.</p>
 
   <div class="screen-mockup">
@@ -1162,7 +1450,7 @@
       </div>
     </div>
   </div>
-  <div class="caption">Figure 6.7 — Incoming Payment form (example data)</div>
+  <div class="caption">Figure 7.7 — Incoming Payment form (example data)</div>
 
   <ol class="steps">
     <li>Select the customer. Their open A/R invoices are listed.</li>
@@ -1173,12 +1461,67 @@
   </ol>
   <div class="callout info"><strong>ℹ️ Chasing overdue customers?</strong>Use <span class="path">AI Agents → Finance &amp; Credit → Collections &amp; Receivables</span> for a prioritised collections worklist.</div>
 
-  <h3 id="o2c-reports">6.8 Quick Create, Quotation Compare &amp; Sales Reports</h3>
+  <h3 id="o2c-reports">7.8 Quick Create, Quotation Compare &amp; Sales Reports</h3>
   <ul>
     <li><strong>Quick Create</strong> (plain forms): Quotation, Sales Order, Delivery, Confirm POD (proof of delivery), AR Invoice, Incoming Payment, ATP Check.</li>
-    <li><strong>Quotation Compare</strong>: read-only comparison of open quotations.</li>
-    <li><strong>Sales Analysis</strong>: Sales Analysis Dashboard built on the SAP A/R HANA views, with brand, sub-brand and budget dimensions.</li>
+    <li><strong>Quotation Compare</strong>: read-only comparison of two open quotations (see <a href="#quot-compare">7.11</a>).</li>
+    <li><strong>Sales Analysis</strong>: Sales Analysis Dashboard built on the SAP A/R HANA views, with brand, sub-brand and territory dimensions (see <a href="#sales-analysis">7.12</a>).</li>
     <li><strong>Sales Report</strong>: Open Orders, Open Quotations, Top Customers, Monthly Trend, Quarterly Sales, Top Items, By Salesperson, By Gross Profit, By GP Margin, By Warehouse.</li>
+    <li><strong>SO Excel Import</strong>: create many Sales Orders from an Excel sheet. See <a href="#excel-import">Excel Import</a>.</li>
+  </ul>
+
+  <h3 id="order-confirmation">7.9 Order Confirmation</h3>
+  <p>Open <span class="path">Sales — O2C → AI Workflow → Order Confirmation</span> (<em>Sales Order Confirmation</em>). Use it to review open Sales Orders and confirm them in SAP, one at a time or in bulk.</p>
+  <ol class="steps">
+    <li>Set the filters: <strong>Status</strong> (<em>Pending confirmation</em>, <em>Confirmed</em> or <em>All open</em>), <strong>Search</strong> (SO number, customer or customer PO ref), and posting date <strong>From</strong> / <strong>To</strong>. Click <strong>Go</strong>; <strong>Clear</strong> resets the filters.</li>
+    <li>Check the KPI tiles: <strong>Awaiting Confirmation</strong>, <strong>Pending Value (LC)</strong>, <strong>Customers</strong> and <strong>Selected</strong>.</li>
+    <li>Click a row to open the detail drawer: header details, ship-to and bill-to, the order lines with open quantity, totals, remarks and a <strong>Customer Credit</strong> box. The credit box compares the credit limit with the account balance plus open orders and deliveries, and shows <em>Within limit</em>, <em>Above 80% of limit</em>, <em>Credit limit exceeded</em> or <em>No credit limit set</em>.</li>
+    <li>Click <strong>Confirm Order</strong> in the drawer, or tick several pending orders (the header box ticks all of them) and click <strong>Confirm Selected (n)</strong>.</li>
+    <li>In the dialog, check the total and click <strong>Confirm in SAP</strong>. The result shows each order as Confirmed, Already (confirmed earlier) or Failed.</li>
+  </ol>
+  <div class="callout info"><strong>ℹ️ What changes in SAP</strong>Only the order's <em>Confirmed</em> (Approved) flag is set. Nothing else on the order changes. Closed or cancelled orders cannot be confirmed. Up to 1,000 orders are listed; narrow the filters if you see "showing first 1,000".</div>
+
+  <h3 id="load-planner">7.10 Load Planner</h3>
+  <p>Open <span class="path">Sales — O2C → AI Workflow → Load Planner</span>. It simulates how the cartons of open Sales Orders fill pallets and/or 20 ft, 40 ft and 40 ft High Cube containers, and shows the result in 3D. <strong>It is a planning tool only: nothing is posted to SAP.</strong></p>
+  <ol class="steps">
+    <li><strong>Sales orders:</strong> search by customer, SO number or reference, tick up to 25 orders (or <strong>Select all</strong>) and click <strong>Load items</strong>. <strong>Use sample orders</strong> loads demo data.</li>
+    <li>Check the <strong>Items &amp; dimensions</strong> tab: quantity, units per carton, cartons, carton size (cm), weight, <em>Stackable</em> and <em>Can turn over</em>. Dimensions come from the item's packaging data in SAP; you can edit them (edits are kept in your browser, and <strong>Restore default dimensions</strong> discards them). <em>Missing dims</em> shows cartons without dimensions.</li>
+    <li><strong>Load into:</strong> choose <strong>Container</strong>, <strong>Pallets</strong> or <strong>Pallets → Container</strong>. Pick the container (<em>Auto — let the agent choose</em>, 20 ft Standard, 40 ft Standard or 40 ft High Cube) and/or the pallet type (EUR 1200 × 800, Standard 1200 × 1000, US 48 × 40 in, or half / quarter pallets that can be stacked 2-high). Set <strong>Max pallet height incl. deck (cm)</strong> (<strong>Fit 2-high</strong> fills it in) and whether pallets may be stacked.</li>
+    <li>Click <strong>▶ Simulate loading</strong>. The agent tries many packing combinations and keeps the plan that uses the fewest containers or pallets and fills them most.</li>
+    <li>Review the result: KPIs (Containers / Pallets, Avg. volume used, Cargo weight, Cartons loaded, Not loaded) and the 3D view. Switch between containers and pallets, use the <em>3D / Top / Side / Door</em> views, and play the loading step by step with the slider and speed control.</li>
+  </ol>
+  <ul>
+    <li><strong>Loading sequence</strong>: step-by-step placement (position from the wall, levels, height, weight), with <strong>Export CSV</strong> for the loading team.</li>
+    <li><strong>Not loaded</strong>: cartons that did not fit, with the reason.</li>
+    <li><strong>Container options</strong>: how each container type would perform. <strong>Strategies tried</strong>: the combinations tested.</li>
+    <li><strong>AI load brief</strong>: rule checks marked Action / Check / Tip / OK, followed by an AI summary.</li>
+  </ul>
+
+  <h3 id="quot-compare">7.11 Quotation Compare</h3>
+  <p><span class="path">Sales — O2C → AI Workflow → Quotation Compare</span> puts two open sales quotations side by side. It is read-only.</p>
+  <ol class="steps">
+    <li>Choose <strong>Quotation A</strong> and <strong>Quotation B</strong>. The lists show the 200 newest open quotations as <em>#DocNum | Customer | Date | Total</em>. They can belong to different customers but must be two different quotations.</li>
+    <li>Click <strong>Compare</strong>. Two header cards show each quotation's customer, dates and total. A KPI strip shows Matching items, Differences, Only in A, Only in B and the total difference (B vs A).</li>
+    <li>The <strong>Item comparison</strong> table matches lines by item code and shows Quantity, Unit Price and Line Total for A and B, with the differences: ▲ means B is higher, ▼ means B is lower. Status is <em>Match</em>, <em>Different</em> (quantity or price differs; discounts are not compared), <em>Only in A</em> or <em>Only in B</em>.</li>
+  </ol>
+  <p><strong>Refresh</strong> reloads the list of quotations; <strong>Reset</strong> clears the comparison.</p>
+
+  <h3 id="sales-analysis">7.12 Sales Analysis</h3>
+  <p><span class="path">Sales — O2C → AI Workflow → Sales Analysis</span> is a read-only dashboard of sales, margins, back orders and customer balances, built on SAP HANA views.</p>
+  <ul>
+    <li><strong>Filters:</strong> From / To Date (default: year to date), Customer, Item, Sales Person, Brand, Sub-Brand, Universe, Territory, Branch. On the Sales and By Document tabs, <strong>Documents</strong> chooses what is counted: Net Sales (A/R invoices − credit memos, the default), A/R Invoices, A/R Credit Memos, Deliveries − Returns or Sales Orders (booked). Click <strong>Analyze</strong>. The <em>Brand</em> chips filter by brand in one click.</li>
+    <li><strong>Tabs and KPIs:</strong>
+      <ul>
+        <li><em>Sales</em>: Net Sales, Gross Profit, Customers.</li>
+        <li><em>Avg Selling Price</em>: average unit price and GP %.</li>
+        <li><em>Back Orders</em>: Ordered, Delivered and Open Qty, Back Order %.</li>
+        <li><em>Customer Balance</em>: Open SO Balance, AR Balance, Credit Limit.</li>
+        <li><em>On-Time Delivery</em>: delayed and advance days.</li>
+        <li><em>By Document</em>: net, applied and open amounts.</li>
+      </ul></li>
+    <li><strong>Charts:</strong> Top Analysis (customer, item, brand or period), Dimension Breakdown, Trend and Ranking (sales person, territory or branch).</li>
+    <li><strong>Table:</strong> group by customer, item, period or brand, then search, sort and page through it. <strong>⬇ CSV</strong> exports it.</li>
+    <li><strong>✨ AI Insight</strong> per tab, and the <strong>Sales AI Analyst</strong> chat, for example "Gross profit by brand" or "Credit limit risk".</li>
   </ul>
 </div>
 
@@ -1186,7 +1529,7 @@
      7. FINANCE & INVENTORY
 ══════════════════════════════════════════ -->
 <div class="section" id="fin-inv">
-  <h2 class="section-title"><span class="num">7</span> Finance &amp; Inventory</h2>
+  <h2 class="section-title"><span class="num">8</span> Finance &amp; Inventory</h2>
 
   <h3>Finance</h3>
   <table class="ref-table">
@@ -1196,6 +1539,8 @@
       <tr><td><strong>Balance Sheet / Profit &amp; Loss / Trial Balance</strong></td><td>Financial statements from the SAP HANA calculation views, with an AI narrative and follow-up Q&amp;A</td></tr>
       <tr><td><strong>Financial Dashboard</strong></td><td>Trading P&amp;L, Cash Flow &amp; Liquidity, Receivables &amp; Payables Aging, Working Capital &amp; Ratios</td></tr>
       <tr><td><strong>Customer Aging Detail</strong></td><td>Customer aging by bucket and by invoice</td></tr>
+      <tr><td><strong>Salary → Journal Entry</strong></td><td>Upload a salary register or salary slips in Excel and post one journal entry per employee per month, with each salary head mapped to a G/L account. See <a href="#excel-import">Excel Import</a>.</td></tr>
+      <tr><td><strong>Bank Reconciliation</strong></td><td>Under <span class="path">AI Agents → OCR Processing</span>. See <a href="#bank-reco">9.3</a>.</td></tr>
     </tbody>
   </table>
 
@@ -1204,9 +1549,55 @@
     <thead><tr><th>Menu item</th><th>What you get</th></tr></thead>
     <tbody>
       <tr><td><strong>Stock Levels / In-Stock Items / Pick List / ATP Check</strong></td><td>Stock and availability queries</td></tr>
-      <tr><td><strong>Stock Transfer Request, Transfer from Request, Stock Transfer (Direct)</strong></td><td>Guided agents to request and post warehouse transfers</td></tr>
-      <tr><td><strong>Goods Issue / Goods Receipt</strong></td><td>Guided agents for stock issues and receipts not linked to purchasing</td></tr>
-      <tr><td><strong>Inventory Dashboard</strong></td><td>Tabs: Dashboard, Stock Report, Transaction Ledger, Posting List, Valuation, Inventory Aging, Dead Stock, Item Profit</td></tr>
+      <tr><td><strong>Stock Transfer Request, Transfer from Request, Stock Transfer (Direct)</strong></td><td>Guided agents to request and post warehouse transfers (see <a href="#inv-workflow">8.1</a>)</td></tr>
+      <tr><td><strong>Goods Issue / Goods Receipt</strong></td><td>Guided agents for stock issues and receipts not linked to purchasing (see <a href="#inv-workflow">8.1</a>)</td></tr>
+      <tr><td><strong>Inventory Dashboard</strong></td><td>Stock, ledger, valuation, aging, dead-stock and item-profit reports (see <a href="#inv-dashboard">8.2</a>)</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="inv-workflow">8.1 Inventory AI Workflow Agents</h3>
+  <p><span class="path">Inventory → AI Workflow</span> has five guided agents. They all post live to SAP B1 and share one layout: a chat on the left and a <strong>📦 Document Builder</strong> on the right that previews the document as you build it. Each menu item has its own permission. Without it the screen shows <span class="badge grey">NO ACCESS</span>.</p>
+  <table class="ref-table">
+    <thead><tr><th>Agent</th><th>Creates in SAP</th><th>Steps</th><th>Stock check</th></tr></thead>
+    <tbody>
+      <tr><td><strong>📝 Stock Transfer Request</strong></td><td>Inventory Transfer Request</td><td>Warehouse › Add Item › Review › Done</td><td>No (moves no stock)</td></tr>
+      <tr><td><strong>🔁 Transfer from Request</strong></td><td>Stock Transfer, linked to the request lines</td><td>Select Request › Quantities › Review › Done</td><td>Yes</td></tr>
+      <tr><td><strong>🚚 Stock Transfer (Direct)</strong></td><td>Stock Transfer</td><td>Warehouse › Add Item › Review › Done</td><td>Yes</td></tr>
+      <tr><td><strong>📤 Goods Issue</strong></td><td>Goods Issue</td><td>Warehouse › Add Item › Review › Done</td><td>Yes</td></tr>
+      <tr><td><strong>📥 Goods Receipt</strong></td><td>Goods Receipt</td><td>Warehouse › Add Item › Review › Done</td><td>No</td></tr>
+    </tbody>
+  </table>
+  <ol class="steps">
+    <li><strong>Warehouse:</strong> choose <em>From Warehouse</em> and <em>To Warehouse</em> for transfers, or the single warehouse for a Goods Issue or Goods Receipt, then click <strong>Continue →</strong>. You can also type <em>"from 01 to 02"</em> in the chat. The two warehouses must be different.</li>
+    <li><strong>Add Line Item:</strong> search for the item, enter the <strong>Qty</strong> and, if needed, a different warehouse for that line (the default is <em>— Header —</em>; 📍 marks warehouses with bin locations). When you pick an item, a hint shows its stock in the warehouse and up to four other warehouses that hold it. For a Goods Receipt you can also enter a <strong>Unit Price</strong> (item cost). Click <strong>+ Add Line</strong> for each item, then <strong>✓ Done Adding Items</strong>. <strong>⇄ Change Warehouse</strong> affects only lines you add after it.</li>
+    <li><strong>Batches, serials and bins:</strong> for managed items, click <strong>📦 Select…</strong> on the line. The picker shows the actual stock in that warehouse. <strong>⚡ Auto-select</strong> picks batches first-expiry-first-out and serials by admission date. <strong>✓ Confirm</strong> works only when the selected quantity equals the line quantity. In bin warehouses, choose From and To bins; <em>To bin for all rows</em> fills the target bin, and <strong>+ Split to another bin</strong> spreads a line over several bins. For a <strong>Goods Receipt</strong>, <strong>📦 Batches / Bins…</strong> lets you type new batch numbers with Qty, Expiry, Mfg Date and Bin.</li>
+    <li><strong>Review — 📋 … Ready to Post:</strong> check the lines, set the <strong>Posting Date</strong> and <strong>Comments</strong> (up to 250 characters). For a Stock Transfer Request, set <strong>Required By (Due Date)</strong> (default: today + 3 days); for the others, an optional <strong>Journal Remark</strong> (up to 50 characters). Click <strong>✅ Post …</strong>, or <strong>+ Add More Items</strong>.</li>
+    <li>The <strong>✅ … Created Successfully</strong> card shows the document number. Click <strong>🖨️ Print</strong> for a printable copy with batch and serial numbers, or <strong>New …</strong> to start another.</li>
+  </ol>
+  <h4>Transfer from Request</h4>
+  <p>This agent starts from <strong>🔁 Open Stock Transfer Requests</strong>, which lists up to 50 open requests, newest first. Click <strong>Select</strong>, or type a request number. On the Quantities step, tick the lines to transfer and adjust <strong>Transfer Qty</strong>; it defaults to the open quantity and cannot exceed it. Pick batches, serials or bins where shown, then click <strong>Review Transfer →</strong>. The warehouses come from the request. The comment defaults to "Based on Stock Transfer Request #N".</p>
+  <div class="callout tip"><strong>💡 Typing lines</strong>Type several lines at once in the chat, for example <em>"10 A00001, 5 A00002"</em>. Lines the AI had to interpret are marked <em>(AI-assisted — please check)</em>. Type <em>start over</em>, <em>reset</em> or <em>new</em> to restart. Your progress in each agent is kept for 4 hours, so you can leave and come back.</div>
+  <div class="callout warn"><strong>⚠ Checks before posting</strong>Every line is checked live in SAP. The item must exist, be an inventory item and not be inactive or frozen. Quantities must be greater than zero. For transfers and Goods Issue there must be enough stock: "Insufficient stock for X in warehouse W — available N, requested M". Serial-managed items need a whole-number quantity. On a <strong>Goods Receipt</strong>, serial numbers cannot be entered; allocate them in the SAP client. There is no G/L account or reason code field. If SAP rejects the document, the error is shown and the review form returns so you can correct it and post again.</div>
+  <p>If the item list is empty ("cache is empty"), run <span class="path">Tools → Data Sync</span> first.</p>
+
+  <h3 id="inv-dashboard">8.2 Inventory Dashboard</h3>
+  <p><span class="path">Inventory → Reports → Inventory Dashboard</span> is read-only. It reads the SAP inventory journal directly, so it needs an active <a href="#db-conn">DB Connection</a> (HANA or MSSQL). Amounts are shown in the company's base currency (for example ₹ for an INR company, with Indian digit grouping), as on the other dashboards.</p>
+  <ul>
+    <li><strong>Filters:</strong> From / To date (default: year to date), the presets <strong>MTD</strong>, <strong>QTD</strong>, <strong>YTD</strong> and <strong>Last yr</strong>, Item code (part of a code, or a comma list such as <em>A001,A002</em>), Item name, and multi-select Warehouse, Item group and Branch (shown only when branches are used). Click <strong>▶ Run report</strong>; <strong>Clear</strong> resets to YTD.</li>
+    <li><strong>Tables:</strong> every table tab has a <em>Group by</em> selector, a search box, <strong>⊞ Expand all</strong> / <strong>⊟ Collapse all</strong>, sortable columns and a grand total.</li>
+    <li><strong>⬇ Export</strong> downloads the current tab as CSV (the Ledger tab exports every journal line). <strong>🖨 Print</strong> prints the page.</li>
+  </ul>
+  <table class="ref-table">
+    <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Dashboard</strong></td><td>KPI tiles: Opening, Inward, Outward and Closing value, Closing qty, Items in stock, Gross profit (with % margin), Dead + slow stock, Aged &gt; 180 days, Stock turnover (COGS ÷ average stock value). Charts: inward vs outward by month, stock value by item group, warehouse and branch, movement by transaction type, aging, stock health, top 10 items by value and by gross profit, and revenue / cost / profit by month.</td></tr>
+      <tr><td><strong>Stock Report</strong></td><td>Opening / In / Out / Closing quantity and value per item and warehouse. <em>Report</em> switches to <em>Transaction-wise In / Out</em>; <em>Show</em> chooses Qty, Value or both. Expand a row to see the movement by transaction type; <strong>ledger →</strong> opens that item's ledger. Rows with no balance and no movement are hidden.</td></tr>
+      <tr><td><strong>Transaction Ledger</strong></td><td>Every journal line with a running balance: Date, Transaction, Doc no., Business partner / memo, In / Out / Balance qty, Cost, Transaction and Balance value. Up to 25,000 lines per run, and 400 per expanded group on screen. Export to CSV for the full ledger.</td></tr>
+      <tr><td><strong>Posting List</strong></td><td>One row per document, grouped by transaction type and/or month: Documents, Lines, In / Out qty, In / Out / Net value. Shows the latest 20,000 documents.</td></tr>
+      <tr><td><strong>Valuation</strong></td><td>As of the To date: Qty, Book value, Unit cost, valuation Method, value at current average cost and at last purchase price, the variance between them, and % of total.</td></tr>
+      <tr><td><strong>Inventory Aging</strong></td><td>As of the To date. Stock is aged against the most recent receipts in buckets 0-30, 31-60, 61-90, 91-180, 181-365 and &gt;365 days, by Value or Qty, with average age and oldest receipt.</td></tr>
+      <tr><td><strong>Dead Stock</strong></td><td>Items with no consumption (A/R invoice, delivery, goods issue or production) for <strong>Dead ≥ 180</strong> days or <strong>Slow ≥ 90</strong> days; change the thresholds and click <strong>Apply</strong>. Columns: Qty, Value, Last consumed, Last receipt, Idle days, Consumed in 12 months, Cover in months. Filter by All / Dead / Slow.</td></tr>
+      <tr><td><strong>Item Profit</strong></td><td>A/R invoices minus credit memos (cancelled documents excluded): Revenue, Cost, Gross profit, Margin %, average price and cost, % of GP. View by item, customer or month. Expand an item to see the invoice and credit-memo lines behind it.</td></tr>
     </tbody>
   </table>
 </div>
@@ -1215,42 +1606,63 @@
      8. AI AGENTS
 ══════════════════════════════════════════ -->
 <div class="section" id="ai-agents">
-  <h2 class="section-title"><span class="num">8</span> AI Agents</h2>
+  <h2 class="section-title"><span class="num">9</span> AI Agents</h2>
 
   <p>The <strong>AI Agents</strong> section holds analysis and automation agents. Most use the same layout: a parameter bar with an <strong>Analyze</strong> button, KPI tiles, charts, a results table, <strong>⬇ CSV</strong> export and a <strong>💬 Ask AI</strong> chat with suggested questions.</p>
 
-  <h3 id="ag-finance">8.1 Finance &amp; Credit</h3>
+  <h4 id="agent-layout">The standard agent screen</h4>
+  <ul>
+    <li><strong>Header:</strong> <strong>ⓘ About</strong> explains what the agent is for, its data sources and a suggested demo flow. <strong>💬 Ask AI</strong> opens a chat that answers only from the analysis you have loaded. <strong>Analyze</strong> runs it again. Most agents run as soon as they open; Collections waits for you to click Analyze.</li>
+    <li><strong>Filter bar:</strong> the agent's settings and an as-of date (default today). <strong>More filters</strong> shows advanced settings, <strong>Clear</strong> resets everything to the defaults, and <strong>Go</strong> or <kbd>Enter</kbd> runs the analysis.</li>
+    <li><strong>KPI tiles:</strong> green, amber or red show good, warning or bad. Click a tile for the calculation, the top contributors and an AI insight, then <strong>Open full list</strong> or <strong>Ask AI in chat</strong>.</li>
+    <li><strong>Insight</strong> card: an AI or rule-based summary (<strong>Expand ▼</strong> for the full text), with data-quality warnings.</li>
+    <li><strong>Tables:</strong> tabs show row counts. Search all columns, filter status columns, sort by clicking a header, and page through 25–200 rows. <strong>ⓘ Column guide</strong> explains each column; click a score to see how it was worked out. <strong>⬇ CSV</strong> exports every filtered row of the current tab.</li>
+  </ul>
+
+  <h3 id="ag-finance">9.1 Finance &amp; Credit</h3>
+  <p>These agents analyse data and post no documents to SAP. The one exception is <strong>Log call in SAP</strong> in Collections, which creates an Activity after you confirm.</p>
   <table class="ref-table">
-    <thead><tr><th>Agent</th><th>Purpose / key settings</th></tr></thead>
+    <thead><tr><th>Agent</th><th>Settings (defaults)</th><th>What you get</th></tr></thead>
     <tbody>
-      <tr><td><strong>Collections &amp; Receivables</strong></td><td>Prioritised collections worklist. Settings: customer, invoice date range, aging-as-of date, minimum days overdue.</td></tr>
-      <tr><td><strong>Cash Flow Forecast</strong></td><td>Weekly cash projection over a horizon (default 13 weeks). The opening balance is taken from the G/L.</td></tr>
-      <tr><td><strong>Credit Risk</strong></td><td>Credit-hold candidates, open-order exposure and suggested credit-limit changes.</td></tr>
-      <tr><td><strong>AP Payment Optimization</strong></td><td>Which vendors to pay from the cash available. Settings: reserve, window, strategy (balanced / discounts / overdue / preserve), discount hurdle %, partial payments, priority vendors.</td></tr>
-      <tr><td><strong>Profitability</strong></td><td>Profitability over the last N days, optionally net of credit memos.</td></tr>
-      <tr><td><strong>Margin Leakage</strong></td><td>Finds sales below the target margin, above the maximum discount, or unusually far below the median price.</td></tr>
-      <tr><td><strong>Sales Commission</strong></td><td>Commission calculated on sales, collections or margin, with rates and customer rules.</td></tr>
-      <tr><td><strong>Month-End Closing</strong></td><td>Close checklist, accruals and task plan by team for a chosen period end.</td></tr>
+      <tr><td><strong>Collections &amp; Receivables</strong></td><td>Customer, invoice date from/to, Aging as of, Min. days overdue (0); payment history (12 months)</td><td>KPIs: Total receivables, Overdue, Overdue %, Over 90 days, DSO, Customers overdue, Promises due ≤7d, Broken promises. <em>Collection worklist</em> ranks customers by a 0–100 score: overdue amount 40, age of oldest overdue 25, payment history 15, broken promise 10, over credit limit 10. Each customer gets a recommended action, from a reminder email up to final notice or credit hold. Also <em>Overdue invoices</em> and <em>Aging summary</em>. <strong>Draft email</strong> writes a reminder (a final notice when over 60 days) for you to copy or open in your mail program; nothing is sent automatically. <strong>Log promise</strong> records a promise-to-pay (amount, date, note). It feeds the <em>Promise</em> column and the promise KPIs, and becomes KEPT when 98% is paid by the promise date plus a grace period, otherwise BROKEN. Promises are stored in AgentSphere, not SAP. <strong>Log call in SAP</strong> asks for confirmation, then creates a call Activity for the customer listing the overdue invoices.</td></tr>
+      <tr><td><strong>Cash Flow Forecast</strong></td><td>Horizon (13 weeks), Opening balance (blank = cash and bank G/L balances), As of</td><td>Weekly forecast: Opening, A/R in, Sales orders in, A/P out, POs out, Net, Closing. Weeks are marked SHORTFALL (closing below zero) or DRAWDOWN (net outflow). A/R is expected on its due date plus the customer's usual delay, weighted by age (95% if current, down to 10% if over a year overdue). Open sales orders count at 85%; A/P and open POs at 100%. Tabs: Inflows, Outflows, Cash G/L accounts.</td></tr>
+      <tr><td><strong>Credit Risk</strong></td><td>As of</td><td>A 0–100 risk score per customer, from overdue share, age of the oldest overdue, late payment, limit use and new orders while overdue. Grades: <strong>A</strong> Low, <strong>B</strong> Moderate, <strong>C</strong> Elevated, <strong>D</strong> High, <strong>E</strong> Severe. Trend versus the last run (WORSE / BETTER / STABLE / NEW). Flags include no limit set, over limit and BP frozen. Tabs: Risk register, Watchlist (D/E or worsening), Limit review (a suggested limit from sales, terms and grade) and Grade summary. Limits are only suggested, never changed in SAP.</td></tr>
+      <tr><td><strong>AP Payment Optimization</strong></td><td>Cash available (blank = G/L), Keep in reserve (0), Window (14 days), Strategy (balanced / discounts / overdue / preserve), Discount hurdle % p.a. (12), Partial payments (no), Priority vendors, Payment date</td><td>A proposed payment run. Must-pay invoices are funded first (overdue, due within 3 days, a worthwhile discount, or a priority vendor), then the rest by priority score. A discount is taken only when its annualised return beats the hurdle. Decisions: PAY NOW, TAKE DISCOUNT, PAY ON DUE DATE, PART PAY, NO CASH, DEFER, HOLD (payment block or frozen vendor). Tabs: Payment run, Not funded, Overdue, Discounts, Weekly schedule, By vendor. No outgoing payments are created; post them under <a href="#outgoing">Outgoing Payment</a>.</td></tr>
+      <tr><td><strong>Profitability</strong></td><td>Last N days (90) or From date, Net of credit memos (yes), Period to</td><td>Revenue (net of discounts, excluding freight), Cost of sales, Gross profit and margin, plus Loss-making invoices and <em>Lines without cost</em> (profit on those lines is overstated). Tabs by customer, item, sales employee, warehouse, branch, item group and document, plus Loss-making lines.</td></tr>
+      <tr><td><strong>Margin Leakage</strong></td><td>Last N days (90), Target margin % (15), Max discount % (10), Anomaly: % below median (25)</td><td>Each invoice line is checked for BELOW COST, BELOW TARGET, EXCESSIVE DISCOUNT, PRICE ANOMALY (well below the item's median price), ZERO PRICE and FREIGHT NOT CHARGED. Only the largest leak per line is counted. KPIs include Estimated leakage and Leakage % of revenue. Tabs: All leaks, Below target, Discounts, Price anomalies, Freight, Inconsistent prices, and by sales employee and by customer.</td></tr>
+      <tr><td><strong>Sales Commission</strong></td><td>Period from/to, Commission basis (sales / collections / margin), Default rate % (2), Min margin %, Use SAP employee %, Sales employee rates (e.g. <code>Devraj=2.5; Zankhana=3</code>), Customer rules (e.g. <code>CUS00001=3</code>)</td><td>The rate is taken from, in order: a customer rule, a sales-employee rate you entered, the SAP sales employee's commission %, then the default rate. Credit memos are clawed back; lines below the minimum margin earn nothing. Tabs: By sales employee, Detail, By customer, Rules. Your settings are saved per company; type <em>none</em> to clear a rule. Nothing is posted to SAP or payroll.</td></tr>
+      <tr><td><strong>Month-End Closing</strong></td><td>Period end (end of this month from the 20th, otherwise end of last month)</td><td>A 14-point close checklist: GRPOs not invoiced (GRNI), deliveries not invoiced, returns without credit memos, open credit memos, payments on account, customers and vendors to reconcile, back-dated postings, unposted drafts, negative stock and posting-period status. Each check is OK, ATTENTION, CRITICAL, INFO or N/A, and <strong>Close readiness</strong> is the share of checks that are OK. Tabs: Close checklist, All issues, and one per check. It does not lock periods or post accruals.</td></tr>
     </tbody>
   </table>
 
-  <h3 id="ag-supply">8.2 Supply Chain</h3>
+  <h3 id="ag-supply">9.2 Supply Chain</h3>
   <table class="ref-table">
     <thead><tr><th>Agent</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td><strong>MRP Auto-PO</strong></td><td>Scans reorder points, builds Purchase Orders grouped by vendor, posts them and emails the vendors. Every run is recorded in an audit log.</td></tr>
+      <tr><td><strong>MRP Auto-PO</strong></td><td>Scans reorder points, builds Purchase Orders grouped by vendor, posts them and emails the vendors. Every run is recorded in an audit log (see below).</td></tr>
       <tr><td><strong>Stock Reorder Monitor</strong></td><td>Items below minimum stock, turned into draft POs (see below).</td></tr>
       <tr><td><strong>Purchase Three Way Match</strong></td><td>Vendor-level PO / GRPO / invoice variance dashboard (see <a href="#three-way">5.6</a>).</td></tr>
-      <tr><td><strong>Production Agent</strong></td><td>Open production orders at risk of component shortages.</td></tr>
-      <tr><td><strong>Purchase Recommendation</strong></td><td>Reorder and EOQ suggestions, with supplier risk and the impact on sales and production orders.</td></tr>
+      <tr><td><strong>Production Agent</strong></td><td>Read-only. Open production orders rated by component availability: Critical (a component has no stock), High (a component under 50% covered), Medium (any shortage) or On Track. KPIs include Due This Week, Overdue, Ready to Produce and Shortage Value. Tabs: 🏭 Production Orders (with a detail view of components, stock and planned vs actual cost), ⚠️ Component Shortage and 📅 Timeline. Click <strong>Refresh</strong> to reload.</td></tr>
+      <tr><td><strong>Purchase Recommendation</strong></td><td>Read-only; it creates no POs. Items with stock on hand below Min Stock, with Suggested Qty (the larger of the shortfall and the EOQ) and urgency (CRITICAL at zero stock, HIGH below 50% of Min). Tabs: 🛒 Purchase Recommendations, ⚠️ Supplier Risks (late-delivery rate and spend share over 6 months) and 📋 Order Impact (sales orders due within 45 days). To create the POs, use Stock Reorder Monitor or MRP Auto-PO.</td></tr>
       <tr><td><strong>Rush Orders</strong></td><td>Urgency scoring for open sales orders, with expedite approval (see below).</td></tr>
-      <tr><td><strong>Shipment Delays</strong></td><td>Predicts late POs from each vendor's history and shows the sales orders affected.</td></tr>
+      <tr><td><strong>Shipment Delays</strong></td><td>Read-only. Click <strong>Scan</strong> to estimate a delay probability for every open PO from the vendor's last 6 months and the days left to the due date. Overdue POs are CRITICAL. Tabs: 🚚 Shipment Risk, 📊 Vendor Reliability (with <strong>⬇ Export CSV</strong>), 📦 SO Impact, 🏭 Production Impact (STOP / AT RISK / COVERED) and 📅 Inbound Schedule. <strong>✉ Follow up</strong> drafts a chaser email to copy or open in your mail program.</td></tr>
       <tr><td><strong>Supply Chain Demand Forecast</strong></td><td>S&amp;OP plan; see <a href="#forecasting">Forecasting</a>.</td></tr>
       <tr><td><strong>Inventory Optimization</strong></td><td>Safety stock, recommended Min (reorder point) and Max (order-up-to) per item, plus ABC/XYZ class. Settings: demand lookback, service level %, review period, lead time, warehouse.</td></tr>
       <tr><td><strong>Dead Stock</strong></td><td>Slow-moving (after 90 days) and dead (after 180 days) stock, with suggested actions: Freeze Purchase, Transfer, Promotion, Liquidate, Consume.</td></tr>
-      <tr><td><strong>Vendor Performance</strong></td><td>Vendor scorecard over a lookback period in months.</td></tr>
+      <tr><td><strong>Vendor Performance</strong></td><td>Read-only scorecard over a lookback (default 12 months), using the standard agent screen. Score weights: OTIF (on time and in full) 35, Price 20, Quality (returns) 20, Shortages 10, Lead-time consistency 10, Payment terms 5. Weights are re-scaled when some data is missing. Grades: <strong>A</strong> Preferred (80+), <strong>B</strong> Approved (65+), <strong>C</strong> Improvement plan (50+), <strong>D</strong> At risk. Confidence is LOW when little data backs the score. Tabs: Scorecard, Delivery (OTIF), Price comparison (with savings if you switched to the cheapest vendor), Overdue PO lines, Quality &amp; returns.</td></tr>
     </tbody>
   </table>
+
+  <h4 id="mrp-auto-po">MRP Auto-PO</h4>
+  <p>This is the only Supply Chain agent that posts to SAP and emails vendors. The screen shows the flow: MRP Trigger › Threshold › AI Analysis › Draft PO › Approval › Manager ✓ › Auto PO › Email Vendor.</p>
+  <ol class="steps">
+    <li>On <strong>📊 MRP Scan</strong>, click <strong>Run MRP Now</strong>. Active, stock-managed purchase items with a Minimum Inventory are checked: <em>Projected = On hand − Committed + On order</em>. An item is planned when Projected is below Min. The quantity orders up to Max (or Min if no Max is set), rounded to the minimum order quantity and order multiple. Items made in-house are left out. Urgency: Critical (nothing available), High (gap of at least 70% of Min), Medium.</li>
+    <li>On <strong>📦 Items &amp; Vendors</strong>, filter by urgency, select items and click <strong>Build Draft POs →</strong>.</li>
+    <li>On <strong>📝 Draft POs</strong>, drafts are grouped by preferred vendor. Items without one go to <em>Vendor not assigned</em>; use <strong>Set</strong> to choose a vendor. Edit quantities or prices, or remove lines. Drafts are kept in AgentSphere until posted, and <strong>Discard</strong> deletes one.</li>
+    <li><strong>Post to SAP</strong> creates the Purchase Order straight away. If SAP approval templates apply, the PO goes to the approver; see <strong>✅ Approval</strong> (or <strong>Check Approval</strong>).</li>
+    <li><strong>Email Vendor</strong> sends the posted PO through the company mail server after you confirm. The vendor needs an email address in SAP.</li>
+  </ol>
+  <p><strong>📋 Audit Log</strong> lists the last 100 events since the server last started.</p>
 
   <h4>Rush Orders</h4>
   <ol class="steps">
@@ -1287,46 +1699,129 @@
       </div>
     </div>
   </div>
-  <div class="caption">Figure 8.2 — Stock Reorder Monitor (example data)</div>
+  <div class="caption">Figure 9.2 — Stock Reorder Monitor (example data)</div>
   <ol class="steps">
     <li>The monitor lists items whose available stock is below the item's <strong>Minimum Inventory</strong>, with gap, quantity on order, lead time and preferred vendor.</li>
     <li>Adjust the <strong>Order Qty</strong> if needed, select the items (or Select All) and click <strong>Generate Draft POs →</strong>. Drafts are grouped by preferred vendor; items without a preferred vendor are left out.</li>
     <li>On the <strong>📝 Draft POs</strong> tab, review each draft and click <strong>Post to SAP</strong> to create the Purchase Order.</li>
   </ol>
 
-  <h3 id="ag-ocr">8.3 OCR Processing</h3>
+  <h3 id="ag-ocr">9.3 OCR Processing</h3>
   <table class="ref-table">
     <thead><tr><th>Agent</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td><strong>Scan PO</strong></td><td>Reads a supplier quote or PO by OCR and creates a Purchase Order</td></tr>
-      <tr><td><strong>Scan Expense Invoice</strong></td><td>Reads an expense bill and posts it</td></tr>
+      <tr><td><strong>Scan PO</strong></td><td>Reads a supplier quote or PO and <strong>posts a Purchase Order</strong> in SAP</td></tr>
+      <tr><td><strong>Scan Expense Invoice</strong></td><td>Reads an expense bill and <strong>posts a service A/P Invoice</strong> with G/L lines</td></tr>
       <tr><td><strong>Scan A/P Invoice</strong></td><td>Reads a supplier invoice and matches it to a GRPO (see <a href="#scan-apinv">5.7</a>)</td></tr>
-      <tr><td><strong>Scan Inward</strong></td><td>Reads an inward (goods-in) document</td></tr>
-      <tr><td><strong>Scan Gate Pass</strong></td><td>Reads a gate pass</td></tr>
-      <tr><td><strong>Scan Document Mode</strong></td><td>General document capture</td></tr>
+      <tr><td><strong>Scan Inward</strong></td><td>Reads a delivery challan into the <strong>Inward Register</strong> (stored in AgentSphere, not posted to SAP)</td></tr>
+      <tr><td><strong>Scan Gate Pass</strong></td><td>Reads a gate pass into the <strong>Gate Pass Register</strong> (stored in AgentSphere, not posted to SAP)</td></tr>
+      <tr><td><strong>Scan Document Mode</strong></td><td>Reads any document, suggests its type and files it (not posted to SAP)</td></tr>
+      <tr><td><strong>Bank Reconciliation</strong></td><td>Reads a bank statement and reconciles it with the SAP bank G/L account (see below)</td></tr>
     </tbody>
   </table>
 
-  <h3 id="ag-sales">8.4 Sales &amp; Pricing</h3>
+  <h4 id="ocr-workbench">Scan PO, Scan Expense Invoice, Scan Inward and Scan Gate Pass</h4>
+  <p>These four agents share one screen: the document on the left and an editable form on the right (drag the divider to resize). The status badge moves through Upload › Reading › Matching › Review › Posted.</p>
+  <ol class="steps">
+    <li><strong>Upload</strong> a PDF, JPG, PNG, WEBP or TIFF of up to 15 MB, by dragging it onto the drop zone or clicking to browse. Reading usually takes 10–30 seconds, then the fields are matched against SAP master data.</li>
+    <li><strong>Review the form.</strong> Every field shows <em>On document: …</em> underneath so you can compare. Vendor, item, account and partner fields are type-ahead searches in SAP (use ↑ ↓ and <kbd>Enter</kbd>). Untick a line to leave it out, or use <strong>+ Add line</strong>.</li>
+    <li><strong>Check the Match Score.</strong> The ring shows how well the form matches SAP and the document: <span class="badge green">Ready</span> at 90% or more, <span class="badge orange">Review</span> at 70–89%, <span class="badge red">Fix needed</span> below 70%. The list under it shows which criteria lost points. A blocking problem, such as no vendor, keeps the score below 70%.</li>
+    <li>Click the action button. The success screen shows the document or register number, with <strong>Scan Another …</strong>. If saving fails, your entries are kept so you can fix them and try again. <strong>⟳ New Document</strong> starts over.</li>
+  </ol>
+  <table class="ref-table">
+    <thead><tr><th>Agent</th><th>Form</th><th>Action and result</th></tr></thead>
+    <tbody>
+      <tr><td><strong>📦 Scan PO</strong></td><td>Vendor, Currency, Vendor Ref. No., Posting Date, Delivery Date (default: today + 14 days), Remarks. Lines: SAP Item, Qty, UoM, Unit Price, Warehouse, Tax. Items are matched by code first, then by name; lines without an SAP item must be fixed or unticked.</td><td><strong>Post Purchase Order to SAP</strong> creates a real Purchase Order (not a draft).</td></tr>
+      <tr><td><strong>🧾 Scan Expense Invoice</strong></td><td>Vendor, Vendor Invoice No., Posting, Document and Due Date (default: invoice due date or today + 30). Expense Lines: Description, G/L Account (suggested from active expense accounts by the bill's category), Tax Code (suggested when its rate matches the bill's tax), Net, Tax and Gross. <em>Totals — form vs. invoice</em> shows whether Net, Tax and Total match the bill.</td><td><strong>Post A/P Invoice to SAP</strong> creates a real service-type A/P Invoice.</td></tr>
+      <tr><td><strong>📥 Scan Inward</strong></td><td>Challan No. and Date, Vehicle No., Driver, Supplier (optional), Received At (Warehouse), <em>Against Purchase Order</em> (linked automatically when the challan quotes the PO number), Remarks. <em>Materials Received</em>: SAP Item, Qty Received, UoM and, with a PO, the PO Open Qty, flagging <em>Not on PO</em> or <em>Over PO</em>.</td><td><strong>Save to Inward Register</strong>. No SAP document is created; post the GRPO separately (see <a href="#po-to-grpo">5.4</a>).</td></tr>
+      <tr><td><strong>🪪 Scan Gate Pass</strong></td><td>Pass No., Date, Pass Type (visitor, vehicle, material or other), Direction (In / Out), Visitor / Vehicle, Company (searched in SAP partners and leads, or free text), Purpose, Material, Time In / Time Out, Authorised By.</td><td><strong>Save to Gate Pass Register</strong>. No SAP document is created.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><strong>⚠ Posting is immediate</strong>Scan PO and Scan Expense Invoice post real documents to the active SAP company. There is no draft step or second confirmation, so review the Match Score first. For a foreign currency, SAP must have an exchange rate for the posting date; if not, posting stops and asks you to add it under <em>Administration → Exchange Rates and Indexes</em> in SAP B1.</div>
+  <p><strong>Duplicates:</strong> Scan Inward warns when the same challan number and date are already in the register, and Scan Gate Pass when the same pass number and date are. Click <strong>It's a different delivery — allow</strong> (or <strong>It's a different pass — allow</strong>) only if it really is a new entry.</p>
+
+  <h4 id="ocr-document">Scan Document Mode</h4>
+  <p>Drop any document (PDF, JPG, PNG, WEBP or TIFF, up to 15 MB). The agent shows what it read: Title, Doc #, Date, Parties, Amounts, a summary and an <em>AI Suggested Type</em>. Classify it with one of the buttons <strong>Purchase Order</strong>, <strong>Expense Invoice</strong>, <strong>A/P Invoice</strong>, <strong>Inward</strong>, <strong>Gate Pass</strong> or <strong>Archive Only</strong>. The document is saved in AgentSphere with a record number. <strong>Open Target Panel →</strong> opens the matching scan agent, where you upload the file again to process it. Nothing is posted to SAP from this screen.</p>
+
+  <h4 id="bank-reco">Bank Reconciliation</h4>
+  <p>Open <span class="path">AI Agents → OCR Processing → Bank Reconciliation</span>. It scans the bank statement, matches every line with the SAP bank ledger and produces a bank reconciliation statement. <strong>Nothing is posted to SAP.</strong></p>
+  <ol class="steps">
+    <li><strong>Scan bank statement:</strong> drop the statement (PDF, digital or scanned, or a PNG / JPG / WEBP photo, up to 20 MB). Every page is read. Check the extracted <em>Bank</em>, <em>Account no</em>, <em>Period from / to</em>, <em>Opening</em> and <em>Closing balance</em>; all can be edited.</li>
+    <li>Read the check pills. <em>Running balance ties on every row</em> and <em>Opening + movements = closing</em> mean the statement was read correctly. If rows break the running balance, correct them before going on. Very long statements should be split into several PDFs.</li>
+    <li><strong>Reconcile with SAP:</strong> confirm the <strong>Bank G/L account</strong> (suggested from the account number), set the <strong>Carry-forward look-back (days)</strong> (default 90) and keep <strong>AI-assisted matching for leftovers</strong> ticked if you want it. Click <strong>Reconcile</strong>.</li>
+    <li>The agent loads the account's journal lines for the period, plus earlier lines not yet reconciled in SAP within the look-back. It removes reversal pairs, then matches in passes: amount + reference / cheque number → amount + party or narration (within 10 days) → unique amount (within 3 days; large amounts flagged for review) → groups (one bank line to several SAP lines, or the reverse) → AI. AI matches are accepted only when the amounts tie, and are shown as <em>ai</em> in the Matched tab for you to verify.</li>
+    <li>Review the KPIs: <em>Balance as per bank</em>, <em>Balance as per SAP</em>, <em>Auto-matched</em>, <em>Open items</em> and <em>Difference</em> (<em>Reconciled ✓</em> when it is zero).</li>
+    <li>Work through the tabs: the four reconciling buckets, <strong>Matched</strong>, <strong>Excluded</strong>, <strong>Bank statement</strong> and <strong>SAP ledger</strong>. Tick rows and use <strong>Match selected</strong> (totals must be equal and in the same direction), <strong>Exclude selected</strong> (with a reason, e.g. "Cleared in an earlier statement"), or <strong>Unmatch / Restore selected</strong>.</li>
+    <li>Add <strong>Manual reconciling items</strong> for carry-forwards from last month or items not in this statement (Category, Date, Description, Amount).</li>
+    <li>Click <strong>✦ Review reconciliation</strong> for an AI review, then <strong>⬇ Excel</strong> to download the reconciliation (statement, Matched and Bank Statement sheets). Each tab also exports to CSV.</li>
+  </ol>
+  <table class="ref-table">
+    <thead><tr><th>Bank reconciliation statement</th></tr></thead>
+    <tbody>
+      <tr><td>Balance as per bank statement</td></tr>
+      <tr><td>Less: Cheques Issued But Not Presented</td></tr>
+      <tr><td>Less: Credited in Bank But Not Booked</td></tr>
+      <tr><td>Add: Cheques Received But Not Deposited</td></tr>
+      <tr><td>Add: Debited by Bank But Not Booked</td></tr>
+      <tr><td><strong>= Balance as per books (computed)</strong>, compared with the book balance in SAP. The <strong>Difference</strong> should be zero.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="ag-sales">9.4 Sales &amp; Pricing</h3>
   <table class="ref-table">
     <thead><tr><th>Agent</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td><strong>Dynamic Pricing</strong></td><td>Pricing scenarios that can be applied to SAP price lists</td></tr>
-      <tr><td><strong>Order Intelligence</strong></td><td>Sales orders at risk of stock shortages</td></tr>
+      <tr><td><strong>Dynamic Pricing</strong></td><td>Suggested price changes per item, which can be applied to an SAP price list (see below)</td></tr>
+      <tr><td><strong>Order Intelligence</strong></td><td>Open sales orders at risk of stock shortages (see below)</td></tr>
       <tr><td><strong>Product Forecasting</strong></td><td>Item-level demand forecast (see <a href="#forecasting">Forecasting</a>)</td></tr>
-      <tr><td><strong>Sales Follow-up</strong></td><td>Stale quotations and customers with no recent contact</td></tr>
-      <tr><td><strong>Quotation Intelligence</strong></td><td>Checks quotation margins against minimum and target margin %</td></tr>
+      <tr><td><strong>Sales Follow-up</strong></td><td>Quotations, orders and opportunities that need chasing, by priority (see below)</td></tr>
+      <tr><td><strong>Quotation Intelligence</strong></td><td>Checks quoted prices against cost, margin targets and price history (see below)</td></tr>
       <tr><td><strong>Mail PO → SO</strong> <span class="badge green">ON</span></td><td>Watches a mailbox for customer PO PDFs and creates Sales Orders. Set up the mailbox on its <strong>📧 Email Configuration</strong> tab: IMAP host/port, email address, password or app password, SMTP host, poll interval. Then click <strong>Save &amp; Test Connection</strong>. For Gmail, use an App Password.</td></tr>
       <tr><td><strong>PO → Sales Order</strong></td><td>Upload a customer PO PDF. The agent matches the customer, runs a credit check and an ATP check, then creates the Sales Order.</td></tr>
     </tbody>
   </table>
+
+  <h4 id="dynamic-pricing">Dynamic Pricing</h4>
+  <p>Choose the <strong>Price List</strong> and <strong>Margin Target %</strong> (default 30) and click <strong>Analyse</strong>; the analysis also runs when the panel opens. Every active sales item is checked against 12 months of sales, its stock levels and its margin, using nine pricing rules checked in order. The first rule that applies sets the recommendation. Rules include Price Establishment (no price yet), Dead Stock (−15%), Margin Recovery (up to +20%), Shortage Pricing (+8%), Demand Capture (+5%) and Overstock Clearance (−7%). The collapsible <em>How Pricing Scenarios Are Calculated</em> table lists every rule and its formula.</p>
+  <ul>
+    <li><strong>KPI tiles:</strong> Price Increase, Price Decrease, Hold Price, Avg Price Change and Total Items. Filter the table with <strong>All</strong>, <strong>▲ Increase</strong>, <strong>▼ Decrease</strong> or <strong>● Hold</strong>, or search by item.</li>
+    <li><strong>Table:</strong> Item, Group, Avg Selling Price, Suggested Price, Change % and Recommendation. Click a value to see how it was calculated.</li>
+    <li><strong>Details</strong> shows the reasoning: demand (revenue, quantity, GP), inventory level (on hand, min, max), margin (current GP %, target, gap, cost) and price-to-cost position.</li>
+    <li><strong>▲ Apply Price Increase</strong> / <strong>▼ Apply Price Decrease</strong> in the details window writes the suggested price to the item on the selected SAP price list straight away, with no further confirmation. If the list is derived from a base list, that item's price becomes a manual price. If you changed the price list after analysing, click <strong>Analyse</strong> again first.</li>
+    <li>The <strong>Pricing AI</strong> chat answers questions such as "Top increases" or "Worst margin". It asks for your confirmation before applying a price.</li>
+  </ul>
+
+  <h4 id="order-intelligence">Order Intelligence</h4>
+  <p>Read-only. Click <strong>Scan</strong> (it also runs when the panel opens) to check open sales orders due in the next 60 days against stock on hand. An item is short when its committed quantity is more than its stock on hand.</p>
+  <ul>
+    <li><strong>KPI tiles:</strong> SOs Checked, At-Risk Orders, Critical (0% coverage), High Risk (below 50% coverage), Value at Risk and Short Items. An AI advisory banner summarises the impact and the immediate actions.</li>
+    <li><strong>🚨 At-Risk Orders:</strong> SO #, Customer, Due Date, Days Left, Order Value, Coverage, Short Items and Risk. Filter by 🔴 Critical, 🟠 High or 🟡 Medium. <strong>Detail</strong> shows each short line with the quantity needed, available, short and on order from open POs.</li>
+    <li><strong>📦 Stock Shortfalls:</strong> per item, On Hand, Committed, Shortage, On Order, Coverage and the sales orders affected.</li>
+    <li>The <strong>Order Intelligence AI</strong> chat covers "Most at risk", "Bottleneck items", "Recommendations" and "Customer impact".</li>
+  </ul>
+
+  <h4 id="sales-followup">Sales Follow-up</h4>
+  <p>Uses the standard agent layout (see <a href="#ai-agents">9</a>). Settings: <strong>Quote stale after (days)</strong> and <strong>No-contact gap (days)</strong>, both 7 by default. "Last touch" is the most recent SAP activity on the document or the customer, or the document's last update.</p>
+  <ul>
+    <li><strong>KPI tiles:</strong> Open quotations, Quotes to chase, Quote value at stake, Expired quotes, Open sales orders, Delayed orders, Delayed order value and Opportunities to act.</li>
+    <li><strong>Tabs:</strong> Quotations, Sales orders, Opportunities and By salesperson. Each row has a Status (for example EXPIRED, EXPIRING, FOLLOW UP, DELAYED), a <strong>Priority</strong> (HIGH / MEDIUM / LOW, based on value, days without contact and status) and a recommended follow-up.</li>
+    <li><strong>Draft email</strong> writes a follow-up email for you to copy or open in your mail program; nothing is sent automatically. <strong>Create follow-up in SAP</strong> asks for confirmation, then creates a task Activity in SAP, due in 2 days and linked to the document.</li>
+  </ul>
+
+  <h4 id="quote-intel">Quotation Intelligence</h4>
+  <p>Read-only, using the standard agent layout. Settings: <strong>Min. margin %</strong> (default 15) and <strong>Target margin %</strong> (default 25).</p>
+  <ul>
+    <li><strong>All open quotes</strong> (item code left blank): every open quotation line is checked against its cost, the customer's last price and the 12-month market price. Each line gets a verdict: BELOW MIN MARGIN, UNDER-PRICED (more than 5% below the customer's last price), ABOVE MARKET, CHECK UOM (price suspiciously low), NEW ITEM, NO DATA or OK. KPI tiles include Avg quoted margin and Potential uplift.</li>
+    <li><strong>Price check</strong> (enter an item code, and optionally Customer code, Qty, Proposed price and Competitor price): returns a <strong>Recommended price</strong>. It starts from the customer's last price, else the market median, else cost plus target margin. It is adjusted for a lower competitor price and for large quantities, and never goes below the minimum-margin floor.</li>
+    <li><strong>Tabs:</strong> Quote lines (or Price check), Quotations (per quotation: value, margin, flagged lines, uplift) and Price history (A/R invoices from the last 12 months).</li>
+  </ul>
 </div>
 
 <!-- ══════════════════════════════════════════
      9. FORECASTING
 ══════════════════════════════════════════ -->
 <div class="section" id="forecasting">
-  <h2 class="section-title"><span class="num">9</span> Forecasting</h2>
+  <h2 class="section-title"><span class="num">10</span> Forecasting</h2>
 
   <p>Forecasting is available in several places. Choose the one that fits your question:</p>
   <table class="ref-table">
@@ -1362,14 +1857,14 @@
       </table></div>
     </div>
   </div>
-  <div class="caption">Figure 9.1 — Product Forecasting results (example data)</div>
+  <div class="caption">Figure 10.1 — Product Forecasting results (example data)</div>
 </div>
 
 <!-- ══════════════════════════════════════════
      10. ANALYTICS
 ══════════════════════════════════════════ -->
 <div class="section" id="analytics">
-  <h2 class="section-title"><span class="num">10</span> Analytics &amp; Reporting</h2>
+  <h2 class="section-title"><span class="num">11</span> Analytics &amp; Reporting</h2>
 
   <p>Ask analytics questions in the main chat. How they are answered depends on your setup:</p>
   <ul>
@@ -1396,14 +1891,14 @@
   <h3>Reports &amp; KPIs</h3>
   <p><span class="path">Tools → Developer Tools → Reports &amp; KPIs</span> holds about 28 ready-made reports, in these categories: Financial KPIs, Sales Analytics, Inventory Analytics, Finance &amp; P&amp;L, Procurement &amp; Operations, Forecasting &amp; Scenario, Sales Intelligence, Inventory Intelligence and Daily / Weekly Reports. Examples include DPO, AP/AR aging buckets, Sales Growth YoY, Stock Valuation by Group, P&amp;L Summary, Sales Projection (20/30/50% drop), Purchase vs Sales, Dead Stock 180+, Today's Sales Summary and This Week's Receivables/Payables.</p>
 
-  <div class="callout tip"><strong>💡 Dashboards</strong>For visual dashboards, see Sales Analysis and Purchase Analysis (sections <a href="#o2c-reports">6.8</a> and <a href="#p2p-reports">5.11</a>), the Financial Dashboard and Inventory Dashboard (<a href="#fin-inv">7</a>) and the My Home insights (<a href="#kpi">4.6</a>).</div>
+  <div class="callout tip"><strong>💡 Dashboards</strong>For visual dashboards, see Sales Analysis and Purchase Analysis (sections <a href="#o2c-reports">7.8</a> and <a href="#p2p-reports">5.11</a>), the Financial Dashboard and Inventory Dashboard (<a href="#fin-inv">8</a>) and the My Home insights (<a href="#kpi">4.6</a>).</div>
 </div>
 
 <!-- ══════════════════════════════════════════
      11. MASTER DATA
 ══════════════════════════════════════════ -->
 <div class="section" id="master-data">
-  <h2 class="section-title"><span class="num">11</span> Master Data</h2>
+  <h2 class="section-title"><span class="num">12</span> Master Data</h2>
 
   <p>Open <span class="path">Master Data → Master Records</span>. Each record type has a guided wizard with a step bar, clickable choice chips loaded from SAP, and <strong>Back</strong> / <strong>Restart</strong> buttons. The wizards <strong>create</strong> new records.</p>
 
@@ -1425,15 +1920,78 @@
 
   <h3>Looking up or changing existing records</h3>
   <p>The wizards do not edit existing records (apart from Service Calls). To look up a record, ask in the main chat, for example <em>"Show customer C20000"</em> or <em>"customer list"</em>. With an AI engine selected you can also ask for a change, for example <em>"change payment terms for vendor V10000 to Net 45"</em>. The assistant asks you to confirm before writing to SAP. Otherwise, make the change in SAP Business One.</p>
+
+  <div class="callout tip"><strong>💡 Many records at once?</strong>Use <span class="path">Master Data → Excel Import</span> (Item Master Import, Business Partner Import, BOM Import) to create or update master records from a spreadsheet. See <a href="#excel-import">Excel Import</a>.</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     13. EXCEL IMPORT
+══════════════════════════════════════════ -->
+<div class="section" id="excel-import">
+  <h2 class="section-title"><span class="num">13</span> Excel Import</h2>
+
+  <p>The Excel Import agents load records from a spreadsheet into SAP. All six work the same way, like SAP's Data Transfer Workbench but with a simpler column mapper. Each opens from its own menu item:</p>
+  <table class="ref-table">
+    <thead><tr><th>Menu item</th><th>Creates in SAP</th><th>Permission</th></tr></thead>
+    <tbody>
+      <tr><td><span class="path">Sales — O2C → AI Workflow → SO Excel Import</span></td><td>Sales Orders</td><td>Sales Order Excel Import</td></tr>
+      <tr><td><span class="path">Master Data → Excel Import → Item Master Import</span></td><td>Items, with prices (create or update)</td><td>Item Master Import (Excel)</td></tr>
+      <tr><td><span class="path">Master Data → Excel Import → Business Partner Import</span></td><td>Customers / vendors / leads, with addresses (create or update)</td><td>Business Partner Import (Excel)</td></tr>
+      <tr><td><span class="path">Master Data → Excel Import → BOM Import</span></td><td>Bills of Materials (create only)</td><td>Bill of Materials Import (Excel)</td></tr>
+      <tr><td><span class="path">Purchase — P2P → AI Workflow → AP Expense Import (Excel)</span></td><td>Service-type A/P Invoices (G/L lines)</td><td>A/P Expense Invoice Import (Excel)</td></tr>
+      <tr><td><span class="path">Finance → Salary → Journal Entry</span></td><td>Journal Entries, one per employee per month</td><td>Salary → Journal Entry (Excel)</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="xl-import">13.1 Importing a File</h3>
+  <p>The screen has two views: <strong>📥 Import</strong> and <strong>🧩 Templates &amp; mapping</strong>. The Import view shows four tiles: <strong>Pending</strong> (ready to post), <strong>Posted to SAP</strong>, <strong>Missing data</strong> (fix in the sheet and upload again) and <strong>Rejected by SAP</strong> (kept in Pending so you can retry).</p>
+  <ol class="steps">
+    <li>Choose the <strong>Template</strong>, or leave <em>✨ Auto-detect from the sheet's headings</em>. The template's headings are shown as chips (required ones in blue). Click <strong>⬇ Download Excel template</strong> for a blank sheet with the right headings.</li>
+    <li>Drop the <strong>.xlsx</strong> or <strong>.csv</strong> file on the upload card, or click to choose it (up to 20,000 rows).</li>
+    <li>Read the <strong>Acknowledgement</strong> card: rows read, records found, ready to post, missing data and duplicates, plus which heading went to which SAP field (ignored headings are greyed out). If the file is not accepted, the card says why, for example that no heading row matched or a required column is missing.</li>
+    <li>Open the <strong>⏳ Pending</strong> tab. Click a row to see its header, lines, any issues and <strong>{ } Show SAP payload</strong>.</li>
+    <li>Tick the records (or all) and click <strong>▶ Post selected to SAP</strong>. Confirm in the dialog; it warns which records will be <em>updated</em> rather than created. Records are posted in small batches with a progress bar.</li>
+    <li>The <strong>Posting result</strong> lists each record as posted or not. Posted records move to <strong>✅ Posted</strong> with the SAP document number; rejected ones stay in Pending with SAP's message.</li>
+  </ol>
+  <ul>
+    <li><strong>⚠️ Missing data</strong> lists records with errors (unknown customer, item or account, missing required value, and so on), with <em>What is missing / wrong</em>. Fix the sheet and upload it again, or fix the master data in SAP and click <strong>↻ Re-check with SAP</strong>.</li>
+    <li><strong>Re-uploading</strong> a file replaces records with the same key that are not yet posted. A record whose key is already posted is listed as a duplicate.</li>
+    <li><strong>🗑 Remove</strong> deletes unposted records from the list (nothing changes in SAP). <strong>⬇ Excel</strong> exports the current tab. <strong>Upload history</strong> shows every batch with its counts.</li>
+  </ul>
+
+  <h3 id="xl-templates">13.2 Templates &amp; Mapping</h3>
+  <p>A template tells the agent which Excel column goes to which SAP field. Every company starts with built-in templates for each type; you can copy and change them. Templates are kept per company and per import type. Creating or editing templates needs the <em>Excel Import — Manage Templates</em> permission; other users can view mappings and download templates.</p>
+  <ol class="steps">
+    <li>Open <strong>🧩 Templates &amp; mapping</strong>. Use <strong>＋ New template</strong>, <strong>📄 New from Excel sample</strong> (reads the headings from your own file), or <strong>⧉ Copy</strong> on an existing one. Other buttons: <strong>🧩 Edit mapping</strong>, <strong>⬇ Excel</strong>, <strong>★ Make default</strong>, <strong>🗑</strong>.</li>
+    <li>Fill in the <strong>Template name</strong>, <strong>Description</strong>, the date format used in the sheet (Day/Month/Year, Month/Day/Year or Year-Month-Day) and the <strong>Sheet layout</strong>: <em>Table</em> (a heading row and one row per line, all sheets) or <em>Form</em> (one sheet per record, as label | value). For items and business partners, tick <strong>Update existing records</strong> to update records that already exist instead of reporting an error.</li>
+    <li>Map the columns: click an Excel column on the left, then a SAP field on the right (or drag it across). <strong>✨ Auto-map</strong> matches by name. Fields can be filtered by Header / Lines / UDF; <strong>＋ Add field</strong> adds any other field such as <code>U_Region</code>.</li>
+    <li>In the mapping table, set <strong>Required</strong> (an empty cell sends the record to Missing data), <strong>Group key</strong> (rows with the same key become one record, e.g. Order No), a <strong>Default / fixed value</strong>, and <strong>Also accepted headings</strong> (other spellings of the same heading). A SAP field with no Excel column and a fixed value sends that value on every record.</li>
+    <li>Special targets: <em>Record key</em> (groups rows, not posted), <em>Information only</em> (shown but not posted), <em>Not mapped (ignored)</em>.</li>
+    <li>Click <strong>💾 Save template</strong>. The check pills show whether every field SAP needs is mapped and a group key is set.</li>
+  </ol>
+
+  <h3 id="xl-types">13.3 What Each Import Expects</h3>
+  <table class="ref-table">
+    <thead><tr><th>Type</th><th>Standard columns (* required)</th><th>Checks and rules</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Sales Orders</strong></td><td>Order No (key), Customer Code*, Customer Name, Posting Date, Delivery Date*, Customer PO No, Sales Employee, Branch, Remarks, Item Code*, Item Description, Quantity*, Unit Price, Discount %, Tax Code, Warehouse, UoM, Line Remarks</td><td>Customer must be an active customer; items must be active sales items; warehouse and tax code are checked; sales employee, branch and payment terms can be given by name. Delivery Date not before Posting Date (default today); quantity above 0; discount 0–100.</td></tr>
+      <tr><td><strong>Items</strong></td><td>Item Code* (key), Item Description*, Foreign Name, Item Group, Inventory / Sales / Purchase Item (Y/N), UoMs, Bar Code, Preferred Vendor, Default Warehouse, Manage Batch, Manage Serial, Min / Max Stock, Remarks, Price List, Price, Currency</td><td>Repeat the row to give prices in more price lists. Existing codes are an error unless <em>Update existing records</em> is on.</td></tr>
+      <tr><td><strong>Business Partners</strong></td><td>BP Code* (key), BP Name*, BP Type* (Customer / Vendor / Lead), BP Group, Currency, Tax ID, Phone, Mobile, Email, Contact Person, Payment Terms, Credit Limit, Remarks, Address ID, Address Type (Bill to / Ship to), Street, Street 2, City, Zip Code, State, Country</td><td>One row per address; a repeated address ID and type is flagged. Create or update as for items.</td></tr>
+      <tr><td><strong>Bills of Materials</strong></td><td>Parent Item* (key), Parent Description, BOM Type (default Production), Parent Qty (default 1), Parent Warehouse, Component*, Component Description, Quantity*, Issue Warehouse, Issue Method, Comment</td><td>The parent must exist as an item and must not already have a BOM (existing BOMs are not updated). A parent cannot be its own component; repeated components are flagged; quantities above 0.</td></tr>
+      <tr><td><strong>A/P Expense Invoices</strong></td><td>Vendor Code* and Vendor Invoice No* (together the key), Vendor Name, Invoice Date, Posting Date, Due Date, Remarks, G/L Account*, Description, Amount*, Tax Code, Cost Center, Project</td><td>G/L account by code, account number or name; title and inactive accounts are rejected. A vendor invoice number already booked for that vendor in SAP is rejected as a duplicate. Zero amounts are flagged.</td></tr>
+      <tr><td><strong>Salary → Journal Entry</strong></td><td>Employee Code* and Month* (key → one entry per employee per month), Employee Name*, Posting Date, Department, plus one column per <strong>salary head</strong> (Basic, HRA, Special Allowance, Overtime, Bonus, PF Deduction, Income Tax, Professional Tax, Advance Recovery, Net Pay)</td><td>Two built-in templates: <em>Salary Register</em> (one row per employee) and <em>Salary Slips</em> (one sheet per employee, label | value). Each salary head has its own G/L account and Debit / Credit side in the template; every non-zero head becomes one journal line (a negative amount flips the side). The entry must balance; map Net Pay as a credit. Remarks default to <em>Salary {Month} - {Employee Name}</em> and can use any <code>{Column heading}</code>.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><strong>⚠️ Check the salary G/L accounts first</strong>The built-in salary template points the heads at default account names. Open <strong>🧩 Templates &amp; mapping</strong> and set each head's G/L account and Debit / Credit side to your own chart of accounts before the first import. If departments are cost centres, map Department to <em>Cost Center — all lines</em>.</div>
 </div>
 
 <!-- ══════════════════════════════════════════
      12. TOOLS
 ══════════════════════════════════════════ -->
 <div class="section" id="tools">
-  <h2 class="section-title"><span class="num">12</span> Tools &amp; Developer Tools</h2>
+  <h2 class="section-title"><span class="num">14</span> Tools &amp; Developer Tools</h2>
 
-  <h3 id="db-builder">12.1 DB Query Builder</h3>
+  <h3 id="db-builder">14.1 DB Query Builder</h3>
   <p>Open <span class="path">Tools → Developer Tools → DB Query Builder</span>. You need the DB Query Builder permission, and a <a href="#db-conn">DB Connection</a> must be active. The full-page version is at <code>/db-builder.html</code>.</p>
 
   <div class="callout warn">
@@ -1485,7 +2043,7 @@
       </div>
     </div>
   </div>
-  <div class="caption">Figure 12.1 — DB Query Builder: schema browser, SQL Editor and results</div>
+  <div class="caption">Figure 14.1 — DB Query Builder: schema browser, SQL Editor and results</div>
 
   <h4>Using the Query Builder</h4>
   <ol class="steps">
@@ -1500,15 +2058,15 @@
     The visual <em>Query Builder</em> tab writes SQL Server-style SQL (<code>SELECT TOP n [col]</code>). On a HANA database, write your query in the <strong>SQL Editor</strong> tab instead. For AI-written SQL, ask your question in the main chat with the <em>DB SQL</em> or <em>Analytics V2</em> engine.
   </div>
 
-  <h3 id="db-conn">12.2 DB Connection</h3>
+  <h3 id="db-conn">14.2 DB Connection</h3>
   <p><span class="path">Tools → Developer Tools → DB Connection</span> opens <strong>DB Direct Connection</strong>. It is visible to users with the DB Connection permission. A direct connection powers DB SQL, Analytics V2, the DB Query Builder and batch/serial/bin picking.</p>
   <ul>
     <li>Fields: Name, Type (<strong>SQL Server (MSSQL)</strong> or <strong>SAP HANA</strong>), Host / IP, Port (1433 or 30015), Database, Query Name (the HANA schema), User Name, Password, and <strong>Enable Password Encryption</strong>.</li>
     <li>Click <strong>Test</strong>, then <strong>Save &amp; Activate</strong>.</li>
-    <li>HANA details stored on an SAP connection (see <a href="#sap-conn">13.1</a>) are connected automatically when you switch to that company.</li>
+    <li>HANA details stored on an SAP connection (see <a href="#sap-conn">15.1</a>) are connected automatically when you switch to that company.</li>
   </ul>
 
-  <h3 id="other-tools">12.3 Other Tools</h3>
+  <h3 id="other-tools">14.3 Other Tools</h3>
   <table class="ref-table">
     <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -1518,7 +2076,21 @@
       <tr><td><strong>Query Library</strong></td><td>Cached chat prompts and answers, for reuse.</td></tr>
       <tr><td><strong>Schema Registry</strong></td><td>Registry of company-specific UDFs, custom tables and views, synced from SAP. It helps the AI understand your customisations.</td></tr>
       <tr><td><strong>Create UDT / View UDTs</strong></td><td>Create and browse SAP user-defined tables.</td></tr>
-      <tr><td><strong>Create Agent</strong> <span class="badge blue">ADMIN</span></td><td>Describe an agent in plain language. The AI generates its persona (icon, instructions, greeting, quick replies) and it runs as a custom chat agent. Includes a 🗃️ Local Tables tab.</td></tr>
+      <tr><td><strong>Create Agent</strong> <span class="badge blue">ADMIN</span></td><td>Build your own agents, screens, tables, APIs and workflows by describing them in plain language (see below).</td></tr>
+    </tbody>
+  </table>
+
+  <h4 id="create-agent">Create Agent (AI Studio)</h4>
+  <p><span class="path">Tools → Developer Tools → Create Agent</span> is for administrators. Each tab works the same way: <strong>1. Describe</strong> what you need in plain language and click <strong>✨ Generate … with AI</strong>, then <strong>2. Review</strong>, refine and publish. When you publish, you choose the <strong>Menu Section</strong> and <strong>Submenu</strong> where the new item will appear in the sidebar. Each tab lists what you have already built, so you can edit or delete it.</p>
+  <table class="ref-table">
+    <thead><tr><th>Tab</th><th>What it builds</th></tr></thead>
+    <tbody>
+      <tr><td><strong>💬 Chat Agent</strong></td><td>A custom chat agent. Enter the Agent Name and what it should do. The AI generates the Icon, Color, Greeting, System Prompt (persona and instructions) and Quick Replies. Edit them, then click <strong>💾 Save &amp; Publish</strong>.</td></tr>
+      <tr><td><strong>🧾 Form Designer</strong></td><td>A transaction screen (for example a custom order-entry form). Describe it, and optionally paste a screenshot (<kbd>Ctrl</kbd>+<kbd>V</kbd>) or attach an image or PDF (up to 15 MB) as a design reference. Click <strong>✨ Generate Screen with AI</strong>, preview and test it, and use <strong>🔁 Regenerate with this feedback</strong> to refine it. Testing a screen that posts to SAP asks first, because it creates a <strong>real document</strong> in the active company.</td></tr>
+      <tr><td><strong>🗄️ Table Creation</strong></td><td>SAP user-defined tables and fields, optionally based on a saved transaction screen. Click <strong>✨ Generate Table Plan with AI</strong>, refine the plan, then <strong>🏗️ Create in SAP (live)</strong>. This creates real tables in the active SAP company and cannot be undone from here.</td></tr>
+      <tr><td><strong>🔌 API Creation</strong></td><td>A read-only data API, for example "Overdue AR Invoices by Customer". Describe what it should return, click <strong>✨ Generate API with AI</strong>, check it with <strong>🧪 Test</strong>, then publish.</td></tr>
+      <tr><td><strong>🗃️ Local Tables</strong></td><td>Simple business tables stored in AgentSphere, not in SAP (for example a Visitor Register). The AI proposes the columns; use <strong>+ Add Column</strong> to change them. After publishing, users can add, edit and delete rows from the menu item.</td></tr>
+      <tr><td><strong>🔀 Workflow</strong></td><td>A step-by-step process with approvals, for example "a purchase request over 50,000 needs the manager's approval". Steps can be Start, Form, Data (read or write a Local Table), Condition, Approval and End. Generate it, adjust it with <strong>+ Add Step</strong> or written feedback, and publish. Users start the workflow from the menu, and each run moves forward step by step or can be cancelled. Deleting a workflow keeps the history of past runs.</td></tr>
     </tbody>
   </table>
 </div>
@@ -1527,11 +2099,11 @@
      13. ADMINISTRATION
 ══════════════════════════════════════════ -->
 <div class="section" id="settings">
-  <h2 class="section-title"><span class="num">13</span> Administration</h2>
+  <h2 class="section-title"><span class="num">15</span> Administration</h2>
 
   <p>The <strong>Admin</strong> sidebar section appears only for administrators: users with the User Management or Roles permission, or superadmin. In the Fiori theme it is the <em>Admin</em> space on the launchpad.</p>
 
-  <h3 id="sap-conn">13.1 SAP B1 Connection Manager</h3>
+  <h3 id="sap-conn">15.1 SAP B1 Connection Manager</h3>
   <p>Click the <strong>company selector</strong> in the top bar, then <strong>⚙ Manage</strong> in the <em>SAP B1 Connections</em> dropdown. This opens <strong>⚙ SAP B1 Connection Manager</strong>. Adding, editing and deleting connections needs the <strong>admin</strong> role.</p>
 
   <div class="screen-mockup">
@@ -1565,7 +2137,7 @@
       </div>
     </div>
   </div>
-  <div class="caption">Figure 13.1 — SAP B1 Connection Manager</div>
+  <div class="caption">Figure 15.1 — SAP B1 Connection Manager</div>
 
   <h4>Adding a connection</h4>
   <ol class="steps">
@@ -1574,19 +2146,20 @@
     <li>Optional, <em>📋 Company-Specific Schema Hints</em>: custom tables, UDF fields and views, and the labels for dimensions 1–5. These help the AI with company-specific data.</li>
     <li>Click <strong>Save Connection</strong>. To change a connection, click <strong>Edit</strong>, make your changes, and click <strong>Update Connection</strong> (or <strong>Cancel Edit</strong>). Leave the password blank to keep the existing one.</li>
   </ol>
+  <div class="callout warn"><strong>⚠ The default company is re-synced from <code>.env</code> at startup</strong>Each time the server starts, the connection for the company in <code>SL_COMPANY</code> is updated from <code>SL_BASE_URL</code>, <code>SL_USER</code> and <code>SL_PASSWORD</code> in <code>.env</code> and made active. If you move that company to a new Service Layer server, change the URL in <strong>both</strong> places, <code>.env</code> (<code>SAP_B1_BASE_URL</code>, <code>SL_BASE_URL</code>, <code>COMPANY_1_URL</code>) and the Connection Manager. Otherwise the old URL comes back after the next restart.</div>
 
   <h4>Switching companies</h4>
   <p>Click any company in the top-bar dropdown, or <strong>Switch</strong> in the Connection Manager. The switch applies to <strong>your session only</strong>, not to other users. The chat confirms "✅ Company Switched Successfully!". The top bar then shows the new <strong>Company DB</strong>, and all later queries and documents use that company. If the connection has no HANA details, any active DB Direct / Analytics V2 connection is disconnected.</p>
 
-  <h3 id="users">13.2 User Management</h3>
+  <h3 id="users">15.2 User Management</h3>
   <p><span class="path">Admin → User Management</span></p>
   <ul>
     <li><strong>Create New User</strong>: Username, Full Name, Password (minimum 6 characters) and Role. Click <strong>Create User</strong>.</li>
     <li><strong>Existing Users</strong>: Username, Full Name, Role, Created. The only action is <strong>Delete</strong>. To change a password or role, delete the user and create them again.</li>
   </ul>
 
-  <h3 id="roles">13.3 Roles &amp; Permissions</h3>
-  <p><span class="path">Admin → Roles &amp; Permissions</span>. Each sidebar item has a permission, and a role is the set of items it may use. Permissions are grouped by section: Home, Home Insights, Master Data, Service Call, Sales — O2C, Purchase — P2P, Finance, Inventory, AI Agents, Analytics AI, Forecast, Tools, Admin.</p>
+  <h3 id="roles">15.3 Roles &amp; Permissions</h3>
+  <p><span class="path">Admin → Roles &amp; Permissions</span>. Each sidebar item has a permission, and a role is the set of items it may use. Permissions are grouped by section: Home, Home Insights, Master Data, Service Call, Sales — O2C, Purchase — P2P, AP Invoice Processing, Finance, Inventory, AI Agents, Analytics AI, Forecast, Tools, Admin.</p>
 
   <table class="ref-table">
     <thead><tr><th>System role ★</th><th>Access</th></tr></thead>
@@ -1602,17 +2175,17 @@
     <li>Click <strong>💾 Save Permissions</strong>. Menu items a role is not allowed are hidden from its users.</li>
   </ol>
 
-  <h3 id="rights">13.4 User Rights</h3>
+  <h3 id="rights">15.4 User Rights</h3>
   <p><span class="path">Admin → User Rights</span> (👤 User Rights Management) lets you grant or remove individual items for one user, overriding their role. The legend shows <em>Active</em>, <em>Override</em> (differs from the role) and <em>Inactive</em>. Click <strong>💾 Save Rights</strong>, or <strong>↺ Reset to Role</strong> to remove the overrides. Changes apply the next time the user logs in.</p>
 
-  <h3 id="branding">13.5 Company Setup &amp; Developer Settings</h3>
+  <h3 id="branding">15.5 Company Setup &amp; Developer Settings</h3>
   <ul>
     <li><strong>Company Setup → Client Company Identity:</strong> Company Name and Company Logo (up to 2 MB). Click <strong>Save Changes</strong>.</li>
     <li><strong>Company Setup → Application Theme:</strong> choose <strong>HANA theme</strong> (dark sidebar menu, opens on AI Chat) or <strong>Fiori theme</strong> (SAP S/4HANA Horizon look, opens on a launchpad of app tiles). Click <strong>Apply Theme</strong>; the app reloads.</li>
     <li><strong>Developer Settings → Product &amp; Developer Identity:</strong> Product Name, Product Logo, Developed By, and Developed-By Logo. These appear on the login page and in the app.</li>
   </ul>
 
-  <h3 id="credits">13.6 AI Credits &amp; Usage</h3>
+  <h3 id="credits">15.6 AI Credits &amp; Usage</h3>
   <p><span class="path">Admin → AI Credits &amp; Usage</span> tracks and limits AI spending per user.</p>
   <ul>
     <li><strong>Tabs:</strong> 📊 Overview, 👥 User Credits, 💬 Prompt History, 🏷️ Model Pricing, 🧾 Usage History, 📒 Credit Log, ⚙️ Settings.</li>
@@ -1627,7 +2200,7 @@
      14. TIPS
 ══════════════════════════════════════════ -->
 <div class="section" id="tips">
-  <h2 class="section-title"><span class="num">14</span> Tips &amp; Keyboard Shortcuts</h2>
+  <h2 class="section-title"><span class="num">16</span> Tips &amp; Keyboard Shortcuts</h2>
 
   <h3>Natural-language tips</h3>
   <ul>
@@ -1667,12 +2240,14 @@
      15. TROUBLESHOOTING
 ══════════════════════════════════════════ -->
 <div class="section" id="troubleshoot">
-  <h2 class="section-title"><span class="num">15</span> Troubleshooting, Logs &amp; Support</h2>
+  <h2 class="section-title"><span class="num">17</span> Troubleshooting, Logs &amp; Support</h2>
 
   <table class="ref-table">
     <thead><tr><th>Problem</th><th>Likely cause</th><th>Solution</th></tr></thead>
     <tbody>
       <tr><td>Cannot connect to SAP B1 / "SAP login failed – B1SESSION not returned"</td><td>Wrong Service Layer URL or credentials, or the Service Layer is down</td><td>Open <strong>⚙ Manage → Edit</strong> and check the Service Layer Base URL (must end in <code>/b1s/v1</code> or <code>/b1s/v2</code>), the Company DB and the credentials. Check that the SAP Service Layer is running and that port 50000 is open.</td></tr>
+      <tr><td>"Failed to post … SAP Error: connect ECONNREFUSED &lt;ip&gt;:50000" (agents show <strong>Retry</strong> / <strong>Cancel</strong>)</td><td>The SAP server answers, but nothing is listening on port 50000: the Service Layer is stopped, or the connection points to the wrong server</td><td>Check that the IP in the message is your Service Layer server. If it isn't, correct the URL in the Connection Manager <strong>and</strong> in <code>.env</code> (see <a href="#sap-conn">15.1</a>) and restart the service. If it is, start the Service Layer on that server (Service Layer Controller → Start, or <code>systemctl restart b1s</code>), then click <strong>Retry</strong>.</td></tr>
+      <tr><td>An agent still uses the old server after you edit a connection</td><td>Older versions kept the previous login in memory until the service restarted</td><td>Restart the service once. Current versions pick up the new URL and credentials as soon as you click <strong>Update Connection</strong>.</td></tr>
       <tr><td>SSL / certificate error</td><td>Self-signed Service Layer certificate</td><td>Make sure <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> is in <code>.env</code> (the installer sets it), then restart.</td></tr>
       <tr><td>"Session expired — please refresh the page", or sent back to login</td><td>Your 12-hour app session ended</td><td>Refresh and sign in again. Expired <em>SAP</em> sessions are renewed automatically.</td></tr>
       <tr><td>"Invalid username or password"</td><td>Wrong credentials, or no account</td><td>Ask an administrator to check or create your account under <strong>Admin → User Management</strong>.</td></tr>
@@ -1711,7 +2286,7 @@
 <!-- FOOTER -->
 <div class="doc-footer">
   <p>AgentSphere AI — SAP B1 AI Assistant</p>
-  <p>User Manual v1.1 | October 2026 | Silvertouch Technologies</p>
+  <p>User Manual v1.2 | November 2026 | Silvertouch Technologies</p>
   <p style="margin-top:8px; font-size:11px;">This document is confidential and intended for authorized users only.</p>
 </div>
 
