@@ -703,8 +703,9 @@
   const nf0 = nfOf({ maximumFractionDigits: 0 });
   const nf2 = nfOf({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const nfN = nfOf({ maximumFractionDigits: 2 });
-  // Money always carries the USD sign: -$1,234 / $1,234
-  const usd = (nf, v) => `${Number(v) < 0 ? '-' : ''}$${nf.format(Math.abs(Number(v)))}`;
+  // Money carries the company currency symbol: -$1,234 / $1,234 (₹ for INR, …)
+  const curSym = () => (window.appCurrencySymbol ? window.appCurrencySymbol() : '$');
+  const usd = (nf, v) => `${Number(v) < 0 ? '-' : ''}${curSym()}${nf.format(Math.abs(Number(v)))}`;
   function fmt(v, f) {
     if (v === null || v === undefined || v === '' || (typeof v === 'number' && !isFinite(v))) return '<span class="ia-muted">—</span>';
     switch (f) {

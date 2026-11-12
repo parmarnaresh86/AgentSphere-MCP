@@ -397,11 +397,11 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupMarked(){ if(typeof marked!=='undefined') marked.setOptions({breaks:true,gfm:true}); }
 function renderMd(t){ if(typeof marked==='undefined') return escHtml(t).replace(/\n/g,'<br>'); try{return marked.parse(t);}catch{return escHtml(t);} }
 function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function fmtN(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
-// Money measures (amounts, prices, balances) carry the USD sign; qty/days/counts/rates don't
+function fmtN(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
+// Money measures (amounts, prices, balances) carry the company currency symbol; qty/days/counts/rates don't
 function isAmt(m){ return /amount|price|balance/i.test(m||'') && !/rate/i.test(m||''); }
-function fmtUSD(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return (Number(n)<0?'-$':'$')+fmtN(Math.abs(Number(n)),d); }
-function fmtM(m,v){ return isAmt(m)?fmtUSD(v):fmtN(v); }
+function fmtMoney(n,d=0){ if(n==null||isNaN(Number(n))) return '—'; return (Number(n)<0?'-':'')+appCurrencySymbol()+fmtN(Math.abs(Number(n)),d); }
+function fmtM(m,v){ return isAmt(m)?fmtMoney(v):fmtN(v); }
 function fmtPct(n){ return n==null?'—':Number(n).toFixed(1)+'%'; }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
