@@ -76,7 +76,8 @@
     const st = document.createElement('style');
     st.id = 'exp-styles';
     st.textContent = `
-.exp{--x-p:#0b6bcb;--x-line:#e3e8ef;--x-mut:#64748b;--x-card:#fff;--x-bg:#f4f6fa;flex:1;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--x-bg);font-family:inherit;color:#1e293b}
+.exp,.exp-modal-bg,#exp-toasts{--x-p:#0b6bcb;--x-line:#e3e8ef;--x-mut:#64748b;--x-card:#fff;--x-bg:#f4f6fa}
+.exp{flex:1;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--x-bg);font-family:inherit;color:#1e293b}
 .exp-top{display:flex;align-items:center;gap:14px;padding:0 16px;background:linear-gradient(135deg,#354a5e,#1a2d40);color:#fff;min-height:46px;flex-shrink:0;flex-wrap:wrap}
 .exp-top b{font-size:14px;display:flex;align-items:center;gap:8px}
 .exp-nav{display:flex;gap:2px;flex-wrap:wrap}
