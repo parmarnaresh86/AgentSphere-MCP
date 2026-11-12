@@ -74,34 +74,66 @@ function normalizeReceipt(raw = {}, categories) {
   const cat = String(r.category || '').trim();
   const match = categories.find(c => c.toLowerCase() === cat.toLowerCase()) || categories.find(c => cat && c.toLowerCase().includes(cat.toLowerCase())) || '';
   const total = num(r.total) || round2(num(r.subtotal) + num(r.tax) + num(r.tip));
+  const merchant = r.merchant ? String(r.merchant).trim().slice(0, 100) : null;
+  // no category from the AI (or no AI at all) → guess from merchant / description / bill text
+  const category = match || guessCategory([merchant, r.description, r._text].filter(Boolean).join('\n'), categories);
   return {
-    merchant: r.merchant ? String(r.merchant).trim().slice(0, 100) : null,
+    merchant,
     billNo: r.billNo ? String(r.billNo).trim().slice(0, 60) : null,
     date: normDate(r.date) || null,
     currency: r.currency ? String(r.currency).trim().toUpperCase().slice(0, 3) : null,
     subtotal: num(r.subtotal), tax: num(r.tax), tip: num(r.tip), total,
-    category: match || null,
+    category: category || null,
+    categoryGuessed: !match && !!category,
     description: r.description ? String(r.description).trim().slice(0, 100) : null,
     paymentMethod: r.paymentMethod ? String(r.paymentMethod).trim().slice(0, 60) : null,
   };
 }
+// Text-layer reader used when no AI engine answers. PDF text often runs columns together
+// ("Sales Tax 8.0%$22.96", "11/10/20268:42 PM"), so amounts are taken as the LAST money value on a line.
 function fallbackReceipt(text) {
   const t = String(text || '');
-  // first pattern that matches wins, so the paid total beats "Subtotal"
-  const amt = (...res) => { for (const re of res) { const m = t.match(re); if (m) return num(m[1]); } return 0; };
-  const money = '\\s*[:\\-]?\\s*[^\\d\\n]{0,5}([\\d,]+\\.?\\d*)';
-  const dateTxt = (t.match(/\b(\d{4}-\d{2}-\d{2}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/)
-    || t.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})\b/)
-    || t.match(/\b(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4})\b/i) || [])[1];
+  const lines = t.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const lastAmount = s => { const m = s.match(/\d[\d,]*\.\d{2}(?!\d)/g); return m ? num(m[m.length - 1]) : 0; };
+  // first line matching any of the patterns (in order) → its last amount
+  const amountOn = (...res) => { for (const re of res) { const l = lines.find(x => re.test(x)); if (l && lastAmount(l)) return lastAmount(l); } return 0; };
+  const dateTxt = (t.match(/(?<!\d)(\d{4}-\d{2}-\d{2})/)
+    || t.match(/(?<!\d)(\d{1,2}[./-]\d{1,2}[./-](?:\d{4}|\d{2}(?!\d)))/)
+    || t.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})/)
+    || t.match(/(?<!\d)(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4})/i) || [])[1];
+  // first labelled number on the same line that contains a digit ("RECEIPT" alone above "Invoice SG-2026-3381" must not win)
+  const billNo = [...t.matchAll(/(?:receipt|invoice|bill|ticket|check|cheque|order|guest[^\S\n]*check|conto|folio|txn|transaction)[^\S\n]*(?:no\.?|number|#|:)?[^\S\n]*#?[^\S\n]*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/gi)]
+    .map(m => m[1]).find(v => /\d/.test(v)) || null;
   return {
-    merchant: t.split(/\r?\n/).map(s => s.trim()).find(s => s.length > 3) || null,
-    billNo: (t.match(/(?:receipt|invoice|bill|ticket)\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Za-z0-9\/\-]+)/i) || [])[1] || null,
+    merchant: lines.find(s => s.length > 3 && /[a-z]/i.test(s)) || null,
+    billNo,
     date: normDate(dateTxt) || null,
-    total: amt(new RegExp(`(?:grand\\s*total|total\\s*due|amount\\s*due|total\\s*paid|amount\\s*paid|net\\s*payable)(?:\\s*\\([A-Z]{3}\\))?${money}`, 'i'),
-      new RegExp(`(?<!sub\\s*-?\\s*)\\btotal(?:\\s*amount)?(?:\\s*\\([A-Z]{3}\\))?${money}`, 'i')),
-    tax: amt(new RegExp(`(?:sales\\s*tax|tax|gst|vat)(?:\\s*total)?${money}`, 'i')),
+    total: amountOn(/grand\s*total|total\s*(?:due|paid)|amount\s*(?:due|paid)|net\s*payable/i, /^(?!.*sub\s*-?\s*total).*\btotal\b/i),
+    subtotal: amountOn(/sub\s*-?\s*total/i),
+    tax: amountOn(/sales\s*tax|\btax\b|\bgst\b|\bvat\b/i),
+    tip: amountOn(/\btip\b|gratuity|service\s*charge/i),
+    _text: t,
     _fallback: true,
   };
+}
+
+// Default category from what the bill says, used when the AI gives none. Only categories that exist in Settings are returned.
+const CATEGORY_RULES = [
+  ['Meals', /restaurant|grill|caf[eé]|diner|bistro|trattoria|pizzeria|pizza|taqueria|sushi|bento|kitchen|eatery|steakhouse|bakery|coffee|starbucks|server:|table\s*\d|guests?\b|\btip\b|gratuity|breakfast|lunch|dinner|food|bar\b|pub\b/i],
+  ['Lodging', /hotel|motel|\binn\b|suites|resort|lodg|marriott|hilton|hyatt|airbnb|room\s*(?:no|charge|rate)|check-?in|check-?out|folio/i],
+  ['Local Conveyance', /uber|lyft|taxi|\bcab\b|parking|toll|metro|subway|transit|bus\s*fare|ride/i],
+  ['Travel', /airline|airways|flight|boarding|amtrak|\brail\b|train|airfare|baggage|car\s*rental|hertz|avis|enterprise\s*rent/i],
+  ['Fuel & Mileage', /fuel|gasoline|diesel|unleaded|gallons?|petrol|\bgas\s*station|shell|exxon|chevron|sunoco|mileage/i],
+  ['Telephone & Internet', /wireless|mobile|cellular|verizon|at&t|t-mobile|internet|broadband|data\s*plan|telephone|phone\s*bill/i],
+  ['Office Supplies', /staples|office\s*depot|stationery|toner|printer|paper|pens?\b|office\s*suppl/i],
+  ['Courier & Postage', /fedex|\bups\b|usps|dhl|courier|postage|shipping|post\s*office/i],
+  ['Training', /course|training|seminar|workshop|conference|certification|tuition|registration\s*fee/i],
+  ['Medical', /pharmacy|clinic|hospital|medical|doctor|cvs|walgreens|prescription/i],
+];
+function guessCategory(text, categories) {
+  const has = name => categories.find(c => c.toLowerCase() === name.toLowerCase());
+  for (const [name, re] of CATEGORY_RULES) if (re.test(text) && has(name)) return has(name);
+  return has('Other') || null;
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -295,6 +327,13 @@ export function createExpenseClaimRouter(deps = {}) {
         // the GPT path can't read PDF images; use the Anthropic SDK when only that can
         const d = (aiDeps.AI_PROVIDER === 'gpt' && isPdf && !text && hasAnthropic) ? { ...aiDeps, USE_AI: false } : aiDeps;
         raw = await runVisionExtraction(s.ocrEngine === 'text' && text ? null : file.buffer, file.mime, text, d, receiptPrompt(categories), fallbackReceipt);
+        // Primary engine failed (e.g. wrong AZURE_CLAUDE_MODEL deployment) → retry once on GPT: PDF text layer, or the photo itself.
+        const gptOk = aiDeps.gptChatComplete && process.env.AZURE_GPT_ENDPOINT && d.AI_PROVIDER !== 'gpt';
+        if ((!raw || raw._fallback) && gptOk && (text || !isPdf)) {
+          console.warn(`[Expense] bill ${rec.id}: primary AI extraction failed — retrying with GPT.`);
+          const viaGpt = await runVisionExtraction(isPdf ? null : file.buffer, file.mime, text, { ...aiDeps, AI_PROVIDER: 'gpt', USE_AI: true }, receiptPrompt(categories), fallbackReceipt);
+          if (viaGpt && !viaGpt._fallback) raw = viaGpt;
+        }
       }
       if (!raw) throw new Error('The bill could not be read.');
       const ext = normalizeReceipt(raw, categories);
@@ -307,7 +346,7 @@ export function createExpenseClaimRouter(deps = {}) {
   }
   const lineFromReceipt = (rec, ext, claimCurrency) => ({
     id: lineId(), receiptId: rec.id, date: ext?.date || '', merchant: ext?.merchant || '', billNo: ext?.billNo || '',
-    description: ext?.description || rec.fileName, category: ext?.category || '', account: '',
+    description: ext?.description || ext?.merchant || rec.fileName, category: ext?.category || '', account: '',
     amount: round2(ext?.total || 0), tax: round2(ext?.tax || 0), currency: ext?.currency || claimCurrency || '', note: '',
   });
 
