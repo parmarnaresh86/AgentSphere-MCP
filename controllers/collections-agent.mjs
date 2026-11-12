@@ -223,6 +223,12 @@ PROMISES: ${promises.slice(0, 15).map(x => `${x.cardName} ${fmtAmt(x.amount)} by
 
   const actions = [
     { id: 'email', label: 'Draft email', kind: 'text', endpoint: '/api/collections-agent/draft-email' },
+    { id: 'ptp', label: 'Log promise', kind: 'form', endpoint: '/api/collections-agent/ptp', refresh: true,
+      fields: [{ key: 'amount', label: 'Amount promised', type: 'number', from: 'overdue' },
+        { key: 'promiseDate', label: 'Promise date', type: 'date', default: addDays(asOf, 7) },
+        { key: 'note', label: 'Note' }] },
+    { id: 'activity', label: 'Log call in SAP', kind: 'post', endpoint: '/api/collections-agent/activity',
+      confirm: 'Create a collection call Activity in SAP for {cardName}?' },
   ];
 
   return {
