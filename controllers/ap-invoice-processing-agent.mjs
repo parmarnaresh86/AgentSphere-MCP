@@ -92,8 +92,8 @@ function normDate(s) {
   if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
   m = v.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);                    // dd/mm/yyyy (day first)
   if (m) { const y = m[3].length === 2 ? `20${m[3]}` : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
-  const d = new Date(v);
-  return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+  const d = new Date(v);                      // "Nov 11, 2026" → local midnight; read local parts (toISOString would shift a day east of UTC)
+  return isNaN(d) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // ── OCR ───────────────────────────────────────────────────────────────────────
