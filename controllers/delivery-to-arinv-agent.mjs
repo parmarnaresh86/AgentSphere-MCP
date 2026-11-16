@@ -5,6 +5,7 @@
  */
 import { Router } from 'express';
 import { createCopyFlowChatHandler, today, datePlusDays } from '../lib/copy-doc-flow.mjs';
+import { docAmounts, printTaxHeads, printTaxCells, printTotalsHtml } from '../lib/doc-totals.mjs';
 
 function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -28,8 +29,7 @@ function renderARInvPrint(doc) {
   const docDate   = doc.DocDate    ? doc.DocDate.slice(0, 10)    : '—';
   const dueDate   = doc.DocDueDate ? doc.DocDueDate.slice(0, 10) : '—';
   const printedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const grandTotal = lines.reduce((s, l) => s + Number(l.LineTotal || 0), 0);
-  const taxTotal   = lines.reduce((s, l) => s + Number(l.VatSum   || 0), 0);
+  const amt = docAmounts(doc);
 
   const linesHtml = lines.map((l, i) => `
     <tr>
@@ -39,9 +39,9 @@ function renderARInvPrint(doc) {
       <td style="text-align:right">${Number(l.Quantity  || 0).toFixed(2)}</td>
       <td>${escHtml(l.UoMCode || l.MeasureUnit || '')}</td>
       <td style="text-align:right">${Number(l.UnitPrice || 0).toFixed(2)}</td>
-      <td style="text-align:right">${Number(l.LineTotal || 0).toFixed(2)}</td>
-      <td>${escHtml(l.TaxCode || '')}</td>
       <td>${escHtml(l.WarehouseCode || '')}</td>
+      <td>${escHtml(l.TaxCode || '')}</td>
+      ${printTaxCells(amt, i)}
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -112,16 +112,13 @@ ${doc.Comments ? `<div style="border:1px solid #bae6fd;border-radius:6px;padding
   <thead><tr>
     <th>#</th><th>Item Code</th><th>Description</th>
     <th style="text-align:right">Qty</th><th>Unit</th>
-    <th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th>
-    <th>Tax</th><th>WH</th>
+    <th style="text-align:right">Unit Price</th>
+    <th>WH</th><th>Tax Code</th>
+    ${printTaxHeads()}
   </tr></thead>
   <tbody>${linesHtml}</tbody>
 </table>
-<div class="totals">
-  ${taxTotal > 0 ? `<div class="total-row">Subtotal: ${(grandTotal - taxTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  ${taxTotal > 0 ? `<div class="total-row">Tax: ${taxTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  <div class="total-grand">Invoice Total: ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-</div>
+${printTotalsHtml(amt, { color: '#0369a1', label: 'Invoice Total' })}
 <div class="sig-section">
   <div class="sig-box"><div class="sig-line">Prepared By</div></div>
   <div class="sig-box"><div class="sig-line">Approved By</div></div>

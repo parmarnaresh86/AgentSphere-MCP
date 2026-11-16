@@ -12,6 +12,7 @@
 import { Router } from 'express';
 import { itemPriceRoute } from '../lib/item-price.mjs';
 import { buildReviewCard, readReviewPost } from '../lib/o2c-review.mjs';
+import { docAmounts, resultAmounts, cardTotalsHtml, money } from '../lib/doc-totals.mjs';
 import db, { connRepo, cacheRepo } from '../db.mjs';
 
 const HEADER_KEYS = ['docDate', 'deliveryDate', 'reference', 'comments'];
@@ -101,7 +102,7 @@ async function getDefaultUoMCode(itemCode, sap) {
 
 async function getCacheTaxCodes(sap) {
   const cid = getCompanyId();
-  const rows = db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
+  const rows = db.prepare(`SELECT Code, Name, Rate FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
   if (rows.length || !sap) return rows;
   // Cache is empty (never synced) — fall back to a live SAP lookup and warm the cache for next time.
   // Tax codes live in a different SAP entity depending on the company's localization:
@@ -167,7 +168,8 @@ function buildCustomerComboHtml(customers) {
   </div>`;
 }
 
-function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
+// hasLines: items already on the order — "Done Adding Items" stays disabled until there is at least one.
+function buildItemLineHtml(items, taxCodes, warehouses, lineIdx, hasLines = false) {
   const itemOpts = items.map(i =>
     `<option value="${escHtml(i.ItemCode)}" data-name="${escHtml(i.ItemName)}" data-unit="${escHtml(i.SalesUnit||'')}" data-vat="${escHtml(i.SalesVATGroup||'')}">${escHtml(i.ItemCode)} — ${escHtml(i.ItemName)}</option>`
   ).join('');
@@ -220,11 +222,11 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
       </div>
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="soaComboAddItem(${lineIdx})"
+      <button id="soa-add-btn-${lineIdx}" disabled title="Select an item first" onclick="soaComboAddItem(${lineIdx})"
         style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">
         + Add Line
       </button>
-      <button onclick="soaComboDoneItems()"
+      <button id="soa-done-btn-${lineIdx}" ${hasLines ? '' : 'disabled title="Add at least one item first"'} onclick="soaComboDoneItems(${lineIdx})"
         style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;font-size:12.5px;cursor:pointer">
         ✓ Done Adding Items
       </button>
@@ -268,8 +270,8 @@ function renderPrintLayout(doc) {
   const docDate   = doc.DocDate    ? doc.DocDate.slice(0, 10)    : '—';
   const deliveryDate = doc.DocDueDate ? doc.DocDueDate.slice(0, 10) : '—';
   const printedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const grandTotal = lines.reduce((s, l) => s + Number(l.LineTotal || 0), 0);
-  const taxTotal   = lines.reduce((s, l) => s + Number(l.VatSum   || 0), 0);
+  const amt = docAmounts(doc);
+  const cur = escHtml(amt.currency);
 
   const linesHtml = lines.map((l, i) => `
     <tr>
@@ -280,8 +282,11 @@ function renderPrintLayout(doc) {
       <td>${escHtml(l.UoMCode || l.MeasureUnit || '')}</td>
       <td style="text-align:right">${Number(l.UnitPrice  || 0).toFixed(2)}</td>
       <td style="text-align:right">${Number(l.DiscountPercent || 0).toFixed(1)}%</td>
-      <td style="text-align:right">${Number(l.LineTotal  || 0).toFixed(2)}</td>
       <td>${escHtml(l.TaxCode || '')}</td>
+      <td style="text-align:right">${money(amt.lines[i].net)}</td>
+      <td style="text-align:right">${amt.lines[i].rate ? amt.lines[i].rate + '%' : ''}</td>
+      <td style="text-align:right">${money(amt.lines[i].tax)}</td>
+      <td style="text-align:right"><strong>${money(amt.lines[i].gross)}</strong></td>
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -305,7 +310,10 @@ function renderPrintLayout(doc) {
   th{padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#fff}
   td{padding:7px 10px;border-bottom:1px solid #eee;font-size:11px}
   tr:nth-child(even) td{background:#eff6ff}
-  .totals{text-align:right;padding:8px 0 20px}
+  .totals-tbl{width:auto;min-width:300px;margin:4px 0 20px auto;border-collapse:collapse}
+  .totals-tbl td{border:none;background:none!important;padding:4px 10px;font-size:12px;text-align:right;color:#374151}
+  .totals-tbl td:first-child{color:#6b7280}
+  .totals-tbl tr.grand td{border-top:2px solid #0070F2;font-size:15px;font-weight:700;color:#0070F2;padding-top:8px}
   .total-row{font-size:12px;color:#374151;margin-bottom:4px}
   .total-grand{font-size:15px;font-weight:700;color:#0070F2;margin-top:6px}
   .footer{text-align:center;margin-top:24px;font-size:9px;color:#aaa;border-top:1px solid #eee;padding-top:12px}
@@ -344,20 +352,28 @@ ${doc.Comments ? `<div style="border:1px solid #bfdbfe;border-radius:6px;padding
     <th>#</th><th>Item Code</th><th>Description</th>
     <th style="text-align:right">Qty</th><th>Unit</th>
     <th style="text-align:right">Unit Price</th><th style="text-align:right">Disc%</th>
-    <th style="text-align:right">Total</th><th>Tax</th>
+    <th>Tax Code</th><th style="text-align:right">Net Total</th>
+    <th style="text-align:right">Tax %</th><th style="text-align:right">Tax</th><th style="text-align:right">Gross Total</th>
   </tr></thead>
   <tbody>${linesHtml}</tbody>
 </table>
-<div class="totals">
-  ${taxTotal > 0 ? `<div class="total-row">Subtotal: ${(grandTotal - taxTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  ${taxTotal > 0 ? `<div class="total-row">Tax: ${taxTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  <div class="total-grand">Order Total: ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-</div>
+<table class="totals-tbl">
+  <tr><td>Subtotal (before tax)</td><td>${money(amt.subTotal)} ${cur}</td></tr>
+  ${amt.discount ? `<tr><td>Discount</td><td>− ${money(amt.discount)} ${cur}</td></tr>` : ''}
+  <tr><td>Tax</td><td>${money(amt.tax)} ${cur}</td></tr>
+  ${amt.other ? `<tr><td>Freight / other charges</td><td>${money(amt.other)} ${cur}</td></tr>` : ''}
+  ${amt.rounding ? `<tr><td>Rounding</td><td>${money(amt.rounding)} ${cur}</td></tr>` : ''}
+  <tr class="grand"><td>Order Total</td><td>${money(amt.total)} ${cur}</td></tr>
+</table>
 <div class="footer">Printed on ${escHtml(printedOn)} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Sales Order #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body></html>`;
 }
 
 // ── Router factory ─────────────────────────────────────────────────────────────
+
+// Item-form index for element ids — never reused, so a new form can't clash with an older (locked) one still in the chat.
+let _formSeq = Date.now() % 1e6;
+const nextFormIdx = () => ++_formSeq;
 
 export function createSalesOrderAgentRouter(deps) {
   const { requireAuth, printAuth, getActiveSap } = deps;
@@ -435,6 +451,7 @@ export function createSalesOrderAgentRouter(deps) {
         }
         else if (action?.action === 'post_order') {
           const rp = readReviewPost(action, session._lines, HEADER_KEYS, { allowNew: true });
+          session._posting = true;   // lock before the SAP item checks, so a second click can't slip in
           if (rp.ok) {
             for (const l of rp.lines.filter(x => x.isNew)) {
               let it = null;
@@ -447,6 +464,7 @@ export function createSalesOrderAgentRouter(deps) {
             }
           }
           if (!rp.ok) {
+            session._posting = false;
             reply = `<div style="color:#b91c1c;margin-bottom:6px">❌ ${escHtml(rp.error)}</div>${await reviewCard()}`;
           } else {
             session._lines = rp.lines;
@@ -476,6 +494,10 @@ export function createSalesOrderAgentRouter(deps) {
               session.result = { docEntry: result.DocEntry, docNum: result.DocNum };
               session.step   = 'DONE';
 
+              // amounts as SAP calculated them; if SAP didn't send the document back, estimate from the rates
+              const amt = resultAmounts(result, lines, await getCacheTaxCodes(sap));
+              const cur = escHtml(amt.currency);
+
               const linesHtml = lines.map((l, i) => `
                 <tr style="border-bottom:1px solid #f3f4f6">
                   <td style="padding:6px 10px;font-size:12.5px;text-align:center">${i+1}</td>
@@ -485,6 +507,9 @@ export function createSalesOrderAgentRouter(deps) {
                   <td style="padding:6px 10px;font-size:12.5px;text-align:right">${l.discountPercent || 0}%</td>
                   <td style="padding:6px 10px;font-size:12.5px">${escHtml(l.taxCode||'')}</td>
                   <td style="padding:6px 10px;font-size:12.5px">${escHtml(l.warehouseCode||'')}</td>
+                  <td style="padding:6px 10px;font-size:12.5px;text-align:right">${money(amt.lines[i].net)}</td>
+                  <td style="padding:6px 10px;font-size:12.5px;text-align:right;color:#6b7280">${money(amt.lines[i].tax)}</td>
+                  <td style="padding:6px 10px;font-size:12.5px;text-align:right;font-weight:600">${money(amt.lines[i].gross)}</td>
                 </tr>`).join('');
 
               const printUrl = `/api/sales-order-agent/print/${result.DocEntry}`;
@@ -508,6 +533,7 @@ export function createSalesOrderAgentRouter(deps) {
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Posting Date</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.docDate||today())}</td></tr>
                     <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Delivery Date</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.deliveryDate||datePlusDays(7))}</td></tr>
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Total Lines</td><td style="padding:7px 12px;font-size:12.5px">${lines.length} item(s)</td></tr>
+                    <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Order Total</td><td style="padding:7px 12px;font-size:13px;font-weight:700;color:#0070F2">${money(amt.total)} ${cur} <span style="font-size:11.5px;font-weight:400;color:#6b7280">(tax ${money(amt.tax)})</span></td></tr>
                   </tbody>
                 </table>
                 <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Line Items</div>
@@ -522,11 +548,15 @@ export function createSalesOrderAgentRouter(deps) {
                         <th style="padding:6px 10px;text-align:right">Disc%</th>
                         <th style="padding:6px 10px;text-align:left">Tax</th>
                         <th style="padding:6px 10px;text-align:left">WH</th>
+                        <th style="padding:6px 10px;text-align:right">Net</th>
+                        <th style="padding:6px 10px;text-align:right">Tax</th>
+                        <th style="padding:6px 10px;text-align:right">Total</th>
                       </tr>
                     </thead>
                     <tbody>${linesHtml}</tbody>
                   </table>
                 </div>
+                ${cardTotalsHtml(amt, { color: '#1d4ed8', label: 'Order Total' })}
               </div>`;
               quickReplies = ['Create New Sales Order'];
               meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
@@ -549,14 +579,14 @@ export function createSalesOrderAgentRouter(deps) {
           const { cardCode, cardName } = action;
           session.selectedCustomer = { cardCode, cardName };
           session.step = 'ADD_ITEM';
-          session._lineIdx = 0;
+          session._lineIdx = nextFormIdx();
           session._lines   = [];
           const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
           reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:10px 14px;margin-bottom:8px">
             ✅ Customer: <strong>${escHtml(cardName)}</strong> (${escHtml(cardCode)})
           </div>
           <div style="font-size:13px;color:#374151;margin-bottom:6px">Now add <strong>line items</strong> to the sales order:</div>
-          ${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+          ${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
         }
 
         // ── Add line item from combo ────────────────────────────────────────
@@ -566,14 +596,14 @@ export function createSalesOrderAgentRouter(deps) {
           } else {
             if (!session._lines) session._lines = [];
             session._lines.push(action);
-            session._lineIdx = (session._lineIdx || 0) + 1;
+            session._lineIdx = nextFormIdx();
             const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
             reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:8px 14px;margin-bottom:8px">
               <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:6px">✅ Item added — ${session._lines.length} line(s) so far:</div>
               ${linesSummaryTable(session._lines)}
             </div>
             <div style="font-size:13px;color:#374151;margin-bottom:6px">Add another item or click <strong>Done Adding Items</strong>:</div>
-            ${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+            ${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
             session.step = 'ADD_ITEM';
           }
         }
@@ -582,8 +612,8 @@ export function createSalesOrderAgentRouter(deps) {
         else if (action?.action === 'done_items') {
           if (!session._lines?.length) {
             const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
-            session._lineIdx = (session._lineIdx || 0) + 1;
-            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+            session._lineIdx = nextFormIdx();
+            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           } else {
             session.step = 'REVIEW_FORM';
             reply = await reviewCard();
@@ -593,9 +623,9 @@ export function createSalesOrderAgentRouter(deps) {
         // ── Add more items ───────────────────────────────────────────────────
         else if (action?.action === 'add_more_items') {
           session.step = 'ADD_ITEM';
-          session._lineIdx = (session._lineIdx || 0) + 1;
+          session._lineIdx = nextFormIdx();
           const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
-          reply = `<div style="font-size:13px;margin-bottom:6px">Add another item:</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+          reply = `<div style="font-size:13px;margin-bottom:6px">Add another item:</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
         }
 
         else {
@@ -626,11 +656,11 @@ export function createSalesOrderAgentRouter(deps) {
             const c = customers[0];
             session.selectedCustomer = { cardCode: c.CardCode, cardName: c.CardName };
             session.step = 'ADD_ITEM';
-            session._lineIdx = 0; session._lines = [];
+            session._lineIdx = nextFormIdx(); session._lines = [];
             const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
             reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:10px 14px;margin-bottom:8px">
               ✅ Customer: <strong>${escHtml(c.CardName)}</strong> (${escHtml(c.CardCode)})
-            </div>${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+            </div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           } else {
             customerList = customers.map(c => ({ cardCode: c.CardCode, cardName: c.CardName }));
             reply = `<div style="margin-bottom:8px">Found <strong>${customers.length}</strong> matches. Select one:</div>${buildCustomerComboHtml(customers)}`;
@@ -650,10 +680,10 @@ export function createSalesOrderAgentRouter(deps) {
           const found = await searchItems(sap, msg);
           const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
           // New form index so its element ids don't clash with the form already in the chat.
-          session._lineIdx = (session._lineIdx || 0) + 1;
+          session._lineIdx = nextFormIdx();
           reply = found.length
-            ? `<div style="font-size:13px;margin-bottom:6px">Found <strong>${found.length}</strong> item(s) matching <strong>"${escHtml(msg)}"</strong>. Select one:</div>${buildItemLineHtml(found, taxes, whs, session._lineIdx)}`
-            : `<div style="color:#b91c1c;margin-bottom:8px">No items found matching <strong>"${escHtml(msg)}"</strong>. Try another code or name, or select from the list:</div>${buildItemLineHtml(getCacheItems(), taxes, whs, session._lineIdx)}`;
+            ? `<div style="font-size:13px;margin-bottom:6px">Found <strong>${found.length}</strong> item(s) matching <strong>"${escHtml(msg)}"</strong>. Select one:</div>${buildItemLineHtml(found, taxes, whs, session._lineIdx, !!session._lines?.length)}`
+            : `<div style="color:#b91c1c;margin-bottom:8px">No items found matching <strong>"${escHtml(msg)}"</strong>. Try another code or name, or select from the list:</div>${buildItemLineHtml(getCacheItems(), taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           quickReplies = (session._lines || []).length ? ['Done'] : [];
         }
       }

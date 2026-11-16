@@ -1190,6 +1190,8 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
 #listening-indicator.hs-wake{
   background:transparent;border-top-color:transparent;color:transparent;
 }
+/* An agent panel is open (it is appended after this strip) → drop the strip, so the agent starts right under the top bar */
+.main:has(> [id$="-panel"]:not(#history-panel):not(#gpt-panel):not([style*="display: none"]):not([style*="display:none"])) > #listening-indicator{display:none}
 #listening-indicator.hs-listening{
   background:#FFEAEA;border-top-color:#FFBABA;color:var(--red);
 }
@@ -34702,6 +34704,8 @@ window.roAskFollowUp = function() {
 
   function poaAddMsg(role, html) {
     const area = el('poa-messages'); if (!area) return;
+    // a new agent step closes the earlier cards — only the newest one can be used
+    if (role !== 'user') window.O2CReview?.lockPrevious(area);
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;gap:8px;' + (role === 'user' ? 'justify-content:flex-end' : '');
     const bubble = document.createElement('div');
@@ -34754,11 +34758,20 @@ window.roAskFollowUp = function() {
     sel.innerHTML = '<option value="">— Select an Item —</option>' + filtered.map(i =>
       `<option value="${poaEscAttr(i.code)}" data-name="${poaEscAttr(i.name)}" data-unit="${poaEscAttr(i.unit)}" data-vat="${poaEscAttr(i.vat)}">${poaEscAttr(i.code)} — ${poaEscAttr(i.name)}</option>`
     ).join('');
+    poaGateAdd(idx);
   };
+
+  // "+ Add Line" only once an item is selected
+  function poaGateAdd(idx) {
+    const sel = document.getElementById('poa-item-sel-'+idx), b = document.getElementById('poa-add-btn-'+idx);
+    if (!b) return;
+    b.disabled = !sel?.value;
+    b.title = sel?.value ? '' : 'Select an item first';
+  }
 
   // ── Combo action handlers (called from inline HTML in agent replies) ─────────
   window.poaComboSelectVendor = function() {
-    const sel = document.getElementById('poa-vendor-sel');
+    const sel = [...document.querySelectorAll('#poa-vendor-sel')].pop();
     if (!sel || !sel.value) { alert('Please select a vendor'); return; }
     const opt = sel.options[sel.selectedIndex];
     const cardCode = sel.value;
@@ -34768,6 +34781,7 @@ window.roAskFollowUp = function() {
   };
 
   window.poaComboItemChange = function(sel, idx) {
+    poaGateAdd(idx);
     const opt = sel.options[sel.selectedIndex];
     if (opt && opt.dataset.vat) {
       const taxSel = document.getElementById('poa-tax-'+idx);
@@ -34895,14 +34909,12 @@ window.roAskFollowUp = function() {
     poaSend(JSON.stringify(payload));
   };
 
-  window.poaComboDoneItems = function() {
+  window.poaComboDoneItems = function(idx) {
+    const b = document.getElementById('poa-done-btn-'+idx);
+    if (b?.disabled) { alert('Add at least one item first.'); return; }
+    const sel = document.getElementById('poa-item-sel-'+idx);
+    if (sel?.value) { alert(`${sel.value} is selected but not added yet — click "+ Add Line" to add it, or clear the selection.`); return; }
     poaSend(JSON.stringify({ action: 'done_items' }));
-  };
-
-  window.poaComboPostPO = function(lines) {
-    const deliveryDate = document.getElementById('poa-rf-date')?.value || '';
-    const comments     = document.getElementById('poa-rf-comments')?.value || '';
-    poaSend(JSON.stringify({ action: 'post_po', lines, deliveryDate, comments }));
   };
 
   // ── Input key handling ─────────────────────────────────────────────────────
@@ -35928,11 +35940,20 @@ window.roAskFollowUp = function() {
     sel.innerHTML = '<option value="">— Select an Item —</option>' + filtered.map(i =>
       `<option value="${soaEscAttr(i.code)}" data-name="${soaEscAttr(i.name)}" data-unit="${soaEscAttr(i.unit)}" data-vat="${soaEscAttr(i.vat)}">${soaEscAttr(i.code)} — ${soaEscAttr(i.name)}</option>`
     ).join('');
+    soaGateAdd(idx);
   };
+
+  // "+ Add Line" only once an item is selected
+  function soaGateAdd(idx) {
+    const sel = document.getElementById('soa-item-sel-'+idx), b = document.getElementById('soa-add-btn-'+idx);
+    if (!b) return;
+    b.disabled = !sel?.value;
+    b.title = sel?.value ? '' : 'Select an item first';
+  }
 
   // ── Combo action handlers (called from inline HTML in agent replies) ─────────
   window.soaComboSelectCustomer = function() {
-    const sel = document.getElementById('soa-cust-sel');
+    const sel = [...document.querySelectorAll('#soa-cust-sel')].pop();
     if (!sel || !sel.value) { alert('Please select a customer'); return; }
     const opt = sel.options[sel.selectedIndex];
     const cardCode = sel.value;
@@ -35942,6 +35963,7 @@ window.roAskFollowUp = function() {
   };
 
   window.soaComboItemChange = function(sel, idx) {
+    soaGateAdd(idx);
     const opt = sel.options[sel.selectedIndex];
     if (opt && opt.dataset.vat) {
       const taxSel = document.getElementById('soa-tax-'+idx);
@@ -35976,7 +35998,11 @@ window.roAskFollowUp = function() {
     soaSend(JSON.stringify(payload));
   };
 
-  window.soaComboDoneItems = function() {
+  window.soaComboDoneItems = function(idx) {
+    const b = document.getElementById('soa-done-btn-'+idx);
+    if (b?.disabled) { alert('Add at least one item first.'); return; }
+    const sel = document.getElementById('soa-item-sel-'+idx);
+    if (sel?.value) { alert(`${sel.value} is selected but not added yet — click "+ Add Line" to add it, or clear the selection.`); return; }
     soaSend(JSON.stringify({ action: 'done_items' }));
   };
 
@@ -39554,11 +39580,20 @@ window.roAskFollowUp = function() {
     sel.innerHTML = '<option value="">— Select an Item —</option>' + filtered.map(i =>
       `<option value="${sqEscAttr(i.code)}" data-name="${sqEscAttr(i.name)}" data-unit="${sqEscAttr(i.unit)}" data-vat="${sqEscAttr(i.vat)}">${sqEscAttr(i.code)} — ${sqEscAttr(i.name)}</option>`
     ).join('');
+    sqGateAdd(idx);
   };
+
+  // "+ Add Line" only once an item is selected
+  function sqGateAdd(idx) {
+    const sel = document.getElementById('sq-item-sel-'+idx), b = document.getElementById('sq-add-btn-'+idx);
+    if (!b) return;
+    b.disabled = !sel?.value;
+    b.title = sel?.value ? '' : 'Select an item first';
+  }
 
   // ── Combo action handlers (called from inline HTML in agent replies) ─────────
   window.sqComboSelectCustomer = function() {
-    const sel = document.getElementById('sq-cust-sel');
+    const sel = [...document.querySelectorAll('#sq-cust-sel')].pop();
     if (!sel || !sel.value) { alert('Please select a customer'); return; }
     const opt = sel.options[sel.selectedIndex];
     const cardCode = sel.value;
@@ -39567,6 +39602,7 @@ window.roAskFollowUp = function() {
   };
 
   window.sqComboItemChange = function(sel, idx) {
+    sqGateAdd(idx);
     const opt = sel.options[sel.selectedIndex];
     // Auto-fill tax code if item has one
     if (opt && opt.dataset.vat) {
@@ -39603,7 +39639,11 @@ window.roAskFollowUp = function() {
     sqSend(JSON.stringify(payload));
   };
 
-  window.sqComboDoneItems = function() {
+  window.sqComboDoneItems = function(idx) {
+    const b = document.getElementById('sq-done-btn-'+idx);
+    if (b?.disabled) { alert('Add at least one item first.'); return; }
+    const sel = document.getElementById('sq-item-sel-'+idx);
+    if (sel?.value) { alert(`${sel.value} is selected but not added yet — click "+ Add Line" to add it, or clear the selection.`); return; }
     sqSend(JSON.stringify({ action: 'done_items' }));
   };
 
@@ -40266,7 +40306,7 @@ window.roAskFollowUp = function() {
     ).join('');
   };
   window.qcompComboSelectCustomer = function() {
-    const sel = document.getElementById('qcomp-cust-sel');
+    const sel = [...document.querySelectorAll('#qcomp-cust-sel')].pop();
     if (!sel || !sel.value) { alert('Please select a customer'); return; }
     const opt = sel.options[sel.selectedIndex];
     const cardCode = sel.value;
@@ -40350,7 +40390,7 @@ window.roAskFollowUp = function() {
   };
   const STEP_LABEL = { INIT:'READY', SELECT_CUSTOMER:'CUSTOMER', SELECT_SOURCE:'DOCUMENT', REVIEW_LINES:'REVIEW', DONE:'DONE' };
   // Sales cycle agents: earlier steps lock, review form edits through ✏️ (server side: cfg.strictSteps)
-  const STRICT = new Set(['q2o', 'o2d', 'd2arinv', 'arinv2arcm']);
+  const STRICT = new Set(['q2o', 'o2d', 'd2arinv', 'arinv2arcm', 'po-to-grpo', 'grpo-apinv', 'apcm']);
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
@@ -40550,7 +40590,14 @@ window.roAskFollowUp = function() {
 
   window.cfCalc = function(ctrl) {
     const form = ctrl.closest('[data-cf-form]'); if (!form) return;
-    let grand = 0;
+    // Subtotal (before tax) / Tax / Document Total — unticked source rows don't count, "+ Add Line" rows do
+    let sub = 0, taxSum = 0;
+    const rowAmounts = (row, net, rate) => {
+      const tx = net * rate / 100;
+      const ta = field(row, 'taxamt'); if (ta) ta.textContent = fmt(tx);
+      field(row, 'total').textContent = fmt(net + tx);
+      return tx;
+    };
     form.querySelectorAll('[data-cf-line]').forEach(row => {
       const use   = field(row, 'use').checked;
       const qtyEl = field(row, 'qty');
@@ -40559,8 +40606,8 @@ window.roAskFollowUp = function() {
       const disc  = field(row, 'disc')  ? num(field(row, 'disc').value)  : num(row.dataset.disc);
       const tax   = field(row, 'tax');
       const rate  = tax ? num(tax.options[tax.selectedIndex]?.dataset.rate) : num(row.dataset.rate);
-      const total = qty * price * (1 - disc / 100) * (1 + rate / 100);
-      field(row, 'total').textContent = fmt(total);
+      const net   = qty * price * (1 - disc / 100);
+      const tx    = rowAmounts(row, net, rate);
       const stock = rowStock(row);
       const short = stock != null && invQty(row) > stock + 1e-9;
       qtyEl.style.borderColor = qty > num(row.dataset.max) + 1e-9 || short ? '#ef4444' : '#d1d5db';
@@ -40568,25 +40615,34 @@ window.roAskFollowUp = function() {
       if (wq) { wq.textContent = fmt(stock); wq.style.color = short ? '#dc2626' : '#15803d'; wq.title = short ? 'Not enough stock in this warehouse' : ''; }
       refreshAlloc(row);
       row.style.opacity = use ? '1' : '.45';
-      if (use) grand += total;
+      if (use) { sub += net; taxSum += tx; }
     });
     form.querySelectorAll('[data-cf-extra]').forEach(row => {
-      const tax   = field(row, 'tax');
-      const total = num(field(row, 'qty').value) * num(field(row, 'price').value) * (1 - num(field(row, 'disc').value) / 100)
-        * (1 + num(tax.options[tax.selectedIndex]?.dataset.rate) / 100);
-      field(row, 'total').textContent = fmt(total);
+      const tax = field(row, 'tax');
+      const net = num(field(row, 'qty').value) * num(field(row, 'price').value) * (1 - num(field(row, 'disc').value) / 100);
+      const tx  = rowAmounts(row, net, num(tax.options[tax.selectedIndex]?.dataset.rate));
       if (form.dataset.receive) refreshAlloc(row);
-      grand += total;
+      sub += net; taxSum += tx;
     });
-    const g = form.querySelector('[data-f="grand"]'); if (g) g.textContent = fmt(grand);
+    const put = (f, v) => { const e = form.querySelector('[data-f="' + f + '"]'); if (e) e.textContent = fmt(v); };
+    put('sub', sub); put('taxsum', taxSum); put('grand', sub + taxSum);
   };
 
   // ── "+ Add Line" rows (cfg.extraLines): items not on the source document ─────
   let _cfExtraSeq = 0;
+  // Mark / unmark an added line whose item is not picked yet
+  function cfNoItem(row, on) {
+    const q = field(row, 'itemq'); if (!q) return;
+    q.style.borderColor = on ? '#dc2626' : '#d1d5db';
+    q.style.background  = on ? '#fef2f2' : '';
+  }
   window.cfAddLine = function(btn) {
     const form = btn.closest('[data-cf-form]'); if (!form) return;
     const tpl  = form.querySelector('template[data-cf-extra-tpl]'), body = form.querySelector('tbody');
     if (!tpl || !body) return;
+    // One new line at a time: the open one needs its item first
+    const blank = [...form.querySelectorAll('[data-cf-extra]')].find(r => !r.dataset.item);
+    if (blank) { cfNoItem(blank, true); field(blank, 'itemq').focus(); alert('Pick an item from the search list in the open line first (or remove it with ✕).'); return; }
     const row = tpl.content.firstElementChild.cloneNode(true);
     const id  = 'cf-items-' + (++_cfExtraSeq);
     field(row, 'itemlist').id = id;
@@ -40617,8 +40673,18 @@ window.roAskFollowUp = function() {
   };
   window.cfItemPick = async function(input) {
     const row = input.closest('[data-cf-extra]'), form = input.closest('[data-cf-form]'), p = form.dataset.prefix;
-    const code = input.value.split(' — ')[0].trim(); if (!code || input.value === row.dataset.itemlabel) return;
+    if (!input.value.trim() || input.value === row.dataset.itemlabel) return;
     const name = field(row, 'itemname');
+    // Only an item from the search results is accepted — typed text is cleared
+    if (![...field(row, 'itemlist').options].some(o => o.value === input.value)) {
+      delete row.dataset.item; delete row.dataset.itemlabel; row._cfAlloc = null;
+      input.value = ''; cfNoItem(row, true);
+      name.textContent = 'Pick an item from the list'; name.style.color = '#b91c1c';
+      cfCalc(input);
+      alert('Pick an item from the search list — type part of the code or name, then choose a suggestion.');
+      return;
+    }
+    const code = input.value.split(' — ')[0].trim(); if (!code) return;
     name.textContent = '⏳ Loading…';
     const r = await fetch(AGENTS[p].api + '/items?' + new URLSearchParams({ sessionId: sessions[p] || '', itemCode: code }), { headers: { 'x-auth-token': tok() } })
       .then(r => r.json()).catch(() => null);
@@ -40637,6 +40703,7 @@ window.roAskFollowUp = function() {
       if (b) b.textContent = it.managed === 'serial' ? '🔢 Create Serials' : it.managed === 'batch' ? '🏷️ Create Batches' : '📍 Select Bins';
     }
     row.dataset.item = it.itemCode;
+    cfNoItem(row, false);
     row.dataset.itemlabel = input.value = it.itemCode + ' — ' + it.itemName;
     name.textContent = it.itemName + (it.inventory ? '' : ' (non-stock)');
     name.style.color = '#6b7280';
@@ -40780,7 +40847,7 @@ window.roAskFollowUp = function() {
     const extraLines = [];
     for (const row of form.querySelectorAll('[data-cf-extra]')) {
       const qty = num(field(row, 'qty').value);
-      if (!row.dataset.item) { alert('Pick an item from the search list on every added line, or remove the line.'); field(row, 'itemq').focus(); return; }
+      if (!row.dataset.item) { cfNoItem(row, true); alert('Pick an item from the search list on every added line, or remove the line.'); field(row, 'itemq').focus(); return; }
       if (qty <= 0) { alert(row.dataset.item + ': enter a quantity above zero.'); return; }
       const xa = form.dataset.receive ? row._cfAlloc : null;
       if (form.dataset.receive && needsAlloc(row) && !xa) { alert(row.dataset.item + ': ' + (row.dataset.manage === 'serial' ? 'create the serial numbers' : row.dataset.manage ? 'create the batches' : 'select the bin locations') + ' before posting.'); return; }
@@ -41319,7 +41386,7 @@ window.roAskFollowUp = function() {
     ).join('');
   };
   window.inpmtComboSelectCustomer = function() {
-    const sel = document.getElementById('inpmt-cust-sel');
+    const sel = [...document.querySelectorAll('#inpmt-cust-sel')].pop();
     if (!sel || !sel.value) { alert('Please select a customer'); return; }
     const opt = sel.options[sel.selectedIndex];
     const cardCode = sel.value;

@@ -20,7 +20,9 @@
 .o2c-locked a{pointer-events:auto}
 [data-o2c-review] input:not(:disabled),[data-o2c-review] select:not(:disabled){border-color:#0070F2!important;background:#fffbea!important}
 [data-o2c-review] input:disabled,[data-o2c-review] select:disabled{background:#f3f4f6!important;color:#4b5563;border-color:#e5e7eb!important}
-[data-o2c-review] tr.o2c-editing{background:#fffbea}`;
+[data-o2c-review] tr.o2c-editing{background:#fffbea}
+[data-items] button:disabled,[data-o2c-review] button:disabled{opacity:.45;cursor:not-allowed}
+[data-o2c-review] tr.o2c-noitem [data-item-in]{border-color:#dc2626!important;background:#fef2f2!important}`;
   document.head.appendChild(st);
 
   const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -127,6 +129,8 @@
     addRow(btn) {
       const c = card(btn), tpl = c.querySelector('template[data-new-row]');
       if (!tpl) return;
+      const blank = [...c.querySelectorAll('tr[data-row][data-new]')].find(r => !r.dataset.item);
+      if (blank) { blank.classList.add('o2c-noitem'); blank.querySelector('[data-item-in]')?.focus(); alert('Pick an item in the open row first (or remove it with 🗑).'); return; }
       const tr = tpl.content.firstElementChild.cloneNode(true);
       c.querySelector('tbody').appendChild(tr);
       this.renumber(c);
@@ -139,10 +143,16 @@
       const raw = input.value.trim();
       const opt = [...(input.list?.options || [])].find(o => o.value.toLowerCase() === raw.toLowerCase()
         || (o.textContent && `${o.value} — ${o.textContent}`.toLowerCase() === raw.toLowerCase()));
-      const code = opt ? opt.value : raw.split(/\s+[—–-]\s+/)[0].trim();
+      let code = opt ? opt.value : raw.split(/\s+[—–-]\s+/)[0].trim();
+      if (code && !opt && input.list?.options.length) {
+        alert(`"${raw}" is not in the item list — pick an item from the list.`);
+        code = ''; input.value = '';
+      }
       tr.dataset.item = code;
+      tr.classList.toggle('o2c-noitem', !code);
       input.value = code;
       tr.querySelector('[data-item-name]').textContent = opt?.textContent || (code ? 'Checked when you post' : '');
+      const pr = tr.querySelector('[data-l="unitPrice"]'); if (pr) delete pr.dataset.manual;
       if (code) this.loadPrice(tr, c);
     },
 
@@ -162,7 +172,7 @@
         if (priceEl.dataset.manual || tr.dataset.item !== itemCode) return;
         if (r.ok && r.price > 0) {
           priceEl.value = r.price;
-          if (note && !/✓|⚠️/.test(note.textContent)) note.textContent += r.source === 'fallback' ? ' · ⚠️ base price list' : ' · ✓ customer price';
+          if (note && !/✓|⚠️/.test(note.textContent)) note.textContent += r.source === 'fallback' ? ' · ⚠️ base price list' : ` · ✓ ${r.source === 'vendor' ? 'vendor' : 'customer'} price`;
         } else if (note && !/⚠️/.test(note.textContent)) note.textContent += ' · ⚠️ no price — enter it';
       } catch { /* price stays editable */ }
       this.recalc(c);
@@ -170,14 +180,19 @@
 
     recalc(elOrCard) {
       const c = elOrCard.matches?.('[data-o2c-review]') ? elOrCard : card(elOrCard);
-      let total = 0;
+      let sub = 0, tax = 0;
       c.querySelectorAll('tr[data-row]').forEach(tr => {
         const v = k => num(tr.querySelector(`[data-l="${k}"]`)?.value);
         const t = v('quantity') * v('unitPrice') * (1 - v('discountPercent') / 100);
-        total += t;
+        const ts = tr.querySelector('[data-l="taxCode"]');
+        const rate = num(ts?.selectedOptions?.[0]?.dataset.rate);
+        const tx = t * rate / 100;
+        sub += t; tax += tx;
         tr.querySelector('[data-lt]').textContent = fmt(t);
+        const tc = tr.querySelector('[data-ltax]'); if (tc) tc.textContent = fmt(tx);
       });
-      c.querySelector('[data-total]').textContent = fmt(total);
+      const set = (sel, v) => { const e = c.querySelector(sel); if (e) e.textContent = fmt(v); };
+      set('[data-sub]', sub); set('[data-tax]', tax); set('[data-total]', sub + tax);
     },
 
     /** Send a plain action from inside a card (e.g. "+ Add More Items"), once. */
@@ -200,7 +215,7 @@
           discountPercent: num(v('discountPercent')), taxCode: v('taxCode'), warehouseCode: v('warehouseCode') };
       });
       const noItem = lines.findIndex(l => !l.itemCode);
-      if (noItem >= 0) { alert(`Row ${noItem + 1}: pick an item, or remove the row with 🗑.`); return; }
+      if (noItem >= 0) { c.querySelectorAll('tr[data-row]')[noItem]?.classList.add('o2c-noitem'); alert(`Row ${noItem + 1}: pick an item, or remove the row with 🗑.`); return; }
       const bad = lines.findIndex(l => !(l.quantity > 0));
       if (bad >= 0) { alert(`Row ${bad + 1} (${lines[bad].itemCode}): quantity must be more than 0.`); return; }
       c.dataset.sent = '1';

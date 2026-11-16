@@ -8,7 +8,8 @@
 import { Router } from 'express';
 import { itemPriceRoute } from '../lib/item-price.mjs';
 import { buildReviewCard, readReviewPost } from '../lib/o2c-review.mjs';
-import db, { connRepo } from '../db.mjs';
+import { docAmounts, resultAmounts, cardTotalsHtml, printTotalsHtml, printTaxHeads, printTaxCells, money } from '../lib/doc-totals.mjs';
+import db, { connRepo, cacheRepo } from '../db.mjs';
 
 const HEADER_KEYS = ['docDate', 'validUntil', 'reference', 'comments'];
 // The step each card's action belongs to — an action from an earlier card is refused.
@@ -85,9 +86,48 @@ async function searchItems(sap, query) {
   }
 }
 
-function getCacheTaxCodes() {
+// Default sales UoM code for a single item — cache first, live SAP fallback.
+// SAP B1 rejects DocumentLines with no UoMCode once UoM management is enabled on the item.
+async function getDefaultUoMCode(itemCode, sap) {
   const cid = getCompanyId();
-  return db.prepare(`SELECT Code, Name FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
+  const cached = db.prepare(`SELECT SalesUnit FROM cache_items WHERE company_id=? AND ItemCode=?`).get(cid, itemCode);
+  if (cached?.SalesUnit) return cached.SalesUnit;
+  try {
+    const item = await sap.get(`/Items('${itemCode}')`, { $select: 'ItemCode,SalesUnit,InventoryUOM,PurchaseUnit' });
+    return item?.SalesUnit || item?.InventoryUOM || item?.PurchaseUnit || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function getCacheTaxCodes(sap) {
+  const cid = getCompanyId();
+  const rows = db.prepare(`SELECT Code, Name, Rate FROM cache_tax_codes WHERE company_id=? ORDER BY Code`).all(cid);
+  if (rows.length || !sap) return rows;
+  // Cache is empty (never synced) — fall back to a live SAP lookup and warm the cache for next time.
+  // VAT localizations use /VatGroups, US/Canada Sales Tax uses /SalesTaxCodes — try both.
+  let vat = [];
+  try {
+    const d = await sap.get('/VatGroups', { $orderby: 'Code asc', $top: 200 });
+    const raw = Array.isArray(d.value) ? d.value : (Array.isArray(d) ? d : []);
+    vat = raw.map(v => {
+      const slabs = v.VatGroups || [];
+      const rate  = slabs.length ? Number(slabs[slabs.length - 1].Rate || slabs[0].Rate || 0) : 0;
+      return { Code: v.Code, Name: v.Name, Category: v.Category, Rate: rate };
+    });
+  } catch (e) {
+    console.error('[SQ-Agent] live /VatGroups fetch failed:', e.message);
+  }
+  if (vat.length) { cacheRepo.upsertTaxCodes(cid, vat); return vat; }
+  try {
+    const d = await sap.get('/SalesTaxCodes', { $orderby: 'Code asc', $top: 200 });
+    const raw = Array.isArray(d.value) ? d.value : (Array.isArray(d) ? d : []);
+    const salesTax = raw.map(v => ({ Code: v.Code, Name: v.Name, Category: 'Sales Tax', Rate: Number(v.Rate || 0) }));
+    if (salesTax.length) { cacheRepo.upsertTaxCodes(cid, salesTax); return salesTax; }
+  } catch (e) {
+    console.error('[SQ-Agent] live /SalesTaxCodes fetch failed:', e.message);
+  }
+  return vat; // both empty/unavailable
 }
 
 function getCacheWarehouses() {
@@ -124,7 +164,8 @@ function buildCustomerComboHtml(customers) {
   </div>`;
 }
 
-function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
+// hasLines: items already on the quotation — "Done Adding Items" stays disabled until there is at least one.
+function buildItemLineHtml(items, taxCodes, warehouses, lineIdx, hasLines = false) {
   const itemOpts = items.map(i =>
     `<option value="${escHtml(i.ItemCode)}" data-name="${escHtml(i.ItemName)}" data-unit="${escHtml(i.SalesUnit||'')}" data-vat="${escHtml(i.SalesVATGroup||'')}">${escHtml(i.ItemCode)} — ${escHtml(i.ItemName)}</option>`
   ).join('');
@@ -177,11 +218,11 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx) {
       </div>
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="sqComboAddItem(${lineIdx})"
+      <button id="sq-add-btn-${lineIdx}" disabled title="Select an item first" onclick="sqComboAddItem(${lineIdx})"
         style="background:#15803d;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">
         + Add Line
       </button>
-      <button onclick="sqComboDoneItems()"
+      <button id="sq-done-btn-${lineIdx}" ${hasLines ? '' : 'disabled title="Add at least one item first"'} onclick="sqComboDoneItems(${lineIdx})"
         style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;font-size:12.5px;cursor:pointer">
         ✓ Done Adding Items
       </button>
@@ -227,8 +268,7 @@ function renderPrintLayout(doc) {
   const docDate   = doc.DocDate    ? doc.DocDate.slice(0, 10)    : '—';
   const validUntil = doc.DocDueDate ? doc.DocDueDate.slice(0, 10) : '—';
   const printedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const grandTotal = lines.reduce((s, l) => s + Number(l.LineTotal || 0), 0);
-  const taxTotal   = lines.reduce((s, l) => s + Number(l.VatSum   || 0), 0);
+  const amt = docAmounts(doc);
 
   const linesHtml = lines.map((l, i) => `
     <tr>
@@ -239,8 +279,8 @@ function renderPrintLayout(doc) {
       <td>${escHtml(l.UoMCode || l.MeasureUnit || '')}</td>
       <td style="text-align:right">${Number(l.UnitPrice  || 0).toFixed(2)}</td>
       <td style="text-align:right">${Number(l.DiscountPercent || 0).toFixed(1)}%</td>
-      <td style="text-align:right">${Number(l.LineTotal  || 0).toFixed(2)}</td>
       <td>${escHtml(l.TaxCode || '')}</td>
+      ${printTaxCells(amt, i)}
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -264,9 +304,6 @@ function renderPrintLayout(doc) {
   th{padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#fff}
   td{padding:7px 10px;border-bottom:1px solid #eee;font-size:11px}
   tr:nth-child(even) td{background:#f0fdf4}
-  .totals{text-align:right;padding:8px 0 20px}
-  .total-row{font-size:12px;color:#374151;margin-bottom:4px}
-  .total-grand{font-size:15px;font-weight:700;color:#15803d;margin-top:6px}
   .footer{text-align:center;margin-top:24px;font-size:9px;color:#aaa;border-top:1px solid #eee;padding-top:12px}
   .watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-size:52px;color:rgba(0,0,0,.04);font-weight:900;pointer-events:none;z-index:0}
   @media print{.print-btn{display:none}}
@@ -303,20 +340,20 @@ ${doc.Comments ? `<div style="border:1px solid #bbf7d0;border-radius:6px;padding
     <th>#</th><th>Item Code</th><th>Description</th>
     <th style="text-align:right">Qty</th><th>Unit</th>
     <th style="text-align:right">Unit Price</th><th style="text-align:right">Disc%</th>
-    <th style="text-align:right">Total</th><th>Tax</th>
+    <th>Tax Code</th>${printTaxHeads()}
   </tr></thead>
   <tbody>${linesHtml}</tbody>
 </table>
-<div class="totals">
-  ${taxTotal > 0 ? `<div class="total-row">Subtotal: ${(grandTotal - taxTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  ${taxTotal > 0 ? `<div class="total-row">Tax: ${taxTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  <div class="total-grand">Quotation Total: ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-</div>
+${printTotalsHtml(amt, { color: '#15803d', label: 'Quotation Total' })}
 <div class="footer">Printed on ${escHtml(printedOn)} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Sales Quotation #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body></html>`;
 }
 
 // ── Router factory ─────────────────────────────────────────────────────────────
+
+// Item-form index for element ids — never reused, so a new form can't clash with an older (locked) one still in the chat.
+let _formSeq = Date.now() % 1e6;
+const nextFormIdx = () => ++_formSeq;
 
 export function createSalesQuotationRouter(deps) {
   const { requireAuth, printAuth, getActiveSap } = deps;
@@ -376,7 +413,7 @@ export function createSalesQuotationRouter(deps) {
       let formData     = null;
 
       // Final review card: header + rows editable through ✏️ buttons; only the newest card can post.
-      const reviewCard = () => {
+      const reviewCard = async () => {
         session.reviewSeq = (session.reviewSeq || 0) + 1;
         const h = session._header || {};
         const names = new Map(getCacheItems().map(i => [i.ItemCode, i.ItemName]));
@@ -384,7 +421,7 @@ export function createSalesQuotationRouter(deps) {
           title: '📋 Quotation Ready to Post', partyLabel: 'Customer',
           party: { code: session.selectedCustomer?.cardCode, name: session.selectedCustomer?.cardName },
           seq: session.reviewSeq, send: 'sqSend', postAction: 'post_quotation', postLabel: '✅ Post Quotation',
-          addMoreAction: 'add_more_items', addMoreLabel: '+ Add More Items',
+          addRow: { items: getCacheItems().map(i => ({ code: i.ItemCode, name: i.ItemName })), priceApi: '/api/sales-quotation', sessionId: sid },
           header: [
             { key: 'docDate', label: 'Posting Date', type: 'date', value: h.docDate || today() },
             { key: 'validUntil', label: 'Valid Until', type: 'date', value: h.validUntil || datePlusDays(30) },
@@ -392,7 +429,7 @@ export function createSalesQuotationRouter(deps) {
             { key: 'comments', label: 'Comments', value: h.comments || '', placeholder: 'Optional' },
           ],
           lines: (session._lines || []).map(l => ({ ...l, itemName: names.get(l.itemCode) || '' })),
-          taxCodes: getCacheTaxCodes(), warehouses: getCacheWarehouses(),
+          taxCodes: await getCacheTaxCodes(sap), warehouses: getCacheWarehouses(),
         });
       };
 
@@ -407,40 +444,56 @@ export function createSalesQuotationRouter(deps) {
             reply = `This quotation is already posted (#${escHtml(session.result?.docNum ?? '')}). Start a new one to create another.`;
             quickReplies = ['Create New Quotation'];
           } else {
-            reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That step is already finished — use the latest card${session.step === 'REVIEW_FORM' ? ' (✏️ Edit Header, or ✏️ on a row)' : ''}.</div>${session.step === 'REVIEW_FORM' ? reviewCard() : ''}`;
+            reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That step is already finished — use the latest card${session.step === 'REVIEW_FORM' ? ' (✏️ Edit Header, or ✏️ on a row)' : ''}.</div>${session.step === 'REVIEW_FORM' ? await reviewCard() : ''}`;
           }
         }
 
         // ── Post Sales Quotation (once, from the newest review card only) ──
         else if (action?.action === 'post_quotation' && Number(action.seq) !== session.reviewSeq) {
-          reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That review card is out of date — use this one.</div>${reviewCard()}`;
+          reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That review card is out of date — use this one.</div>${await reviewCard()}`;
         }
         else if (action?.action === 'post_quotation' && session._posting) {
           reply = '⏳ This quotation is already being posted — please wait.';
         }
         else if (action?.action === 'post_quotation') {
-          const rp = readReviewPost(action, session._lines, HEADER_KEYS);
+          const rp = readReviewPost(action, session._lines, HEADER_KEYS, { allowNew: true });
+          session._posting = true;   // lock before the SAP item checks, so a second click can't slip in
+          if (rp.ok) {
+            // rows added on the card with "+ Add Row" — check the item in SAP before posting
+            for (const l of rp.lines.filter(x => x.isNew)) {
+              let it = null;
+              try { it = await sap.get(`/Items('${encodeURIComponent(l.itemCode.replace(/'/g, "''"))}')`, { $select: 'ItemCode,ItemName,SalesItem,Frozen' }); } catch { it = null; }
+              if (!it?.ItemCode) { rp.ok = false; rp.error = `Item ${l.itemCode} was not found in SAP.`; break; }
+              if (it.SalesItem === 'tNO') { rp.ok = false; rp.error = `${it.ItemCode} is not a sales item.`; break; }
+              if (it.Frozen === 'tYES') { rp.ok = false; rp.error = `${it.ItemCode} is inactive (frozen) in SAP.`; break; }
+              l.itemCode = it.ItemCode;
+              delete l.isNew;
+            }
+          }
           if (!rp.ok) {
-            reply = `<div style="color:#b91c1c;margin-bottom:6px">❌ ${escHtml(rp.error)}</div>${reviewCard()}`;
+            session._posting = false;
+            reply = `<div style="color:#b91c1c;margin-bottom:6px">❌ ${escHtml(rp.error)}</div>${await reviewCard()}`;
           } else {
             session._lines = rp.lines;
             session._header = rp.header;
             const lines = rp.lines, h = rp.header;
             session._posting = true;
             try {
+              const uomCodes = await Promise.all(lines.map(l => getDefaultUoMCode(l.itemCode, sap)));
               const payload = {
                 CardCode:    session.selectedCustomer.cardCode,
                 DocDate:     sapDate(h.docDate    || today()),
                 DocDueDate:  sapDate(h.validUntil || datePlusDays(30)),
                 ...(h.reference ? { NumAtCard: h.reference } : {}),
                 ...(h.comments  ? { Comments:  h.comments  } : {}),
-                DocumentLines: lines.map(l => ({
+                DocumentLines: lines.map((l, i) => ({
                   ItemCode:        l.itemCode,
                   Quantity:        Number(l.quantity        || 1),
                   UnitPrice:       Number(l.unitPrice       || 0),
                   DiscountPercent: Number(l.discountPercent || 0),
                   ...(l.taxCode       ? { TaxCode: l.taxCode }             : {}),
                   ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
+                  ...(uomCodes[i]     ? { UoMCode: uomCodes[i] }           : {}),
                 })),
               };
 
@@ -448,7 +501,10 @@ export function createSalesQuotationRouter(deps) {
               session.result = { docEntry: result.DocEntry, docNum: result.DocNum };
               session.step   = 'DONE';
 
-              // Build line items HTML rows
+              // amounts as SAP calculated them; if SAP didn't send the document back, estimate from the rates
+              const amt = resultAmounts(result, lines, await getCacheTaxCodes(sap));
+              const cur = escHtml(amt.currency);
+
               const linesHtml = lines.map((l, i) => `
                 <tr style="border-bottom:1px solid #f3f4f6">
                   <td style="padding:6px 10px;font-size:12.5px;text-align:center">${i+1}</td>
@@ -458,6 +514,9 @@ export function createSalesQuotationRouter(deps) {
                   <td style="padding:6px 10px;font-size:12.5px;text-align:right">${l.discountPercent || 0}%</td>
                   <td style="padding:6px 10px;font-size:12.5px">${escHtml(l.taxCode||'')}</td>
                   <td style="padding:6px 10px;font-size:12.5px">${escHtml(l.warehouseCode||'')}</td>
+                  <td style="padding:6px 10px;font-size:12.5px;text-align:right">${money(amt.lines[i].net)}</td>
+                  <td style="padding:6px 10px;font-size:12.5px;text-align:right;color:#6b7280">${money(amt.lines[i].tax)}</td>
+                  <td style="padding:6px 10px;font-size:12.5px;text-align:right;font-weight:600">${money(amt.lines[i].gross)}</td>
                 </tr>`).join('');
 
               const printUrl = `/api/sales-quotation/print/${result.DocEntry}`;
@@ -481,6 +540,7 @@ export function createSalesQuotationRouter(deps) {
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Posting Date</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.docDate||today())}</td></tr>
                     <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Valid Until</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.validUntil||datePlusDays(30))}</td></tr>
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Total Lines</td><td style="padding:7px 12px;font-size:12.5px">${lines.length} item(s)</td></tr>
+                    <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Quotation Total</td><td style="padding:7px 12px;font-size:13px;font-weight:700;color:#15803d">${money(amt.total)} ${cur} <span style="font-size:11.5px;font-weight:400;color:#6b7280">(tax ${money(amt.tax)})</span></td></tr>
                   </tbody>
                 </table>
                 <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Line Items</div>
@@ -495,21 +555,21 @@ export function createSalesQuotationRouter(deps) {
                         <th style="padding:6px 10px;text-align:right">Disc%</th>
                         <th style="padding:6px 10px;text-align:left">Tax</th>
                         <th style="padding:6px 10px;text-align:left">WH</th>
+                        <th style="padding:6px 10px;text-align:right">Net</th>
+                        <th style="padding:6px 10px;text-align:right">Tax</th>
+                        <th style="padding:6px 10px;text-align:right">Total</th>
                       </tr>
                     </thead>
                     <tbody>${linesHtml}</tbody>
                   </table>
                 </div>
+                ${cardTotalsHtml(amt, { color: '#065f46', label: 'Quotation Total' })}
               </div>`;
               quickReplies = ['Create New Quotation'];
-              meta = {
-                docEntry: result.DocEntry,
-                docNum:   result.DocNum,
-                printUrl: `/api/sales-quotation/print/${result.DocEntry}`,
-              };
+              meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
             } catch (e) {
               // fresh editable card with the values just sent; "Retry" re-posts them from that card
-              const card = reviewCard();
+              const card = await reviewCard();
               session._failedPost = { ...action, seq: session.reviewSeq };
               reply = `<div style="color:#b91c1c;font-weight:700;margin-bottom:4px">❌ Failed to post Sales Quotation</div>
                 <div style="font-size:13px;margin-bottom:6px">SAP Error: <em>${escHtml(e.message)}</em></div>
@@ -526,22 +586,25 @@ export function createSalesQuotationRouter(deps) {
           const { cardCode, cardName } = action;
           session.selectedCustomer = { cardCode, cardName };
           session.step = 'ADD_ITEM';
-          session._lineIdx = 0;
+          session._lineIdx = nextFormIdx();
           session._lines   = [];
-          const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+          const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
           reply = `<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:6px;padding:10px 14px;margin-bottom:8px">
             ✅ Customer: <strong>${escHtml(cardName)}</strong> (${escHtml(cardCode)})
           </div>
           <div style="font-size:13px;color:#374151;margin-bottom:6px">Now add <strong>line items</strong> to the quotation:</div>
-          ${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+          ${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
         }
 
         // ── Add line item from combo ───────────────────────────────────────
+        else if (action?.action === 'add_item' && !action.itemCode) {
+          reply = '❌ Please select an item first.';
+        }
         else if (action?.action === 'add_item') {
           if (!session._lines) session._lines = [];
           session._lines.push(action);
-          session._lineIdx = (session._lineIdx || 0) + 1;
-          const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+          session._lineIdx = nextFormIdx();
+          const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
           const linesSummary = session._lines.map((l, i) =>
             `<tr><td style="padding:4px 8px;font-size:12.5px">${i+1}</td><td style="padding:4px 8px;font-size:12.5px">${escHtml(l.itemCode)}</td><td style="padding:4px 8px;font-size:12.5px;text-align:right">${l.quantity}</td><td style="padding:4px 8px;font-size:12.5px;text-align:right">${l.unitPrice??'—'}</td><td style="padding:4px 8px;font-size:12.5px">${escHtml(l.taxCode||'')}</td></tr>`
           ).join('');
@@ -553,26 +616,28 @@ export function createSalesQuotationRouter(deps) {
             </table>
           </div>
           <div style="font-size:13px;color:#374151;margin-bottom:6px">Add another item or click <strong>Done Adding Items</strong>:</div>
-          ${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+          ${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           session.step = 'ADD_ITEM';
         }
 
         // ── Done adding items → show review / post form ────────────────────
         else if (action?.action === 'done_items') {
           if (!session._lines?.length) {
-            const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
-            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
+            const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
+            session._lineIdx = nextFormIdx();
+            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           } else {
             session.step = 'REVIEW_FORM';
-            reply = reviewCard();
+            reply = await reviewCard();
           }
         }
 
         // ── Add more items ─────────────────────────────────────────────────
         else if (action?.action === 'add_more_items') {
           session.step = 'ADD_ITEM';
-          const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
-          reply = `<div style="font-size:13px;margin-bottom:6px">Add another item:</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
+          session._lineIdx = nextFormIdx();
+          const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
+          reply = `<div style="font-size:13px;margin-bottom:6px">Add another item:</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
         }
 
         else {
@@ -606,15 +671,14 @@ export function createSalesQuotationRouter(deps) {
             const c = customers[0];
             session.selectedCustomer = { cardCode: c.CardCode, cardName: c.CardName };
             session.step = 'ADD_ITEM';
-            const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
-            session._lineIdx = (session._lineIdx || 0);
+            const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
+            session._lineIdx = nextFormIdx(); session._lines = [];
             reply = `<div style="background:#f0fdf4;border:1px solid #10b981;border-radius:6px;padding:10px 14px;margin-bottom:8px">
               ✅ Customer: <strong>${escHtml(c.CardName)}</strong> (${escHtml(c.CardCode)})
-            </div>${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
+            </div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           } else {
             customerList = customers.map(c => ({ cardCode: c.CardCode, cardName: c.CardName }));
-            const cached = getCacheCustomers();
-            reply = `<div style="margin-bottom:8px">Found <strong>${customers.length}</strong> matches. Select one:</div>${buildCustomerComboHtml(cached)}`;
+            reply = `<div style="margin-bottom:8px">Found <strong>${customers.length}</strong> matches. Select one:</div>${buildCustomerComboHtml(customers)}`;
             session.step = 'SELECT_CUSTOMER';
           }
         }
@@ -629,12 +693,12 @@ export function createSalesQuotationRouter(deps) {
           session.step = 'INIT';
         } else {
           const found = await searchItems(sap, msg);
-          const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
+          const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
           // New form index so its element ids don't clash with the form already in the chat.
-          session._lineIdx = (session._lineIdx || 0) + 1;
+          session._lineIdx = nextFormIdx();
           reply = found.length
-            ? `<div style="font-size:13px;margin-bottom:6px">Found <strong>${found.length}</strong> item(s) matching <strong>"${escHtml(msg)}"</strong>. Select one:</div>${buildItemLineHtml(found, taxes, whs, session._lineIdx)}`
-            : `<div style="color:#b91c1c;margin-bottom:8px">No items found matching <strong>"${escHtml(msg)}"</strong>. Try another code or name, or select from the list:</div>${buildItemLineHtml(getCacheItems(), taxes, whs, session._lineIdx)}`;
+            ? `<div style="font-size:13px;margin-bottom:6px">Found <strong>${found.length}</strong> item(s) matching <strong>"${escHtml(msg)}"</strong>. Select one:</div>${buildItemLineHtml(found, taxes, whs, session._lineIdx, !!session._lines?.length)}`
+            : `<div style="color:#b91c1c;margin-bottom:8px">No items found matching <strong>"${escHtml(msg)}"</strong>. Try another code or name, or select from the list:</div>${buildItemLineHtml(getCacheItems(), taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           quickReplies = (session._lines || []).length ? ['Done'] : [];
         }
       }
@@ -646,7 +710,7 @@ export function createSalesQuotationRouter(deps) {
           session.step = 'INIT';
         } else {
           // earlier steps are closed — changes happen on the review card itself
-          reply = `<div style="margin-bottom:6px">Make changes on the review card: <strong>✏️ Edit Header</strong> for dates / reference / comments, <strong>✏️</strong> on a row for qty / price / disc / tax / warehouse, <strong>+ Add More Items</strong> to add items. To pick another customer, type <strong>cancel</strong> and start again.</div>${reviewCard()}`;
+          reply = `<div style="margin-bottom:6px">Make changes on the review card: <strong>✏️ Edit Header</strong> for dates / reference / comments, <strong>✏️</strong> on a row for qty / price / disc / tax / warehouse, <strong>+ Add Row</strong> to add an item. To pick another customer, type <strong>cancel</strong> and start again.</div>${await reviewCard()}`;
         }
       }
 

@@ -6,6 +6,7 @@
  */
 import { Router } from 'express';
 import { getTaxCodes } from '../lib/copy-doc-flow.mjs';
+import { docAmounts, printTaxHeads, printTaxCells, printTotalsHtml } from '../lib/doc-totals.mjs';
 
 const _sessions = new Map();
 
@@ -664,7 +665,7 @@ function renderPOPrint(doc) {
   const docDate    = doc.DocDate    ? doc.DocDate.slice(0,10)    : '—';
   const dueDate    = doc.DocDueDate ? doc.DocDueDate.slice(0,10) : '—';
   const printedOn  = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
-  const grandTotal = lines.reduce((s, l) => s + Number(l.LineTotal || 0), 0);
+  const amt = docAmounts(doc);
 
   const linesHtml = lines.map((l, i) => `
     <tr>
@@ -674,8 +675,9 @@ function renderPOPrint(doc) {
       <td style="text-align:right">${Number(l.Quantity||0).toFixed(2)}</td>
       <td>${l.UoMCode||l.MeasureUnit||''}</td>
       <td style="text-align:right">${Number(l.UnitPrice||0) > 0 ? Number(l.UnitPrice).toFixed(2) : '—'}</td>
-      <td style="text-align:right">${Number(l.LineTotal||0) > 0 ? Number(l.LineTotal).toFixed(2) : '—'}</td>
       <td>${l.WarehouseCode||''}</td>
+      <td>${l.TaxCode||''}</td>
+      ${printTaxCells(amt, i)}
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -750,13 +752,14 @@ ${doc.Comments ? `<div style="border:1px solid #ddd;border-radius:6px;padding:12
     <tr>
       <th>#</th><th>Item Code</th><th>Description</th>
       <th style="text-align:right">Qty</th><th>Unit</th>
-      <th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th>
-      <th>Warehouse</th>
+      <th style="text-align:right">Unit Price</th>
+      <th>Warehouse</th><th>Tax Code</th>
+      ${printTaxHeads()}
     </tr>
   </thead>
   <tbody>${linesHtml}</tbody>
 </table>
-${grandTotal > 0 ? `<div class="totals"><div class="total-grand">Total: ${grandTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>` : ''}
+${amt.total || amt.subTotal ? printTotalsHtml(amt, { color: '#1a5c2e', label: 'PO Total' }) : ''}
 <div class="sig-section">
   <div><div class="sig-line">Ordered By</div></div>
   <div><div class="sig-line">Approved By</div></div>

@@ -11,6 +11,7 @@
  *                                              DUE_DATE → COMMENTS → CONFIRM → POSTING → DONE
  */
 import { Router } from 'express';
+import { docAmounts, printTaxHeads, printTaxCells, printTotalsHtml } from '../lib/doc-totals.mjs';
 
 // ── Session store ──────────────────────────────────────────────────────────────
 const _sessions = new Map();
@@ -868,7 +869,8 @@ function renderPRPrint(doc) {
   const docDate  = doc.DocDate    ? doc.DocDate.slice(0, 10)    : '—';
   const dueDate  = doc.DocDueDate ? doc.DocDueDate.slice(0, 10) : '—';
   const printedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const grandTotal = lines.reduce((s, l) => s + Number(l.LineTotal || 0), 0);
+  const amt = docAmounts(doc);
+  const priced = lines.some(l => Number(l.LineTotal || 0) || Number(l.UnitPrice || 0)) || Number(doc.DocTotal || 0) !== 0;
 
   const linesHtml = lines.map((l, i) => `
     <tr>
@@ -878,8 +880,9 @@ function renderPRPrint(doc) {
       <td style="text-align:right">${Number(l.Quantity || 0).toFixed(2)}</td>
       <td>${l.UoMCode || l.MeasureUnit || ''}</td>
       <td style="text-align:right">${Number(l.UnitPrice || 0) > 0 ? Number(l.UnitPrice).toFixed(2) : '—'}</td>
-      <td style="text-align:right">${Number(l.LineTotal || 0) > 0 ? Number(l.LineTotal).toFixed(2) : '—'}</td>
+      ${priced ? '' : `<td style="text-align:right">—</td>`}
       <td>${l.WarehouseCode || ''}</td>
+      ${priced ? `<td>${l.TaxCode || ''}</td>${printTaxCells(amt, i)}` : ''}
     </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -968,17 +971,14 @@ ${doc.Comments ? `<div class="comments-box"><strong>📝 Comments / Notes:</stro
     <tr>
       <th>#</th><th>Item Code</th><th>Description</th>
       <th style="text-align:right">Quantity</th><th>Unit</th>
-      <th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th>
-      <th>Warehouse</th>
+      <th style="text-align:right">Unit Price</th>${priced ? '' : '<th style="text-align:right">Total</th>'}
+      <th>Warehouse</th>${priced ? '<th>Tax Code</th>' + printTaxHeads() : ''}
     </tr>
   </thead>
   <tbody>${linesHtml}</tbody>
 </table>
 
-${grandTotal > 0 ? `
-<div class="totals">
-  <div class="total-grand">Estimated Total: ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-</div>` : ''}
+${priced ? printTotalsHtml(amt, { color: '#354A5E', label: 'Estimated Total' }) : ''}
 
 <div class="sig-section">
   <div class="sig-box"><div class="sig-line">Requested By</div></div>

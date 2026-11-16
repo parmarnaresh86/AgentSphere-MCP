@@ -6,13 +6,14 @@
  */
 import { Router } from 'express';
 import { createCopyFlowChatHandler, batchSerialRoute } from '../lib/copy-doc-flow.mjs';
+import { docAmounts, printTaxHeads, printTaxCells, printTotalsHtml } from '../lib/doc-totals.mjs';
 
 function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 const FLOW = {
-  tag: 'APCM', prefix: 'apcm', apiBase: '/api/apinv-apcm',
+  tag: 'APCM', prefix: 'apcm', apiBase: '/api/apinv-apcm', strictSteps: true,
   welcome: '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">↩️ Welcome to the <strong>A/P Invoice → Credit Memo Agent</strong>!</div>',
   theme:  { color: '#0a6ed1', bg: '#f5f9fd', light: '#eef6fc' },   // SAP S/4HANA Fiori blue, same as the sales copy-from agents
   party:  { label: 'Vendor', plural: 'vendors', cardType: 'cSupplier' },
@@ -33,8 +34,7 @@ function renderAPCMPrint(doc) {
   const docDate    = doc.DocDate    ? doc.DocDate.slice(0, 10)    : '—';
   const dueDate    = doc.DocDueDate ? doc.DocDueDate.slice(0, 10) : '—';
   const printedOn  = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const grandTotal = lines.reduce((s, l) => s + Number(l.LineTotal || 0), 0);
-  const taxTotal   = lines.reduce((s, l) => s + Number(l.VatSum   || 0), 0);
+  const amt = docAmounts(doc);
 
   const allocText = l => {
     const b = (l.BatchNumbers  || []).map(x => `${x.BatchNumber} (${Number(x.Quantity || 0)})`);
@@ -52,9 +52,9 @@ function renderAPCMPrint(doc) {
       <td style="text-align:right">${Number(l.Quantity  || 0).toFixed(2)}</td>
       <td>${escHtml(l.UoMCode || l.MeasureUnit || '')}</td>
       <td style="text-align:right">${Number(l.UnitPrice || 0).toFixed(2)}</td>
-      <td style="text-align:right">${Number(l.LineTotal || 0).toFixed(2)}</td>
-      <td>${escHtml(l.TaxCode || '')}</td>
       <td>${escHtml(l.WarehouseCode || '')}</td>
+      <td>${escHtml(l.TaxCode || '')}</td>
+      ${printTaxCells(amt, i)}
     </tr>`;
   }).join('');
 
@@ -119,16 +119,13 @@ ${doc.Comments ? `<div style="border:1px solid #fecaca;border-radius:6px;padding
   <thead><tr>
     <th>#</th><th>Item Code</th><th>Description</th>
     <th style="text-align:right">Qty</th><th>Unit</th>
-    <th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th>
-    <th>Tax</th><th>WH</th>
+    <th style="text-align:right">Unit Price</th>
+    <th>WH</th><th>Tax Code</th>
+    ${printTaxHeads()}
   </tr></thead>
   <tbody>${linesHtml}</tbody>
 </table>
-<div class="totals">
-  ${taxTotal > 0 ? `<div class="total-row">Subtotal: ${(grandTotal - taxTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  ${taxTotal > 0 ? `<div class="total-row">Tax: ${taxTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-  <div class="total-grand">Credit Total: ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-</div>
+${printTotalsHtml(amt, { color: '#b91c1c', label: 'Credit Memo Total' })}
 <div class="sig-section">
   <div><div class="sig-line">Prepared By</div></div>
   <div><div class="sig-line">Approved By</div></div>

@@ -12,6 +12,7 @@ import {
   card, errorCard, customerPickerHtml, selectedCustomerBanner, allPartiesWithCounts, searchCustomers,
   openDocsForCustomer, clearPartyCache, getTaxCodes, fetchAllPages, getCompanyId, escHtml, fmtN, odataStr, sapDate, today,
 } from '../lib/copy-doc-flow.mjs';
+import { docAmounts, printTaxHeads, printTaxCells, printTotalsHtml } from '../lib/doc-totals.mjs';
 
 const CFG = {
   tag: 'APSV', prefix: 'apsv', apiBase: '/api/apinv-service',
@@ -181,12 +182,12 @@ function renderServicePrint(doc, accounts) {
   const acctBy    = new Map(accounts.map(a => [a.code, a]));
   const lines     = doc.DocumentLines || [];
   const d10       = s => (s ? String(s).slice(0, 10) : '—');
-  const money     = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const printedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const amt       = docAmounts(doc);
   const linesHtml = lines.map((l, i) => `<tr>
       <td>${i + 1}</td><td><strong>${escHtml(acctBy.get(l.AccountCode)?.fmt || l.AccountCode || '')}</strong><div style="font-size:9.5px;color:#666">${escHtml(acctBy.get(l.AccountCode)?.name || '')}</div></td>
       <td>${escHtml(l.ItemDescription || '')}${l.FreeText ? `<div style="font-size:9.5px;color:#666;margin-top:2px">${escHtml(l.FreeText)}</div>` : ''}</td>
-      <td>${escHtml(l.TaxCode || '')}</td><td style="text-align:right">${money(l.LineTotal)}</td>
+      <td>${escHtml(l.TaxCode || '')}</td>${printTaxCells(amt, i)}
     </tr>`).join('');
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>A/P Service Invoice #${escHtml(String(doc.DocNum))}</title>
@@ -222,12 +223,8 @@ function renderServicePrint(doc, accounts) {
   <div class="info-box"><div class="info-label">Posting / Document / Due Date</div><div class="info-val"><strong>${escHtml(d10(doc.DocDate))}</strong></div><div class="info-val" style="color:#666">Doc: ${escHtml(d10(doc.TaxDate))} &nbsp;·&nbsp; Due: ${escHtml(d10(doc.DocDueDate))}</div></div>
   <div class="info-box"><div class="info-label">Vendor Ref No.</div><div class="info-val"><strong>${escHtml(doc.NumAtCard || '—')}</strong></div></div>
 </div>
-<table><thead><tr><th>#</th><th>G/L Account</th><th>Description</th><th>Tax</th><th style="text-align:right">Amount</th></tr></thead><tbody>${linesHtml}</tbody></table>
-<div class="totals">
-  <div class="total-row">Total Before Tax: ${money(Number(doc.DocTotal || 0) - Number(doc.VatSum || 0))}</div>
-  <div class="total-row">Tax: ${money(doc.VatSum)}</div>
-  <div class="total-grand">Total: ${money(doc.DocTotal)}</div>
-</div>
+<table><thead><tr><th>#</th><th>G/L Account</th><th>Description</th><th>Tax Code</th>${printTaxHeads()}</tr></thead><tbody>${linesHtml}</tbody></table>
+${printTotalsHtml(amt, { color: '#0a6ed1', label: 'Invoice Total' })}
 ${doc.Comments ? `<div style="border:1px solid #ddd;border-radius:6px;padding:12px;margin-bottom:20px;background:#f5f9fd;font-size:11px;line-height:1.6"><strong>Remarks:</strong> ${escHtml(doc.Comments)}</div>` : ''}
 <div class="sig-section"><div><div class="sig-line">Prepared By</div></div><div><div class="sig-line">Approved By</div></div><div><div class="sig-line">Finance Manager</div></div></div>
 <div class="footer">Printed on ${escHtml(printedOn)} &nbsp;|&nbsp; ${escHtml(company)} &mdash; SAP B1 A/P Invoice #${escHtml(String(doc.DocNum))} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
