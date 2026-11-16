@@ -11,7 +11,7 @@ function escHtml(s) {
 }
 
 const FLOW = {
-  tag: 'ARCM', prefix: 'arinv2arcm', apiBase: '/api/arinv-arcm',
+  tag: 'ARCM', prefix: 'arinv2arcm', apiBase: '/api/arinv-arcm', strictSteps: true,
   welcome: '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🔴 Welcome to the <strong>A/R Invoice → Credit Memo Agent</strong>!</div>',
   theme:  { color: '#0a6ed1', bg: '#f5f9fd', light: '#eef6fc' },   // SAP S/4HANA Fiori blue (was per-agent accent)
   source: { entity: '/Invoices', baseType: 13, label: 'A/R Invoice', short: 'INV', plural: 'A/R invoices', dueLabel: 'Due Date' },

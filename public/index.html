@@ -35873,6 +35873,8 @@ window.roAskFollowUp = function() {
 
   function soaAddMsg(role, html) {
     const area = el('soa-messages'); if (!area) return;
+    // a new agent step closes the earlier cards — only the newest one can be used
+    if (role !== 'user') window.O2CReview?.lockPrevious(area);
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;gap:8px;' + (role === 'user' ? 'justify-content:flex-end' : '');
     const bubble = document.createElement('div');
@@ -39901,6 +39903,8 @@ window.roAskFollowUp = function() {
 
   function sqAddMsg(role, html){
     const area = el('sq-messages');
+    // a new agent step closes the earlier cards — only the newest one can be used
+    if (role !== 'user') window.O2CReview?.lockPrevious(area);
     const wrap = document.createElement('div');
     wrap.style.cssText='display:flex;gap:8px;'+(role==='user'?'justify-content:flex-end':'');
     const bubble = document.createElement('div');
@@ -40345,6 +40349,8 @@ window.roAskFollowUp = function() {
     'po-to-grpo': { api:'/api/po-to-grpo',    color:'#0a6ed1', nav:'nav-po-to-grpo', show:'showPOtoGRPOPanel',   printTitle:'Goods Receipt PO Preview', party:'VENDOR' },
   };
   const STEP_LABEL = { INIT:'READY', SELECT_CUSTOMER:'CUSTOMER', SELECT_SOURCE:'DOCUMENT', REVIEW_LINES:'REVIEW', DONE:'DONE' };
+  // Sales cycle agents: earlier steps lock, review form edits through ✏️ (server side: cfg.strictSteps)
+  const STRICT = new Set(['q2o', 'o2d', 'd2arinv', 'arinv2arcm']);
   const HIDE = ['messages','workflow-panel','mail-po-panel','demand-forecast-panel','b1-forecast-panel','forecast-dashboard-panel',
     'procurement-agent-panel','production-agent-panel','mrp-auto-po-panel','dynamic-pricing-panel','product-forecast-panel',
     'rush-orders-panel','po-agent-panel','inv-agent-panel','pr-agent-panel','pr-to-po-panel','po-to-grpo-panel','grpo-apinv-panel','scan-apinv-panel','apip-panel','expense-panel','apsv-panel',
@@ -40406,6 +40412,12 @@ window.roAskFollowUp = function() {
       const msg = addMsg(p, 'agent', d.reply || (d.error ? '❌ ' + escText(d.error) : ''));
       // A new lines form: compute totals and default allocations (e.g. default receiving bin) up front
       const newForm = msg.querySelector('[data-cf-form]'); if (newForm) cfCalc(newForm);
+      // Sales agents: a reply with its own controls (next step / new form) closes the earlier cards — a plain
+      // error leaves the current form usable. The review form's header and rows open with ✏️ buttons.
+      if (STRICT.has(p) && window.O2CReview) {
+        if (msg.querySelector('input,select,textarea,button')) O2CReview.lockExcept(el(p + '-messages'), msg);
+        if (newForm) O2CReview.gateCopyForm(newForm);
+      }
       showQR(p, d.quickReplies || []);
       if (d.step) { const b = el(p + '-step-badge'); if (b) b.textContent = (d.step === 'SELECT_CUSTOMER' && cfg.party) || STEP_LABEL[d.step] || d.step; }
       return d;
@@ -41341,6 +41353,8 @@ window.roAskFollowUp = function() {
 
   function inpmtAddMsg(role,html){
     const area=el('inpmt-messages');
+    // a new agent step closes the earlier cards (e.g. the invoice list once the payment form opened)
+    if(role!=='user') window.O2CReview?.lockPrevious(area);
     const wrap=document.createElement('div');
     wrap.style.cssText='display:flex;gap:8px;'+(role==='user'?'justify-content:flex-end':'');
     const bubble=document.createElement('div');
@@ -41533,12 +41547,19 @@ window.roAskFollowUp = function() {
     };
     fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId, message:JSON.stringify(payload)})})
       .then(r=>r.json()).then(d=>{
+        if(d.step==='DONE'){
+          // posted once — close the form and start fresh next time
+          btn.textContent='✓ Posted';
+          inpmtCloseForm();
+          if(d.reply) inpmtAddMsg('agent',d.reply);
+          if(d.quickReplies) inpmtShowQR(d.quickReplies);
+          sessionId=null; currentDocs=[];
+          return;
+        }
+        // not posted (SAP error, already posting …) — keep the form open with the entered values to fix and post again
         btn.disabled=false; btn.textContent='✅ Post Incoming Payment';
-        inpmtCloseForm();
         if(d.reply) inpmtAddMsg('agent',d.reply);
-        if(d.docEntry){ const link=`<a href="${API}/print/${d.docEntry}" target="_blank" style="color:${COLOR};font-weight:700">🖨️ Print Receipt #${d.docNum||d.docEntry}</a>`; inpmtAddMsg('agent',link); }
-        if(d.quickReplies) inpmtShowQR(d.quickReplies);
-        sessionId=null; currentDocs=[];
+        alert((d.reply||d.error||'The payment was not posted.').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim());
       }).catch(e=>{ btn.disabled=false; btn.textContent='✅ Post Incoming Payment'; alert('Error: '+e.message); });
   };
 
@@ -45465,6 +45486,7 @@ window.almReset = almReset;
 </script>
 
 <script src="/insight-agents.js"></script>
+<script src="/o2c-review.js"></script>
 <script src="/agent-about.js"></script>
 <script src="/agent-kpi-help.js"></script>
 <script src="/ocr-workbench.js"></script>

@@ -11,7 +11,12 @@
  */
 import { Router } from 'express';
 import { itemPriceRoute } from '../lib/item-price.mjs';
+import { buildReviewCard, readReviewPost } from '../lib/o2c-review.mjs';
 import db, { connRepo, cacheRepo } from '../db.mjs';
+
+const HEADER_KEYS = ['docDate', 'deliveryDate', 'reference', 'comments'];
+// The step each card's action belongs to — an action from an earlier card is refused.
+const STEP_OF = { select_customer: ['INIT', 'SELECT_CUSTOMER'], add_item: ['ADD_ITEM'], done_items: ['ADD_ITEM'], add_more_items: ['REVIEW_FORM'], post_order: ['REVIEW_FORM'] };
 
 const _sessions = new Map();
 
@@ -384,25 +389,67 @@ export function createSalesOrderAgentRouter(deps) {
       let meta         = {};
       let customerList = null;
 
+      // Final review card: header + rows editable through ✏️ buttons; every render gets a new seq and only
+      // the newest card can post.
+      const reviewCard = async () => {
+        session.reviewSeq = (session.reviewSeq || 0) + 1;
+        const h = session._header || {};
+        const names = new Map(getCacheItems().map(i => [i.ItemCode, i.ItemName]));
+        return buildReviewCard({
+          title: '📋 Sales Order Ready to Post', partyLabel: 'Customer',
+          party: { code: session.selectedCustomer?.cardCode, name: session.selectedCustomer?.cardName },
+          seq: session.reviewSeq, send: 'soaSend', postAction: 'post_order', postLabel: '✅ Post Sales Order',
+          addMoreAction: 'add_more_items', addMoreLabel: '+ Add More Items',
+          header: [
+            { key: 'docDate', label: 'Posting Date', type: 'date', value: h.docDate || today() },
+            { key: 'deliveryDate', label: 'Delivery Date', type: 'date', value: h.deliveryDate || datePlusDays(7) },
+            { key: 'reference', label: 'Customer Reference', value: h.reference || '', placeholder: 'Optional — customer PO no.' },
+            { key: 'comments', label: 'Comments', value: h.comments || '', placeholder: 'Optional' },
+          ],
+          lines: (session._lines || []).map(l => ({ ...l, itemName: names.get(l.itemCode) || '' })),
+          taxCodes: await getCacheTaxCodes(sap), warehouses: getCacheWarehouses(),
+        });
+      };
+
       // ── JSON actions ───────────────────────────────────────────────────────
       if (msg.startsWith('{')) {
         let action = null;
         try { action = JSON.parse(msg); } catch {}
 
-        // ── Post Sales Order ────────────────────────────────────────────────
-        if (action?.action === 'post_order') {
-          const lines = action.lines || [];
-          if (!lines.length) {
-            reply = '❌ No lines added. Please add at least one item line before posting.';
+        // ── Card from an earlier step → refused; edits happen only on the latest card ──
+        if (action?.action && STEP_OF[action.action] && !STEP_OF[action.action].includes(session.step)) {
+          if (session.step === 'DONE') {
+            reply = `This Sales Order is already posted (#${escHtml(session.result?.docNum ?? '')}). Start a new one to create another.`;
+            quickReplies = ['Create New Sales Order'];
           } else {
+            reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That step is already finished — use the latest card${session.step === 'REVIEW_FORM' ? ' (✏️ Edit Header, or ✏️ on a row)' : ''}.</div>${session.step === 'REVIEW_FORM' ? await reviewCard() : ''}`;
+          }
+        }
+
+        // ── Post Sales Order (once, from the newest review card only) ───────
+        else if (action?.action === 'post_order' && Number(action.seq) !== session.reviewSeq) {
+          reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That review card is out of date — use this one.</div>${await reviewCard()}`;
+        }
+        else if (action?.action === 'post_order' && session._posting) {
+          reply = '⏳ This Sales Order is already being posted — please wait.';
+        }
+        else if (action?.action === 'post_order') {
+          const rp = readReviewPost(action, session._lines, HEADER_KEYS);
+          if (!rp.ok) {
+            reply = `<div style="color:#b91c1c;margin-bottom:6px">❌ ${escHtml(rp.error)}</div>${await reviewCard()}`;
+          } else {
+            session._lines = rp.lines;
+            session._header = rp.header;
+            const lines = rp.lines, h = rp.header;
+            session._posting = true;
             try {
               const uomCodes = await Promise.all(lines.map(l => getDefaultUoMCode(l.itemCode, sap)));
               const payload = {
                 CardCode:    session.selectedCustomer.cardCode,
-                DocDate:     sapDate(action.docDate       || today()),
-                DocDueDate:  sapDate(action.deliveryDate  || datePlusDays(7)),
-                ...(action.reference ? { NumAtCard: action.reference } : {}),
-                ...(action.comments  ? { Comments:  action.comments  } : {}),
+                DocDate:     sapDate(h.docDate       || today()),
+                DocDueDate:  sapDate(h.deliveryDate  || datePlusDays(7)),
+                ...(h.reference ? { NumAtCard: h.reference } : {}),
+                ...(h.comments  ? { Comments:  h.comments  } : {}),
                 DocumentLines: lines.map((l, i) => ({
                   ItemCode:        l.itemCode,
                   Quantity:        Number(l.quantity  || 1),
@@ -447,8 +494,8 @@ export function createSalesOrderAgentRouter(deps) {
                     </tr>
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Doc Entry</td><td style="padding:7px 12px;font-size:12.5px">${result.DocEntry}</td></tr>
                     <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Customer</td><td style="padding:7px 12px;font-size:12.5px;font-weight:600">${escHtml(session.selectedCustomer.cardName||'')} (${escHtml(session.selectedCustomer.cardCode||'')})</td></tr>
-                    <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Posting Date</td><td style="padding:7px 12px;font-size:12.5px">${action.docDate||today()}</td></tr>
-                    <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Delivery Date</td><td style="padding:7px 12px;font-size:12.5px">${action.deliveryDate||datePlusDays(7)}</td></tr>
+                    <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Posting Date</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.docDate||today())}</td></tr>
+                    <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Delivery Date</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.deliveryDate||datePlusDays(7))}</td></tr>
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Total Lines</td><td style="padding:7px 12px;font-size:12.5px">${lines.length} item(s)</td></tr>
                   </tbody>
                 </table>
@@ -473,11 +520,15 @@ export function createSalesOrderAgentRouter(deps) {
               quickReplies = ['Create New Sales Order'];
               meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
             } catch (e) {
-              session._failedPost = action;
+              // fresh editable card with the values just sent; "Retry" re-posts them from that card
+              const card = await reviewCard();
+              session._failedPost = { ...action, seq: session.reviewSeq };
               reply = `<div style="color:#b91c1c;font-weight:700;margin-bottom:4px">❌ Failed to post Sales Order</div>
                 <div style="font-size:13px;margin-bottom:6px">SAP Error: <em>${escHtml(e.message)}</em></div>
-                <div style="font-size:13px">Click <strong>Retry</strong> to post it again, or <strong>Cancel</strong> to discard it.</div>`;
+                <div style="font-size:13px;margin-bottom:6px">Fix it on the card below (✏️ Edit Header / ✏️ on a row) and post again, click <strong>Retry</strong> to post it unchanged, or <strong>Cancel</strong>.</div>${card}`;
               quickReplies = ['Retry', 'Cancel'];
+            } finally {
+              session._posting = false;
             }
           }
         }
@@ -523,35 +574,7 @@ export function createSalesOrderAgentRouter(deps) {
             reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
           } else {
             session.step = 'REVIEW_FORM';
-            const defaultDeliv = datePlusDays(7);
-            reply = `<div style="background:#eff6ff;border:1.5px solid #0070F2;border-radius:8px;padding:14px;margin:6px 0">
-              <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:10px">📋 Sales Order Ready to Post</div>
-              <div style="font-size:12.5px;margin-bottom:6px">Customer: <strong>${escHtml(session.selectedCustomer.cardName)}</strong> (${escHtml(session.selectedCustomer.cardCode)})</div>
-              ${linesSummaryTable(session._lines)}
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0">
-                <div>
-                  <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Delivery Date</div>
-                  <input type="date" id="soa-rf-date" value="${defaultDeliv}"
-                    style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
-                </div>
-                <div>
-                  <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Customer Reference</div>
-                  <input type="text" id="soa-rf-reference" placeholder="Optional"
-                    style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
-                </div>
-              </div>
-              <div style="margin-bottom:12px">
-                <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Comments</div>
-                <input type="text" id="soa-rf-comments" placeholder="Optional"
-                  style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
-              </div>
-              <div style="display:flex;gap:8px">
-                <button onclick="soaComboPostOrder(${JSON.stringify(session._lines).replace(/"/g,'&quot;')})"
-                  style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:9px 22px;font-size:13.5px;font-weight:700;cursor:pointer">✅ Post Sales Order</button>
-                <button onclick="soaSend(JSON.stringify({action:'add_more_items'}))"
-                  style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:9px 14px;font-size:13px;cursor:pointer">+ Add More Items</button>
-              </div>
-            </div>`;
+            reply = await reviewCard();
           }
         }
 
@@ -623,16 +646,13 @@ export function createSalesOrderAgentRouter(deps) {
       }
 
       else if (session.step === 'REVIEW_FORM') {
-        if (/back|change|customer/i.test(msgL)) {
-          session.selectedCustomer = null;
-          session.step = 'INIT';
-          reply = 'Returning to customer search. Type a customer name or code:';
-        } else if (/cancel|start over/i.test(msgL)) {
+        if (/cancel|start over/i.test(msgL)) {
           Object.assign(session, initSession());
           reply = 'Cancelled. Type a customer name or code to start again:';
           session.step = 'INIT';
         } else {
-          reply = 'Use the buttons above to post the Sales Order or add more items.';
+          // earlier steps are closed — changes happen on the review card itself
+          reply = `<div style="margin-bottom:6px">Make changes on the review card: <strong>✏️ Edit Header</strong> for dates / reference / comments, <strong>✏️</strong> on a row for qty / price / disc / tax / warehouse, <strong>+ Add More Items</strong> to add items. To pick another customer, type <strong>cancel</strong> and start again.</div>${await reviewCard()}`;
         }
       }
 

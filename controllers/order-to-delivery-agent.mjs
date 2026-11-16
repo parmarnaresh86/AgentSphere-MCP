@@ -11,7 +11,7 @@ function escHtml(s) {
 }
 
 const FLOW = {
-  tag: 'OTD', prefix: 'o2d', apiBase: '/api/order-delivery',
+  tag: 'OTD', prefix: 'o2d', apiBase: '/api/order-delivery', strictSteps: true,
   welcome: '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🚛 Welcome to the <strong>Sales Order → Delivery Agent</strong>!</div>',
   theme:  { color: '#0a6ed1', bg: '#f5f9fd', light: '#eef6fc' },   // SAP S/4HANA Fiori blue (was per-agent accent)
   source: { entity: '/Orders', baseType: 17, label: 'Sales Order', short: 'SO', plural: 'sales orders', dueLabel: 'Delivery Date' },

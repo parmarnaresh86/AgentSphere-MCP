@@ -9,6 +9,9 @@
 import { Router } from 'express';
 import db, { connRepo } from '../db.mjs';
 
+// The step each card's action belongs to — an action from an earlier card is refused.
+const STEP_OF = { select_bp: ['INIT', 'SELECT_BP'], select_invoices: ['SELECT_INVOICES'], post_payment: ['REVIEW_FORM'] };
+
 const _sessions = new Map();
 
 function initSession() {
@@ -432,8 +435,21 @@ export function createIncomingPaymentRouter(deps) {
         let action = null;
         try { action = JSON.parse(msg); } catch {}
 
+        // ── Card from an earlier step → refused ──────────────────────────────
+        if (action?.action && STEP_OF[action.action] && !STEP_OF[action.action].includes(session.step)) {
+          if (session.step === 'DONE') {
+            reply = `This payment is already posted (#${escHtml(session.result?.docNum ?? '')}). Start a new one to receive another payment.`;
+            quickReplies = ['Yes, Process Another'];
+          } else {
+            reply = buildErrorCard('That step is already finished', session.step === 'REVIEW_FORM'
+              ? 'Make changes in the payment form (header, payment means and the amount applied per invoice). Type <strong>cancel</strong> to start again with another customer or other invoices.'
+              : 'Use the latest card.');
+            if (session.step === 'REVIEW_FORM') quickReplies = ['Open Payment Form', 'Cancel'];
+          }
+        }
+
         // ── select_bp: user clicked a customer from search results ─────────
-        if (action?.action === 'select_bp') {
+        else if (action?.action === 'select_bp') {
           const { cardCode, cardName } = action;
           session.selectedBP = { cardCode, cardName };
           session.step = 'SELECT_INVOICES';
@@ -473,12 +489,20 @@ export function createIncomingPaymentRouter(deps) {
         }
 
         // ── post_payment: user submitted the payment form ──────────────────
+        else if (action?.action === 'post_payment' && session._posting) {
+          reply = buildErrorCard('Already posting', 'This payment is already being posted — please wait.');
+        }
+        else if (action?.action === 'post_payment' && session.selectedBP && action.CardCode !== session.selectedBP.cardCode) {
+          reply = buildErrorCard('Different customer', 'This payment form belongs to another customer. Open the payment form again.');
+          quickReplies = ['Open Payment Form', 'Cancel'];
+        }
         else if (action?.action === 'post_payment') {
           if (!action.CardCode) {
             reply = '❌ Customer code is required.';
           } else if (!Array.isArray(action.PaymentInvoices) || !action.PaymentInvoices.length) {
             reply = '❌ No invoices selected. At least one PaymentInvoice is required.';
           } else {
+            session._posting = true;
             try {
               const payload = buildPaymentPayload(action);
               const result  = await sap.post('/IncomingPayments', payload);
@@ -502,8 +526,10 @@ export function createIncomingPaymentRouter(deps) {
                 printUrl: `/api/incoming-payment/print/${result.DocEntry}`,
               };
             } catch (e) {
-              reply = buildErrorCard('Failed to post Incoming Payment', `SAP Error: ${escHtml(e.message)}<br><br>Would you like to <strong>retry</strong> or <strong>cancel</strong>?`);
+              reply = buildErrorCard('Failed to post Incoming Payment', `SAP Error: ${escHtml(e.message)}<br><br>Correct the payment form and post again, or <strong>cancel</strong>.`);
               quickReplies = ['Open Payment Form', 'Cancel'];
+            } finally {
+              session._posting = false;
             }
           }
         }
@@ -597,29 +623,14 @@ export function createIncomingPaymentRouter(deps) {
           actionType = 'open_form';
           formDocs   = session.selectedDocs;
           reply = 'Opening payment form…';
-        } else if (/back|change|invoice/i.test(msgL)) {
-          session.selectedDocs = [];
-          session.step = 'SELECT_INVOICES';
-          if (session.selectedBP && session.openInvoices.length > 0) {
-            invoiceList = session.openInvoices;
-            reply = `Select invoices to pay for <strong>${escHtml(session.selectedBP.cardName)}</strong>:`;
-            quickReplies = ['Pay All'];
-          } else if (session.selectedBP) {
-            const invs = await fetchOpenARInvoices(sap, session.selectedBP.cardCode);
-            session.openInvoices = mapInvoiceList(invs);
-            invoiceList = session.openInvoices;
-            reply = `Select invoices to pay for <strong>${escHtml(session.selectedBP.cardName)}</strong>:`;
-            quickReplies = ['Pay All'];
-          } else {
-            reply = 'Please select invoices:';
-          }
         } else if (/cancel|start over/i.test(msgL)) {
           Object.assign(session, initSession());
           reply = 'Cancelled. Type a customer name or code to start again:';
           session.step = 'INIT';
         } else {
-          reply = 'What would you like to do?';
-          quickReplies = ['Open Payment Form', 'Change Invoices', 'Cancel'];
+          // earlier steps are closed — changes are made in the payment form
+          reply = 'Make changes in the payment form, or type <strong>cancel</strong> to start again with another customer or other invoices.';
+          quickReplies = ['Open Payment Form', 'Cancel'];
         }
       }
 

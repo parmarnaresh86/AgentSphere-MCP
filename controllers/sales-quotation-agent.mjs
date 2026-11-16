@@ -7,7 +7,12 @@
  */
 import { Router } from 'express';
 import { itemPriceRoute } from '../lib/item-price.mjs';
+import { buildReviewCard, readReviewPost } from '../lib/o2c-review.mjs';
 import db, { connRepo } from '../db.mjs';
+
+const HEADER_KEYS = ['docDate', 'validUntil', 'reference', 'comments'];
+// The step each card's action belongs to — an action from an earlier card is refused.
+const STEP_OF = { select_customer: ['INIT', 'SELECT_CUSTOMER'], add_item: ['ADD_ITEM'], done_items: ['ADD_ITEM'], add_more_items: ['REVIEW_FORM'], post_quotation: ['REVIEW_FORM'] };
 
 const _sessions = new Map();
 
@@ -356,6 +361,10 @@ export function createSalesQuotationRouter(deps) {
       if (session.step === 'ADD_ITEM' && /^(done|finish(ed)?|review|no more( items)?|that'?s all)[.!]?$/i.test(msg)) {
         msg = JSON.stringify({ action: 'done_items' });
       }
+      // "Retry" after a failed post re-sends the same quotation (from the newest review card).
+      if (session.step === 'REVIEW_FORM' && session._failedPost && /^retry[.!]?$/i.test(msg)) {
+        msg = JSON.stringify(session._failedPost);
+      }
       const msgL    = msg.toLowerCase();
 
       if (msg) session.history.push({ role: 'user', content: msg });
@@ -366,25 +375,65 @@ export function createSalesQuotationRouter(deps) {
       let customerList = null;
       let formData     = null;
 
+      // Final review card: header + rows editable through ✏️ buttons; only the newest card can post.
+      const reviewCard = () => {
+        session.reviewSeq = (session.reviewSeq || 0) + 1;
+        const h = session._header || {};
+        const names = new Map(getCacheItems().map(i => [i.ItemCode, i.ItemName]));
+        return buildReviewCard({
+          title: '📋 Quotation Ready to Post', partyLabel: 'Customer',
+          party: { code: session.selectedCustomer?.cardCode, name: session.selectedCustomer?.cardName },
+          seq: session.reviewSeq, send: 'sqSend', postAction: 'post_quotation', postLabel: '✅ Post Quotation',
+          addMoreAction: 'add_more_items', addMoreLabel: '+ Add More Items',
+          header: [
+            { key: 'docDate', label: 'Posting Date', type: 'date', value: h.docDate || today() },
+            { key: 'validUntil', label: 'Valid Until', type: 'date', value: h.validUntil || datePlusDays(30) },
+            { key: 'reference', label: 'Customer Reference', value: h.reference || '', placeholder: 'Optional — customer RFQ no.' },
+            { key: 'comments', label: 'Comments', value: h.comments || '', placeholder: 'Optional' },
+          ],
+          lines: (session._lines || []).map(l => ({ ...l, itemName: names.get(l.itemCode) || '' })),
+          taxCodes: getCacheTaxCodes(), warehouses: getCacheWarehouses(),
+        });
+      };
+
       // ── JSON actions ───────────────────────────────────────────────────────
       if (msg.startsWith('{')) {
         let action = null;
         try { action = JSON.parse(msg); } catch {}
 
-        // ── Post Sales Quotation ───────────────────────────────────────────
-        if (action?.action === 'post_quotation') {
-          const lines = action.lines || [];
-          if (!lines.length) {
-            reply = '❌ No lines added. Please add at least one item line before posting.';
-            quickReplies = ['Open Quotation Form'];
+        // ── Card from an earlier step → refused; edits happen only on the latest card ──
+        if (action?.action && STEP_OF[action.action] && !STEP_OF[action.action].includes(session.step)) {
+          if (session.step === 'DONE') {
+            reply = `This quotation is already posted (#${escHtml(session.result?.docNum ?? '')}). Start a new one to create another.`;
+            quickReplies = ['Create New Quotation'];
           } else {
+            reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That step is already finished — use the latest card${session.step === 'REVIEW_FORM' ? ' (✏️ Edit Header, or ✏️ on a row)' : ''}.</div>${session.step === 'REVIEW_FORM' ? reviewCard() : ''}`;
+          }
+        }
+
+        // ── Post Sales Quotation (once, from the newest review card only) ──
+        else if (action?.action === 'post_quotation' && Number(action.seq) !== session.reviewSeq) {
+          reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That review card is out of date — use this one.</div>${reviewCard()}`;
+        }
+        else if (action?.action === 'post_quotation' && session._posting) {
+          reply = '⏳ This quotation is already being posted — please wait.';
+        }
+        else if (action?.action === 'post_quotation') {
+          const rp = readReviewPost(action, session._lines, HEADER_KEYS);
+          if (!rp.ok) {
+            reply = `<div style="color:#b91c1c;margin-bottom:6px">❌ ${escHtml(rp.error)}</div>${reviewCard()}`;
+          } else {
+            session._lines = rp.lines;
+            session._header = rp.header;
+            const lines = rp.lines, h = rp.header;
+            session._posting = true;
             try {
               const payload = {
                 CardCode:    session.selectedCustomer.cardCode,
-                DocDate:     sapDate(action.docDate    || today()),
-                DocDueDate:  sapDate(action.validUntil || datePlusDays(30)),
-                ...(action.reference ? { NumAtCard: action.reference } : {}),
-                ...(action.comments  ? { Comments:  action.comments  } : {}),
+                DocDate:     sapDate(h.docDate    || today()),
+                DocDueDate:  sapDate(h.validUntil || datePlusDays(30)),
+                ...(h.reference ? { NumAtCard: h.reference } : {}),
+                ...(h.comments  ? { Comments:  h.comments  } : {}),
                 DocumentLines: lines.map(l => ({
                   ItemCode:        l.itemCode,
                   Quantity:        Number(l.quantity        || 1),
@@ -429,8 +478,8 @@ export function createSalesQuotationRouter(deps) {
                     </tr>
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Doc Entry</td><td style="padding:7px 12px;font-size:12.5px">${result.DocEntry}</td></tr>
                     <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Customer</td><td style="padding:7px 12px;font-size:12.5px;font-weight:600">${escHtml(session.selectedCustomer.cardName||'')} (${escHtml(session.selectedCustomer.cardCode||'')})</td></tr>
-                    <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Posting Date</td><td style="padding:7px 12px;font-size:12.5px">${action.docDate||today()}</td></tr>
-                    <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Valid Until</td><td style="padding:7px 12px;font-size:12.5px">${action.validUntil||datePlusDays(30)}</td></tr>
+                    <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Posting Date</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.docDate||today())}</td></tr>
+                    <tr style="background:#f9fafb"><td style="padding:7px 12px;font-size:12px;color:#6b7280">Valid Until</td><td style="padding:7px 12px;font-size:12.5px">${escHtml(h.validUntil||datePlusDays(30))}</td></tr>
                     <tr><td style="padding:7px 12px;font-size:12px;color:#6b7280">Total Lines</td><td style="padding:7px 12px;font-size:12.5px">${lines.length} item(s)</td></tr>
                   </tbody>
                 </table>
@@ -459,8 +508,15 @@ export function createSalesQuotationRouter(deps) {
                 printUrl: `/api/sales-quotation/print/${result.DocEntry}`,
               };
             } catch (e) {
-              reply = `❌ **Failed to post Sales Quotation**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
-              quickReplies = ['Open Quotation Form', 'Cancel'];
+              // fresh editable card with the values just sent; "Retry" re-posts them from that card
+              const card = reviewCard();
+              session._failedPost = { ...action, seq: session.reviewSeq };
+              reply = `<div style="color:#b91c1c;font-weight:700;margin-bottom:4px">❌ Failed to post Sales Quotation</div>
+                <div style="font-size:13px;margin-bottom:6px">SAP Error: <em>${escHtml(e.message)}</em></div>
+                <div style="font-size:13px;margin-bottom:6px">Fix it on the card below (✏️ Edit Header / ✏️ on a row) and post again, click <strong>Retry</strong> to post it unchanged, or <strong>Cancel</strong>.</div>${card}`;
+              quickReplies = ['Retry', 'Cancel'];
+            } finally {
+              session._posting = false;
             }
           }
         }
@@ -508,24 +564,7 @@ export function createSalesQuotationRouter(deps) {
             reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
           } else {
             session.step = 'REVIEW_FORM';
-            formData = { ...buildFormData(session.selectedCustomer), lines: session._lines };
-            const linesSummary = session._lines.map((l, i) =>
-              `<tr><td style="padding:4px 8px">${i+1}</td><td style="padding:4px 8px;font-weight:600">${escHtml(l.itemCode)}</td><td style="padding:4px 8px;text-align:right">${l.quantity}</td><td style="padding:4px 8px;text-align:right">${l.unitPrice??'auto'}</td><td style="padding:4px 8px">${escHtml(l.taxCode||'')}</td></tr>`
-            ).join('');
-            reply = `<div style="background:#f0fdf4;border:1.5px solid #10b981;border-radius:8px;padding:14px;margin:6px 0">
-              <div style="font-size:13px;font-weight:700;color:#065f46;margin-bottom:10px">📋 Quotation Ready to Post</div>
-              <div style="font-size:12.5px;margin-bottom:6px">Customer: <strong>${escHtml(session.selectedCustomer.cardName)}</strong></div>
-              <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
-                <tr style="background:#dcfce7"><th style="padding:4px 8px;text-align:left">#</th><th style="padding:4px 8px;text-align:left">Item</th><th style="padding:4px 8px;text-align:right">Qty</th><th style="padding:4px 8px;text-align:right">Price</th><th style="padding:4px 8px;text-align:left">Tax</th></tr>
-                ${linesSummary}
-              </table>
-              <div style="display:flex;gap:8px">
-                <button onclick="sqSend(JSON.stringify({action:'post_quotation',lines:${JSON.stringify(session._lines).replace(/"/g,'&quot;')},docDate:'${today()}',validUntil:'${datePlusDays(30)}'}))"
-                  style="background:#15803d;color:#fff;border:none;border-radius:6px;padding:9px 22px;font-size:13.5px;font-weight:700;cursor:pointer">✅ Post Quotation</button>
-                <button onclick="sqSend(JSON.stringify({action:'add_more_items'}))"
-                  style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:9px 14px;font-size:13px;cursor:pointer">+ Add More Items</button>
-              </div>
-            </div>`;
+            reply = reviewCard();
           }
         }
 
@@ -601,20 +640,13 @@ export function createSalesQuotationRouter(deps) {
       }
 
       else if (session.step === 'REVIEW_FORM') {
-        if (/open|form|quotation|create|post/i.test(msgL)) {
-          formData = buildFormData(session.selectedCustomer);
-          reply = 'Opening Quotation form…';
-        } else if (/back|change|customer/i.test(msgL)) {
-          session.selectedCustomer = null;
-          session.step = 'INIT';
-          reply = 'Returning to customer search. Type a customer name or code:';
-        } else if (/cancel|start over/i.test(msgL)) {
+        if (/cancel|start over/i.test(msgL)) {
           Object.assign(session, initSession());
           reply = 'Cancelled. Type a customer name or code to start again:';
           session.step = 'INIT';
         } else {
-          reply = 'What would you like to do?';
-          quickReplies = ['Open Quotation Form', 'Change Customer', 'Cancel'];
+          // earlier steps are closed — changes happen on the review card itself
+          reply = `<div style="margin-bottom:6px">Make changes on the review card: <strong>✏️ Edit Header</strong> for dates / reference / comments, <strong>✏️</strong> on a row for qty / price / disc / tax / warehouse, <strong>+ Add More Items</strong> to add items. To pick another customer, type <strong>cancel</strong> and start again.</div>${reviewCard()}`;
         }
       }
 
