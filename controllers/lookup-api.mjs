@@ -151,11 +151,12 @@ export function createLookupApiRouter(deps) {
     try {
       const q = (req.query.q || "").trim();
       const companyId = connRepo.getActive()?.company || 'default';
+      const lim = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 200);   // choose-from-list asks for more
       // Cache-first
       const rows = db.prepare(`SELECT CardCode,CardName,City,Country,Phone1,EmailAddress FROM cache_business_partners
         WHERE company_id=? AND CardType='cCustomer' AND Frozen='tNO'
-        AND (CardCode LIKE ? OR CardName LIKE ?) ORDER BY CardName LIMIT 20`)
-        .all(companyId, `%${q}%`, `%${q}%`);
+        AND (CardCode LIKE ? OR CardName LIKE ?) ORDER BY CardName LIMIT ?`)
+        .all(companyId, `%${q}%`, `%${q}%`, lim);
       if (rows.length) return res.json(rows);
       // Fallback to live SAP
       let filter = "CardType eq 'cCustomer'";
@@ -169,11 +170,12 @@ export function createLookupApiRouter(deps) {
     try {
       const q = (req.query.q || "").trim();
       const companyId = connRepo.getActive()?.company || 'default';
+      const lim = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 200);   // choose-from-list asks for more
       // Cache-first
       const rows = db.prepare(`SELECT ItemCode,ItemName,ManageBatchNumbers,ManageSerialNumbers,SalesUnit,PurchaseUnit,SalesVATGroup
         FROM cache_items WHERE company_id=? AND Frozen='tNO'
-        AND (ItemCode LIKE ? OR ItemName LIKE ?) ORDER BY ItemName LIMIT 20`)
-        .all(companyId, `%${q}%`, `%${q}%`);
+        AND (ItemCode LIKE ? OR ItemName LIKE ?) ORDER BY ItemName LIMIT ?`)
+        .all(companyId, `%${q}%`, `%${q}%`, lim);
       if (rows.length) return res.json(rows);
       // Fallback to live SAP
       let filter = "ItemType eq 'itItems' and Frozen eq 'tNO'";
@@ -188,9 +190,13 @@ export function createLookupApiRouter(deps) {
     try {
       const companyId = connRepo.getActive()?.company || 'default';
       const cached = cacheRepo.getTaxCodes(companyId);
-      if (cached.length) return res.json(cached.map(v=>({ Code:v.Code, Name:v.Name })));
-      const d = await getActiveSap().get("/VatGroups", { $select:"Code,Name", $orderby:"Code asc", $top:100 });
-      res.json((d.value||d||[]).map(v=>({ Code:v.Code, Name:v.Name })));
+      // Rate lets the forms work out the tax; Category tells VAT groups from US/CA sales-tax codes
+      if (cached.length) return res.json(cached.map(v=>({ Code:v.Code, Name:v.Name, Rate:Number(v.Rate||0), Category:v.Category||'' })));
+      const d = await getActiveSap().get("/VatGroups", { $select:"Code,Name,VatGroups_Lines", $orderby:"Code asc", $top:100 }).catch(() => getActiveSap().get("/VatGroups", { $select:"Code,Name", $orderby:"Code asc", $top:100 }));
+      const vat = (d.value||d||[]).map(v=>{ const s=v.VatGroups_Lines||[]; return { Code:v.Code, Name:v.Name, Rate:Number(s[s.length-1]?.Rate||0), Category:'VAT' }; });
+      if (vat.length) return res.json(vat);
+      const st = await getActiveSap().get("/SalesTaxCodes", { $select:"Code,Name,Rate", $orderby:"Code asc", $top:200 }).catch(() => ({ value: [] }));
+      res.json((st.value||[]).map(v=>({ Code:v.Code, Name:v.Name, Rate:Number(v.Rate||0), Category:'Sales Tax' })));
     } catch(e) { res.status(500).json({ error:e.message }); }
   });
 

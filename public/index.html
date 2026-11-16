@@ -3539,6 +3539,7 @@ const FORM_INTENT_MAP = [
   { re: /\border\b|sales.?order|\bso\b/i,                      form: 'order',           label: '📋 Create Sales Order' },
   { re: /deliver|ship|dispatch|despatch/i,                      form: 'delivery',        label: '🚚 Create Delivery' },
   { re: /\bpod\b|proof.of.deliv|confirm.deliv/i,               form: 'pod',             label: '✅ Confirm POD' },
+  { re: /credit.?(memo|note)/i,                                form: 'creditMemo',      label: '↩️ A/R Credit Memo' },
   { re: /\bar.invoice|\binv\b|a\/r.invoice/i,                  form: 'invoice',         label: '🧾 Create A/R Invoice' },
   { re: /incoming.pay|receive.pay|apply.pay|customer.pay/i,    form: 'payment',         label: '💳 Apply Payment' },
   { re: /\batp\b|available.to.promise|check.*stock/i,          form: 'atp',             label: '🔍 Check ATP' },
@@ -6373,6 +6374,83 @@ function acItem(input, onSel) {
 }
 
 // ════════════════════════════════════════════════════
+// Choose From List — a searchable list window on top of a form (like SAP's CFL)
+// ════════════════════════════════════════════════════
+function openCFL({ title, url, cols, onPick }) {
+  let ov = document.getElementById('cfl-overlay');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'cfl-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1600;display:none;align-items:center;justify-content:center';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = `<div style="background:#fff;border-radius:8px;width:680px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e7eb"><b style="font-size:14px">🔍 ${escHtml(title)}</b><button type="button" data-x style="border:none;background:none;font-size:18px;cursor:pointer;color:#6b7280">✕</button></div>
+    <div style="padding:10px 16px"><input data-q class="form-input" placeholder="Search code or name…" autocomplete="off"></div>
+    <div style="flex:1;overflow:auto;padding:0 16px 10px;min-height:120px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead><tr style="background:#f3f4f6;position:sticky;top:0">${cols.map(c => `<th style="text-align:left;padding:7px 8px;font-size:11px;color:#6b7280;text-transform:uppercase">${c.label}</th>`).join('')}</tr></thead>
+      <tbody data-b><tr><td style="padding:10px;color:#6b7280">Loading…</td></tr></tbody></table></div>
+    <div style="padding:8px 16px;border-top:1px solid #e5e7eb;font-size:11px;color:#6b7280">Click a row to choose it · ↑ ↓ Enter · Esc to close</div></div>`;
+  ov.style.display = 'flex';
+  const qIn = ov.querySelector('[data-q]'), body = ov.querySelector('[data-b]');
+  let rows = [], active = 0, seq = 0, t = null;
+  const close = () => { ov.style.display = 'none'; ov.innerHTML = ''; document.removeEventListener('keydown', onKey, true); };
+  const choose = i => { const x = rows[i]; if (!x) return; close(); onPick(x); };
+  const mark = () => body.querySelectorAll('tr[data-i]').forEach((tr, i) => { tr.style.background = i === active ? '#eff6ff' : ''; if (i === active) tr.scrollIntoView({ block: 'nearest' }); });
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, rows.length - 1); mark(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); mark(); }
+    else if (e.key === 'Enter') { e.preventDefault(); choose(active); }
+  }
+  document.addEventListener('keydown', onKey, true);
+  ov.querySelector('[data-x]').onclick = close;
+  async function load() {
+    const my = ++seq;
+    try {
+      const r = await fetch(url(qIn.value.trim()), { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } }).then(x => x.json());
+      if (my !== seq) return;
+      rows = Array.isArray(r) ? r : []; active = 0;
+      body.innerHTML = rows.length
+        ? rows.map((x, i) => `<tr data-i="${i}" style="cursor:pointer;border-bottom:1px solid #f3f4f6">${cols.map(c => `<td style="padding:6px 8px">${escHtml(x[c.key] ?? '')}</td>`).join('')}</tr>`).join('')
+        : '<tr><td style="padding:10px;color:#6b7280" colspan="9">No match — try another code or name</td></tr>';
+      mark();
+    } catch (e) { body.innerHTML = `<tr><td style="padding:10px;color:#b91c1c">${escHtml(e.message)}</td></tr>`; }
+  }
+  qIn.oninput = () => { clearTimeout(t); t = setTimeout(load, 250); };
+  body.onclick = e => { const tr = e.target.closest('tr[data-i]'); if (tr) choose(+tr.dataset.i); };
+  load(); qIn.focus();
+}
+function cflButton(onClick) {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = '🔍'; b.title = 'Choose from list';
+  b.style.cssText = 'border:1px solid #d1d5db;background:#f9fafb;border-radius:6px;padding:0 9px;cursor:pointer;font-size:13px;flex-shrink:0';
+  b.onclick = onClick; return b;
+}
+function cflCustomer(onPick) {
+  openCFL({ title: 'Choose Customer', url: q => `/api/suggest/customers?limit=200&q=${encodeURIComponent(q)}`,
+    cols: [{ key: 'CardCode', label: 'Code' }, { key: 'CardName', label: 'Name' }, { key: 'City', label: 'City' }], onPick });
+}
+function cflItem(onPick) {
+  openCFL({ title: 'Choose Item', url: q => `/api/suggest/items?limit=200&q=${encodeURIComponent(q)}`,
+    cols: [{ key: 'ItemCode', label: 'Code' }, { key: 'ItemName', label: 'Name' }, { key: 'SalesUnit', label: 'UoM' }], onPick });
+}
+const fmt2 = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function addDaysIso(d, n) { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + (Number(n) || 0)); return x.toISOString().slice(0, 10); }
+// Customer field with type-ahead + 🔍 choose-from-list → { group element, input }
+function customerField(onPick, label = 'Customer *') {
+  const input = inp('Search customer code or name…');
+  const wrap = document.createElement('div'); wrap.className = 'ac-wrap'; wrap.style.flex = '1'; wrap.appendChild(input);
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:6px'; row.appendChild(wrap);
+  const name = document.createElement('div'); name.style.cssText = 'font-size:11px;color:var(--blue);margin-top:3px;min-height:14px';
+  const pick = c => { input.value = c.CardCode; name.textContent = c.CardName || ''; onPick(c); };
+  row.appendChild(cflButton(() => cflCustomer(pick)));
+  acCustomer(input, c => { name.textContent = c.CardName || ''; onPick(c); });
+  const g = document.createElement('div'); g.className = 'form-group';
+  const l = document.createElement('label'); l.className = 'form-label'; l.textContent = label;
+  g.appendChild(l); g.appendChild(row); g.appendChild(name);
+  return { group: g, input };
+}
+
+// ════════════════════════════════════════════════════
 // Warehouse / Bin / Batch helpers
 // ════════════════════════════════════════════════════
 function buildWarehouseSelect(id, cls='form-select') {
@@ -6410,7 +6488,7 @@ const modalCancel=document.getElementById('modal-cancel');
 const modalSubmit=document.getElementById('modal-submit');
 
 function openModal(title){modalTitle.textContent=title;overlay.classList.add('open');}
-function closeModal(){overlay.classList.remove('open');modalBody.innerHTML='';const f=document.querySelector('.modal-footer');if(f)f.style.display='';}
+function closeModal(){overlay.classList.remove('open');modalBody.innerHTML='';modalSubmit.disabled=false;modalSubmit.innerHTML='Submit';const f=document.querySelector('.modal-footer');if(f)f.style.display='';}
 modalClose.addEventListener('click',closeModal);
 modalCancel.addEventListener('click',closeModal);
 overlay.addEventListener('click',e=>{if(e.target===overlay)closeModal();});
@@ -6645,7 +6723,7 @@ async function openOrderForm() {
         <div id="so-header-fields" style="background:#fff;padding:14px 20px;border-bottom:1px solid #e5e7eb;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px;flex-shrink:0">
           <div>
             <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Customer *</label>
-            <div class="ac-wrap"><input id="so-customer" class="form-input" placeholder="Search customer code or name…" autocomplete="off"></div>
+            <div style="display:flex;gap:6px"><div class="ac-wrap" style="flex:1"><input id="so-customer" class="form-input" placeholder="Search customer code or name…" autocomplete="off"></div><button type="button" id="so-cust-cfl" title="Choose from list" style="border:1px solid #d1d5db;background:#f9fafb;border-radius:6px;padding:0 9px;cursor:pointer;font-size:13px">🔍</button></div>
             <div id="so-customer-name" style="font-size:11px;color:#0070F2;margin-top:2px;min-height:14px"></div>
           </div>
           <div>
@@ -6672,7 +6750,7 @@ async function openOrderForm() {
           <!-- Items Tab -->
           <div id="so-tab-items" class="so-tab-body" style="padding:14px 20px">
             <div style="overflow-x:auto">
-              <table style="width:100%;border-collapse:collapse;min-width:800px" id="so-lines-table">
+              <table style="width:100%;border-collapse:collapse;min-width:880px" id="so-lines-table">
                 <thead>
                   <tr style="background:#f3f4f6;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">
                     <th style="padding:8px 10px;text-align:left;width:220px">Item</th>
@@ -6681,7 +6759,8 @@ async function openOrderForm() {
                     <th style="padding:8px 10px;text-align:left;width:75px">Disc%</th>
                     <th style="padding:8px 10px;text-align:left;width:100px">Tax Code</th>
                     <th style="padding:8px 10px;text-align:left;width:130px">Warehouse</th>
-                    <th style="padding:8px 10px;text-align:right;width:110px">Line Total</th>
+                    <th style="padding:8px 10px;text-align:right;width:100px">Line Total</th>
+                    <th style="padding:8px 10px;text-align:right;width:80px">Tax</th>
                     <th style="padding:8px 6px;width:32px"></th>
                   </tr>
                 </thead>
@@ -6787,7 +6866,7 @@ async function openOrderForm() {
   function soClose() { soOverlay.style.display='none'; }
   window.soClose = soClose;
 
-  // Reset form
+  // Reset form — a fresh window every time (also after "Regenerate"): header, lines, totals, addresses, button
   ['so-customer','so-doc-date','so-due-date','so-reference','so-comments'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { if (id==='so-doc-date') el.value=today(); else if(id==='so-due-date') el.value=futureDate(14); else el.value=''; }
@@ -6795,7 +6874,14 @@ async function openOrderForm() {
   document.getElementById('so-customer-name').textContent='';
   document.getElementById('so-lines-body').innerHTML='';
   document.getElementById('so-result-msg').style.display='none';
-  _soLines=[];
+  ['so-subtotal','so-tax-total','so-grand-total'].forEach(id => { document.getElementById(id).textContent='0.00'; });
+  ['billto','shipto'].forEach(t => {
+    ['name','street','city','state','zip','country'].forEach(f => { const e=document.getElementById(`so-${t}-${f}`); if (e) e.value=''; });
+    const sel=document.getElementById(`so-${t}-sel`); if (sel) sel.innerHTML='<option value="">— Load from BP —</option>';
+  });
+  _soLines=[]; _soBPAddrs=[];
+  const soSubmitBtn = document.getElementById('so-submit');
+  soSubmitBtn.disabled=false; soSubmitBtn.textContent='Create Sales Order'; soSubmitBtn.style.background='#0070F2';
 
   // Reset tabs to Items
   document.querySelectorAll('.so-tab').forEach(b => { b.classList.remove('so-tab-active'); b.style.color='#6b7280'; b.style.borderBottomColor='transparent'; });
@@ -6807,16 +6893,18 @@ async function openOrderForm() {
   // Show modal
   soOverlay.style.display = 'flex';
 
-  // Load tax codes
+  // Tax codes with their rates — for the tax calculation
   try {
     const tc = await fetch('/api/suggest/tax-codes').then(r=>r.json());
     _soTaxCodes = Array.isArray(tc) ? tc : [];
   } catch {}
+  const rateOf = code => Number(_soTaxCodes.find(t => t.Code === code)?.Rate || 0);
 
-  // Customer autocomplete
+  // Customer — type to search, or 🔍 choose from list
   const custInput = document.getElementById('so-customer');
   const custNameDiv = document.getElementById('so-customer-name');
-  acCustomer(custInput, async (c) => {
+  async function custSelected(c) {
+    custInput.value = c.CardCode;
     custNameDiv.textContent = c.CardName || '';
     // Load BP addresses
     try {
@@ -6825,21 +6913,24 @@ async function openOrderForm() {
     } catch { _soBPAddrs=[]; }
     const billSel = document.getElementById('so-billto-sel');
     const shipSel = document.getElementById('so-shipto-sel');
-    const billOpts = '<option value="">— Select address —</option>' + _soBPAddrs.filter(a=>a.AddressType==='bo_BillTo').map(a=>`<option value="${a.AddressName}">${a.AddressName}</option>`).join('');
-    const shipOpts = '<option value="">— Select address —</option>' + _soBPAddrs.filter(a=>a.AddressType==='bo_ShipTo').map(a=>`<option value="${a.AddressName}">${a.AddressName}</option>`).join('');
+    const billOpts = '<option value="">— Select address —</option>' + _soBPAddrs.filter(a=>a.AddressType==='bo_BillTo').map(a=>`<option value="${escHtml(a.AddressName)}">${escHtml(a.AddressName)}</option>`).join('');
+    const shipOpts = '<option value="">— Select address —</option>' + _soBPAddrs.filter(a=>a.AddressType==='bo_ShipTo').map(a=>`<option value="${escHtml(a.AddressName)}">${escHtml(a.AddressName)}</option>`).join('');
     billSel.innerHTML = billOpts; shipSel.innerHTML = shipOpts;
     // Auto-load first of each type
     const firstBill = _soBPAddrs.find(a=>a.AddressType==='bo_BillTo');
     const firstShip = _soBPAddrs.find(a=>a.AddressType==='bo_ShipTo');
     if (firstBill) { billSel.value=firstBill.AddressName; soFillAddress('billto',firstBill); }
     if (firstShip) { shipSel.value=firstShip.AddressName; soFillAddress('shipto',firstShip); }
-  });
+  }
+  window._soCustSelected = custSelected;
+  if (!custInput.dataset.ac) { acCustomer(custInput, c => window._soCustSelected(c)); custInput.dataset.ac = '1'; }   // once — the window is reused
+  document.getElementById('so-cust-cfl').onclick = () => cflCustomer(c => custSelected(c));
 
   // Address helpers
   window.soLoadAddress = function(type) {
     const selId = type==='billto' ? 'so-billto-sel' : 'so-shipto-sel';
     const name  = document.getElementById(selId)?.value;
-    const addr  = _soBPAddrs.find(a=>a.AddressName===name);
+    const addr  = _soBPAddrs.find(a=>a.AddressName===name && a.AddressType===(type==='billto'?'bo_BillTo':'bo_ShipTo')) || _soBPAddrs.find(a=>a.AddressName===name);
     if (addr) soFillAddress(type, addr);
   };
   function soFillAddress(type, addr) {
@@ -6853,54 +6944,60 @@ async function openOrderForm() {
       const v = document.getElementById('so-billto-'+f)?.value||'';
       const e = document.getElementById('so-shipto-'+f); if(e) e.value=v;
     });
+    // Ship-To list back to "select", so picking any address from it afterwards loads that address
+    const shipSel = document.getElementById('so-shipto-sel'); if (shipSel) shipSel.value = '';
   };
 
-  // Build tax code select options
-  const taxOptions = '<option value="">— Tax —</option>' + _soTaxCodes.map(t=>`<option value="${t.Code}">${t.Code}${t.Name?' – '+t.Name:''}</option>`).join('');
+  // Tax code options carry the rate
+  const taxOptions = '<option value="" data-rate="0">— Tax —</option>' + _soTaxCodes.map(t=>`<option value="${escHtml(t.Code)}">${escHtml(t.Code)}${Number(t.Rate)?` (${Number(t.Rate)}%)`:''}${t.Name?' – '+escHtml(t.Name):''}</option>`).join('');
   // Build warehouse select options
   const whOptions  = '<option value="">— WH —</option>' + (_soWarehouses||[]).map(w=>`<option value="${w.WarehouseCode}">${w.WarehouseCode}</option>`).join('');
 
   function soCalcTotals() {
-    let sub=0;
+    let sub=0, tax=0;
     _soLines.forEach(l=>{
       const qty=parseFloat(l.qty?.value||0)||0;
       const price=parseFloat(l.price?.value||0)||0;
       const disc=parseFloat(l.disc?.value||0)||0;
       const tot=qty*price*(1-disc/100);
-      sub+=tot;
-      if(l.lineTotal) l.lineTotal.textContent = tot.toFixed(2);
+      const tx=tot*rateOf(l.taxSel?.value)/100;
+      sub+=tot; tax+=tx;
+      if(l.lineTotal) l.lineTotal.textContent = fmt2(tot);
+      if(l.lineTax) l.lineTax.textContent = fmt2(tx);
     });
-    document.getElementById('so-subtotal').textContent = sub.toFixed(2);
-    document.getElementById('so-tax-total').textContent = '—';
-    document.getElementById('so-grand-total').textContent = sub.toFixed(2);
+    document.getElementById('so-subtotal').textContent = fmt2(sub);
+    document.getElementById('so-tax-total').textContent = fmt2(tax);
+    document.getElementById('so-grand-total').textContent = fmt2(sub+tax);
   }
 
   function soAddLine() {
-    const idx = _soLines.length;
     const tbody = document.getElementById('so-lines-body');
     const tr = document.createElement('tr');
     tr.style.borderBottom='1px solid #f3f4f6';
-
-    // Item search
-    const itemInp = document.createElement('input');
-    itemInp.className='form-input'; itemInp.placeholder='Item code / name…'; itemInp.autocomplete='off';
-    itemInp.style.cssText='font-size:12px;padding:5px 8px;width:100%';
-    const itemWrap=document.createElement('div'); itemWrap.className='ac-wrap'; itemWrap.appendChild(itemInp);
-    const itemName=document.createElement('div'); itemName.style.cssText='font-size:10px;color:#0070F2;margin-top:1px;min-height:11px';
-    const itemCell=document.createElement('td'); itemCell.style.padding='6px 8px';
-    itemCell.appendChild(itemWrap); itemCell.appendChild(itemName);
-
-    acItem(itemInp, i=>{ itemName.textContent=i.ItemName||''; });
 
     const mkNum=(ph,w,step)=>{const i=document.createElement('input');i.type='number';i.className='form-input';i.placeholder=ph;i.min=0;if(step)i.step=step;i.style.cssText=`font-size:12px;padding:5px 8px;width:${w}`;i.addEventListener('input',soCalcTotals);return i;};
     const qtyI   = mkNum('1','70px');  qtyI.value='1';
     const priceI = mkNum('0.00','90px','0.01');
     const discI  = mkNum('0','60px');  discI.value='0';
 
-    const taxSel = document.createElement('select'); taxSel.innerHTML=taxOptions; taxSel.className='form-select'; taxSel.style.cssText='font-size:12px;padding:5px 6px;width:100px';
+    // Item — type to search, or 🔍 choose from list
+    const itemInp = document.createElement('input');
+    itemInp.className='form-input'; itemInp.placeholder='Item code / name…'; itemInp.autocomplete='off';
+    itemInp.style.cssText='font-size:12px;padding:5px 8px;width:100%';
+    const itemWrap=document.createElement('div'); itemWrap.className='ac-wrap'; itemWrap.style.flex='1'; itemWrap.appendChild(itemInp);
+    const itemName=document.createElement('div'); itemName.style.cssText='font-size:10px;color:#0070F2;margin-top:1px;min-height:11px';
+    const itemRow=document.createElement('div'); itemRow.style.cssText='display:flex;gap:4px'; itemRow.appendChild(itemWrap);
+    itemRow.appendChild(cflButton(() => cflItem(i => { itemInp.value=i.ItemCode; itemName.textContent=i.ItemName||''; qtyI.focus(); })));
+    const itemCell=document.createElement('td'); itemCell.style.padding='6px 8px';
+    itemCell.appendChild(itemRow); itemCell.appendChild(itemName);
+    acItem(itemInp, i=>{ itemName.textContent=i.ItemName||''; });
+
+    const taxSel = document.createElement('select'); taxSel.innerHTML=taxOptions; taxSel.className='form-select'; taxSel.style.cssText='font-size:12px;padding:5px 6px;width:110px';
+    taxSel.addEventListener('change', soCalcTotals);
     const whSel  = document.createElement('select'); whSel.innerHTML=whOptions;   whSel.className='form-select'; whSel.style.cssText='font-size:12px;padding:5px 6px;width:110px';
 
     const lineTotalEl = document.createElement('span'); lineTotalEl.textContent='0.00'; lineTotalEl.style.cssText='font-size:12.5px;font-weight:600;color:#111827';
+    const lineTaxEl = document.createElement('span'); lineTaxEl.textContent='0.00'; lineTaxEl.style.cssText='font-size:12px;color:#6b7280';
 
     const delBtn=document.createElement('button'); delBtn.textContent='✕'; delBtn.style.cssText='background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:2px 4px';
     delBtn.addEventListener('click',()=>{ tr.remove(); _soLines.splice(_soLines.findIndex(l=>l.tr===tr),1); soCalcTotals(); });
@@ -6913,9 +7010,10 @@ async function openOrderForm() {
     tr.appendChild(mkTd(taxSel));
     tr.appendChild(mkTd(whSel));
     tr.appendChild(mkTd(lineTotalEl,'right'));
+    tr.appendChild(mkTd(lineTaxEl,'right'));
     tr.appendChild(mkTd(delBtn,'center'));
     tbody.appendChild(tr);
-    _soLines.push({tr, itemInput:itemInp, qty:qtyI, price:priceI, disc:discI, taxSel, whSel, lineTotal:lineTotalEl});
+    _soLines.push({tr, itemInput:itemInp, qty:qtyI, price:priceI, disc:discI, taxSel, whSel, lineTotal:lineTotalEl, lineTax:lineTaxEl});
     itemInp.focus();
   }
 
@@ -6924,6 +7022,8 @@ async function openOrderForm() {
 
   // Submit
   document.getElementById('so-submit').onclick = async () => {
+    const btn = document.getElementById('so-submit');
+    if (btn.disabled) return;
     const cardCode = document.getElementById('so-customer').value.trim();
     if (!cardCode) { alert('Please select a customer'); return; }
     const lines = _soLines.map(l=>({
@@ -6956,7 +7056,6 @@ async function openOrderForm() {
       shipToAddress: getAddr('shipto'),
     };
 
-    const btn = document.getElementById('so-submit');
     btn.disabled=true; btn.textContent='Creating…';
     try {
       const tok = localStorage.getItem('hanny_token')||'';
@@ -6967,12 +7066,14 @@ async function openOrderForm() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error||'Failed');
+      const totals = d.docTotal != null ? ` — Total ${fmt2(d.docTotal)} ${d.currency||''} (tax ${fmt2(d.vatSum)})` : '';
       const msg = document.getElementById('so-result-msg');
-      msg.textContent = `✅ Sales Order #${d.docNum} created successfully!`;
+      msg.textContent = `✅ Sales Order #${d.docNum} created${totals}`;
       msg.style.display='block';
       btn.textContent='✅ Created';
       btn.style.background='#059669';
-      postResult(`✅ **Sales Order #${d.docNum}** created for customer **${cardCode}**.\nDoc Entry: ${d.docEntry}`);
+      postResult(`✅ **Sales Order #${d.docNum}** created for customer **${cardCode}**.\nDoc Entry: ${d.docEntry}` +
+        (d.docTotal != null ? `\nOrder Total: **${fmt2(d.docTotal)} ${d.currency||''}** (tax ${fmt2(d.vatSum)})` : ''));
       setTimeout(soClose, 2500);
     } catch(e) {
       alert('Error: ' + e.message);
@@ -6981,76 +7082,162 @@ async function openOrderForm() {
   };
 }
 
+
 // ════════════════════════════════════════════════════
 // FORM: Delivery
 // ════════════════════════════════════════════════════
 function openDeliveryForm(){
+  // Customer → open sales orders → lines (qty up to the open qty, warehouse, bin / batch) → post
   openModal('🚚 Create Delivery Note');modalBody.innerHTML='';
-  const orderE=inp('Sales Order Doc Entry','number');
-  const loadBtn=document.createElement('button');loadBtn.className='btn btn-secondary';loadBtn.style.marginTop='6px';loadBtn.textContent='Load Order Lines';
-  const carrierI=inp('Carrier (optional)');const trackI=inp('Tracking # (optional)');
-  const linesSec=document.createElement('div');const lineData=[];
+  const tok = () => ({ 'x-auth-token': localStorage.getItem('hanny_token') || '' });
+  let customer = null, order = null;
+  const lineData = [];
 
-  loadBtn.addEventListener('click',async()=>{
-    const n=parseInt(orderE.value);if(!n){alert('Enter order doc entry');return;}
-    loadBtn.disabled=true;loadBtn.textContent='Loading…';
-    try{
-      const order=await api(`/api/fetch/order/${n}`);
-      if(order.error)throw new Error(order.error);
-      linesSec.innerHTML='';lineData.length=0;
-      const t=document.createElement('div');t.style.cssText='font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:12px 0 8px';
-      t.textContent=`Order #${order.DocNum} — ${order.CardName||order.CardCode}`;
+  const cust = customerField(c => { customer = c; loadOrders(c); });
+  const orderSel = document.createElement('select'); orderSel.className = 'form-select';
+  orderSel.innerHTML = '<option value="">— Select a customer first —</option>'; orderSel.disabled = true;
+  const dateI = inp('', 'date', today());
+  const carrierI = inp('Carrier (optional)'); const trackI = inp('Tracking # (optional)');
+  const linesSec = document.createElement('div');
+
+  async function loadOrders(c) {
+    order = null; lineData.length = 0; linesSec.innerHTML = '';
+    orderSel.disabled = true; orderSel.innerHTML = '<option value="">Loading open sales orders…</option>';
+    try {
+      const r = await fetch(`/api/o2c-forms/open-orders?cardCode=${encodeURIComponent(c.CardCode)}`, { headers: tok() }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error);
+      orderSel.innerHTML = r.docs.length
+        ? '<option value="">— Select a sales order —</option>' + r.docs.map(d => `<option value="${d.docEntry}">SO #${d.docNum} · ${d.docDate} · delivery ${d.dueDate} · ${fmt2(d.total)} ${escHtml(d.currency)}${d.ref ? ' · Ref ' + escHtml(d.ref) : ''}</option>`).join('')
+        : '<option value="">No open sales orders for this customer</option>';
+      orderSel.disabled = !r.docs.length;
+      if (r.docs.length === 1) { orderSel.value = String(r.docs[0].docEntry); loadOrder(r.docs[0].docEntry); }
+    } catch (e) { orderSel.innerHTML = `<option value="">${escHtml(e.message)}</option>`; }
+  }
+  orderSel.addEventListener('change', () => loadOrder(parseInt(orderSel.value, 10)));
+
+  // Bin / batch choices for a line in a warehouse, with stock — from the direct DB (same as Order → Delivery)
+  async function stockChoices(line, whs, isBinWhs) {
+    const q = (kind, bins) => fetch(`/api/order-delivery/batch-serials?kind=${kind}&itemCode=${encodeURIComponent(line.ItemCode)}&whs=${encodeURIComponent(whs)}${bins ? '&bins=1' : ''}`, { headers: tok() }).then(x => x.json());
+    if (line.isBatch) {
+      const r = await q('batch', isBinWhs);
+      if (!r.ok) throw new Error(r.error);
+      return { label: isBinWhs ? 'Batch / Bin' : 'Batch', opts: r.rows.map(b => ({
+        value: isBinWhs ? `${b.batch}|${b.binAbs}` : b.batch,
+        text: `${b.batch}${isBinWhs ? ' @ ' + b.binCode : ''} — ${fmt2(isBinWhs ? b.qty : b.qty - (b.committed || 0))}${b.expiry ? ' · exp ' + b.expiry : ''}` })) };
+    }
+    if (!isBinWhs) return null;
+    const r = await q('bin');
+    if (!r.ok) {
+      // no direct DB connection → bins without stock figures
+      const bins = await fetch(`/api/suggest/bins?warehouse=${encodeURIComponent(whs)}`).then(x => x.json()).catch(() => []);
+      return { label: 'Bin', note: 'stock per bin not available', opts: (bins || []).map(b => ({ value: String(b.AbsEntry), text: b.BinCode })) };
+    }
+    return { label: 'Bin', opts: r.rows.map(b => ({ value: String(b.binAbs), text: `${b.binCode} — ${fmt2(b.qty)}${b.isDefault ? ' (default)' : ''}` })) };
+  }
+
+  async function loadOrder(n) {
+    order = null; lineData.length = 0;
+    if (!n) { linesSec.innerHTML = ''; return; }
+    linesSec.innerHTML = '<div style="color:var(--muted);font-size:12px;margin-top:8px">Loading order lines…</div>';
+    try {
+      const o = await api(`/api/fetch/order/${n}`);
+      if (o.error) throw new Error(o.error);
+      if (customer && o.CardCode !== customer.CardCode) throw new Error(`Sales Order #${o.DocNum} belongs to ${o.CardCode}.`);
+      order = o; linesSec.innerHTML = '';
+      const t = document.createElement('div'); t.style.cssText = 'font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:12px 0 8px';
+      t.textContent = `Sales Order #${o.DocNum} — ${o.CardName || o.CardCode} · open lines`;
       linesSec.appendChild(t);
-      for(const[i,line]of(order.DocumentLines||[]).entries()){
-        if(line.LineStatus==='bost_Close')continue;
-        const card=document.createElement('div');card.className='batch-card';card.style.marginBottom='8px';
-        const hdr=document.createElement('div');hdr.className='batch-card-title';hdr.textContent=`${line.ItemCode} — ${line.ItemDescription||''}`;
+      for (const [i, line] of (o.DocumentLines || []).entries()) {
+        const open = Number(line.RemainingOpenQuantity ?? line.Quantity ?? 0);
+        if (line.LineStatus === 'bost_Close' || open <= 0) continue;
+        const card = document.createElement('div'); card.className = 'batch-card'; card.style.marginBottom = '8px';
+        const hdr = document.createElement('div'); hdr.className = 'batch-card-title';
+        hdr.innerHTML = `${escHtml(line.ItemCode)} — ${escHtml(line.ItemDescription || '')} <span style="font-weight:400;color:var(--muted)">· ordered ${fmt2(line.Quantity)} · <b>open ${fmt2(open)}</b> ${escHtml(line.UoMCode || line.MeasureUnit || '')}${line.WarehouseCode ? ' · SO warehouse ' + escHtml(line.WarehouseCode) : ''}</span>`;
         card.appendChild(hdr);
-        const rr=document.createElement('div');rr.className='form-row form-row-3';
-        const qtyI=inp('Qty','number');qtyI.value=line.Quantity||'';
-        const whSel=buildWarehouseSelect('dwh-'+i);
-        if(line.WarehouseCode)for(const o of whSel.options)if(o.value===line.WarehouseCode){o.selected=true;break;}
-        const binHold=document.createElement('div');
-        const binWrap=document.createElement('div');binWrap.className='form-group';
-        const binL=document.createElement('label');binL.className='form-label';binL.textContent='Bin';
-        binHold.innerHTML='<select class="form-select"><option value="">— No bin —</option></select>';
-        binWrap.appendChild(binL);binWrap.appendChild(binHold);
-        whSel.addEventListener('change',async()=>{
-          binHold.innerHTML='';
-          const opt=whSel.querySelector(`option[value="${whSel.value}"]`);
-          if(whSel.value&&opt?.dataset?.bin==='1')binHold.appendChild(await buildBinSelect(whSel.value,'dbin-'+i));
-          else binHold.innerHTML='<select class="form-select"><option value="">— No bins —</option></select>';
-        });
-        rr.appendChild(field('Ship Qty',qtyI));rr.appendChild(field('Warehouse',whSel));rr.appendChild(binWrap);
+        const rr = document.createElement('div'); rr.className = 'form-row form-row-3';
+        const qtyI = inp('Qty', 'number'); qtyI.value = open; qtyI.min = 0; qtyI.max = open; qtyI.step = 'any';
+        const whSel = buildWarehouseSelect('dwh-' + i);
+        if (line.WarehouseCode) for (const op of whSel.options) if (op.value === line.WarehouseCode) { op.selected = true; break; }
+        const allocHold = document.createElement('div');
+        const allocG = document.createElement('div'); allocG.className = 'form-group';
+        const allocL = document.createElement('label'); allocL.className = 'form-label'; allocL.textContent = 'Bin';
+        allocG.appendChild(allocL); allocG.appendChild(allocHold);
+        rr.appendChild(field('Ship Qty', qtyI)); rr.appendChild(field('Warehouse', whSel)); rr.appendChild(allocG);
         card.appendChild(rr);
-        let batchSel=null;
-        if(line.isBatch){
-          const bSec=document.createElement('div');bSec.style.marginTop='8px';
-          const bl=document.createElement('div');bl.style.cssText='font-size:10px;font-weight:700;color:#92400e;margin-bottom:4px';bl.textContent='⚠️ Batch Managed — Select Batch';
-          batchSel=await buildBatchSelect(line.ItemCode,line.WarehouseCode||'','dbatch-'+i);
-          whSel.addEventListener('change',async()=>{const nb=await buildBatchSelect(line.ItemCode,whSel.value,'dbatch-'+i);batchSel.replaceWith(nb);batchSel=nb;});
-          bSec.appendChild(bl);bSec.appendChild(batchSel);card.appendChild(bSec);
-        }
+        const warn = document.createElement('div'); warn.style.cssText = 'font-size:11.5px;margin-top:6px;line-height:1.5';
+        card.appendChild(warn);
         linesSec.appendChild(card);
-        lineData.push({line,qtyI,whSel,binHold,batchSel,isBatch:line.isBatch});
+
+        const d = { line, open, qtyI, whSel, allocSel: null, serial: !!line.isSerial };
+        lineData.push(d);
+        if (d.serial) {
+          qtyI.value = 0; qtyI.disabled = true; whSel.disabled = true;
+          allocHold.innerHTML = '<div style="font-size:11.5px;color:#92400e">—</div>';
+          warn.innerHTML = '<span style="color:#92400e">🔢 Serial-numbered item — pick its serial numbers in <b>Sales — O2C → Order → Delivery</b>. Not delivered from this form.</span>';
+          continue;
+        }
+        const check = () => {
+          const q = parseFloat(qtyI.value) || 0, msgs = [];
+          if (q > open + 1e-9) msgs.push(`<span style="color:#b91c1c">⚠️ ${fmt2(q)} is more than the open quantity ${fmt2(open)} — reduce it to ${fmt2(open)} or less.</span>`);
+          if (q < 0) msgs.push('<span style="color:#b91c1c">⚠️ Quantity cannot be negative.</span>');
+          if (whSel.value && line.WarehouseCode && whSel.value !== line.WarehouseCode) msgs.push(`<span style="color:#b45309">⚠️ Warehouse ${escHtml(whSel.value)} is different from the sales order's warehouse ${escHtml(line.WarehouseCode)}.</span>`);
+          warn.innerHTML = msgs.join('<br>');
+          qtyI.style.borderColor = q > open + 1e-9 || q < 0 ? '#dc2626' : '';
+        };
+        const reloadAlloc = async () => {
+          const whs = whSel.value, isBinWhs = whSel.selectedOptions[0]?.dataset?.bin === '1';
+          d.allocSel = null; allocL.textContent = line.isBatch ? 'Batch' : 'Bin';
+          if (!whs) { allocHold.innerHTML = '<select class="form-select" disabled><option>— Select a warehouse —</option></select>'; return; }
+          if (!line.isBatch && !isBinWhs) { allocHold.innerHTML = '<select class="form-select" disabled><option>— No bins in this warehouse —</option></select>'; return; }
+          allocHold.innerHTML = '<select class="form-select" disabled><option>Loading…</option></select>';
+          try {
+            const ch = await stockChoices(line, whs, isBinWhs);
+            if (whSel.value !== whs) return;
+            allocL.textContent = ch.label + (ch.note ? ` (${ch.note})` : '');
+            const sel = document.createElement('select'); sel.className = 'form-select';
+            sel.innerHTML = `<option value="">— Auto (${line.isBatch ? 'earliest expiry first' : 'default bin / most stock'}) —</option>` + ch.opts.map(o => `<option value="${escHtml(o.value)}">${escHtml(o.text)}</option>`).join('');
+            if (!ch.opts.length) sel.innerHTML = `<option value="">No ${line.isBatch ? 'batch' : 'bin'} stock in ${escHtml(whs)}</option>`;
+            allocHold.innerHTML = ''; allocHold.appendChild(sel); d.allocSel = sel;
+          } catch (e) { allocHold.innerHTML = `<div style="font-size:11.5px;color:#b91c1c">${escHtml(e.message)}</div>`; }
+        };
+        qtyI.addEventListener('input', check);
+        whSel.addEventListener('change', () => { check(); reloadAlloc(); });
+        check(); reloadAlloc();   // bins / batches of the order's own warehouse right away
       }
-    }catch(e){alert('Error: '+e.message);}
-    finally{loadBtn.disabled=false;loadBtn.textContent='Reload Lines';}
-  });
+      if (!lineData.length) linesSec.innerHTML += '<div style="color:var(--muted);font-size:12px">This order has no open lines left to deliver.</div>';
+    } catch (e) { linesSec.innerHTML = `<div style="color:#b91c1c;font-size:12.5px;margin-top:8px">${escHtml(e.message)}</div>`; }
+  }
 
-  const rr=document.createElement('div');rr.className='form-row form-row-2';
-  rr.appendChild(field('Carrier',carrierI));rr.appendChild(field('Tracking #',trackI));
-  modalBody.appendChild(field('Sales Order Doc Entry',orderE));
-  modalBody.appendChild(loadBtn);modalBody.appendChild(linesSec);modalBody.appendChild(rr);
+  const r1 = document.createElement('div'); r1.className = 'form-row form-row-2';
+  r1.appendChild(field('Sales Order *', orderSel)); r1.appendChild(field('Posting Date', dateI));
+  const r2 = document.createElement('div'); r2.className = 'form-row form-row-2';
+  r2.appendChild(field('Carrier', carrierI)); r2.appendChild(field('Tracking #', trackI));
+  modalBody.appendChild(cust.group); modalBody.appendChild(r1); modalBody.appendChild(linesSec); modalBody.appendChild(r2);
 
-  modalSubmit.onclick=async()=>{
-    const n=parseInt(orderE.value);if(!n){alert('Enter order doc entry');return;}
+  modalSubmit.onclick = async () => {
+    if (modalSubmit.disabled) return;
+    if (!customer) { alert('Choose a customer (type and pick from the list, or use 🔍).'); return; }
+    if (!order) { alert('Select a sales order.'); return; }
+    const over = lineData.find(d => !d.serial && (parseFloat(d.qtyI.value) || 0) > d.open + 1e-9);
+    if (over) { alert(`${over.line.ItemCode}: ${over.qtyI.value} is more than the open quantity ${over.open}.`); over.qtyI.focus(); return; }
+    const lines = lineData.filter(d => !d.serial && (parseFloat(d.qtyI.value) || 0) > 0).map(d => {
+      const v = d.allocSel?.value || '';
+      const [batch, binAbs] = d.line.isBatch ? v.split('|') : ['', v];
+      return { lineNum: d.line.LineNum, qty: parseFloat(d.qtyI.value), warehouseCode: d.whSel.value || d.line.WarehouseCode || '',
+        ...(batch ? { batch } : {}), ...(Number(binAbs) > 0 ? { binAbs: Number(binAbs) } : {}) };
+    });
+    if (!lines.length) { alert('Enter a ship quantity for at least one line.'); return; }
     setSubmitLoading(true);
-    try{const args={salesOrderDocEntry:n};if(carrierI.value)args.carrierName=carrierI.value;if(trackI.value)args.trackingNumber=trackI.value;
-    const d=await api('/api/action',{method:'POST',body:JSON.stringify({tool:'create_delivery',args})});if(d.error)throw new Error(d.error);closeModal();postResult(d.formatted);}
-    catch(e){alert('Error: '+e.message);}finally{setSubmitLoading(false);}
+    try {
+      const r = await fetch('/api/o2c-forms/delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', ...tok() },
+        body: JSON.stringify({ orderDocEntry: order.DocEntry, cardCode: customer.CardCode, docDate: dateI.value, carrier: carrierI.value.trim(), tracking: trackI.value.trim(), lines }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || 'Failed');
+      closeModal();
+      postResult(`✅ **Delivery #${r.docNum}** created for **${r.cardName || r.cardCode}** (${r.cardCode}) from Sales Order #${r.orderNum}.\nDoc Entry: ${r.docEntry} · ${r.lines} line(s)${r.total ? ` · Total ${r.total} ${r.currency}` : ''}`);
+    } catch (e) { alert('Error: ' + e.message); setSubmitLoading(false); }
   };
 }
+
 
 // ════════════════════════════════════════════════════
 // FORM: POD
@@ -7071,43 +7258,268 @@ function openPodForm(){
 // FORM: Invoice
 // ════════════════════════════════════════════════════
 function openInvoiceForm(){
+  // Customer → open deliveries → line details → summary → post (lines + freight of the delivery)
   openModal('🧾 Create A/R Invoice');modalBody.innerHTML='';
-  const dE=inp('Delivery Doc Entry','number');const due=inp('Due in Days','number');due.value='30';const dt=inp('','date',today());
-  const r=document.createElement('div');r.className='form-row form-row-2';r.appendChild(field('Due in Days',due));r.appendChild(field('Date',dt));
-  modalBody.appendChild(field('Delivery Doc Entry',dE));modalBody.appendChild(r);
-  modalSubmit.onclick=async()=>{
-    if(!parseInt(dE.value)){alert('Enter delivery doc entry');return;}
+  const tok = () => ({ 'x-auth-token': localStorage.getItem('hanny_token') || '' });
+  let customer = null, plan = null, stage = 'form';
+  modalSubmit.textContent = 'Review Invoice →';
+
+  const formBox = document.createElement('div'); formBox.style.cssText = 'display:flex;flex-direction:column;gap:14px';
+  const reviewBox = document.createElement('div'); reviewBox.style.display = 'none';
+  const cust = customerField(c => { customer = c; loadDeliveries(c); });
+  const delSel = document.createElement('select'); delSel.className = 'form-select';
+  delSel.innerHTML = '<option value="">— Select a customer first —</option>'; delSel.disabled = true;
+  const dtI = inp('', 'date', today());
+  const dueI = inp('Due in Days', 'number'); dueI.value = '30'; dueI.min = 0;
+  const dueLbl = document.createElement('div'); dueLbl.style.cssText = 'font-size:11px;color:var(--muted);margin-top:3px';
+  const showDue = () => { dueLbl.textContent = `Due date: ${addDaysIso(dtI.value || today(), parseInt(dueI.value, 10) || 0)}`; };
+  dtI.addEventListener('input', showDue); dueI.addEventListener('input', showDue); showDue();
+  const detail = document.createElement('div');
+
+  async function loadDeliveries(c) {
+    plan = null; detail.innerHTML = '';
+    delSel.disabled = true; delSel.innerHTML = '<option value="">Loading open deliveries…</option>';
+    try {
+      const r = await fetch(`/api/o2c-forms/open-deliveries?cardCode=${encodeURIComponent(c.CardCode)}`, { headers: tok() }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error);
+      delSel.innerHTML = r.docs.length
+        ? '<option value="">— Select a delivery —</option>' + r.docs.map(d => `<option value="${d.docEntry}">Delivery #${d.docNum} · ${d.docDate} · ${fmt2(d.total)} ${escHtml(d.currency)}${d.ref ? ' · Ref ' + escHtml(d.ref) : ''}</option>`).join('')
+        : '<option value="">No open deliveries for this customer</option>';
+      delSel.disabled = !r.docs.length;
+      if (r.docs.length === 1) { delSel.value = String(r.docs[0].docEntry); loadDelivery(r.docs[0].docEntry); }
+    } catch (e) { delSel.innerHTML = `<option value="">${escHtml(e.message)}</option>`; }
+  }
+  delSel.addEventListener('change', () => loadDelivery(parseInt(delSel.value, 10)));
+
+  const th = 'padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:#6b7280;background:#f3f4f6';
+  const td = 'padding:6px 8px;border-bottom:1px solid #f3f4f6';
+  function linesTable(p) {
+    const cur = escHtml(p.amounts.currency || p.header.currency || '');
+    const rows = p.lines.map((l, i) => `<tr><td style="${td}">${i + 1}</td><td style="${td}"><b>${escHtml(l.itemCode)}</b><div style="font-size:11px;color:#6b7280">${escHtml(l.itemName)}</div></td>
+      <td style="${td};text-align:right">${fmt2(l.qty)}</td><td style="${td};text-align:right">${fmt2(l.unitPrice)}</td><td style="${td};text-align:right">${fmt2(l.discount)}%</td>
+      <td style="${td}">${escHtml(l.taxCode)}</td><td style="${td};text-align:right">${fmt2(l.net)}</td><td style="${td};text-align:right">${fmt2(l.tax)}</td><td style="${td};text-align:right;font-weight:600">${fmt2(l.gross)}</td></tr>`).join('');
+    const a = p.amounts;
+    const tot = [['Subtotal (before tax)', a.subTotal]];
+    if (a.discount) tot.push(['Discount', -a.discount]);
+    tot.push(['Tax', a.tax]);
+    if (a.other) tot.push([`Freight / other charges${p.freight.length ? ` (${p.freight.map(f => escHtml(f.remarks || 'expense ' + f.code)).join(', ')})` : ''}`, a.other]);
+    if (a.rounding) tot.push(['Rounding', a.rounding]);
+    return `<div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:6px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:640px">
+      <thead><tr><th style="${th}">#</th><th style="${th};text-align:left">Item</th><th style="${th};text-align:right">Qty</th><th style="${th};text-align:right">Price</th><th style="${th};text-align:right">Disc</th><th style="${th};text-align:left">Tax Code</th><th style="${th};text-align:right">Net</th><th style="${th};text-align:right">Tax</th><th style="${th};text-align:right">Total</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      <table style="margin:8px 0 0 auto;border-collapse:collapse;font-size:12.5px;min-width:280px">
+      ${tot.map(([k, v]) => `<tr><td style="padding:3px 10px;color:#6b7280">${k}</td><td style="padding:3px 4px;text-align:right">${fmt2(v)} ${cur}</td></tr>`).join('')}
+      <tr style="border-top:2px solid var(--blue)"><td style="padding:6px 10px;font-weight:700">Invoice Total</td><td style="padding:6px 4px;text-align:right;font-weight:700;font-size:14px;color:var(--blue)">${fmt2(a.total)} ${cur}</td></tr></table>
+      ${p.partial ? '<div style="font-size:11px;color:#b45309;text-align:right">Part of this delivery is already invoiced — only its open lines are invoiced (its freight went with the first invoice).</div>' : ''}`;
+  }
+
+  async function loadDelivery(n) {
+    plan = null;
+    if (!n) { detail.innerHTML = ''; return; }
+    detail.innerHTML = '<div style="color:var(--muted);font-size:12px">Loading delivery…</div>';
+    try {
+      const r = await fetch(`/api/o2c-forms/delivery/${n}`, { headers: tok() }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error);
+      plan = r;
+      detail.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Delivery #${r.header.docNum} — lines to invoice</div>${linesTable(r)}`;
+    } catch (e) { detail.innerHTML = `<div style="color:#b91c1c;font-size:12.5px">${escHtml(e.message)}</div>`; }
+  }
+
+  const r1 = document.createElement('div'); r1.className = 'form-row form-row-3';
+  r1.appendChild(field('Delivery *', delSel)); r1.appendChild(field('Posting Date', dtI));
+  const dueG = field('Due in Days', dueI); dueG.appendChild(dueLbl); r1.appendChild(dueG);
+  formBox.appendChild(cust.group); formBox.appendChild(r1); formBox.appendChild(detail);
+  modalBody.appendChild(formBox); modalBody.appendChild(reviewBox);
+
+  function showReview() {
+    const h = plan.header, due = addDaysIso(dtI.value || today(), parseInt(dueI.value, 10) || 0);
+    const kv = [['Customer', `${escHtml(h.cardName || '')} (${escHtml(h.cardCode)})`], ['Based on', `Delivery #${h.docNum} (${escHtml(h.docDate)})`],
+      ['Posting Date', escHtml(dtI.value || today())], ['Due Date', `${escHtml(due)} (${parseInt(dueI.value, 10) || 0} days)`], ...(h.ref ? [['Customer Ref', escHtml(h.ref)]] : [])];
+    reviewBox.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px">
+      <div style="font-size:13.5px;font-weight:700;color:#1d4ed8;margin-bottom:8px">📋 A/R Invoice — check before posting</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px">${kv.map(([k, v], i) => `<tr${i % 2 ? '' : ' style="background:#fff"'}><td style="padding:5px 10px;color:#6b7280;width:32%">${k}</td><td style="padding:5px 10px">${v}</td></tr>`).join('')}</table>
+      ${linesTable(plan)}
+      <div style="margin-top:10px"><button type="button" data-back style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:7px 14px;font-size:12.5px;cursor:pointer">← Back to edit</button></div></div>`;
+    reviewBox.querySelector('[data-back]').onclick = () => { stage = 'form'; reviewBox.style.display = 'none'; formBox.style.display = 'flex'; modalSubmit.textContent = 'Review Invoice →'; };
+    formBox.style.display = 'none'; reviewBox.style.display = 'block';
+    stage = 'review'; modalSubmit.textContent = '✅ Post A/R Invoice';
+  }
+
+  modalSubmit.onclick = async () => {
+    if (modalSubmit.disabled) return;
+    if (stage === 'form') {
+      if (!customer) { alert('Choose a customer (type and pick from the list, or use 🔍).'); return; }
+      if (!plan) { alert('Select a delivery.'); return; }
+      if ((parseInt(dueI.value, 10) || 0) < 0) { alert('Due in days cannot be negative.'); return; }
+      showReview(); return;
+    }
     setSubmitLoading(true);
-    try{const d=await api('/api/action',{method:'POST',body:JSON.stringify({tool:'create_ar_invoice',args:{deliveryDocEntry:parseInt(dE.value),dueInDays:parseInt(due.value)||30,docDate:dt.value}})});if(d.error)throw new Error(d.error);closeModal();postResult(d.formatted);}
-    catch(e){alert('Error: '+e.message);}finally{setSubmitLoading(false);}
+    try {
+      const r = await fetch('/api/o2c-forms/ar-invoice', { method: 'POST', headers: { 'Content-Type': 'application/json', ...tok() },
+        body: JSON.stringify({ deliveryDocEntry: plan.header.docEntry, cardCode: customer.CardCode, docDate: dtI.value, dueInDays: parseInt(dueI.value, 10) || 0 }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || 'Failed');
+      const a = r.amounts || plan.amounts, cur = a.currency || '';
+      closeModal();
+      postResult(`✅ **A/R Invoice #${r.docNum}** created for **${r.cardName || r.cardCode}** (${r.cardCode}) from Delivery #${plan.header.docNum}.\n` +
+        `Doc Entry: ${r.docEntry} · Due ${r.dueDate}\n` +
+        `Subtotal ${fmt2(a.subTotal)} · Tax ${fmt2(a.tax)}${a.other ? ` · Freight ${fmt2(a.other)}` : ''} · **Invoice Total ${fmt2(a.total)} ${cur}**`);
+    } catch (e) { alert('Error: ' + e.message); setSubmitLoading(false); modalSubmit.textContent = '✅ Post A/R Invoice'; }
   };
 }
+
 
 // ════════════════════════════════════════════════════
 // FORM: Payment
 // ════════════════════════════════════════════════════
 function openPaymentForm(){
+  // Customer → open invoices (tick + amount) → how they paid → summary → post
   openModal('💳 Apply Incoming Payment');modalBody.innerHTML='';
-  const cardInput=inp('Search customer…');const cWrap=document.createElement('div');cWrap.className='ac-wrap';cWrap.appendChild(cardInput);
-  const cNameDiv=document.createElement('div');cNameDiv.style.cssText='font-size:11px;color:var(--blue);margin-top:3px;min-height:14px';
-  acCustomer(cardInput,c=>{cNameDiv.textContent=c.CardName||'';});
-  const cg=document.createElement('div');cg.className='form-group';const cl=document.createElement('label');cl.className='form-label';cl.textContent='Customer';cg.appendChild(cl);cg.appendChild(cWrap);cg.appendChild(cNameDiv);
-  const amtI=inp('Amount','number');amtI.min=0;amtI.step='0.01';const dtI=inp('','date',today());
-  const r=document.createElement('div');r.className='form-row form-row-2';r.appendChild(field('Amount',amtI));r.appendChild(field('Date',dtI));
-  const invTitle=document.createElement('div');invTitle.style.cssText='font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px';invTitle.textContent='Invoice Entries';
-  const invWrap=document.createElement('div');const invEntries=[];
-  function addInv(){const row=document.createElement('div');row.style.cssText='display:flex;gap:6px;margin-bottom:6px';const i=inp('Invoice Doc Entry','number');const rm=document.createElement('button');rm.textContent='✕';rm.style.cssText='background:none;border:1px solid var(--border);color:var(--red);border-radius:6px;padding:0 8px;cursor:pointer';rm.addEventListener('click',()=>{row.remove();invEntries.splice(invEntries.indexOf(i),1);});row.appendChild(i);row.appendChild(rm);invWrap.appendChild(row);invEntries.push(i);}
-  addInv();
-  const addInvBtn=document.createElement('button');addInvBtn.className='add-line-btn';addInvBtn.textContent='+ Add Invoice';addInvBtn.addEventListener('click',addInv);
-  modalBody.appendChild(cg);modalBody.appendChild(r);modalBody.appendChild(invTitle);modalBody.appendChild(invWrap);modalBody.appendChild(addInvBtn);
-  modalSubmit.onclick=async()=>{
-    const cardCode=cardInput.value.trim(),amount=parseFloat(amtI.value),invs=invEntries.map(i=>parseInt(i.value)).filter(n=>n>0);
-    if(!cardCode||!amount||!invs.length){alert('Customer, amount and at least one invoice required');return;}
+  const tok = () => ({ 'x-auth-token': localStorage.getItem('hanny_token') || '' });
+  let customer = null, invoices = [], stage = 'form', acct = null;
+  modalSubmit.textContent = 'Review Payment →';
+  const remember = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const recall = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
+
+  const formBox = document.createElement('div'); formBox.style.cssText = 'display:flex;flex-direction:column;gap:14px';
+  const reviewBox = document.createElement('div'); reviewBox.style.display = 'none';
+  const cust = customerField(c => { customer = c; loadInvoices(c); });
+  const dtI = inp('', 'date', today());
+  const invBox = document.createElement('div');
+  const totalEl = document.createElement('div'); totalEl.style.cssText = 'text-align:right;font-size:13px';
+
+  // ── open invoices ──
+  async function loadInvoices(c) {
+    invoices = []; invBox.innerHTML = '<div style="color:var(--muted);font-size:12px">Loading open invoices…</div>'; calc();
+    try {
+      const r = await fetch(`/api/o2c-forms/open-invoices?cardCode=${encodeURIComponent(c.CardCode)}`, { headers: tok() }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error);
+      invoices = r.invoices;
+      if (!invoices.length) { invBox.innerHTML = '<div style="color:var(--muted);font-size:12.5px">This customer has no open invoices.</div>'; calc(); return; }
+      const th = 'padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:#6b7280;background:#f3f4f6';
+      const td = 'padding:5px 8px;border-bottom:1px solid #f3f4f6';
+      const now = today();
+      invBox.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Open invoices — tick the ones being paid</div>
+        <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:6px;max-height:260px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:620px">
+        <thead><tr><th style="${th};width:30px"><input type="checkbox" data-all title="Select all"></th><th style="${th};text-align:left">Invoice #</th><th style="${th};text-align:left">Date</th><th style="${th};text-align:left">Due</th>
+        <th style="${th};text-align:right">Total</th><th style="${th};text-align:right">Balance Due</th><th style="${th};text-align:right">Amount to Pay</th></tr></thead>
+        <tbody>${invoices.map((v, i) => `<tr data-i="${i}"${v.foreign ? ' title="Foreign-currency invoice — receive it in Sales — O2C → Incoming Payment"' : ''}>
+          <td style="${td};text-align:center"><input type="checkbox" data-pick${v.foreign ? ' disabled' : ''}></td>
+          <td style="${td}"><b>#${v.docNum}</b>${v.ref ? `<div style="font-size:10.5px;color:#6b7280">${escHtml(v.ref)}</div>` : ''}</td>
+          <td style="${td}">${escHtml(v.docDate)}</td><td style="${td};${v.dueDate && v.dueDate < now ? 'color:#b91c1c;font-weight:600' : ''}">${escHtml(v.dueDate)}${v.dueDate && v.dueDate < now ? ' · overdue' : ''}</td>
+          <td style="${td};text-align:right">${fmt2(v.total)} ${escHtml(v.currency)}</td><td style="${td};text-align:right;font-weight:600">${fmt2(v.balance)}</td>
+          <td style="${td};text-align:right"><input type="number" data-amt value="${v.balance}" min="0" max="${v.balance}" step="0.01" disabled style="width:110px;text-align:right;border:1px solid #d1d5db;border-radius:4px;padding:4px 6px;font-size:12px"></td></tr>`).join('')}</tbody></table></div>`;
+      invBox.querySelectorAll('tr[data-i]').forEach(tr => {
+        const pick = tr.querySelector('[data-pick]'), amt = tr.querySelector('[data-amt]');
+        pick.addEventListener('change', () => { amt.disabled = !pick.checked; calc(); });
+        amt.addEventListener('input', calc);
+      });
+      invBox.querySelector('[data-all]').addEventListener('change', e => {
+        invBox.querySelectorAll('[data-pick]:not(:disabled)').forEach(p => { p.checked = e.target.checked; p.closest('tr').querySelector('[data-amt]').disabled = !p.checked; });
+        calc();
+      });
+      calc();
+    } catch (e) { invBox.innerHTML = `<div style="color:#b91c1c;font-size:12.5px">${escHtml(e.message)}</div>`; }
+  }
+  const picked = () => [...invBox.querySelectorAll('tr[data-i]')].filter(tr => tr.querySelector('[data-pick]').checked)
+    .map(tr => ({ inv: invoices[+tr.dataset.i], amount: parseFloat(tr.querySelector('[data-amt]').value) || 0, input: tr.querySelector('[data-amt]') }));
+  function calc() {
+    let total = 0, bad = false;
+    picked().forEach(p => { total += p.amount; const over = p.amount > p.inv.balance + 0.005 || p.amount <= 0; p.input.style.borderColor = over ? '#dc2626' : ''; bad = bad || over; });
+    totalEl.innerHTML = `Total to receive: <b style="font-size:15px;color:var(--blue)">${fmt2(total)}</b>${bad ? '<div style="color:#b91c1c;font-size:11.5px">An amount is more than the balance due, or zero.</div>' : ''}`;
+    return { total, bad };
+  }
+
+  // ── how they paid ──
+  const meansSel = document.createElement('select'); meansSel.className = 'form-select';
+  meansSel.innerHTML = '<option value="transfer">🏦 Bank Transfer</option><option value="cash">💵 Cash</option><option value="check">🧾 Cheque</option>';
+  const acctI = inp('Choose the G/L account — 🔍'); acctI.readOnly = true; acctI.style.cursor = 'pointer';
+  const acctRow = document.createElement('div'); acctRow.style.cssText = 'display:flex;gap:6px';
+  const acctWrap = document.createElement('div'); acctWrap.style.flex = '1'; acctWrap.appendChild(acctI);
+  const clearBtn = document.createElement('button'); clearBtn.type = 'button'; clearBtn.textContent = '✕'; clearBtn.title = 'Clear';
+  clearBtn.style.cssText = 'border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:0 9px;cursor:pointer;color:#6b7280';
+  const setAcct = a => { acct = a; acctI.value = a ? `${a.Account} — ${a.AcctName}` : ''; if (a) remember('pf_acct_' + meansSel.value, a); };
+  const pickAcct = () => openCFL({ title: 'Choose G/L Account', url: s => `/api/o2c-forms/gl-accounts?q=${encodeURIComponent(s)}`,
+    cols: [{ key: 'Account', label: 'Account' }, { key: 'AcctName', label: 'Name' }], onPick: setAcct });
+  acctI.addEventListener('click', pickAcct);
+  clearBtn.onclick = () => setAcct(null);
+  acctRow.appendChild(acctWrap); acctRow.appendChild(cflButton(pickAcct)); acctRow.appendChild(clearBtn);
+  const acctLbl = document.createElement('label'); acctLbl.className = 'form-label';
+  const acctNote = document.createElement('div'); acctNote.style.cssText = 'font-size:11px;color:var(--muted);margin-top:3px';
+  const acctG = document.createElement('div'); acctG.className = 'form-group'; acctG.appendChild(acctLbl); acctG.appendChild(acctRow); acctG.appendChild(acctNote);
+  const refI = inp('Reference (optional)'); const trDateI = inp('', 'date', today());
+  const chkNo = inp('Cheque No. *'); const chkBank = inp('Bank Code (optional)'); const chkBranch = inp('Branch (optional)'); const chkDue = inp('', 'date', today());
+  const meansBox = document.createElement('div'); meansBox.style.cssText = 'display:flex;flex-direction:column;gap:10px';
+  const row = (...els) => { const r = document.createElement('div'); r.className = `form-row form-row-${els.length}`; els.forEach(e => r.appendChild(e)); return r; };
+  function showMeans() {
+    const m = meansSel.value;
+    meansBox.innerHTML = '';
+    acctLbl.textContent = m === 'transfer' ? 'Bank G/L Account *' : m === 'cash' ? 'Cash G/L Account' : 'Cheque G/L Account';
+    acctNote.textContent = m === 'transfer' ? 'The bank account the money was received into.' : 'Leave empty to use the default account from SAP G/L account determination.';
+    setAcct(recall('pf_acct_' + m));
+    meansBox.appendChild(acctG);
+    if (m === 'transfer') meansBox.appendChild(row(field('Transfer Date', trDateI), field('Transfer Reference', refI)));
+    if (m === 'check') { meansBox.appendChild(row(field('Cheque No. *', chkNo), field('Cheque Due Date', chkDue))); meansBox.appendChild(row(field('Bank Code', chkBank), field('Branch', chkBranch))); }
+    if (m === 'cash') meansBox.appendChild(field('Reference', refI));
+  }
+  meansSel.addEventListener('change', showMeans);
+  const remarksI = inp('Remarks (optional)');
+
+  formBox.appendChild(row(cust.group, field('Payment Date', dtI)));
+  formBox.appendChild(invBox); formBox.appendChild(totalEl);
+  formBox.appendChild(field('Payment Means', meansSel)); formBox.appendChild(meansBox); formBox.appendChild(field('Remarks', remarksI));
+  modalBody.appendChild(formBox); modalBody.appendChild(reviewBox);
+  showMeans(); calc();
+
+  function payload() {
+    const m = meansSel.value;
+    return { cardCode: customer.CardCode, docDate: dtI.value, means: m, account: acct?.AcctCode || '',
+      reference: refI.value.trim(), transferDate: trDateI.value, remarks: remarksI.value.trim(),
+      check: m === 'check' ? { number: chkNo.value.trim(), bank: chkBank.value.trim(), branch: chkBranch.value.trim(), dueDate: chkDue.value } : undefined,
+      invoices: picked().map(p => ({ docEntry: p.inv.docEntry, amount: +p.amount.toFixed(2) })) };
+  }
+
+  function showReview() {
+    const p = payload(), sel = picked(), m = meansSel.value, total = sel.reduce((s, x) => s + x.amount, 0);
+    const meansTxt = m === 'transfer' ? `Bank Transfer · ${escHtml(acctI.value)} · ${escHtml(trDateI.value)}${p.reference ? ' · Ref ' + escHtml(p.reference) : ''}`
+      : m === 'cash' ? `Cash · ${escHtml(acctI.value || 'default cash account')}${p.reference ? ' · Ref ' + escHtml(p.reference) : ''}`
+      : `Cheque #${escHtml(p.check.number)} · due ${escHtml(p.check.dueDate)}${p.check.bank ? ' · ' + escHtml(p.check.bank) : ''}${acctI.value ? ' · ' + escHtml(acctI.value) : ''}`;
+    const kv = [['Customer', `${escHtml(customer.CardName || '')} (${escHtml(customer.CardCode)})`], ['Payment Date', escHtml(p.docDate)], ['Payment Means', meansTxt], ...(p.remarks ? [['Remarks', escHtml(p.remarks)]] : [])];
+    reviewBox.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px">
+      <div style="font-size:13.5px;font-weight:700;color:#1d4ed8;margin-bottom:8px">📋 Incoming Payment — check before posting</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px">${kv.map(([k, v], i) => `<tr${i % 2 ? '' : ' style="background:#fff"'}><td style="padding:5px 10px;color:#6b7280;width:30%">${k}</td><td style="padding:5px 10px">${v}</td></tr>`).join('')}</table>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #e5e7eb">
+        <thead><tr style="background:#f3f4f6;font-size:10.5px;color:#6b7280;text-transform:uppercase"><th style="padding:6px 8px;text-align:left">Invoice #</th><th style="padding:6px 8px;text-align:left">Due</th><th style="padding:6px 8px;text-align:right">Balance Due</th><th style="padding:6px 8px;text-align:right">Paying</th><th style="padding:6px 8px;text-align:right">Left Open</th></tr></thead>
+        <tbody>${sel.map(x => `<tr><td style="padding:5px 8px">#${x.inv.docNum}</td><td style="padding:5px 8px">${escHtml(x.inv.dueDate)}</td><td style="padding:5px 8px;text-align:right">${fmt2(x.inv.balance)}</td><td style="padding:5px 8px;text-align:right;font-weight:600">${fmt2(x.amount)}</td><td style="padding:5px 8px;text-align:right;color:#6b7280">${fmt2(x.inv.balance - x.amount)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr style="border-top:2px solid var(--blue)"><td colspan="3" style="padding:7px 8px;font-weight:700">Total Payment</td><td style="padding:7px 8px;text-align:right;font-weight:700;font-size:14px;color:var(--blue)">${fmt2(total)}</td><td></td></tr></tfoot></table>
+      <div style="margin-top:10px"><button type="button" data-back style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:7px 14px;font-size:12.5px;cursor:pointer">← Back to edit</button></div></div>`;
+    reviewBox.querySelector('[data-back]').onclick = () => { stage = 'form'; reviewBox.style.display = 'none'; formBox.style.display = 'flex'; modalSubmit.textContent = 'Review Payment →'; };
+    formBox.style.display = 'none'; reviewBox.style.display = 'block';
+    stage = 'review'; modalSubmit.textContent = '✅ Post Incoming Payment';
+  }
+
+  modalSubmit.onclick = async () => {
+    if (modalSubmit.disabled) return;
+    if (stage === 'form') {
+      if (!customer) { alert('Choose a customer (type and pick from the list, or use 🔍).'); return; }
+      const sel = picked();
+      if (!sel.length) { alert('Tick at least one invoice being paid.'); return; }
+      if (calc().bad) { alert('An amount to pay is more than the balance due, or zero — correct it first.'); return; }
+      if (meansSel.value === 'transfer' && !acct) { alert('Choose the bank G/L account the transfer was received into.'); pickAcct(); return; }
+      if (meansSel.value === 'check' && !chkNo.value.trim()) { alert('Enter the cheque number.'); chkNo.focus(); return; }
+      showReview(); return;
+    }
     setSubmitLoading(true);
-    try{const d=await api('/api/action',{method:'POST',body:JSON.stringify({tool:'apply_incoming_payment',args:{cardCode,amount,invoiceDocEntries:invs,docDate:dtI.value}})});if(d.error)throw new Error(d.error);closeModal();postResult(d.formatted);}
-    catch(e){alert('Error: '+e.message);}finally{setSubmitLoading(false);}
+    try {
+      const r = await fetch('/api/o2c-forms/incoming-payment', { method: 'POST', headers: { 'Content-Type': 'application/json', ...tok() }, body: JSON.stringify(payload()) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || 'Failed');
+      closeModal();
+      postResult(`✅ **Incoming Payment #${r.docNum}** posted for **${customer.CardName || customer.CardCode}** (${customer.CardCode}).\n` +
+        `Doc Entry: ${r.docEntry} · ${meansSel.selectedOptions[0].textContent.replace(/^\S+\s/, '')} · **Total ${fmt2(r.total)}**\n` +
+        `Invoices: ${r.invoices.map(i => `#${i.docNum} (${fmt2(i.amount)})`).join(', ')}`);
+    } catch (e) { alert('Error: ' + e.message); setSubmitLoading(false); modalSubmit.textContent = '✅ Post Incoming Payment'; }
   };
 }
+
 
 // ════════════════════════════════════════════════════
 // FORM: ATP
@@ -7367,6 +7779,12 @@ const FORM_MAP = {
   pod:openPodForm, invoice:openInvoiceForm, payment:openPaymentForm, atp:openAtpForm,
   purchaseOrder:openPurchaseOrderForm, grpo:openGrpoForm,
   apInvoice:openApInvoiceForm, outgoingPayment:openOutgoingPaymentForm,
+  // A/R credit memo has no pop-up — it opens the "AR Inv → Credit" agent (if the user may use it)
+  creditMemo: async () => {
+    const nav = document.getElementById('nav-arinv2arcm');
+    if (nav && nav.style.display === 'none') { alert("You don't have access to Sales — O2C → AR Inv → Credit. Ask your administrator."); return; }
+    if (typeof window.showARInv2ARCMPanel === 'function') window.showARInv2ARCMPanel();
+  },
 };
 
 // Natural language prompts sent to Claude when in Chat Mode

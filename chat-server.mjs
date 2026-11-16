@@ -39,6 +39,7 @@ import { createPurchaseRequestAgentRouter } from './controllers/pr-agent.mjs';
 import { createPurchaseOrderAgentRouter } from './controllers/po-agent.mjs';
 import { createInventoryAgentRouter } from './controllers/inventory-agent.mjs';
 import { createSalesOrderAgentRouter } from './controllers/sales-order-agent.mjs';
+import { createO2CFormsRouter } from './controllers/o2c-forms.mjs';
 import { createPRtoPOAgentRouter } from './controllers/pr-to-po-agent.mjs';
 import { createPOtoGRPOAgentRouter } from './controllers/po-to-grpo-agent.mjs';
 import { createGRPOtoAPInvAgentRouter } from './controllers/grpo-to-apinv-agent.mjs';
@@ -1401,7 +1402,8 @@ const GUIDES = {
   create_sales_order:      "👉 Use the **Create Order** form above, or type: `create order from quotation [DOC_ENTRY]`",
   create_delivery:         "👉 Use the **Create Delivery** form above — it will load order lines with batch & bin selection.",
   create_ar_invoice:       "👉 Use the **Create Invoice** form above, or type: `create invoice from delivery [DOC_ENTRY]`",
-  apply_incoming_payment:  "👉 Use the **Apply Payment** form above for a guided experience.",
+  apply_incoming_payment:  "👉 Use the **Apply Payment** form above — pick the customer, tick the open invoices, choose how they paid.",
+  create_ar_credit_memo:   "👉 Opening **Sales — O2C → AR Inv → Credit**: pick the customer, then the A/R invoice to credit — review the lines and post the credit memo.",
   create_purchase_order:   "👉 Use the **Create PO** form in the toolbar above for a guided experience with vendor & item autocomplete.",
   create_goods_receipt_po: "👉 Use the **Goods Receipt PO** form above, or type: `receive goods from PO [DOC_ENTRY]`",
   create_ap_invoice:       "👉 Use the **A/P Invoice** form above, or type: `create ap invoice from GRPO [DOC_ENTRY]`",
@@ -5422,6 +5424,11 @@ app.post("/api/sales-orders", requireAuth, async (req, res) => {
     const b   = req.body;
     const today = () => new Date().toISOString().slice(0,10)+'T00:00:00';
     const sapDate = s => s ? `${s}T00:00:00` : today();
+    // Tax code field: US/Canada Sales Tax localization → TaxCode, VAT localizations → VatGroup.
+    // SAP ignores the wrong one silently, so the order was posted without tax.
+    const taxCats = new Map(cacheRepo.getTaxCodes(connRepo.getActive()?.company || 'default').map(t => [t.Code, t.Category]));
+    const salesTaxCo = [...taxCats.values()].includes('Sales Tax');
+    const taxField = code => (taxCats.has(code) ? taxCats.get(code) === 'Sales Tax' : salesTaxCo) ? 'TaxCode' : 'VatGroup';
     const payload = {
       CardCode:    b.cardCode,
       DocDate:     sapDate(b.docDate),
@@ -5436,6 +5443,7 @@ app.post("/api/sales-orders", requireAuth, async (req, res) => {
         BillToCountry:  b.billToAddress.country || '',
       } : {}),
       ...(b.shipToAddress ? {
+        ShipToState:    b.shipToAddress.state   || '',
         ShipToStreet:   b.shipToAddress.street  || '',
         ShipToCity:     b.shipToAddress.city    || '',
         ShipToZipCode:  b.shipToAddress.zip     || '',
@@ -5446,12 +5454,12 @@ app.post("/api/sales-orders", requireAuth, async (req, res) => {
         Quantity:        Number(l.qty)         || 1,
         UnitPrice:       l.unitPrice != null ? Number(l.unitPrice) : undefined,
         DiscountPercent: Number(l.discount)    || 0,
-        VatGroup:        l.taxCode             || undefined,
+        ...(l.taxCode ? { [taxField(l.taxCode)]: l.taxCode } : {}),
         WarehouseCode:   l.warehouseCode       || undefined,
       })).filter(l => l.ItemCode),
     };
     const result = await sap.post('/Orders', payload);
-    res.json({ ok:true, docEntry:result.DocEntry, docNum:result.DocNum });
+    res.json({ ok:true, docEntry:result.DocEntry, docNum:result.DocNum, docTotal:result.DocTotal, vatSum:result.VatSum, currency:result.DocCurrency || '' });
   } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
@@ -6872,6 +6880,8 @@ app.use('/api/inventory-agent', createInventoryAgentRouter({
 
 // ── Standalone Sales Order Agent routes ────────────────────────────────────
 app.use('/api/sales-order-agent', createSalesOrderAgentRouter({ requireAuth, printAuth: requireAuthOrQueryToken, getActiveSap }));
+// Chat pop-up forms "Create Delivery" / "Create A/R Invoice": open documents per customer, invoice preview, posting
+app.use('/api/o2c-forms', createO2CFormsRouter({ requireAuth, getActiveSap }));
 
 // ── PR to PO Conversion Agent routes ───────────────────────────────────────
 app.use('/api/pr-to-po', createPRtoPOAgentRouter({

@@ -1529,14 +1529,31 @@ async function createArInvoice(args: unknown): Promise<ToolResponse> {
   dueDate.setDate(dueDate.getDate() + dueInDays);
 
   const delivery = await getDocument<JsonObject>("DeliveryNotes", deliveryDocEntry);
-  const invoiceLines = asArray(delivery.DocumentLines, "delivery.DocumentLines").map((line, index) => {
-    const item = asObject(line, `delivery.DocumentLines[${index}]`);
-    return {
-      BaseType: BASE_DOCUMENT_TYPE.delivery,
-      BaseEntry: deliveryDocEntry,
-      BaseLine: asNumber(item.LineNum, `delivery.DocumentLines[${index}].LineNum`),
-    };
-  });
+  const deliveryLines = asArray(delivery.DocumentLines, "delivery.DocumentLines").map((line, index) => asObject(line, `delivery.DocumentLines[${index}]`));
+  const openLines = deliveryLines.filter((item) => item.LineStatus !== "bost_Close");
+  if (openLines.length === 0) {
+    throw new McpError(ErrorCode.InvalidRequest, `Delivery ${deliveryDocEntry} has no open lines left to invoice.`);
+  }
+  const invoiceLines = openLines.map((item, index) => ({
+    BaseType: BASE_DOCUMENT_TYPE.delivery,
+    BaseEntry: deliveryDocEntry,
+    BaseLine: asNumber(item.LineNum, `delivery.DocumentLines[${index}].LineNum`),
+  }));
+  // Freight / additional expenses of the delivery go onto the invoice too (SAP does not copy them from the
+  // base lines). Only while nothing of the delivery has been invoiced yet — a partly invoiced delivery
+  // already passed its freight on with the first invoice.
+  const foreignCurrency = toNumber(delivery.DocTotalFc) !== 0;
+  const freight = openLines.length < deliveryLines.length ? [] : (Array.isArray(delivery.DocumentAdditionalExpenses) ? delivery.DocumentAdditionalExpenses : [])
+    .map((e) => asObject(e, "expense"))
+    .map((e) => ({ code: e.ExpenseCode, amount: toNumber(foreignCurrency ? e.LineTotalFC : e.LineTotal), taxCode: e.TaxCode, vatGroup: e.VatGroup, remarks: e.Remarks }))
+    .filter((e) => e.code != null && e.amount !== 0)
+    .map((e) => ({
+      ExpenseCode: e.code,
+      LineTotal: e.amount,
+      ...(typeof e.taxCode === "string" && e.taxCode ? { TaxCode: e.taxCode } : {}),
+      ...(typeof e.vatGroup === "string" && e.vatGroup ? { VatGroup: e.vatGroup } : {}),
+      ...(typeof e.remarks === "string" && e.remarks ? { Remarks: e.remarks } : {}),
+    }));
 
   const invoice = await client.post<JsonObject>("/Invoices", {
     CardCode: delivery.CardCode,
@@ -1545,6 +1562,7 @@ async function createArInvoice(args: unknown): Promise<ToolResponse> {
     TaxDate: docDate.toISOString().slice(0, 10),
     Comments: buildComment([`Created from delivery ${deliveryDocEntry}`, `Due in ${dueInDays} days`]),
     DocumentLines: invoiceLines,
+    ...(freight.length ? { DocumentAdditionalExpenses: freight } : {}),
   });
 
   return textResult({
