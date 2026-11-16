@@ -12,20 +12,64 @@
  *   GET  /open-invoices?cardCode=     open A/R invoices of a customer with the balance due
  *   GET  /gl-accounts?q=              postable G/L accounts (bank / cash first) for the payment account
  *   POST /incoming-payment            incoming payment: invoices + amounts, bank transfer / cash / cheque
+ *   GET  /item-price?cardCode=&itemCode=&qty=   the customer's price (SAP pricing, base price list fallback)
+ *   POST /standalone                  Delivery or A/R Invoice without a base document: free item lines with
+ *                                     price, discount, tax, warehouse and bin / batch
  *
  * Batch / bin stock comes from the direct DB connection (lib/copy-doc-flow.mjs listBinStock /
  * listBatchSerials), the same as the Order → Delivery agent.
  */
 import { Router } from 'express';
 import { listBinStock, listBatchSerials } from '../lib/copy-doc-flow.mjs';
+import { getItemPrice } from '../lib/item-price.mjs';
 import { docAmounts } from '../lib/doc-totals.mjs';
-import db, { connRepo } from '../db.mjs';
+import db, { connRepo, cacheRepo } from '../db.mjs';
 
 const q = s => String(s ?? '').replace(/'/g, "''");
 const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const day = s => (/^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? String(s) : new Date().toISOString().slice(0, 10));
 const addDays = (s, n) => { const d = new Date(`${s}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const fmt = n => num(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Tax code field: US/Canada Sales Tax localization → TaxCode, VAT localizations → VatGroup (SAP ignores the wrong one).
+function taxFieldOf() {
+  const cats = new Map(cacheRepo.getTaxCodes(connRepo.getActive()?.company || 'default').map(t => [t.Code, t.Category]));
+  const salesTax = [...cats.values()].includes('Sales Tax');
+  return code => (cats.has(code) ? cats.get(code) === 'Sales Tax' : salesTax) ? 'TaxCode' : 'VatGroup';
+}
+
+// Stock allocation of one outgoing line (Delivery / A/R Invoice), in inventory units: batches FEFO and / or bins
+// (default bin, then most stock). pick = { batch, binAbs } chosen in the form narrows the choice.
+// it = the item ({ ItemCode, InventoryItem, ManageBatchNumbers, ManageSerialNumbers }); lineIdx → BaseLineNumber.
+async function allocStock(sap, binWhs, it, whs, invQty, pick, lineIdx, serialMsg) {
+  if (it.InventoryItem === 'tNO') return {};
+  if (it.ManageSerialNumbers === 'tYES') throw new Error(serialMsg);
+  if (!binWhs.has(whs)) binWhs.set(whs, (await sap.get(`/Warehouses('${q(whs)}')`, { $select: 'WarehouseCode,EnableBinLocations' })).EnableBinLocations === 'tYES');
+  const inBins = binWhs.get(whs), code = it.ItemCode;
+  const binAlloc = (binAbs, qty, snb) => ({ BinAbsEntry: Number(binAbs), Quantity: qty, AllowNegativeQuantity: 'tNO', SerialAndBatchNumbersBaseLine: snb, BaseLineNumber: lineIdx });
+  const take = rows => { let left = invQty; const picks = []; for (const r of rows) { if (left <= 1e-9) break; const t = Math.min(r.qty, left); if (t > 0) { picks.push({ ...r, take: t }); left -= t; } } return { picks, left }; };
+  if (it.ManageBatchNumbers === 'tYES') {
+    let rows = inBins ? (await listBinStock('batch', code, whs)).rows
+                      : (await listBatchSerials('batch', code, whs)).map(r => ({ ...r, qty: Math.max(0, r.qty - r.committed) }));
+    if (pick.batch) rows = rows.filter(r => String(r.batch) === String(pick.batch));
+    if (inBins && Number(pick.binAbs) > 0) rows = rows.filter(r => Number(r.binAbs) === Number(pick.binAbs));
+    const { picks, left } = take(rows);
+    if (left > 1e-6) throw new Error(`${code}: not enough batch stock in ${whs}${pick.batch ? ` (batch ${pick.batch})` : ''}${inBins && pick.binAbs ? ' in the selected bin' : ''} — short by ${+left.toFixed(4)}.`);
+    const batches = [];
+    for (const p of picks) { const ex = batches.find(x => x.BatchNumber === String(p.batch)); if (ex) ex.Quantity += p.take; else batches.push({ BatchNumber: String(p.batch), Quantity: p.take }); }
+    return { BatchNumbers: batches, ...(inBins ? { DocumentLinesBinAllocations: picks.map(p => binAlloc(p.binAbs, p.take, batches.findIndex(x => x.BatchNumber === String(p.batch)))) } : {}) };
+  }
+  if (!inBins) return {};
+  let rows = (await listBinStock('bin', code, whs)).rows;
+  if (Number(pick.binAbs) > 0) {
+    rows = rows.filter(r => Number(r.binAbs) === Number(pick.binAbs));
+    const have = rows.reduce((t, r) => t + r.qty, 0);
+    if (have + 1e-9 < invQty) throw new Error(`${code}: the selected bin has ${have} in stock, ${invQty} needed.`);
+  } else rows = [...rows].sort((a, c) => (c.isDefault - a.isDefault) || (c.qty - a.qty));
+  const { picks, left } = take(rows);
+  if (left > 1e-6) throw new Error(`${code}: not enough stock in the bins of ${whs} — short by ${+left.toFixed(4)}.`);
+  return { DocumentLinesBinAllocations: picks.map(p => binAlloc(p.binAbs, p.take, -1)) };
+}
 
 export function createO2CFormsRouter({ requireAuth, getActiveSap }) {
   const router = Router();
@@ -123,11 +167,7 @@ export function createO2CFormsRouter({ requireAuth, getActiveSap }) {
       if (order.DocumentStatus === 'bost_Close' || order.Cancelled === 'tYES') throw new Error(`Sales Order #${order.DocNum} is closed or cancelled.`);
       if (b.cardCode && b.cardCode !== order.CardCode) throw new Error(`Sales Order #${order.DocNum} belongs to ${order.CardCode}, not ${b.cardCode}.`);
       const byLine = new Map((order.DocumentLines || []).map(l => [Number(l.LineNum), l]));
-      const whsBins = new Map();
-      const binEnabled = async w => {
-        if (!whsBins.has(w)) whsBins.set(w, (await sap.get(`/Warehouses('${q(w)}')`, { $select: 'WarehouseCode,EnableBinLocations' })).EnableBinLocations === 'tYES');
-        return whsBins.get(w);
-      };
+      const binWhs = new Map();
 
       const lines = [];
       for (const l of Array.isArray(b.lines) ? b.lines : []) {
@@ -140,41 +180,9 @@ export function createO2CFormsRouter({ requireAuth, getActiveSap }) {
         const whs = String(l.warehouseCode || base.WarehouseCode || '');
         if (!whs) throw new Error(`${base.ItemCode}: select a warehouse.`);
         const it = await sap.get(`/Items('${q(base.ItemCode)}')`, { $select: 'ItemCode,InventoryItem,ManageBatchNumbers,ManageSerialNumbers' });
-        const inventory = it.InventoryItem !== 'tNO';
         const invQty = qty * (num(base.UnitsOfMeasurment) || 1);
-        const line = { BaseType: 17, BaseEntry: entry, BaseLine: Number(base.LineNum), Quantity: qty, WarehouseCode: whs };
-
-        if (inventory && it.ManageSerialNumbers === 'tYES') {
-          throw new Error(`${base.ItemCode} is serial-numbered — pick its serial numbers in Sales — O2C → Order → Delivery.`);
-        }
-        const inBins = inventory && await binEnabled(whs);
-        const binAlloc = (binAbs, qty, snb) => ({ BinAbsEntry: Number(binAbs), Quantity: qty, AllowNegativeQuantity: 'tNO', SerialAndBatchNumbersBaseLine: snb, BaseLineNumber: lines.length });
-
-        if (inventory && it.ManageBatchNumbers === 'tYES') {
-          // batches FEFO (with their bins in a bin warehouse); the batch / bin picked in the form narrows the choice
-          let rows = inBins ? (await listBinStock('batch', base.ItemCode, whs)).rows
-                            : (await listBatchSerials('batch', base.ItemCode, whs)).map(r => ({ ...r, qty: Math.max(0, r.qty - r.committed) }));
-          if (l.batch) rows = rows.filter(r => String(r.batch) === String(l.batch));
-          if (inBins && Number(l.binAbs) > 0) rows = rows.filter(r => Number(r.binAbs) === Number(l.binAbs));
-          let left = invQty; const picks = [];
-          for (const r of rows) { if (left <= 1e-9) break; const take = Math.min(r.qty, left); if (take > 0) { picks.push({ ...r, take }); left -= take; } }
-          if (left > 1e-6) throw new Error(`${base.ItemCode}: not enough batch stock in ${whs}${l.batch ? ` (batch ${l.batch})` : ''}${inBins && l.binAbs ? ' in the selected bin' : ''} — short by ${+left.toFixed(4)}.`);
-          const batches = [];
-          for (const p of picks) { const ex = batches.find(x => x.BatchNumber === String(p.batch)); if (ex) ex.Quantity += p.take; else batches.push({ BatchNumber: String(p.batch), Quantity: p.take }); }
-          line.BatchNumbers = batches;
-          if (inBins) line.DocumentLinesBinAllocations = picks.map(p => binAlloc(p.binAbs, p.take, batches.findIndex(x => x.BatchNumber === String(p.batch))));
-        } else if (inBins) {
-          let rows = (await listBinStock('bin', base.ItemCode, whs)).rows;
-          if (Number(l.binAbs) > 0) {
-            rows = rows.filter(r => Number(r.binAbs) === Number(l.binAbs));
-            const have = rows.reduce((s, r) => s + r.qty, 0);
-            if (have + 1e-9 < invQty) throw new Error(`${base.ItemCode}: the selected bin has ${have} in stock, ${invQty} needed.`);
-          } else rows = [...rows].sort((a, c) => (c.isDefault - a.isDefault) || (c.qty - a.qty));
-          let left = invQty; const picks = [];
-          for (const r of rows) { if (left <= 1e-9) break; const take = Math.min(r.qty, left); if (take > 0) { picks.push({ binAbs: r.binAbs, take }); left -= take; } }
-          if (left > 1e-6) throw new Error(`${base.ItemCode}: not enough stock in the bins of ${whs} — short by ${+left.toFixed(4)}.`);
-          line.DocumentLinesBinAllocations = picks.map(p => binAlloc(p.binAbs, p.take, -1));
-        }
+        const line = { BaseType: 17, BaseEntry: entry, BaseLine: Number(base.LineNum), Quantity: qty, WarehouseCode: whs,
+          ...(await allocStock(sap, binWhs, it, whs, invQty, l, lines.length, `${base.ItemCode} is serial-numbered — pick its serial numbers in Sales — O2C → Order → Delivery.`)) };
         lines.push(line);
       }
       if (!lines.length) throw new Error('Enter a quantity for at least one line.');
@@ -188,6 +196,67 @@ export function createO2CFormsRouter({ requireAuth, getActiveSap }) {
       const dln = await sap.post('/DeliveryNotes', payload);
       res.json({ ok: true, docEntry: dln.DocEntry, docNum: dln.DocNum, cardCode: order.CardCode, cardName: order.CardName, orderNum: order.DocNum,
         lines: lines.length, total: dln.DocTotal != null ? fmt(dln.DocTotal) : null, currency: dln.DocCurrency || '' });
+    } catch (e) { res.json({ ok: false, error: e.message }); }
+    finally { posting.delete(key); }
+  });
+
+  // ── Customer price of an item (standalone lines) ─────────────────────────────
+  router.get('/item-price', requireAuth, async (req, res) => {
+    try {
+      const cardCode = String(req.query.cardCode || '').trim(), itemCode = String(req.query.itemCode || '').trim();
+      if (!cardCode || !itemCode) return res.json({ ok: false, error: 'customer and item required' });
+      res.json({ ok: true, ...(await getItemPrice(getActiveSap(), { cardCode, itemCode, qty: req.query.qty })) });
+    } catch (e) { res.json({ ok: false, error: e.message }); }
+  });
+
+  // ── Standalone Delivery / A/R Invoice (no base document) ─────────────────────
+  router.post('/standalone', requireAuth, async (req, res) => {
+    const b = req.body || {}, kind = b.docType === 'invoice' ? 'invoice' : 'delivery';
+    const cardCode = String(b.cardCode || '').trim();
+    if (!cardCode) return res.json({ ok: false, error: 'Select a customer.' });
+    const key = `sa:${kind}:${cardCode}`;
+    if (posting.has(key)) return res.json({ ok: false, error: `This ${kind === 'invoice' ? 'invoice' : 'delivery'} is already being posted — please wait.` });
+    posting.add(key);
+    try {
+      const sap = getActiveSap();
+      let bp = null;
+      try { bp = await sap.get(`/BusinessPartners('${q(cardCode)}')`, { $select: 'CardCode,CardName,CardType,Frozen' }); } catch { bp = null; }
+      if (!bp?.CardCode) throw new Error(`Customer ${cardCode} was not found in SAP.`);
+      if (bp.CardType !== 'cCustomer') throw new Error(`${cardCode} is not a customer.`);
+      if (bp.Frozen === 'tYES') throw new Error(`Customer ${cardCode} is inactive (frozen) in SAP.`);
+      const src = (Array.isArray(b.lines) ? b.lines : []).filter(l => String(l.itemCode || '').trim());
+      if (!src.length) throw new Error('Add at least one item line.');
+      if (src.length > 200) throw new Error('Too many lines (max 200).');
+      const taxField = taxFieldOf(), binWhs = new Map(), lines = [];
+      for (const [i, l] of src.entries()) {
+        const code = String(l.itemCode).trim(), qty = num(l.qty), price = num(l.unitPrice), disc = num(l.discount);
+        const at = `Line ${i + 1} (${code})`;
+        if (!(qty > 0)) throw new Error(`${at}: quantity must be more than 0.`);
+        if (price < 0) throw new Error(`${at}: price cannot be negative.`);
+        if (disc < 0 || disc > 100) throw new Error(`${at}: discount must be between 0 and 100%.`);
+        let it = null;
+        try { it = await sap.get(`/Items('${q(code)}')`, { $select: 'ItemCode,ItemName,SalesItem,Frozen,InventoryItem,ManageBatchNumbers,ManageSerialNumbers,SalesItemsPerUnit' }); } catch { it = null; }
+        if (!it?.ItemCode) throw new Error(`${at}: item not found in SAP.`);
+        if (it.SalesItem === 'tNO') throw new Error(`${at}: not a sales item.`);
+        if (it.Frozen === 'tYES') throw new Error(`${at}: item is inactive (frozen).`);
+        const whs = String(l.warehouseCode || '').trim();
+        if (it.InventoryItem !== 'tNO' && !whs) throw new Error(`${at}: select a warehouse.`);
+        const invQty = qty * (num(it.SalesItemsPerUnit) || 1);
+        lines.push({ ItemCode: it.ItemCode, Quantity: qty, UnitPrice: price, DiscountPercent: disc,
+          ...(whs ? { WarehouseCode: whs } : {}), ...(l.taxCode ? { [taxField(l.taxCode)]: String(l.taxCode) } : {}),
+          ...(await allocStock(sap, binWhs, it, whs, invQty, l, lines.length, `${at}: serial-numbered items can't be added here — use SAP or the O2C agents with a base document.`)) });
+      }
+      const docDate = day(b.docDate);
+      const payload = {
+        CardCode: bp.CardCode, DocDate: docDate,
+        ...(kind === 'invoice' ? { TaxDate: docDate, DocDueDate: addDays(docDate, Math.max(0, parseInt(b.dueInDays, 10) || 0)) } : {}),
+        ...(b.reference ? { NumAtCard: String(b.reference).slice(0, 100) } : {}),
+        Comments: [kind === 'invoice' ? 'Standalone A/R invoice' : 'Standalone delivery', b.comments].filter(Boolean).join(' · ').slice(0, 254),
+        DocumentLines: lines,
+      };
+      const doc = await sap.post(kind === 'invoice' ? '/Invoices' : '/DeliveryNotes', payload);
+      res.json({ ok: true, docType: kind, docEntry: doc.DocEntry, docNum: doc.DocNum, cardCode: bp.CardCode, cardName: bp.CardName, lines: lines.length,
+        dueDate: payload.DocDueDate || null, amounts: doc.DocTotal != null && Array.isArray(doc.DocumentLines) ? docAmounts(doc) : null });
     } catch (e) { res.json({ ok: false, error: e.message }); }
     finally { posting.delete(key); }
   });

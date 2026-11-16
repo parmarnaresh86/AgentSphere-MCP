@@ -709,6 +709,7 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
   z-index:1000;opacity:0;pointer-events:none;transition:opacity .2s;
 }
 .modal-overlay.open{opacity:1;pointer-events:all}
+.modal.modal-wide{width:min(1180px,96vw)}   /* standalone Delivery / A/R Invoice — wide line table */
 .modal{
   background:var(--white);border-radius:var(--r);
   width:min(680px,95vw);max-height:88vh;
@@ -6487,11 +6488,11 @@ const modalClose=document.getElementById('modal-close');
 const modalCancel=document.getElementById('modal-cancel');
 const modalSubmit=document.getElementById('modal-submit');
 
-function openModal(title){modalTitle.textContent=title;overlay.classList.add('open');}
+function openModal(title){modalTitle.textContent=title;overlay.querySelector('.modal')?.classList.remove('modal-wide');overlay.classList.add('open');}
 function closeModal(){overlay.classList.remove('open');modalBody.innerHTML='';modalSubmit.disabled=false;modalSubmit.innerHTML='Submit';const f=document.querySelector('.modal-footer');if(f)f.style.display='';}
 modalClose.addEventListener('click',closeModal);
 modalCancel.addEventListener('click',closeModal);
-overlay.addEventListener('click',e=>{if(e.target===overlay)closeModal();});
+// A click outside the form no longer closes it (entered data was lost) — only ✕ / Cancel close it.
 function setSubmitLoading(on){modalSubmit.disabled=on;modalSubmit.innerHTML=on?'<span class="spinner"></span>Processing…':'Submit';}
 
 // ── AI Chat side panel — embedded inline in the main screen, no popups.
@@ -6857,7 +6858,7 @@ async function openOrderForm() {
     });
     document.getElementById('so-close').addEventListener('click', soClose);
     document.getElementById('so-cancel').addEventListener('click', soClose);
-    soOverlay.addEventListener('click', e => { if (e.target === soOverlay) soClose(); });
+    // no close on a click outside the window — only ✕ / Cancel
   }
 
   // State
@@ -7086,7 +7087,7 @@ async function openOrderForm() {
 // ════════════════════════════════════════════════════
 // FORM: Delivery
 // ════════════════════════════════════════════════════
-function openDeliveryForm(){
+function openDeliveryFromOrder(){
   // Customer → open sales orders → lines (qty up to the open qty, warehouse, bin / batch) → post
   openModal('🚚 Create Delivery Note');modalBody.innerHTML='';
   const tok = () => ({ 'x-auth-token': localStorage.getItem('hanny_token') || '' });
@@ -7114,26 +7115,6 @@ function openDeliveryForm(){
     } catch (e) { orderSel.innerHTML = `<option value="">${escHtml(e.message)}</option>`; }
   }
   orderSel.addEventListener('change', () => loadOrder(parseInt(orderSel.value, 10)));
-
-  // Bin / batch choices for a line in a warehouse, with stock — from the direct DB (same as Order → Delivery)
-  async function stockChoices(line, whs, isBinWhs) {
-    const q = (kind, bins) => fetch(`/api/order-delivery/batch-serials?kind=${kind}&itemCode=${encodeURIComponent(line.ItemCode)}&whs=${encodeURIComponent(whs)}${bins ? '&bins=1' : ''}`, { headers: tok() }).then(x => x.json());
-    if (line.isBatch) {
-      const r = await q('batch', isBinWhs);
-      if (!r.ok) throw new Error(r.error);
-      return { label: isBinWhs ? 'Batch / Bin' : 'Batch', opts: r.rows.map(b => ({
-        value: isBinWhs ? `${b.batch}|${b.binAbs}` : b.batch,
-        text: `${b.batch}${isBinWhs ? ' @ ' + b.binCode : ''} — ${fmt2(isBinWhs ? b.qty : b.qty - (b.committed || 0))}${b.expiry ? ' · exp ' + b.expiry : ''}` })) };
-    }
-    if (!isBinWhs) return null;
-    const r = await q('bin');
-    if (!r.ok) {
-      // no direct DB connection → bins without stock figures
-      const bins = await fetch(`/api/suggest/bins?warehouse=${encodeURIComponent(whs)}`).then(x => x.json()).catch(() => []);
-      return { label: 'Bin', note: 'stock per bin not available', opts: (bins || []).map(b => ({ value: String(b.AbsEntry), text: b.BinCode })) };
-    }
-    return { label: 'Bin', opts: r.rows.map(b => ({ value: String(b.binAbs), text: `${b.binCode} — ${fmt2(b.qty)}${b.isDefault ? ' (default)' : ''}` })) };
-  }
 
   async function loadOrder(n) {
     order = null; lineData.length = 0;
@@ -7191,7 +7172,7 @@ function openDeliveryForm(){
           if (!line.isBatch && !isBinWhs) { allocHold.innerHTML = '<select class="form-select" disabled><option>— No bins in this warehouse —</option></select>'; return; }
           allocHold.innerHTML = '<select class="form-select" disabled><option>Loading…</option></select>';
           try {
-            const ch = await stockChoices(line, whs, isBinWhs);
+            const ch = await o2cStockChoices(line, whs, isBinWhs);
             if (whSel.value !== whs) return;
             allocL.textContent = ch.label + (ch.note ? ` (${ch.note})` : '');
             const sel = document.createElement('select'); sel.className = 'form-select';
@@ -7240,6 +7221,251 @@ function openDeliveryForm(){
 
 
 // ════════════════════════════════════════════════════
+// Delivery / A/R Invoice: "Based on …" or "Standalone" (no base document)
+// ════════════════════════════════════════════════════
+function o2cModeBar(active, modes) {
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:0;border:1px solid #d1d5db;border-radius:8px;overflow:hidden;align-self:flex-start;flex-shrink:0';
+  modes.forEach(m => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = m.label;
+    const on = m.key === active;
+    b.style.cssText = `border:none;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:${on ? 'default' : 'pointer'};background:${on ? 'var(--blue)' : '#fff'};color:${on ? '#fff' : '#374151'}`;
+    if (!on) b.onclick = () => { modalSubmit.disabled = false; modalSubmit.innerHTML = 'Submit'; m.open(); };
+    bar.appendChild(b);
+  });
+  return bar;
+}
+function openDeliveryForm() {
+  openDeliveryFromOrder();
+  modalBody.prepend(o2cModeBar('order', [{ key: 'order', label: '📋 Based on Sales Order', open: openDeliveryForm }, { key: 'standalone', label: '✏️ Standalone Delivery', open: () => openStandaloneDoc('delivery') }]));
+}
+function openInvoiceForm() {
+  openInvoiceFromDelivery();
+  modalBody.prepend(o2cModeBar('base', [{ key: 'base', label: '📦 Based on Delivery', open: openInvoiceForm }, { key: 'standalone', label: '✏️ Standalone Invoice', open: () => openStandaloneDoc('invoice') }]));
+}
+
+// Bin / batch choices of an item in a warehouse, with stock (direct DB, same as Order → Delivery).
+// item = { ItemCode, isBatch } → { label, opts: [{ value, text }], note? } or null when nothing to choose.
+async function o2cStockChoices(item, whs, isBinWhs) {
+  const tok = { 'x-auth-token': localStorage.getItem('hanny_token') || '' };
+  const q = (kind, bins) => fetch(`/api/order-delivery/batch-serials?kind=${kind}&itemCode=${encodeURIComponent(item.ItemCode)}&whs=${encodeURIComponent(whs)}${bins ? '&bins=1' : ''}`, { headers: tok }).then(x => x.json());
+  if (item.isBatch) {
+    const r = await q('batch', isBinWhs);
+    if (!r.ok) throw new Error(r.error);
+    return { label: isBinWhs ? 'Batch / Bin' : 'Batch', opts: r.rows.map(b => ({
+      value: isBinWhs ? `${b.batch}|${b.binAbs}` : b.batch,
+      text: `${b.batch}${isBinWhs ? ' @ ' + b.binCode : ''} — ${fmt2(isBinWhs ? b.qty : b.qty - (b.committed || 0))}${b.expiry ? ' · exp ' + b.expiry : ''}` })) };
+  }
+  if (!isBinWhs) return null;
+  const r = await q('bin');
+  if (!r.ok) {
+    const bins = await fetch(`/api/suggest/bins?warehouse=${encodeURIComponent(whs)}`).then(x => x.json()).catch(() => []);
+    return { label: 'Bin', note: 'stock per bin not available', opts: (bins || []).map(b => ({ value: String(b.AbsEntry), text: b.BinCode })) };
+  }
+  return { label: 'Bin', opts: r.rows.map(b => ({ value: String(b.binAbs), text: `${b.binCode} — ${fmt2(b.qty)}${b.isDefault ? ' (default)' : ''}` })) };
+}
+
+let _saUid = 0;
+async function openStandaloneDoc(kind) {
+  const isInv = kind === 'invoice', docLabel = isInv ? 'A/R Invoice' : 'Delivery';
+  openModal(isInv ? '🧾 Create A/R Invoice — Standalone' : '🚚 Create Delivery — Standalone'); modalBody.innerHTML = '';
+  overlay.querySelector('.modal')?.classList.add('modal-wide');
+  modalSubmit.disabled = false; modalSubmit.textContent = `Review ${isInv ? 'Invoice' : 'Delivery'} →`;
+  const tok = () => ({ 'x-auth-token': localStorage.getItem('hanny_token') || '' });
+  let customer = null, stage = 'form', taxCodes = [];
+  const rows = [];
+  const rateOf = c => Number(taxCodes.find(t => t.Code === c)?.Rate || 0);
+
+  const formBox = document.createElement('div'); formBox.style.cssText = 'display:flex;flex-direction:column;gap:12px';
+  const reviewBox = document.createElement('div'); reviewBox.style.display = 'none';
+  const cust = customerField(c => { customer = c; rows.forEach(r => r.reprice()); });
+  const dtI = inp('', 'date', today());
+  const refI = inp('Customer reference / PO # (optional)');
+  const dueI = inp('Due in Days', 'number'); dueI.value = '30'; dueI.min = 0;
+  const dueLbl = document.createElement('div'); dueLbl.style.cssText = 'font-size:11px;color:var(--muted);margin-top:3px';
+  const showDue = () => { dueLbl.textContent = `Due date: ${addDaysIso(dtI.value || today(), parseInt(dueI.value, 10) || 0)}`; };
+  dtI.addEventListener('input', showDue); dueI.addEventListener('input', showDue); showDue();
+  const remarksI = inp('Remarks (optional)');
+
+  try { const t = await fetch('/api/suggest/tax-codes').then(x => x.json()); taxCodes = Array.isArray(t) ? t : []; } catch {}
+  const taxOpts = '<option value="">— Tax —</option>' + taxCodes.map(t => `<option value="${escHtml(t.Code)}">${escHtml(t.Code)}${Number(t.Rate) ? ` (${Number(t.Rate)}%)` : ''}</option>`).join('');
+
+  const th = 'padding:6px 6px;font-size:10.5px;text-transform:uppercase;color:#6b7280;background:#f3f4f6;text-align:left;white-space:nowrap';
+  const tableWrap = document.createElement('div'); tableWrap.style.cssText = 'overflow-x:auto;border:1px solid #e5e7eb;border-radius:6px';
+  tableWrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px"><thead><tr>
+    <th style="${th}">Item *</th><th style="${th}">Qty *</th><th style="${th}">Unit Price *</th><th style="${th}">Disc %</th><th style="${th}">Tax Code</th>
+    <th style="${th}">Warehouse *</th><th style="${th}">Bin / Batch</th><th style="${th};text-align:right">Net</th><th style="${th};text-align:right">Tax</th><th style="${th}"></th></tr></thead><tbody></tbody></table>`;
+  const tbody = tableWrap.querySelector('tbody');
+  const addBtn = document.createElement('button'); addBtn.type = 'button'; addBtn.className = 'add-line-btn'; addBtn.textContent = '+ Add Line';
+  const totalsEl = document.createElement('div');
+
+  function calc() {
+    let sub = 0, tax = 0;
+    rows.forEach(r => {
+      const net = (parseFloat(r.qtyI.value) || 0) * (parseFloat(r.priceI.value) || 0) * (1 - (parseFloat(r.discI.value) || 0) / 100);
+      const tx = net * rateOf(r.taxSel.value) / 100;
+      r.net = net; r.tax = tx; sub += net; tax += tx;
+      r.netEl.textContent = fmt2(net); r.taxEl.textContent = fmt2(tx);
+    });
+    totalsEl.innerHTML = `<table style="margin-left:auto;border-collapse:collapse;font-size:12.5px;min-width:260px">
+      <tr><td style="padding:3px 10px;color:#6b7280">Subtotal (before tax)</td><td style="padding:3px 4px;text-align:right">${fmt2(sub)}</td></tr>
+      <tr><td style="padding:3px 10px;color:#6b7280">Tax</td><td style="padding:3px 4px;text-align:right">${fmt2(tax)}</td></tr>
+      <tr style="border-top:2px solid var(--blue)"><td style="padding:6px 10px;font-weight:700">${docLabel} Total</td><td style="padding:6px 4px;text-align:right;font-weight:700;font-size:14px;color:var(--blue)">${fmt2(sub + tax)}</td></tr></table>
+      <div style="text-align:right;font-size:10.5px;color:#9ca3af">Tax is estimated from each tax code's rate — SAP calculates the final amount when posting.</div>`;
+    return { sub, tax };
+  }
+
+  function addLine() {
+    const blank = rows.find(r => !r.item);
+    if (blank) { alert('Pick an item in the open line first (or remove it with ✕).'); blank.itemI.focus(); return; }
+    const uid = ++_saUid, td = 'padding:5px 6px;border-bottom:1px solid #f3f4f6;vertical-align:top';
+    const tr = document.createElement('tr');
+    const cell = (el, extra = '') => { const c = document.createElement('td'); c.style.cssText = td + ';' + extra; if (el) c.appendChild(el); tr.appendChild(c); return c; };
+    const itemI = inp('Item code / name…'); itemI.style.cssText = 'font-size:12px;padding:5px 8px;width:100%';
+    const iw = document.createElement('div'); iw.className = 'ac-wrap'; iw.style.flex = '1'; iw.appendChild(itemI);
+    const irow = document.createElement('div'); irow.style.cssText = 'display:flex;gap:4px;min-width:200px'; irow.appendChild(iw);
+    const nameEl = document.createElement('div'); nameEl.style.cssText = 'font-size:10.5px;color:var(--blue);margin-top:2px;min-height:12px;max-width:230px';
+    const box = document.createElement('div'); box.appendChild(irow); box.appendChild(nameEl);
+    const num = (v, w, extra = {}) => { const i = inp('', 'number'); i.value = v; i.min = 0; i.step = 'any'; Object.assign(i, extra); i.style.cssText = `font-size:12px;padding:5px 6px;width:${w}px;text-align:right`; return i; };
+    const qtyI = num(1, 70), priceI = num('', 90), discI = num(0, 60); discI.max = 100;
+    const taxSel = document.createElement('select'); taxSel.className = 'form-select'; taxSel.innerHTML = taxOpts; taxSel.style.cssText = 'font-size:12px;padding:5px 4px;width:105px';
+    const whSel = buildWarehouseSelect('sa-wh-' + uid); whSel.style.cssText = 'font-size:12px;padding:5px 4px;width:130px';
+    const prev = rows[rows.length - 1]; if (prev?.whSel.value) whSel.value = prev.whSel.value;
+    const allocHold = document.createElement('div'); allocHold.style.minWidth = '150px';
+    const netEl = document.createElement('div'), taxEl = document.createElement('div');
+    netEl.style.cssText = 'text-align:right;font-weight:600'; taxEl.style.cssText = 'text-align:right;color:#6b7280';
+    const del = document.createElement('button'); del.type = 'button'; del.textContent = '✕'; del.title = 'Remove line';
+    del.style.cssText = 'background:none;border:1px solid #fca5a5;color:#b91c1c;border-radius:4px;width:24px;height:24px;cursor:pointer';
+    cell(box); cell(qtyI); cell(priceI); cell(discI); cell(taxSel); cell(whSel); cell(allocHold); cell(netEl, 'text-align:right'); cell(taxEl, 'text-align:right'); cell(del);
+    tbody.appendChild(tr);
+    const r = { tr, item: null, itemI, nameEl, qtyI, priceI, discI, taxSel, whSel, allocSel: null, netEl, taxEl, manual: false, net: 0, tax: 0 };
+    rows.push(r);
+
+    r.reloadAlloc = async () => {
+      r.allocSel = null;
+      const whs = whSel.value, isBinWhs = whSel.selectedOptions[0]?.dataset?.bin === '1';
+      if (!r.item || !whs || (!r.item.isBatch && !isBinWhs)) { allocHold.innerHTML = '<span style="color:#9ca3af">—</span>'; return; }
+      allocHold.innerHTML = '<span style="color:#9ca3af">Loading…</span>';
+      try {
+        const ch = await o2cStockChoices(r.item, whs, isBinWhs);
+        if (whSel.value !== whs || !ch) return;
+        const sel = document.createElement('select'); sel.className = 'form-select'; sel.style.cssText = 'font-size:12px;padding:5px 4px;width:100%';
+        sel.innerHTML = ch.opts.length
+          ? `<option value="">— Auto (${r.item.isBatch ? 'earliest expiry' : 'default bin / most stock'}) —</option>` + ch.opts.map(o => `<option value="${escHtml(o.value)}">${escHtml(o.text)}</option>`).join('')
+          : `<option value="">No ${r.item.isBatch ? 'batch' : 'bin'} stock in ${escHtml(whs)}</option>`;
+        allocHold.innerHTML = ''; allocHold.appendChild(sel); r.allocSel = sel;
+      } catch (e) { allocHold.innerHTML = `<span style="color:#b91c1c;font-size:11px">${escHtml(e.message)}</span>`; }
+    };
+    r.reprice = async () => {
+      if (!customer || !r.item || r.manual) return;
+      const code = r.item.ItemCode;
+      try {
+        const p = await fetch(`/api/o2c-forms/item-price?cardCode=${encodeURIComponent(customer.CardCode)}&itemCode=${encodeURIComponent(code)}&qty=${encodeURIComponent(qtyI.value || 1)}`, { headers: tok() }).then(x => x.json());
+        if (r.manual || r.item?.ItemCode !== code) return;
+        if (p.ok && p.price > 0) { priceI.value = p.price; nameEl.dataset.price = p.source === 'fallback' ? ' · ⚠️ base price list' : ' · ✓ customer price'; }
+        else nameEl.dataset.price = ' · ⚠️ no price — enter it';
+        nameEl.textContent = (r.item.ItemName || '') + (nameEl.dataset.price || '');
+        calc();
+      } catch {}
+    };
+    const setItem = i => {
+      if (i.ManageSerialNumbers === 'tYES') {
+        r.item = null; itemI.value = ''; nameEl.innerHTML = '<span style="color:#b91c1c">Serial-numbered items can\'t be added here.</span>'; return;
+      }
+      r.item = { ItemCode: i.ItemCode, ItemName: i.ItemName || '', isBatch: i.ManageBatchNumbers === 'tYES' };
+      itemI.value = i.ItemCode; itemI.style.borderColor = ''; nameEl.dataset.price = ''; nameEl.textContent = i.ItemName || '';
+      if (i.SalesVATGroup && taxCodes.some(t => t.Code === i.SalesVATGroup)) taxSel.value = i.SalesVATGroup;
+      r.manual = false; r.reprice(); r.reloadAlloc(); calc();
+    };
+    acItem(itemI, setItem);
+    irow.appendChild(cflButton(() => cflItem(setItem)));
+    itemI.addEventListener('change', () => { if (r.item && itemI.value.trim() !== r.item.ItemCode) { r.item = null; nameEl.textContent = 'Pick the item from the list'; r.reloadAlloc(); } });
+    let t = null;
+    qtyI.addEventListener('input', () => { calc(); clearTimeout(t); t = setTimeout(r.reprice, 400); });
+    priceI.addEventListener('input', () => { r.manual = true; calc(); });
+    discI.addEventListener('input', calc); taxSel.addEventListener('change', calc);
+    whSel.addEventListener('change', r.reloadAlloc);
+    del.onclick = () => { rows.splice(rows.indexOf(r), 1); tr.remove(); calc(); };
+    calc(); itemI.focus();
+  }
+  addBtn.onclick = addLine;
+
+  const row = (...els) => { const d = document.createElement('div'); d.className = `form-row form-row-${els.length}`; els.forEach(e => d.appendChild(e)); return d; };
+  const dueG = field('Due in Days', dueI); dueG.appendChild(dueLbl);
+  formBox.appendChild(row(cust.group, field('Posting Date', dtI), ...(isInv ? [dueG] : [])));
+  formBox.appendChild(field('Customer Ref / PO #', refI));
+  const lt = document.createElement('div'); lt.style.cssText = 'font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase'; lt.textContent = 'Item lines';
+  formBox.appendChild(lt); formBox.appendChild(tableWrap); formBox.appendChild(addBtn); formBox.appendChild(totalsEl); formBox.appendChild(field('Remarks', remarksI));
+  modalBody.appendChild(formBox); modalBody.appendChild(reviewBox);
+  addLine();
+
+  function lineOut(r) {
+    const v = r.allocSel?.value || '';
+    const [batch, binAbs] = r.item.isBatch ? v.split('|') : ['', v];
+    return { itemCode: r.item.ItemCode, qty: parseFloat(r.qtyI.value) || 0, unitPrice: parseFloat(r.priceI.value) || 0, discount: parseFloat(r.discI.value) || 0,
+      taxCode: r.taxSel.value, warehouseCode: r.whSel.value, ...(batch ? { batch } : {}), ...(Number(binAbs) > 0 ? { binAbs: Number(binAbs) } : {}) };
+  }
+  function check() {
+    if (!customer) return 'Choose a customer (type and pick from the list, or use 🔍).';
+    if (!rows.length) return 'Add at least one item line.';
+    for (const [i, r] of rows.entries()) {
+      const at = `Line ${i + 1}`;
+      if (!r.item) return `${at}: pick an item from the list (or remove the line with ✕).`;
+      if (!((parseFloat(r.qtyI.value) || 0) > 0)) return `${at} (${r.item.ItemCode}): quantity must be more than 0.`;
+      if (r.priceI.value === '' || (parseFloat(r.priceI.value) || 0) < 0) return `${at} (${r.item.ItemCode}): enter the unit price.`;
+      const d = parseFloat(r.discI.value) || 0; if (d < 0 || d > 100) return `${at} (${r.item.ItemCode}): discount must be between 0 and 100%.`;
+      if (!r.whSel.value) return `${at} (${r.item.ItemCode}): select a warehouse.`;
+    }
+    return '';
+  }
+  function showReview() {
+    const { sub, tax } = calc();
+    const due = addDaysIso(dtI.value || today(), parseInt(dueI.value, 10) || 0);
+    const kv = [['Customer', `${escHtml(customer.CardName || '')} (${escHtml(customer.CardCode)})`], ['Type', `Standalone ${docLabel} (no base document)`], ['Posting Date', escHtml(dtI.value || today())],
+      ...(isInv ? [['Due Date', `${escHtml(due)} (${parseInt(dueI.value, 10) || 0} days)`]] : []), ...(refI.value.trim() ? [['Customer Ref', escHtml(refI.value.trim())]] : []), ...(remarksI.value.trim() ? [['Remarks', escHtml(remarksI.value.trim())]] : [])];
+    const td = 'padding:5px 8px;border-bottom:1px solid #f3f4f6';
+    reviewBox.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px">
+      <div style="font-size:13.5px;font-weight:700;color:#1d4ed8;margin-bottom:8px">📋 ${docLabel} — check before posting</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px">${kv.map(([k, v], i) => `<tr${i % 2 ? '' : ' style="background:#fff"'}><td style="padding:5px 10px;color:#6b7280;width:28%">${k}</td><td style="padding:5px 10px">${v}</td></tr>`).join('')}</table>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #e5e7eb;min-width:760px">
+        <thead><tr style="background:#f3f4f6;font-size:10.5px;color:#6b7280;text-transform:uppercase"><th style="padding:6px 8px;text-align:left">Item</th><th style="padding:6px 8px;text-align:right">Qty</th><th style="padding:6px 8px;text-align:right">Price</th><th style="padding:6px 8px;text-align:right">Disc</th><th style="padding:6px 8px;text-align:left">Tax</th><th style="padding:6px 8px;text-align:left">Whse</th><th style="padding:6px 8px;text-align:left">Bin / Batch</th><th style="padding:6px 8px;text-align:right">Net</th><th style="padding:6px 8px;text-align:right">Tax</th><th style="padding:6px 8px;text-align:right">Total</th></tr></thead>
+        <tbody>${rows.map(r => `<tr><td style="${td}"><b>${escHtml(r.item.ItemCode)}</b><div style="font-size:10.5px;color:#6b7280">${escHtml(r.item.ItemName)}</div></td>
+          <td style="${td};text-align:right">${fmt2(r.qtyI.value)}</td><td style="${td};text-align:right">${fmt2(r.priceI.value)}</td><td style="${td};text-align:right">${fmt2(r.discI.value)}%</td>
+          <td style="${td}">${escHtml(r.taxSel.value)}</td><td style="${td}">${escHtml(r.whSel.value)}</td><td style="${td}">${escHtml(r.allocSel?.value ? r.allocSel.selectedOptions[0].textContent : (r.allocSel ? 'Auto' : '—'))}</td>
+          <td style="${td};text-align:right">${fmt2(r.net)}</td><td style="${td};text-align:right">${fmt2(r.tax)}</td><td style="${td};text-align:right;font-weight:600">${fmt2(r.net + r.tax)}</td></tr>`).join('')}</tbody></table></div>
+      <table style="margin:8px 0 0 auto;border-collapse:collapse;font-size:12.5px;min-width:260px">
+        <tr><td style="padding:3px 10px;color:#6b7280">Subtotal (before tax)</td><td style="padding:3px 4px;text-align:right">${fmt2(sub)}</td></tr>
+        <tr><td style="padding:3px 10px;color:#6b7280">Tax (estimated)</td><td style="padding:3px 4px;text-align:right">${fmt2(tax)}</td></tr>
+        <tr style="border-top:2px solid var(--blue)"><td style="padding:6px 10px;font-weight:700">${docLabel} Total</td><td style="padding:6px 4px;text-align:right;font-weight:700;font-size:14px;color:var(--blue)">${fmt2(sub + tax)}</td></tr></table>
+      <div style="margin-top:10px"><button type="button" data-back style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:7px 14px;font-size:12.5px;cursor:pointer">← Back to edit</button></div></div>`;
+    reviewBox.querySelector('[data-back]').onclick = () => { stage = 'form'; reviewBox.style.display = 'none'; formBox.style.display = 'flex'; modalSubmit.textContent = `Review ${isInv ? 'Invoice' : 'Delivery'} →`; };
+    formBox.style.display = 'none'; reviewBox.style.display = 'block';
+    stage = 'review'; modalSubmit.textContent = `✅ Post ${docLabel}`;
+  }
+
+  modalSubmit.onclick = async () => {
+    if (modalSubmit.disabled) return;
+    if (stage === 'form') { const err = check(); if (err) { alert(err); return; } showReview(); return; }
+    setSubmitLoading(true);
+    try {
+      const r = await fetch('/api/o2c-forms/standalone', { method: 'POST', headers: { 'Content-Type': 'application/json', ...tok() },
+        body: JSON.stringify({ docType: kind, cardCode: customer.CardCode, docDate: dtI.value, dueInDays: parseInt(dueI.value, 10) || 0,
+          reference: refI.value.trim(), comments: remarksI.value.trim(), lines: rows.map(lineOut) }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || 'Failed');
+      const a = r.amounts;
+      closeModal();
+      postResult(`✅ **${docLabel} #${r.docNum}** created for **${r.cardName || r.cardCode}** (${r.cardCode}) — standalone, ${r.lines} line(s).\n` +
+        `Doc Entry: ${r.docEntry}${r.dueDate ? ` · Due ${r.dueDate}` : ''}` +
+        (a ? `\nSubtotal ${fmt2(a.subTotal)} · Tax ${fmt2(a.tax)} · **${docLabel} Total ${fmt2(a.total)} ${a.currency || ''}**` : ''));
+    } catch (e) { alert('Error: ' + e.message); setSubmitLoading(false); modalSubmit.textContent = `✅ Post ${docLabel}`; }
+  };
+
+  modalBody.prepend(o2cModeBar('standalone', isInv
+    ? [{ key: 'base', label: '📦 Based on Delivery', open: openInvoiceForm }, { key: 'standalone', label: '✏️ Standalone Invoice', open: () => openStandaloneDoc('invoice') }]
+    : [{ key: 'order', label: '📋 Based on Sales Order', open: openDeliveryForm }, { key: 'standalone', label: '✏️ Standalone Delivery', open: () => openStandaloneDoc('delivery') }]));
+}
+
+// ════════════════════════════════════════════════════
 // FORM: POD
 // ════════════════════════════════════════════════════
 function openPodForm(){
@@ -7257,7 +7483,7 @@ function openPodForm(){
 // ════════════════════════════════════════════════════
 // FORM: Invoice
 // ════════════════════════════════════════════════════
-function openInvoiceForm(){
+function openInvoiceFromDelivery(){
   // Customer → open deliveries → line details → summary → post (lines + freight of the delivery)
   openModal('🧾 Create A/R Invoice');modalBody.innerHTML='';
   const tok = () => ({ 'x-auth-token': localStorage.getItem('hanny_token') || '' });
