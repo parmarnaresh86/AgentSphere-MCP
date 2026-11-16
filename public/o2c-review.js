@@ -19,6 +19,7 @@
 .o2c-locked input,.o2c-locked select,.o2c-locked textarea,.o2c-locked button{pointer-events:none;cursor:not-allowed}
 .o2c-locked a{pointer-events:auto}
 [data-o2c-review] input:not(:disabled),[data-o2c-review] select:not(:disabled){border-color:#0070F2!important;background:#fffbea!important}
+[data-o2c-review] input:disabled,[data-o2c-review] select:disabled{background:#f3f4f6!important;color:#4b5563;border-color:#e5e7eb!important}
 [data-o2c-review] tr.o2c-editing{background:#fffbea}`;
   document.head.appendChild(st);
 
@@ -105,7 +106,7 @@
       const tr = btn.closest('tr');
       const on = !tr.classList.contains('o2c-editing');
       tr.classList.toggle('o2c-editing', on);
-      tr.querySelectorAll('[data-l]').forEach(x => { x.disabled = !on; });
+      tr.querySelectorAll('[data-l],[data-item-in]').forEach(x => { x.disabled = !on; });
       btn.textContent = on ? '✓' : '✏️';
       btn.title = on ? 'Done editing this row' : 'Edit this row';
       if (on) tr.querySelector('[data-l]')?.focus();
@@ -114,9 +115,56 @@
     removeRow(btn) {
       const c = card(btn), tr = btn.closest('tr');
       if (c.querySelectorAll('tr[data-row]').length <= 1) { alert('The document needs at least one row.'); return; }
-      if (!confirm(`Remove ${tr.dataset.item} from this document?`)) return;
+      if (tr.dataset.item && !confirm(`Remove ${tr.dataset.item} from this document?`)) return;
       tr.remove();
-      c.querySelectorAll('tr[data-row] [data-no]').forEach((td, i) => { td.textContent = i + 1; });
+      this.renumber(c);
+      this.recalc(c);
+    },
+
+    renumber(c) { c.querySelectorAll('tr[data-row] [data-no]').forEach((td, i) => { td.textContent = i + 1; }); },
+
+    /** "+ Add Row": a new, open row with an item search. */
+    addRow(btn) {
+      const c = card(btn), tpl = c.querySelector('template[data-new-row]');
+      if (!tpl) return;
+      const tr = tpl.content.firstElementChild.cloneNode(true);
+      c.querySelector('tbody').appendChild(tr);
+      this.renumber(c);
+      tr.querySelector('[data-item-in]')?.focus();
+    },
+
+    /** Item picked / typed in a new row: keep the item code, show its name, fetch the customer's price. */
+    pickItem(input) {
+      const tr = input.closest('tr'), c = card(input);
+      const raw = input.value.trim();
+      const opt = [...(input.list?.options || [])].find(o => o.value.toLowerCase() === raw.toLowerCase()
+        || (o.textContent && `${o.value} — ${o.textContent}`.toLowerCase() === raw.toLowerCase()));
+      const code = opt ? opt.value : raw.split(/\s+[—–-]\s+/)[0].trim();
+      tr.dataset.item = code;
+      input.value = code;
+      tr.querySelector('[data-item-name]').textContent = opt?.textContent || (code ? 'Checked when you post' : '');
+      if (code) this.loadPrice(tr, c);
+    },
+
+    /** Quantity changed on a new row → customer price may depend on quantity (volume discounts). */
+    qtyChanged(input) {
+      const tr = input.closest('tr');
+      if (tr.hasAttribute('data-new') && tr.dataset.item) this.loadPrice(tr, card(input));
+    },
+
+    async loadPrice(tr, c) {
+      const api = c.dataset.priceApi, priceEl = tr.querySelector('[data-l="unitPrice"]'), note = tr.querySelector('[data-item-name]');
+      if (!api || !priceEl || priceEl.dataset.manual) return;
+      const itemCode = tr.dataset.item, qty = tr.querySelector('[data-l="quantity"]')?.value || 1;
+      try {
+        const q = new URLSearchParams({ sessionId: c.dataset.sid || '', itemCode, qty });
+        const r = await fetch(api + '/item-price?' + q, { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } }).then(x => x.json());
+        if (priceEl.dataset.manual || tr.dataset.item !== itemCode) return;
+        if (r.ok && r.price > 0) {
+          priceEl.value = r.price;
+          if (note && !/✓|⚠️/.test(note.textContent)) note.textContent += r.source === 'fallback' ? ' · ⚠️ base price list' : ' · ✓ customer price';
+        } else if (note && !/⚠️/.test(note.textContent)) note.textContent += ' · ⚠️ no price — enter it';
+      } catch { /* price stays editable */ }
       this.recalc(c);
     },
 
@@ -151,6 +199,8 @@
         return { itemCode: tr.dataset.item, quantity: num(v('quantity')), unitPrice: num(v('unitPrice')),
           discountPercent: num(v('discountPercent')), taxCode: v('taxCode'), warehouseCode: v('warehouseCode') };
       });
+      const noItem = lines.findIndex(l => !l.itemCode);
+      if (noItem >= 0) { alert(`Row ${noItem + 1}: pick an item, or remove the row with 🗑.`); return; }
       const bad = lines.findIndex(l => !(l.quantity > 0));
       if (bad >= 0) { alert(`Row ${bad + 1} (${lines[bad].itemCode}): quantity must be more than 0.`); return; }
       c.dataset.sent = '1';

@@ -399,7 +399,7 @@ export function createSalesOrderAgentRouter(deps) {
           title: '📋 Sales Order Ready to Post', partyLabel: 'Customer',
           party: { code: session.selectedCustomer?.cardCode, name: session.selectedCustomer?.cardName },
           seq: session.reviewSeq, send: 'soaSend', postAction: 'post_order', postLabel: '✅ Post Sales Order',
-          addMoreAction: 'add_more_items', addMoreLabel: '+ Add More Items',
+          addRow: { items: getCacheItems().map(i => ({ code: i.ItemCode, name: i.ItemName })), priceApi: '/api/sales-order-agent', sessionId: sid },
           header: [
             { key: 'docDate', label: 'Posting Date', type: 'date', value: h.docDate || today() },
             { key: 'deliveryDate', label: 'Delivery Date', type: 'date', value: h.deliveryDate || datePlusDays(7) },
@@ -434,7 +434,18 @@ export function createSalesOrderAgentRouter(deps) {
           reply = '⏳ This Sales Order is already being posted — please wait.';
         }
         else if (action?.action === 'post_order') {
-          const rp = readReviewPost(action, session._lines, HEADER_KEYS);
+          const rp = readReviewPost(action, session._lines, HEADER_KEYS, { allowNew: true });
+          if (rp.ok) {
+            for (const l of rp.lines.filter(x => x.isNew)) {
+              let it = null;
+              try { it = await sap.get(`/Items('${encodeURIComponent(l.itemCode.replace(/'/g, "''"))}')`, { $select: 'ItemCode,ItemName,SalesItem,Frozen' }); } catch { it = null; }
+              if (!it?.ItemCode) { rp.ok = false; rp.error = `Item ${l.itemCode} was not found in SAP.`; break; }
+              if (it.SalesItem === 'tNO') { rp.ok = false; rp.error = `${it.ItemCode} is not a sales item.`; break; }
+              if (it.Frozen === 'tYES') { rp.ok = false; rp.error = `${it.ItemCode} is inactive (frozen) in SAP.`; break; }
+              l.itemCode = it.ItemCode;
+              delete l.isNew;
+            }
+          }
           if (!rp.ok) {
             reply = `<div style="color:#b91c1c;margin-bottom:6px">❌ ${escHtml(rp.error)}</div>${await reviewCard()}`;
           } else {
@@ -571,7 +582,8 @@ export function createSalesOrderAgentRouter(deps) {
         else if (action?.action === 'done_items') {
           if (!session._lines?.length) {
             const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
-            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
+            session._lineIdx = (session._lineIdx || 0) + 1;
+            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ Please add at least one item.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
           } else {
             session.step = 'REVIEW_FORM';
             reply = await reviewCard();
@@ -581,8 +593,9 @@ export function createSalesOrderAgentRouter(deps) {
         // ── Add more items ───────────────────────────────────────────────────
         else if (action?.action === 'add_more_items') {
           session.step = 'ADD_ITEM';
+          session._lineIdx = (session._lineIdx || 0) + 1;
           const items = getCacheItems(); const taxes = await getCacheTaxCodes(sap); const whs = getCacheWarehouses();
-          reply = `<div style="font-size:13px;margin-bottom:6px">Add another item:</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx||0)}`;
+          reply = `<div style="font-size:13px;margin-bottom:6px">Add another item:</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx)}`;
         }
 
         else {
@@ -652,7 +665,7 @@ export function createSalesOrderAgentRouter(deps) {
           session.step = 'INIT';
         } else {
           // earlier steps are closed — changes happen on the review card itself
-          reply = `<div style="margin-bottom:6px">Make changes on the review card: <strong>✏️ Edit Header</strong> for dates / reference / comments, <strong>✏️</strong> on a row for qty / price / disc / tax / warehouse, <strong>+ Add More Items</strong> to add items. To pick another customer, type <strong>cancel</strong> and start again.</div>${await reviewCard()}`;
+          reply = `<div style="margin-bottom:6px">Make changes on the review card: <strong>✏️ Edit Header</strong> for dates / reference / comments, <strong>✏️</strong> on a row for qty / price / disc / tax / warehouse, <strong>+ Add Row</strong> to add an item. To pick another customer, type <strong>cancel</strong> and start again.</div>${await reviewCard()}`;
         }
       }
 
