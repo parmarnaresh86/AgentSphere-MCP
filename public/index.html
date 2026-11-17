@@ -38672,7 +38672,9 @@ window.roAskFollowUp = function() {
 
   async function masterSend(msg, type) {
     if (!type) type = _activeAgent;
-    if (!type || _busy[type]) return;
+    if (!type) return;
+    if (typeof msg === 'string' && (msg === 'restart' || window.isFreshStartChip?.(msg))) { window.masterRestart(type); return; }
+    if (_busy[type]) return;
     _busy[type] = true;
     if (msg && !msg.startsWith('{') && !msg.startsWith('select_') && !msg.startsWith('submit_') && !msg.startsWith('confirm') && !msg.startsWith('remove_') && !msg.startsWith('done_') && !msg.startsWith('add_') && !msg.startsWith('restart')) {
       masterAppendMsg(type, msg, 'user');
@@ -46335,6 +46337,25 @@ window.almReset = almReset;
 
 <script src="/insight-agents.js"></script>
 <script src="/o2c-review.js"></script>
+<script>
+// "New …" / "Create Another" / "Start Over" buttons at the end of a workflow (or after an error) start a
+// clean session: same as the panel's Restart button — the chat is cleared and a new server session opens,
+// so nothing of the previous document (or its error) carries over. Mid-workflow buttons such as
+// "Add Another Item" or "Search Another Vendor" are not affected.
+(function () {
+  const FRESH_RE = /^\s*(?:yes,?\s*)?(?:start\s+over|restart|start\s+new\b.*|new\b.*|create\s+(?:new|another)\b.*|process\s+another\b.*|scan\s+another\b.*)\s*$/i;
+  window.isFreshStartChip = text => FRESH_RE.test(String(text || ''));
+  document.addEventListener('click', e => {
+    const btn = e.target.closest?.('button');
+    const area = btn?.closest('[id$="-qr-area"]');
+    if (!area || !window.isFreshStartChip(btn.textContent)) return;
+    const reset = window[area.id.replace(/-qr-area$/, '') + 'ResetSession'];
+    if (typeof reset !== 'function') return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    reset();
+  }, true);
+})();
+</script>
 <script src="/agent-about.js"></script>
 <script src="/agent-kpi-help.js"></script>
 <script src="/ocr-workbench.js"></script>
