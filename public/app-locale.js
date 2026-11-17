@@ -88,7 +88,10 @@
 
   const ICON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236a6d70' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E\")";
   const css = document.createElement('style');
-  css.textContent = `input[data-app-date]{background-image:${ICON};background-repeat:no-repeat;background-position:right 7px center;padding-right:26px!important;min-width:118px}
+  // The icon is !important with a high-specificity selector: cards set an inline `background:` shorthand
+  // (and the review card an !important one) that would otherwise erase it.
+  css.textContent = `input[data-app-date][data-app-date][data-app-date]{background-image:${ICON}!important;background-repeat:no-repeat!important;background-position:right 7px center!important;background-size:14px 14px!important;padding-right:26px!important;min-width:118px}
+input[data-app-date]:not(:disabled):not([readonly]){cursor:pointer}
 input[data-app-date].app-date-bad{border-color:#BB0000!important;outline-color:#BB0000}
 input.app-date-picker{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;border:0!important;padding:0!important;margin:0!important}`;
   (document.head || document.documentElement).appendChild(css);
@@ -133,10 +136,10 @@ input.app-date-picker{position:absolute!important;width:1px!important;height:1px
       for (const a of ['min', 'max']) { const v = el.getAttribute(a); v ? picker.setAttribute(a, v) : picker.removeAttribute(a); }
       try { picker.showPicker(); } catch { picker.focus(); picker.click(); }
     };
-    el.addEventListener('click', e => {
+    // a click anywhere in the field opens the calendar (typing a date still works)
+    el.addEventListener('click', () => {
       if (el.disabled || el.readOnly) return;
-      const r = el.getBoundingClientRect();
-      if (e.clientX >= r.right - 28) openPicker();       // calendar icon area
+      openPicker();
     });
     el.addEventListener('keydown', e => {
       if ((e.altKey && e.key === 'ArrowDown') || e.key === 'F4') { e.preventDefault(); openPicker(); }
