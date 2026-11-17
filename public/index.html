@@ -619,8 +619,11 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
   border-top:1px solid var(--border);
   padding:6px var(--chat-side);
   display:flex;align-items:center;gap:8px;
-  flex-shrink:0;flex-wrap:wrap;
+  flex-shrink:0;flex-wrap:nowrap;min-width:0;
 }
+/* one line; on a narrow window it may wrap rather than run off the edge */
+@media (max-width:960px){.bottom-bar{flex-wrap:wrap}}
+.bottom-bar > *{flex-shrink:0}
 .bot-agent-btn{
   display:flex;align-items:center;gap:6px;
   background:var(--blue);color:#fff;
@@ -637,14 +640,6 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
 #clear-btn:hover{color:var(--red);border-color:var(--red);background:#FEF2F2}
 #export-chat-btn:hover{color:var(--blue) !important}
 
-.bottom-select{
-  background:var(--white);border:1px solid var(--border);
-  border-radius:var(--r);padding:5px 8px;font-size:12px;height:28px;
-  color:var(--text);cursor:pointer;outline:none;
-  transition:border-color .15s;min-width:130px;
-}
-.bottom-select:focus{border-color:var(--blue)}
-.bottom-select-label{font-size:11px;color:var(--muted);white-space:nowrap}
 
 .saved-btn{
   margin-left:auto;
@@ -1905,7 +1900,7 @@ ul.rt-insights li.ops{border-color:#EA580C;background:#FFF7ED}
   /* Bottom filter bar: keep the essentials (SAP Agent, actions menu),
      drop the module/sub-module/saved-prompts row — it's a filter aid,
      not core to sending a message, and doesn't fit at this width. */
-  #module-sel,#submodule-sel,.bottom-select-label,#saved-prompts-btn{display:none}
+  #saved-prompts-btn{display:none}
 
   #messages{padding:12px}
   .msg-row{max-width:100%}
@@ -3134,39 +3129,6 @@ html[data-ui="fiori"] div[style*="width:35%"]:has(> div:first-child[style*="text
         </button>
       </div>
     </div>
-
-    <span class="bottom-select-label">Module</span>
-    <select class="bottom-select" id="module-sel">
-      <option>All Modules</option>
-      <option>Sales</option>
-      <option>Purchasing</option>
-      <option>Inventory</option>
-      <option>Finance</option>
-    </select>
-
-    <span class="bottom-select-label">Sub Module</span>
-    <select class="bottom-select" id="submodule-sel">
-      <option>All Sub Modules</option>
-      <optgroup label="Order-to-Cash">
-        <option>Quotations</option>
-        <option>Orders</option>
-        <option>Deliveries</option>
-        <option>Invoices</option>
-        <option>Payments</option>
-      </optgroup>
-      <optgroup label="Inventory">
-        <option>Stock</option>
-        <option>Collections</option>
-      </optgroup>
-      <optgroup label="Sales Analysis">
-        <option>Top Customers</option>
-        <option>Monthly Sales</option>
-        <option>Quarterly Sales</option>
-        <option>By Item</option>
-        <option>By Salesperson</option>
-        <option>By Profit</option>
-      </optgroup>
-    </select>
 
     <button class="saved-btn" id="saved-prompts-btn">Saved Prompts</button>
     <div class="answer-mode-toggle" id="answer-mode-toggle" role="group" aria-label="Answer style" hidden>
@@ -4402,22 +4364,6 @@ document.getElementById('saved-search').addEventListener('keydown', (e) => {
 });
 document.addEventListener('click', () => { document.getElementById('saved-panel').style.display='none'; });
 
-// Sub-module quick routing
-document.getElementById('submodule-sel').addEventListener('change', function() {
-  const map = {
-    Quotations:'create quotation', Orders:'create sales order', Deliveries:'create delivery',
-    Invoices:'create invoice', Payments:'apply payment', Stock:'show stock levels',
-    Collections:'collections overdue 30 days',
-    'Top Customers':'top 20 customers by sales this year',
-    'Monthly Sales':'monthly sales trend this year',
-    'Quarterly Sales':'quarterly sales this year',
-    'By Item':'top 10 items by sales',
-    'By Salesperson':'sales by salesperson this year',
-    'By Profit':'top 10 customers by profit this year',
-  };
-  const v = this.value;
-  if (map[v]) { inputEl.value=map[v]; this.value='All Sub Modules'; sendMessage(); }
-});
 
 
 // ── Analytics V2 Icons ──────────────────────────────────────────────────────
