@@ -144,6 +144,16 @@
       const opt = [...(input.list?.options || [])].find(o => o.value.toLowerCase() === raw.toLowerCase()
         || (o.textContent && `${o.value} — ${o.textContent}`.toLowerCase() === raw.toLowerCase()));
       let code = opt ? opt.value : raw.split(/\s+[—–-]\s+/)[0].trim();
+      if (code && !opt && c.dataset.searchApi && !input._checked) {
+        input._checked = true;
+        fetch(c.dataset.searchApi + '/items?q=' + encodeURIComponent(code), { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } })
+          .then(x => x.json()).then(r => {
+            const hit = (r.items || []).find(it => String(it.code).toLowerCase() === code.toLowerCase());
+            if (hit && input.list) { const o = document.createElement('option'); o.value = hit.code; o.textContent = hit.name || ''; input.list.appendChild(o); input.value = hit.code; }
+            this.pickItem(input); input._checked = false;
+          }).catch(() => { this.pickItem(input); input._checked = false; });
+        return;
+      }
       if (code && !opt && input.list?.options.length) {
         alert(`"${raw}" is not in the item list — pick an item from the list.`);
         code = ''; input.value = '';
@@ -172,7 +182,7 @@
         if (priceEl.dataset.manual || tr.dataset.item !== itemCode) return;
         if (r.ok && r.price > 0) {
           priceEl.value = r.price;
-          if (note && !/✓|⚠️/.test(note.textContent)) note.textContent += r.source === 'fallback' ? ' · ⚠️ base price list' : ` · ✓ ${r.source === 'vendor' ? 'vendor' : 'customer'} price`;
+          if (note && !/✓|⚠️/.test(note.textContent)) note.textContent += r.source === 'fallback' ? ' · ⚠️ base price list' : ` · ✓ ${r.label || `${r.source === 'vendor' ? 'vendor' : 'customer'} price`}`;
         } else if (note && !/⚠️/.test(note.textContent)) note.textContent += ' · ⚠️ no price — enter it';
       } catch { /* price stays editable */ }
       this.recalc(c);
@@ -204,9 +214,8 @@
       if (typeof fn === 'function') fn(payload);
     },
 
-    post(btn) {
-      const c = card(btn);
-      if (c.dataset.sent) return;                         // one click only
+    /** Header + rows of the card as they are now; null (after an alert) when a row is not ready. */
+    collect(c) {
       const header = {};
       c.querySelectorAll('[data-h]').forEach(x => { header[x.dataset.h] = x.value; });
       const lines = [...c.querySelectorAll('tr[data-row]')].map(tr => {
@@ -215,9 +224,82 @@
           discountPercent: num(v('discountPercent')), taxCode: v('taxCode'), warehouseCode: v('warehouseCode') };
       });
       const noItem = lines.findIndex(l => !l.itemCode);
-      if (noItem >= 0) { c.querySelectorAll('tr[data-row]')[noItem]?.classList.add('o2c-noitem'); alert(`Row ${noItem + 1}: pick an item, or remove the row with 🗑.`); return; }
+      if (noItem >= 0) { c.querySelectorAll('tr[data-row]')[noItem]?.classList.add('o2c-noitem'); alert(`Row ${noItem + 1}: pick an item, or remove the row with 🗑.`); return null; }
       const bad = lines.findIndex(l => !(l.quantity > 0));
-      if (bad >= 0) { alert(`Row ${bad + 1} (${lines[bad].itemCode}): quantity must be more than 0.`); return; }
+      if (bad >= 0) { alert(`Row ${bad + 1} (${lines[bad].itemCode}): quantity must be more than 0.`); return null; }
+      return { header, lines };
+    },
+
+    /** Preview: the card as the finished document, before posting — nothing is sent to SAP. */
+    async preview(btn) {
+      const c = card(btn);
+      if (c.dataset.sent) return;
+      const data = this.collect(c); if (!data) return;
+      const label = btn.textContent;
+      btn.disabled = true; btn.textContent = '⏳ Preparing preview…';
+      try {
+        const r = await fetch(c.dataset.previewApi + '/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('hanny_token') || '' },
+          body: JSON.stringify({ sessionId: c.dataset.sid || '', ...data }),
+        }).then(x => x.json());
+        if (!r.ok) { alert(r.error || 'Preview failed.'); return; }
+        this.showPreview(r.html, c);
+      } catch (e) {
+        alert('Preview failed: ' + e.message);
+      } finally {
+        btn.disabled = false; btn.textContent = label;
+      }
+    },
+
+    showPreview(html, c) {
+      document.getElementById('o2c-preview')?.remove();
+      const ov = document.createElement('div');
+      ov.id = 'o2c-preview';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+      ov.innerHTML = `<div style="background:#fff;border-radius:10px;width:min(1040px,100%);height:min(92vh,100%);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px;font-weight:700;color:#1d4ed8;font-size:14px">👁 Preview — check the document before posting</div>
+          <button type="button" data-pv-post style="background:#0070F2;color:#fff;border:none;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer"></button>
+          <button type="button" data-pv-close style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer">✕ Close</button>
+        </div>
+        <iframe title="Preview" style="flex:1;border:0;width:100%"></iframe>
+      </div>`;
+      document.body.appendChild(ov);
+      ov.querySelector('iframe').srcdoc = html;
+      const postBtn = c.querySelector('[data-o2c-post]');
+      const pv = ov.querySelector('[data-pv-post]');
+      pv.textContent = postBtn ? postBtn.textContent : 'Post';
+      const close = () => { ov.remove(); window.removeEventListener('message', onMsg); document.removeEventListener('keydown', onKey); };
+      const onMsg = e => { if (e.data?.type === 'o2c-preview-close') close(); };
+      const onKey = e => { if (e.key === 'Escape') close(); };
+      window.addEventListener('message', onMsg); document.addEventListener('keydown', onKey);
+      ov.querySelector('[data-pv-close]').onclick = close;
+      pv.onclick = () => { close(); if (postBtn && !c.dataset.sent) this.post(postBtn); };
+    },
+
+    /** Typing in a new row's item box: add matches from the whole item master to its list (cards with data-search-api). */
+    searchItems(input) {
+      const c = card(input), api = c.dataset.searchApi, q = input.value.trim();
+      if (!api || q.length < 2 || !input.list) return;
+      clearTimeout(input._t);
+      input._t = setTimeout(async () => {
+        try {
+          const r = await fetch(api + '/items?q=' + encodeURIComponent(q), { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } }).then(x => x.json());
+          const have = new Set([...input.list.options].map(o => o.value.toUpperCase()));
+          (r.items || []).forEach(it => {
+            if (have.has(String(it.code).toUpperCase())) return;
+            const o = document.createElement('option'); o.value = it.code; o.textContent = it.name || ''; input.list.appendChild(o);
+          });
+        } catch { /* the preloaded list still works */ }
+      }, 250);
+    },
+
+    post(btn) {
+      const c = card(btn);
+      if (c.dataset.sent) return;                         // one click only
+      const data = this.collect(c); if (!data) return;
+      const { header, lines } = data;
       c.dataset.sent = '1';
       btn.disabled = true;
       btn.textContent = '⏳ Posting…';

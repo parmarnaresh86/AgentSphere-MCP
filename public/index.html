@@ -34748,7 +34748,6 @@ window.roAskFollowUp = function() {
   const STEP_LABELS = {
     INIT:'READY', ITEM_TYPE:'ITEM TYPE', ITEM_SEARCH:'SEARCHING', ITEM_SELECT:'SELECT ITEM',
     ITEM_QTY:'QUANTITY', WAREHOUSE:'WAREHOUSE', ADD_MORE_ITEMS:'ADD ITEMS',
-    NEW_ITEM_CODE:'NEW ITEM', NEW_ITEM_NAME:'ITEM NAME', NEW_ITEM_QTY:'QUANTITY', NEW_ITEM_WAREHOUSE:'WAREHOUSE',
     VENDOR:'VENDOR', VENDOR_SELECT:'VENDOR', DUE_DATE:'DATE',
     COMMENTS:'COMMENTS', CONFIRM:'CONFIRM', POSTING:'POSTING', DONE:'DONE',
   };
@@ -35021,13 +35020,13 @@ window.roAskFollowUp = function() {
       if (type === 'warehouse') {
         const skip = document.createElement('div');
         skip.style.cssText = 'padding:7px 12px;cursor:pointer;border-bottom:1px solid #f2f3f5;font-size:12px;font-weight:600;color:var(--muted)';
-        skip.textContent = '⏭ Skip — no specific warehouse';
+        skip.textContent = '⏭ Skip — use the default warehouse';
         skip.onclick = () => { praMarkQRUsed(); praSend('Skip'); };
         list.appendChild(skip);
       }
-      const lq = q.toLowerCase().trim();
-      const filtered = lq
-        ? items.filter(it => (it.code||'').toLowerCase().includes(lq) || (it.name||'').toLowerCase().includes(lq))
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+      const filtered = words.length
+        ? items.filter(it => { const t = ((it.code||'') + ' ' + (it.name||'')).toLowerCase(); return words.every(w => t.includes(w)); })
         : items;
 
       if (!filtered.length) {
@@ -35036,7 +35035,7 @@ window.roAskFollowUp = function() {
         empty.textContent = 'No results found';
         list.appendChild(empty);
         // Only a limited list is preloaded — let the user search the full SAP item master
-        if (type === 'item' && q.trim()) {
+        if ((type === 'item' || type === 'vendor') && q.trim()) {
           const srv = document.createElement('div');
           srv.style.cssText = 'padding:8px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--blue,#0070f2);cursor:pointer;border-top:1px solid #f2f3f5';
           srv.textContent = `🔍 Search SAP for "${q.trim()}"`;
@@ -35095,23 +35094,23 @@ window.roAskFollowUp = function() {
     filterInp.addEventListener('input', () => renderRows(filterInp.value));
     // Only a limited list is preloaded — also search the full SAP item master as the user types
     let searchTimer = null;
-    if (type === 'item') filterInp.addEventListener('input', () => {
+    if (type === 'item' || type === 'vendor') filterInp.addEventListener('input', () => {
       clearTimeout(searchTimer);
       const q = filterInp.value.trim();
       if (!q) return;
       searchTimer = setTimeout(async () => {
         try {
-          const r = await fetch(`/api/pr-agent/items?q=${encodeURIComponent(q)}`, { headers: { 'x-auth-token': tok() } });
+          const r = await fetch(`/api/pr-agent/${type === 'vendor' ? 'vendors' : 'items'}?q=${encodeURIComponent(q)}`, { headers: { 'x-auth-token': tok() } });
           const data = await r.json();
           if (filterInp.value.trim() !== q) return; // user kept typing
           const known = new Set(items.map(it => (it.code || '').toUpperCase()));
-          (data.items || []).forEach(it => { if (!known.has((it.code || '').toUpperCase())) items.push(it); });
+          ((type === 'vendor' ? data.vendors : data.items) || []).forEach(it => { if (!known.has((it.code || '').toUpperCase())) items.push(it); });
           renderRows(q);
         } catch (e) { console.warn('[PR-Agent] item search failed', e); }
       }, 300);
     });
     // Enter → search the full SAP item master (not just the preloaded list)
-    if (type === 'item') filterInp.addEventListener('keydown', e => {
+    if (type === 'item' || type === 'vendor') filterInp.addEventListener('keydown', e => {
       if (e.key === 'Enter' && filterInp.value.trim()) { e.preventDefault(); praMarkQRUsed(); praSend(filterInp.value.trim()); }
     });
     renderRows('');
@@ -35373,6 +35372,7 @@ window.roAskFollowUp = function() {
   }
 
   window.poaFilterVendors = function(inputEl) {
+    if (inputEl._poaLive === undefined) inputEl._poaLive = false;
     const container = inputEl.closest('[data-vendors]');
     if (!container) return;
     const sel = container.querySelector('select[id^="poa-vendor-sel"]');
@@ -35386,7 +35386,28 @@ window.roAskFollowUp = function() {
     sel.innerHTML = '<option value="">— Select a Vendor —</option>' + filtered.map(v =>
       `<option value="${poaEscAttr(v.code)}">${poaEscAttr(v.code)} — ${poaEscAttr(v.name)}${v.city ? ' ('+poaEscAttr(v.city)+')' : ''}</option>`
     ).join('');
+    if (!inputEl._poaLive) poaLiveSearch(inputEl, container, 'data-vendors', 'vendors', () => window.poaFilterVendors(inputEl));
   };
+
+  // Shared search on the server (whole vendor / item master, not case-sensitive, any keyword order):
+  // matches not in the preloaded list are added to it and the filter runs again.
+  function poaLiveSearch(inputEl, container, attr, kind, refilter) {
+    const q = inputEl.value.trim();
+    clearTimeout(inputEl._poaT);
+    if (q.length < 2) return;
+    inputEl._poaT = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/${kind}?q=${encodeURIComponent(q)}`, { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } }).then(x => x.json());
+        if (inputEl.value.trim() !== q) return;            // user kept typing
+        let list = []; try { list = JSON.parse(container.getAttribute(attr)) || []; } catch {}
+        const have = new Set(list.map(x => String(x.code).toUpperCase()));
+        const add = (r[kind] || []).filter(x => !have.has(String(x.code).toUpperCase()));
+        if (!add.length) return;
+        container.setAttribute(attr, JSON.stringify(list.concat(add)));
+        inputEl._poaLive = true; refilter(); inputEl._poaLive = false;
+      } catch { /* the preloaded list still works */ }
+    }, 300);
+  }
 
   window.poaFilterItems = function(inputEl, idx) {
     const container = inputEl.closest('[data-items]');
@@ -35403,6 +35424,7 @@ window.roAskFollowUp = function() {
       `<option value="${poaEscAttr(i.code)}" data-name="${poaEscAttr(i.name)}" data-unit="${poaEscAttr(i.unit)}" data-vat="${poaEscAttr(i.vat)}">${poaEscAttr(i.code)} — ${poaEscAttr(i.name)}</option>`
     ).join('');
     poaGateAdd(idx);
+    if (!inputEl._poaLive) poaLiveSearch(inputEl, container, 'data-items', 'items', () => window.poaFilterItems(inputEl, idx));
   };
 
   // "+ Add Line" only once an item is selected
@@ -35432,7 +35454,26 @@ window.roAskFollowUp = function() {
       if (taxSel) taxSel.value = opt.dataset.vat;
     }
     poaCalcLine(idx);
+    poaLoadDefaultPrice(idx);
   };
+
+  async function poaLoadDefaultPrice(idx) {
+    const sel = document.getElementById('poa-item-sel-'+idx), priceEl = document.getElementById('poa-price-'+idx);
+    const note = document.getElementById('poa-price-note-'+idx);
+    if (!sel || !priceEl || priceEl.dataset.manual) return;
+    const itemCode = sel.value;
+    if (!itemCode) { priceEl.value = ''; if (note) note.textContent = ''; poaCalcLine(idx); return; }
+    if (note) note.textContent = 'Loading price…';
+    try {
+      const qty = document.getElementById('poa-qty-'+idx)?.value || 1;
+      const q = new URLSearchParams({ sessionId: sessionId || '', itemCode, qty });
+      const r = await fetch(API + '/item-price?' + q, { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } }).then(x => x.json());
+      if (priceEl.dataset.manual || sel.value !== itemCode) return;   // user typed a price / picked another item meanwhile
+      if (r.ok && r.price > 0) { priceEl.value = r.price; if (note) note.textContent = '✓ ' + (r.label || 'default price'); }
+      else { priceEl.value = ''; if (note) note.textContent = '⚠️ no default price — enter it'; }
+    } catch { if (note) note.textContent = ''; }
+    poaCalcLine(idx);
+  }
 
   // Live preview of Net / Tax / Line Total as qty, price, disc% or tax code change —
   // mirrors the authoritative calc the server re-runs in the 'add_item' action.
@@ -35540,12 +35581,12 @@ window.roAskFollowUp = function() {
     const disc    = parseFloat(document.getElementById('poa-disc-'+idx)?.value  || '0') || 0;
     const taxCode = document.getElementById('poa-tax-'+idx)?.value || '';
     const whCode  = document.getElementById('poa-wh-'+idx)?.value  || '';
-    if (!price || parseFloat(price) <= 0) { alert('Please enter a unit price greater than 0 — a Purchase Order requires a price on every line'); return; }
+    if (price !== '' && price != null && parseFloat(price) < 0) { alert('The unit price cannot be negative.'); return; }
     const payload = {
       action: 'add_item',
       itemCode,
       quantity: qty,
-      unitPrice: parseFloat(price),
+      unitPrice: parseFloat(price) || 0,   // 0 / empty → the server uses the item's default price
       discountPercent: disc,
       ...(taxCode ? { taxCode } : {}),
       ...(whCode  ? { warehouseCode: whCode } : {}),

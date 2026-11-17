@@ -12,7 +12,8 @@
 import { Router } from 'express';
 import { getItemPrice } from '../lib/item-price.mjs';
 import { buildReviewCard, readReviewPost } from '../lib/o2c-review.mjs';
-import { docAmounts, resultAmounts, cardTotalsHtml, printTotalsHtml, printTaxHeads, printTaxCells, money } from '../lib/doc-totals.mjs';
+import { docAmounts, estimateAmounts, resultAmounts, cardTotalsHtml, printTotalsHtml, printTaxHeads, printTaxCells, money } from '../lib/doc-totals.mjs';
+import { searchItems as searchItemsShared, searchVendors as searchVendorsShared, lastPurchasePrice } from '../lib/master-search.mjs';
 import db, { connRepo } from '../db.mjs';
 
 const HEADER_KEYS = ['docDate', 'deliveryDate', 'reference', 'comments'];
@@ -51,7 +52,7 @@ function getCompanyId() {
 function getCacheVendors() {
   const cid = getCompanyId();
   return db.prepare(`SELECT CardCode, CardName, City FROM cache_business_partners
-    WHERE company_id=? AND CardType='cSupplier' AND Frozen='tNO' ORDER BY CardName LIMIT 500`).all(cid);
+    WHERE company_id=? AND CardType='cSupplier' AND Frozen='tNO' ORDER BY CardName LIMIT 5000`).all(cid);
 }
 
 function getCacheItems() {
@@ -60,30 +61,44 @@ function getCacheItems() {
     FROM cache_items WHERE company_id=? AND Frozen='tNO' ORDER BY ItemName LIMIT 500`).all(cid);
 }
 
-// Items matching text typed in the chat box at the ADD_ITEM step. Searches the whole
-// item cache (the combo list is capped at 500 rows), every word must match code or
-// name; falls back to a live SAP search when the cache has no match.
-async function searchItems(sap, query) {
-  const words = query.split(/\s+/).filter(Boolean);
-  if (!words.length) return [];
-  const where = words.map(() => '(ItemCode LIKE ? OR ItemName LIKE ?)').join(' AND ');
-  const rows = db.prepare(`SELECT ItemCode, ItemName, PurchaseUnit, PurchVATGroup, QuantityOnStock
-    FROM cache_items WHERE company_id=? AND Frozen='tNO' AND ${where} ORDER BY ItemName LIMIT 50`)
-    .all(getCompanyId(), ...words.flatMap(w => [`%${w}%`, `%${w}%`]));
-  if (rows.length) return rows;
-  try {
-    const q = query.replace(/'/g, "''");
-    const r = await sap.get('/Items', {
-      $filter:  `Frozen eq 'tNO' and (substringof('${q}',ItemCode) or substringof('${q}',ItemName))`,
-      $select:  'ItemCode,ItemName,PurchaseUnit,PurchVATGroup,QuantityOnStock',
-      $orderby: 'ItemName',
-      $top:     50,
-    });
-    return Array.isArray(r.value) ? r.value : [];
-  } catch (e) {
-    console.error('[PO-Agent] searchItems error:', e.message);
-    return [];
+// Items matching text typed in the chat box at the ADD_ITEM step — the shared search
+// (lib/master-search.mjs): whole item master, not case-sensitive, any keyword order.
+// PurchVATGroup (the default tax code) comes from the cache when the item is there.
+async function searchItems(sap, query, top = 50) {
+  const rows = await searchItemsShared(sap, query, { top });
+  if (!rows.length) return [];
+  const vat = new Map(db.prepare(`SELECT ItemCode, PurchVATGroup FROM cache_items WHERE company_id=? AND ItemCode IN (${rows.map(() => '?').join(',')})`)
+    .all(getCompanyId(), ...rows.map(r => r.ItemCode)).map(r => [r.ItemCode, r.PurchVATGroup]));
+  return rows.map(r => ({ ...r, PurchVATGroup: vat.get(r.ItemCode) || '' }));
+}
+
+// Default unit price of an item on a Purchase Order, used when the price is not entered:
+//   1. the vendor's price in SAP (CompanyService_GetItemPrice: vendor price list, special prices)
+//   2. the item's last purchase price (direct DB connection)
+//   3. the item's cost (AvgStdPrice)
+// → { price, currency, source: 'vendor'|'last'|'cost'|'none', label }
+async function defaultPurchasePrice(sap, cardCode, itemCode, qty = 1) {
+  if (cardCode) {
+    const r = await getItemPrice(sap, { cardCode, itemCode, qty }).catch(() => null);
+    if (r?.source === 'customer' && r.price > 0) return { price: r.price, currency: r.currency || '', source: 'vendor', label: 'vendor price' };
   }
+  const last = await lastPurchasePrice(itemCode);
+  if (last > 0) return { price: last, currency: '', source: 'last', label: 'last purchase price' };
+  try {
+    const it = await sap.get(`/Items('${encodeURIComponent(String(itemCode).replace(/'/g, "''"))}')`, { $select: 'ItemCode,AvgStdPrice' });
+    if (Number(it?.AvgStdPrice) > 0) return { price: Number(it.AvgStdPrice), currency: '', source: 'cost', label: 'item cost' };
+  } catch { /* no default */ }
+  return { price: 0, currency: '', source: 'none', label: '' };
+}
+
+// Lines without a price get the default price; → index of the first line still without one (-1 = all priced)
+async function fillDefaultPrices(sap, cardCode, lines) {
+  for (const l of lines) {
+    if (Number(l.unitPrice) > 0) continue;
+    const d = await defaultPurchasePrice(sap, cardCode, l.itemCode, l.quantity);
+    if (d.price > 0) { l.unitPrice = d.price; l.priceSource = d.label; }
+  }
+  return lines.findIndex(l => !(Number(l.unitPrice) > 0));
 }
 
 // Default purchasing UoM code for a single item — cache first, live SAP fallback.
@@ -202,9 +217,11 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx, hasLines = fals
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
       </div>
       <div>
-        <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Unit Price *</div>
-        <input type="number" id="poa-price-${lineIdx}" placeholder="0.00" min="0" step="0.01" oninput="poaCalcLine(${lineIdx})"
+        <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Unit Price</div>
+        <input type="number" id="poa-price-${lineIdx}" placeholder="Default" min="0" step="0.01" oninput="this.dataset.manual=this.value?'1':'';poaCalcLine(${lineIdx})"
+          title="Leave empty to use the default price (vendor price, else last purchase price, else item cost)"
           style="width:100%;border:1.5px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:13px;box-sizing:border-box">
+        <div id="poa-price-note-${lineIdx}" style="font-size:10.5px;color:#6b7280;margin-top:2px;white-space:nowrap"></div>
       </div>
       <div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:3px">Disc%</div>
@@ -242,20 +259,9 @@ function buildItemLineHtml(items, taxCodes, warehouses, lineIdx, hasLines = fals
 
 // ── SAP helpers ────────────────────────────────────────────────────────────────
 
+// Vendors matching typed text — the shared search (not case-sensitive, code or any part of the name)
 async function searchVendors(sap, query) {
-  try {
-    const q = query.replace(/'/g, "''");
-    const r = await sap.get('/BusinessPartners', {
-      $filter:  `CardType eq 'cSupplier' and (substringof('${q}',CardName) or substringof('${q}',CardCode))`,
-      $select:  'CardCode,CardName',
-      $orderby: 'CardName',
-      $top:     20,
-    });
-    return Array.isArray(r.value) ? r.value : [];
-  } catch (e) {
-    console.error('[PO-Agent] searchVendors error:', e.message);
-    return [];
-  }
+  return searchVendorsShared(sap, query, { top: 20 });
 }
 
 function linesSummaryTable(lines) {
@@ -278,14 +284,17 @@ function linesSummaryTable(lines) {
 
 // ── Print layout ───────────────────────────────────────────────────────────────
 
-function renderPOPrint(doc) {
+// opts.preview: the document is not in SAP yet — opts.amt holds the estimated amounts, the page says "PREVIEW"
+function renderPOPrint(doc, opts = {}) {
+  const preview  = !!opts.preview;
   const company  = process.env.SAP_B1_COMPANY || process.env.SL_COMPANY || 'Company';
   const lines    = doc.DocumentLines || [];
   const docDate  = doc.DocDate    ? doc.DocDate.slice(0, 10)    : '—';
   const dueDate  = doc.DocDueDate ? doc.DocDueDate.slice(0, 10) : '—';
   const printedOn = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   // SAP's own amounts of the document (tax per row, freight / rounding, foreign currency)
-  const amt = docAmounts(doc);
+  const amt = opts.amt || docAmounts(doc);
+  const closeMsg = preview ? 'o2c-preview-close' : 'poa-print-close';
 
   const linesHtml = lines.map((l, i) => `
     <tr>
@@ -294,7 +303,7 @@ function renderPOPrint(doc) {
       <td>${escHtml(l.ItemDescription || '')}</td>
       <td style="text-align:right">${Number(l.Quantity || 0).toFixed(2)}</td>
       <td>${escHtml(l.UoMCode || l.MeasureUnit || '')}</td>
-      <td style="text-align:right">${Number(l.UnitPrice || 0).toFixed(2)}</td>
+      <td style="text-align:right">${Number(l.UnitPrice || 0).toFixed(2)}${l._priceNote ? `<div style="font-size:9px;color:#888">${escHtml(l._priceNote)}</div>` : ''}</td>
       <td style="text-align:right">${Number(l.DiscountPercent || 0).toFixed(1)}%</td>
       <td>${escHtml(l.TaxCode || '')}</td>
       <td>${escHtml(l.WarehouseCode || '')}</td>
@@ -303,7 +312,7 @@ function renderPOPrint(doc) {
 
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
-<title>Purchase Order #${doc.DocNum}</title>
+<title>${preview ? 'Purchase Order — Preview' : `Purchase Order #${doc.DocNum}`}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:Arial,sans-serif;font-size:11px;color:#222;padding:28px 36px;max-width:980px;margin:auto}
@@ -329,14 +338,15 @@ function renderPOPrint(doc) {
   .watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-size:52px;color:rgba(0,0,0,.04);font-weight:900;pointer-events:none;z-index:0}
   @media print{.print-btn{display:none}}
 </style></head><body>
-<div class="watermark">PURCHASE ORDER</div>
+<div class="watermark">${preview ? 'PREVIEW' : 'PURCHASE ORDER'}</div>
+${preview ? '<div style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12px;font-weight:600">👁 Preview — this Purchase Order is not posted to SAP yet. Amounts are estimated from the tax-code rates; SAP calculates the final amounts when posting.</div>' : ''}
 <div class="print-btn">
-  <button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'poa-print-close'},'*') : window.close()">✕ Close</button>
+  <button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'${closeMsg}'},'*') : window.close()">✕ Close</button>
   <button class="btn-print" onclick="window.print()">🖨️ Print</button>
 </div>
 <div class="header">
   <div><div class="co-name">${escHtml(company)}</div><div style="color:#888;font-size:11px;margin-top:2px">SAP Business One — Purchase Order</div></div>
-  <div><div class="doc-title">Purchase Order</div><div style="font-size:13px;color:#444;text-align:right">PO # ${doc.DocNum}</div></div>
+  <div><div class="doc-title">Purchase Order</div><div style="font-size:13px;color:#444;text-align:right">${preview ? 'Draft — not posted' : `PO # ${doc.DocNum}`}</div></div>
 </div>
 <div class="info-grid">
   <div class="info-box">
@@ -352,7 +362,7 @@ function renderPOPrint(doc) {
   <div class="info-box">
     <div class="info-label">Reference</div>
     <div class="info-val"><strong>${escHtml(doc.NumAtCard || '—')}</strong></div>
-    <div class="info-val" style="color:#666">PO # ${doc.DocNum}</div>
+    <div class="info-val" style="color:#666">${preview ? 'Draft' : `PO # ${doc.DocNum}`}</div>
   </div>
 </div>
 ${doc.Comments ? `<div style="border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:20px;background:#eff6ff;font-size:11px;line-height:1.6"><strong>📝 Comments:</strong><br><br>${escHtml(doc.Comments)}</div>` : ''}
@@ -366,8 +376,8 @@ ${doc.Comments ? `<div style="border:1px solid #bfdbfe;border-radius:6px;padding
   </tr></thead>
   <tbody>${linesHtml}</tbody>
 </table>
-${printTotalsHtml(amt, { color: '#354A5E', label: 'PO Total' })}
-<div class="footer">Printed on ${escHtml(printedOn)} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Purchase Order #${doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
+${printTotalsHtml(amt, { color: '#354A5E', label: preview ? 'Estimated PO Total' : 'PO Total' })}
+<div class="footer">Printed on ${escHtml(printedOn)} &nbsp;|&nbsp; ${escHtml(company)} — SAP B1 Purchase Order ${preview ? '(preview)' : '#' + doc.DocNum} &nbsp;|&nbsp; Powered by Henny AI Solution</div>
 </body></html>`;
 }
 
@@ -418,7 +428,8 @@ export function createPurchaseOrderAgentRouter(deps) {
           title: '📋 Purchase Order Ready to Post', partyLabel: 'Vendor',
           party: { code: session.selectedVendor?.cardCode, name: session.selectedVendor?.cardName },
           seq: session.reviewSeq, send: 'poaSend', postAction: 'post_po', postLabel: '✅ Post Purchase Order',
-          addRow: { items: items.map(i => ({ code: i.ItemCode, name: i.ItemName })), priceApi: '/api/po-agent', sessionId: sid },
+          addRow: { items: items.map(i => ({ code: i.ItemCode, name: i.ItemName })), priceApi: '/api/po-agent', sessionId: sid, searchApi: '/api/po-agent' },
+          preview: { api: '/api/po-agent', label: '👁 Preview PO' },
           header: [
             { key: 'docDate', label: 'Posting Date', type: 'date', value: h.docDate || today() },
             { key: 'deliveryDate', label: 'Delivery Date', type: 'date', value: h.deliveryDate || datePlusDays(7) },
@@ -438,8 +449,7 @@ export function createPurchaseOrderAgentRouter(deps) {
         // ── Card from an earlier step → refused; edits happen only on the latest card ──
         if (action?.action && STEP_OF[action.action] && !STEP_OF[action.action].includes(session.step)) {
           if (session.step === 'DONE') {
-            reply = `This Purchase Order is already posted (#${escHtml(session.result?.docNum ?? '')}). Start a new one to create another.`;
-            quickReplies = ['Create New Purchase Order'];
+            reply = `This Purchase Order is already posted (#${escHtml(session.result?.docNum ?? '')}). Use <strong>New PO</strong> at the top to create another.`;
           } else {
             reply = `<div style="color:#b45309;margin-bottom:6px">⚠️ That step is already finished — use the latest card${session.step === 'REVIEW_FORM' ? ' (✏️ Edit Header, or ✏️ on a row)' : ''}.</div>${session.step === 'REVIEW_FORM' ? reviewCard() : ''}`;
           }
@@ -458,8 +468,9 @@ export function createPurchaseOrderAgentRouter(deps) {
           try {
             const rp = readReviewPost(action, session._lines, HEADER_KEYS, { allowNew: true });
             if (rp.ok) {
-              const noPrice = rp.lines.findIndex(l => !(Number(l.unitPrice) > 0));
-              if (noPrice >= 0) { rp.ok = false; rp.error = `Row ${noPrice + 1} (${rp.lines[noPrice].itemCode}): a Purchase Order needs a unit price greater than 0 on every line.`; }
+              // a row left without a price takes the item's default price
+              const noPrice = await fillDefaultPrices(sap, session.selectedVendor?.cardCode, rp.lines);
+              if (noPrice >= 0) { rp.ok = false; rp.error = `Row ${noPrice + 1} (${rp.lines[noPrice].itemCode}): no unit price entered and no default price found in SAP (vendor price, last purchase price or item cost) — enter a price.`; }
             }
             if (rp.ok) {
               for (const l of rp.lines.filter(x => x.isNew)) {
@@ -567,7 +578,6 @@ export function createPurchaseOrderAgentRouter(deps) {
                   </div>
                   ${cardTotalsHtml(amt, { color: '#1d4ed8', label: 'PO Total' })}
                 </div>`;
-                quickReplies = ['Create New Purchase Order'];
                 meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl };
               } catch (e) {
                 // fresh editable card with the values just sent; "Retry" re-posts them from that card
@@ -601,20 +611,28 @@ export function createPurchaseOrderAgentRouter(deps) {
 
         // ── Add line item from combo ────────────────────────────────────────
         else if (action?.action === 'add_item') {
+          // No price entered → the item's default price (vendor price, last purchase price, item cost)
+          let priceNote = '';
+          if (action.itemCode && !(Number(action.unitPrice) > 0)) {
+            const d = await defaultPurchasePrice(sap, session.selectedVendor?.cardCode, action.itemCode, action.quantity);
+            if (d.price > 0) { action.unitPrice = d.price; priceNote = `Default price <strong>${money(d.price)}</strong> (${escHtml(d.label)}) used for ${escHtml(action.itemCode)}.`; }
+          }
           if (!action.itemCode) {
             reply = '❌ Please select an item first.';
           } else if (!(Number(action.unitPrice) > 0)) {
             const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
             session._lineIdx = nextFormIdx();
-            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ A Purchase Order needs a <strong>unit price</strong> greater than 0 for every line. Please enter a price.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
+            reply = `<div style="color:#b91c1c;margin-bottom:8px">⚠️ No unit price entered for <strong>${escHtml(action.itemCode)}</strong> and SAP has no default price for it (vendor price, last purchase price or item cost). Please enter a price.</div>${buildItemLineHtml(items, taxes, whs, session._lineIdx, !!session._lines?.length)}`;
           } else {
             if (!session._lines) session._lines = [];
             const { action: _a, ...line } = action;
+            line.unitPrice = Number(line.unitPrice);
             session._lines.push(withAmounts([line])[0]);
             session._lineIdx = nextFormIdx();
             const items = getCacheItems(); const taxes = getCacheTaxCodes(); const whs = getCacheWarehouses();
             reply = `<div style="background:#eff6ff;border:1px solid #0070F2;border-radius:6px;padding:8px 14px;margin-bottom:8px">
               <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:6px">✅ Item added — ${session._lines.length} line(s) so far:</div>
+              ${priceNote ? `<div style="font-size:12px;color:#374151;margin-bottom:6px">💲 ${priceNote}</div>` : ''}
               ${linesSummaryTable(session._lines)}
             </div>
             <div style="font-size:13px;color:#374151;margin-bottom:6px">Add another item or click <strong>Done Adding Items</strong>:</div>
@@ -722,8 +740,7 @@ export function createPurchaseOrderAgentRouter(deps) {
           reply = `<div style="margin-bottom:6px;font-size:13px">Starting a new purchase order. Select the vendor:</div>${buildVendorComboHtml(cached)}`;
           session.step = 'INIT';
         } else {
-          reply = 'Purchase order complete.';
-          quickReplies = ['Create Another'];
+          reply = 'Purchase order complete. Use <strong>New PO</strong> at the top to create another.';
         }
       }
 
@@ -751,18 +768,65 @@ export function createPurchaseOrderAgentRouter(deps) {
     }
   });
 
-  // ── GET /item-price — the vendor's price for an item added on the review card ─
-  // SAP's own pricing for the vendor (CompanyService_GetItemPrice: the vendor's price list, special
-  // prices, discounts). getItemPrice's fallback (a base price list other than the BP's) is meant for
-  // sales, so it is not used here — with no vendor price the card asks for the price to be entered.
+  // ── GET /item-price — default unit price of an item for the item form and the review card ─
+  // The vendor's price in SAP (CompanyService_GetItemPrice), else the item's last purchase price, else its
+  // cost (see defaultPurchasePrice). getItemPrice's sales fallback (a base price list) is not used.
   router.get('/item-price', requireAuth, async (req, res) => {
     try {
       const cardCode = _sessions.get(String(req.query.sessionId || ''))?.selectedVendor?.cardCode;
       const itemCode = String(req.query.itemCode || '').trim();
       if (!cardCode || !itemCode) return res.json({ ok: false, error: 'vendor and item required' });
-      const r = await getItemPrice(getActiveSap(), { cardCode, itemCode, qty: req.query.qty });
-      if (r.source !== 'customer') return res.json({ ok: true, price: 0, currency: '', source: 'none' });
-      res.json({ ok: true, ...r, source: 'vendor' });
+      res.json({ ok: true, ...(await defaultPurchasePrice(getActiveSap(), cardCode, itemCode, req.query.qty)) });
+    } catch (e) {
+      res.json({ ok: false, error: e.message });
+    }
+  });
+
+  // ── GET /items?q=  /  GET /vendors?q= — live search for the combos (whole master, shared search) ─
+  router.get('/items', requireAuth, async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json({ ok: true, items: [] });
+    const rows = await searchItems(getActiveSap(), q, 50);
+    res.json({ ok: true, items: rows.map(i => ({ code: i.ItemCode, name: i.ItemName, unit: i.PurchaseUnit || '', vat: i.PurchVATGroup || '' })) });
+  });
+  router.get('/vendors', requireAuth, async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json({ ok: true, vendors: [] });
+    const rows = await searchVendors(getActiveSap(), q);
+    res.json({ ok: true, vendors: rows.map(v => ({ code: v.CardCode, name: v.CardName, city: v.City || '' })) });
+  });
+
+  // ── POST /preview — the review card as a Purchase Order document, before posting ─
+  // Same checks as posting (rows, qty, price / default price, items in SAP); nothing is sent to SAP.
+  router.post('/preview', requireAuth, async (req, res) => {
+    try {
+      const session = _sessions.get(String(req.body?.sessionId || ''));
+      if (!session?.selectedVendor || session.step !== 'REVIEW_FORM') return res.json({ ok: false, error: 'This review card is no longer open — use the latest card.' });
+      const sap = getActiveSap();
+      const rp = readReviewPost(req.body, session._lines, HEADER_KEYS, { allowNew: true });
+      if (!rp.ok) return res.json({ ok: false, error: rp.error });
+      const names = new Map(getCacheItems().map(i => [i.ItemCode, i.ItemName]));
+      for (const l of rp.lines.filter(x => !names.has(x.itemCode))) {
+        try {
+          const it = await sap.get(`/Items('${encodeURIComponent(l.itemCode.replace(/'/g, "''"))}')`, { $select: 'ItemCode,ItemName' });
+          if (!it?.ItemCode) throw new Error();
+          names.set(l.itemCode, it.ItemName || '');
+        } catch { return res.json({ ok: false, error: `Item ${l.itemCode} was not found in SAP.` }); }
+      }
+      const noPrice = await fillDefaultPrices(sap, session.selectedVendor.cardCode, rp.lines);
+      if (noPrice >= 0) return res.json({ ok: false, error: `Row ${noPrice + 1} (${rp.lines[noPrice].itemCode}): no unit price entered and no default price found in SAP — enter a price.` });
+      const uoms = await Promise.all(rp.lines.map(l => getDefaultUoMCode(l.itemCode, sap)));
+      const h = rp.header;
+      const doc = {
+        DocNum: '', CardCode: session.selectedVendor.cardCode, CardName: session.selectedVendor.cardName,
+        DocDate: h.docDate || today(), DocDueDate: h.deliveryDate || datePlusDays(7), NumAtCard: h.reference, Comments: h.comments,
+        DocumentLines: rp.lines.map((l, i) => ({
+          ItemCode: l.itemCode, ItemDescription: names.get(l.itemCode) || '', Quantity: l.quantity, UoMCode: uoms[i] || '',
+          UnitPrice: l.unitPrice, DiscountPercent: l.discountPercent, TaxCode: l.taxCode, WarehouseCode: l.warehouseCode,
+          _priceNote: l.priceSource ? `default: ${l.priceSource}` : '',
+        })),
+      };
+      res.json({ ok: true, html: renderPOPrint(doc, { preview: true, amt: estimateAmounts(rp.lines, getCacheTaxCodes()) }) });
     } catch (e) {
       res.json({ ok: false, error: e.message });
     }
