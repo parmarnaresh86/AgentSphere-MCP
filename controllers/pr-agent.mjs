@@ -11,6 +11,10 @@
  */
 import { Router } from 'express';
 import { searchItems as searchItemsShared, searchVendors as searchVendorsShared } from '../lib/master-search.mjs';
+import { buildReviewCard, readReviewPost } from '../lib/o2c-review.mjs';
+
+const HEADER_KEYS = ['docDate', 'requiredDate', 'comments'];
+const isIsoDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
 
 // ── Session store ──────────────────────────────────────────────────────────────
 const _sessions = new Map();
@@ -222,28 +226,6 @@ function renderInventoryAnalysis(item) {
   return { text, suggestQty, unit, onStock, minStock, lastPrice, defaultWarehouse: item.DefaultWarehouse || '' };
 }
 
-// ── PR summary builder ─────────────────────────────────────────────────────────
-function buildPRSummary(session) {
-  const { prLines, vendor, dueDate, comments } = session;
-  let out = `### 📋 Purchase Request Summary\n\n`;
-  out += `| Field | Value |\n|---|---|\n`;
-  out += `| **Date** | ${today()} |\n`;
-  out += `| **Required By** | ${dueDate || today()} |\n`;
-  out += `| **Vendor** | ${vendor ? `${vendor.cardCode} — ${vendor.cardName}` : '_(Open — not specified)_'} |\n`;
-  out += `| **Comments** | ${comments || '_(None)_'} |\n\n`;
-  out += `#### Items (${prLines.length} line${prLines.length !== 1 ? 's' : ''})\n\n`;
-  out += `| # | Item Code | Description | Qty | Unit | Unit Price | Total | Warehouse |\n`;
-  out += `|---|---|---|---|---|---|---|---|\n`;
-  let grand = 0;
-  prLines.forEach((l, i) => {
-    const lineTotal = (l.qty || 0) * (l.unitPrice || 0);
-    grand += lineTotal;
-    out += `| ${i + 1} | **${l.itemCode}** | ${l.itemName || '—'} | ${fmtN(l.qty, 0)} | ${l.unit || 'EA'} | ${l.unitPrice > 0 ? fmtN(l.unitPrice) : '—'} | ${lineTotal > 0 ? fmtN(lineTotal) : '—'} | ${l.warehouseCode || '—'} |\n`;
-  });
-  if (grand > 0) out += `\n**Estimated Grand Total: ${fmtN(grand)}**`;
-  return out;
-}
-
 // ── Main router factory ────────────────────────────────────────────────────────
 export function createPurchaseRequestAgentRouter(deps) {
   const { requireAuth, printAuth, getActiveSap, gptChatComplete, azureMessagesCreate, AI_PROVIDER, USE_AI } = deps;
@@ -271,6 +253,84 @@ export function createPurchaseRequestAgentRouter(deps) {
       let vendorComboList = null; // combo list for vendor selection
       let warehouseList = null;   // combo list for warehouse selection
 
+      let card = null;   // review card HTML — shown as its own message, not through the markdown renderer
+
+      // Review card: header (posting date, required by, comments) and rows (item, qty, warehouse) editable
+      // with ✏️, rows removable, "+ Add Row" for more items. Every render gets a new seq; only the newest card posts.
+      const reviewCard = async (s, sessId, headerOverride) => {
+        s.reviewSeq = (s.reviewSeq || 0) + 1;
+        const h = headerOverride || s._header || {};
+        const [items, whs] = await Promise.all([searchItems(sap, '', 500), getWarehouses(sap)]);
+        return buildReviewCard({
+          title: '📋 Purchase Request Ready to Post', partyLabel: 'Preferred Vendor',
+          party: s.vendor ? { code: s.vendor.cardCode, name: s.vendor.cardName } : { code: '—', name: 'Open — no vendor' },
+          seq: s.reviewSeq, send: 'praSend', postAction: 'post_pr', postLabel: '✅ Post Purchase Request',
+          qtyOnly: true,
+          addRow: { items: items.map(i => ({ code: i.ItemCode, name: i.ItemName })), sessionId: sessId, searchApi: '/api/pr-agent' },
+          header: [
+            { key: 'docDate', label: 'Posting Date', type: 'date', value: h.docDate || today() },
+            { key: 'requiredDate', label: 'Required By', type: 'date', value: h.requiredDate || s.dueDate || today() },
+            { key: 'comments', label: 'Comments', value: h.comments ?? s.comments ?? '', placeholder: 'Optional', wide: true },
+          ],
+          lines: (s.prLines || []).map(l => ({ itemCode: l.itemCode, itemName: l.itemName, quantity: l.qty, unitPrice: l.unitPrice || 0,
+            discountPercent: 0, taxCode: '', warehouseCode: l.warehouseCode || '' })),
+          warehouses: whs.map(w => ({ WarehouseCode: w.code })),
+        });
+      };
+
+      // Card values → checked PR lines. New rows must be active purchase items; an empty warehouse
+      // takes the item default, else the company default (same as Skip in the chat).
+      const readCardPost = async (s, action) => {
+        const base = (s.prLines || []).map(l => ({ ...l, quantity: l.qty }));
+        const rp = readReviewPost(action, base, HEADER_KEYS, { allowNew: true });
+        const header = rp.header || {};
+        if (!rp.ok) return { ok: false, error: rp.error, header };
+        header.docDate = header.docDate || today();
+        header.requiredDate = header.requiredDate || header.docDate;
+        if (!isIsoDate(header.docDate)) return { ok: false, error: 'Posting Date is not a valid date.', header };
+        if (!isIsoDate(header.requiredDate)) return { ok: false, error: 'Required By is not a valid date.', header };
+        if (header.requiredDate < header.docDate) return { ok: false, error: 'Required By cannot be before the Posting Date.', header };
+        const whsList = await getWarehouses(sap);
+        const lines = [];
+        for (const [i, l] of rp.lines.entries()) {
+          const it = await getItemDetails(sap, l.itemCode);
+          if (!it?.ItemCode) return { ok: false, error: `Row ${i + 1}: item ${l.itemCode} was not found in SAP.`, header };
+          if (l.isNew) {
+            let flags = null;
+            try { flags = await sap.get(`/Items('${encodeURIComponent(it.ItemCode.replace(/'/g, "''"))}')`, { $select: 'ItemCode,Frozen,PurchaseItem' }); } catch { flags = null; }
+            if (flags?.Frozen === 'tYES') return { ok: false, error: `Row ${i + 1}: ${it.ItemCode} is inactive (frozen) in SAP.`, header };
+            if (flags?.PurchaseItem === 'tNO') return { ok: false, error: `Row ${i + 1}: ${it.ItemCode} is not a purchase item.`, header };
+          }
+          let whs = l.warehouseCode;
+          if (whs && whsList.length && !whsList.some(w => w.code === whs)) return { ok: false, error: `Row ${i + 1}: warehouse ${whs} is not active in SAP.`, header };
+          if (!whs) whs = it.DefaultWarehouse || await companyDefaultWarehouse(sap) || '';
+          lines.push({ itemCode: it.ItemCode, itemName: it.ItemName || l.itemName || it.ItemCode, qty: l.quantity,
+            unit: l.unit || it.PurchaseUnit || it.SalesUnit || 'EA', unitPrice: Number(l.unitPrice) || 0, warehouseCode: whs, isNew: false });
+        }
+        return { ok: true, header, lines };
+      };
+
+      // Post the session's PR. SAP keeps the preferred vendor on each line (LineVendor), not on the header.
+      const postPR = async s => {
+        const h = s._header || {};
+        const docDate = h.docDate || today(), reqDate = h.requiredDate || s.dueDate || today();
+        const vendor = s.vendor?.cardCode || '';
+        return sap.post('/PurchaseRequests', {
+          DocDate:      sapDate(docDate),
+          DocDueDate:   sapDate(reqDate),
+          RequriedDate: sapDate(reqDate), // SAP B1 typo — "RequriedDate"
+          ...(s.comments ? { Comments: s.comments } : {}),
+          DocumentLines: s.prLines.map(l => ({
+            ItemCode:     l.itemCode,
+            Quantity:     l.qty,
+            RequiredDate: sapDate(reqDate),
+            ...(vendor          ? { LineVendor:    vendor          } : {}),
+            ...(l.unitPrice > 0 ? { UnitPrice:     l.unitPrice     } : {}),
+            ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
+          })),
+        });
+      };
+
       // Item list for the next line — only existing SAP items can be requested (no "New Item")
       const startItemPick = async (s, lead = '') => {
         s.step = 'ITEM_SEARCH';
@@ -286,7 +346,14 @@ export function createPurchaseRequestAgentRouter(deps) {
 
       // ── INIT ──────────────────────────────────────────────────────────────────
       // (ITEM_TYPE / NEW_ITEM_* are steps of the removed "New Item" option — a session still on one starts the item list)
-      if (session.step === 'INIT' || !msg || session.step === 'ITEM_TYPE' || session.step.startsWith('NEW_ITEM')) {
+      // A card action ({...}) from an earlier card once the request has moved on → refused
+      if (msg.startsWith('{') && session.step !== 'CONFIRM') {
+        reply = session.step === 'DONE'
+          ? `This Purchase Request is already posted (#${session.result?.docNum ?? ''}). Start a new one to create another.`
+          : `⚠️ That card is no longer active — continue with the latest step.`;
+        if (session.step === 'DONE') quickReplies = ['Yes, New PR'];
+      }
+      else if (session.step === 'INIT' || !msg || session.step === 'ITEM_TYPE' || session.step.startsWith('NEW_ITEM')) {
         if (session.step.startsWith('NEW_ITEM')) session.currentItem = null;
         await startItemPick(session, `Let's start with the item.\n\n`);
       }
@@ -553,59 +620,69 @@ export function createPurchaseRequestAgentRouter(deps) {
         quickReplies = ['Skip', 'Urgent — please expedite', 'Standard procurement process'];
       }
 
-      // ── COMMENTS ─────────────────────────────────────────────────────────────
+      // ── COMMENTS → review card ───────────────────────────────────────────────
       else if (session.step === 'COMMENTS') {
         session.comments = /^skip$|^none$/i.test(msgL) ? null : msg || null;
         session.step = 'CONFIRM';
-        const summary = buildPRSummary(session);
-        reply = `${summary}\n\n---\n\n**Would you like to post this Purchase Request to SAP B1?**`;
-        quickReplies = ['✅ Yes, Post to SAP', '❌ Cancel', '✏️ Edit'];
+        session._header = null;
+        reply = `### 📋 Check the Purchase Request\n\nEdit anything on the card below — **✏️ Edit Header** for dates / comments, **✏️** on a row for quantity / warehouse, **🗑** to remove a row, **+ Add Row** to add an item — then click **✅ Post Purchase Request**.`;
+        card = await reviewCard(session, sid);
+        quickReplies = ['✏️ Change Vendor', '❌ Cancel'];
         meta = { prLines: session.prLines, vendor: session.vendor, dueDate: session.dueDate };
       }
 
-      // ── CONFIRM ───────────────────────────────────────────────────────────────
+      // ── CONFIRM — review card ─────────────────────────────────────────────────
       else if (session.step === 'CONFIRM') {
-        if (/yes|post|confirm|submit|✅/i.test(msgL) && !/no|cancel/i.test(msgL)) {
-          session.step = 'POSTING';
+        let action = null;
+        if (msg.startsWith('{')) { try { action = JSON.parse(msg); } catch { /* not an action */ } }
+
+        if (action?.action === 'post_pr' && Number(action.seq) !== session.reviewSeq) {
+          reply = `⚠️ That card is out of date — use this one.`;
+          card = await reviewCard(session, sid);
+        } else if (action?.action === 'post_pr' && session._posting) {
+          reply = '⏳ This Purchase Request is already being posted — please wait.';
+        } else if (action?.action === 'post_pr') {
+          session._posting = true;   // before the first await, so a second click can't slip in
           try {
-            const prPayload = {
-              DocDate:      sapDate(today()),
-              DocDueDate:   sapDate(session.dueDate || today()),
-              RequriedDate: sapDate(session.dueDate || today()), // SAP B1 typo — "RequriedDate"
-              ...(session.vendor?.cardCode ? { CardCode: session.vendor.cardCode } : {}),
-              ...(session.comments         ? { Comments: session.comments }         : {}),
-              DocumentLines: session.prLines.map(l => ({
-                ItemCode:     l.itemCode,
-                Quantity:     l.qty,
-                RequiredDate: sapDate(session.dueDate || today()),
-                ...(l.unitPrice > 0 ? { UnitPrice:     l.unitPrice     } : {}),
-                ...(l.warehouseCode ? { WarehouseCode: l.warehouseCode } : {}),
-              })),
-            };
-            const result = await sap.post('/PurchaseRequests', prPayload);
-            session.result = { docEntry: result.DocEntry, docNum: result.DocNum };
-            session.step = 'DONE';
-
-            reply = `### ✅ Purchase Request Created!\n\n` +
-              `| Field | Value |\n|---|---|\n` +
-              `| **Document #** | ${result.DocNum} |\n` +
-              `| **Doc Entry** | ${result.DocEntry} |\n` +
-              `| **Date** | ${today()} |\n` +
-              `| **Required By** | ${session.dueDate || today()} |\n` +
-              `| **Vendor** | ${session.vendor ? `${session.vendor.cardCode} — ${session.vendor.cardName}` : '_(Open)_'} |\n` +
-              `| **Lines** | ${session.prLines.length} |\n\n` +
-              `[🖨️ Print Requisition](/api/pr-agent/print/${result.DocEntry})\n\n` +
-              `Would you like to create **another purchase request**?`;
-            quickReplies = ['Yes, New PR', 'No, Done'];
-            meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl: `/api/pr-agent/print/${result.DocEntry}` };
-
-          } catch (e) {
-            session.step = 'CONFIRM';
-            reply = `❌ **Failed to post Purchase Request**\n\nSAP Error: _${e.message}_\n\nWould you like to **retry** or **cancel**?`;
-            quickReplies = ['✅ Yes, Post to SAP', '❌ Cancel'];
+            const chk = await readCardPost(session, action);
+            if (!chk.ok) {
+              reply = `❌ ${chk.error}`;
+              card = await reviewCard(session, sid, chk.header);
+            } else {
+              session.prLines = chk.lines;
+              session._header = chk.header;
+              session.dueDate = chk.header.requiredDate;
+              session.comments = chk.header.comments || null;
+              try {
+                const result = await postPR(session);
+                session.result = { docEntry: result.DocEntry, docNum: result.DocNum };
+                session.step = 'DONE';
+                reply = `### ✅ Purchase Request Created!\n\n` +
+                  `| Field | Value |\n|---|---|\n` +
+                  `| **Document #** | ${result.DocNum} |\n` +
+                  `| **Doc Entry** | ${result.DocEntry} |\n` +
+                  `| **Posting Date** | ${chk.header.docDate} |\n` +
+                  `| **Required By** | ${chk.header.requiredDate} |\n` +
+                  `| **Preferred Vendor** | ${session.vendor ? `${session.vendor.cardCode} — ${session.vendor.cardName}` : '_(Open)_'} |\n` +
+                  `| **Lines** | ${session.prLines.length} |\n\n` +
+                  `[🖨️ Print Requisition](/api/pr-agent/print/${result.DocEntry})\n\n` +
+                  `Would you like to create **another purchase request**?`;
+                quickReplies = ['Yes, New PR', 'No, Done'];
+                meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl: `/api/pr-agent/print/${result.DocEntry}` };
+              } catch (e) {
+                reply = `❌ **Failed to post Purchase Request**\n\nSAP Error: _${e.message}_\n\nFix it on the card below and post again, or **Cancel**.`;
+                card = await reviewCard(session, sid);
+                quickReplies = ['✏️ Change Vendor', '❌ Cancel'];
+              }
+            }
+          } finally {
+            session._posting = false;
           }
 
-        } else if (/edit|change|modify|back|✏️/i.test(msgL)) {
+        } else if (action) {
+          reply = `⚠️ That step is already finished — use the card below.`;
+          card = await reviewCard(session, sid);
+        } else if (/edit|change|modify|back|vendor|✏️/i.test(msgL) && !/cancel/i.test(msgL)) {
           session.step = 'VENDOR';
           const editVendors = await searchVendors(sap, '');
           const hint = session._suggestedVendorCode
@@ -615,10 +692,16 @@ export function createPurchaseRequestAgentRouter(deps) {
           quickReplies = session._suggestedVendorCode ? [`Use ${session._suggestedVendorCode}`, 'Skip'] : ['Skip'];
           if (editVendors.length > 0)
             vendorComboList = editVendors.map(v => ({ code: v.CardCode, name: v.CardName }));
-        } else {
+        } else if (/cancel|^no\b|discard/i.test(msgL)) {
           _sessions.set(sid, initSession());
           reply = `Purchase request **cancelled**. Come back anytime!\n\nType **"start"** to create a new purchase request.`;
           quickReplies = ['Start New PR'];
+        } else {
+          reply = /yes|post|confirm|submit|✅/i.test(msgL)
+            ? `Click **✅ Post Purchase Request** on the card below to post it.`
+            : `Make changes on the card below — **✏️ Edit Header**, **✏️** on a row, **+ Add Row** — or choose **Change Vendor** / **Cancel**.`;
+          card = await reviewCard(session, sid);
+          quickReplies = ['✏️ Change Vendor', '❌ Cancel'];
         }
       }
 
@@ -656,6 +739,7 @@ export function createPurchaseRequestAgentRouter(deps) {
       res.json({
         ok: true,
         reply,
+        card,
         quickReplies,
         sessionId: sid,
         step: cur.step,
@@ -743,7 +827,14 @@ async function requestPeople(sap, doc) {
     requestedBy = requestedBy || String(doc.Requester);
   }
   const createdBy = doc.UserSign != null ? await sapUserName(sap, `InternalKey eq ${parseInt(doc.UserSign, 10)}`) : '';
-  return { requestedBy, createdBy, email: doc.RequesterEmail || '', department: doc.RequesterDepartment ?? null };
+  // Preferred vendor: SAP keeps it per line (LineVendor); the header CardCode is only a fallback
+  const vendorCode = doc.CardCode || (doc.DocumentLines || []).find(l => l.LineVendor)?.LineVendor || '';
+  let vendorName = doc.CardName || '';
+  if (vendorCode && !vendorName) {
+    try { vendorName = (await sap.get(`/BusinessPartners('${String(vendorCode).replace(/'/g, "''")}')`, { $select: 'CardCode,CardName' }))?.CardName || ''; }
+    catch { /* code only */ }
+  }
+  return { requestedBy, createdBy, email: doc.RequesterEmail || '', department: doc.RequesterDepartment ?? null, vendorCode, vendorName };
 }
 
 function escHtml(s) {
@@ -847,8 +938,8 @@ function renderPRPrint(doc, people = {}) {
   </div>
   <div class="info-box">
     <div class="info-label">Preferred Vendor</div>
-    <div class="info-val"><strong>${doc.CardName || '—'}</strong></div>
-    ${doc.CardCode ? `<div class="info-val" style="color:#666">${doc.CardCode}</div>` : '<div class="info-val" style="color:#aaa;font-style:italic">Not specified — open for quotation</div>'}
+    <div class="info-val"><strong>${escHtml(people.vendorName || people.vendorCode || '—')}</strong></div>
+    ${people.vendorCode ? `<div class="info-val" style="color:#666">${escHtml(people.vendorCode)}</div>` : '<div class="info-val" style="color:#aaa;font-style:italic">Not specified — open for quotation</div>'}
   </div>
 </div>
 

@@ -26,6 +26,7 @@ const FLOW = {
   receive: true,        // … created on this receipt (new stock), not picked from stock
   bins: true,           // receiving bin(s) for bin-enabled warehouses
   extraLines: true,     // substitute / extra items not on the PO
+  multiSource: true,    // tick several open POs of the vendor → one GRPO; "👁 View" shows a PO's lines
   defaultDueDate: () => today(),
 };
 
@@ -40,6 +41,9 @@ export function createPOtoGRPOAgentRouter(deps) {
 
   // Item search + vendor price for the "+ Add Line" rows
   router.get('/items', requireAuth, chat.itemSearch);
+
+  // Open lines of one PO for "👁 View" in the PO list
+  router.get('/source-lines', requireAuth, chat.sourceLines);
 
   // Receiving bins of a warehouse (kind=receivebins) — Service Layer fallback without a direct DB connection
   router.get('/batch-serials', requireAuth, batchSerialRoute(getActiveSap));

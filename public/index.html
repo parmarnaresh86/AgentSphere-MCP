@@ -34809,7 +34809,7 @@ window.roAskFollowUp = function() {
   async function praSend(msg) {
     if (_praBusy) return;
     _praBusy = true; praSetBusy(true);
-    if (msg.trim()) praAddMsg('user', msg);
+    if (msg.trim() && !msg.trim().startsWith('{')) praAddMsg('user', msg);
     praShowTyping();
     try {
       const r = await fetch('/api/pr-agent/chat', {
@@ -34825,6 +34825,7 @@ window.roAskFollowUp = function() {
         _praSessionId = data.sessionId;
         const hasCombo = (data.itemList?.length > 0) || (data.vendorList?.length > 0) || (data.warehouseList?.length > 0);
         praAddMsg('bot', data.reply, hasCombo ? [] : (data.quickReplies || []));
+        if (data.card) praAddCard(data.card);
         if (data.itemList?.length > 0)   praShowCombo(data.itemList,   'item');
         else if (data.vendorList?.length > 0) praShowCombo(data.vendorList, 'vendor');
         else if (data.warehouseList?.length > 0) praShowCombo(data.warehouseList, 'warehouse');
@@ -34865,9 +34866,24 @@ window.roAskFollowUp = function() {
     if (st)  st.textContent = busy ? 'Thinking…' : 'AI-guided Purchase Requisition Wizard';
   }
 
+  window.praSend = msg => praSend(msg);   // the review card's Post button sends through this
+
+  // Review card (lib/o2c-review.mjs) under the bot's message, full width
+  function praAddCard(html) {
+    const msgs = document.getElementById('pra-messages');
+    if (!msgs) return;
+    const row = document.createElement('div');
+    row.className = 'msg-row bot';
+    row.style.cssText = 'display:block;max-width:100%';
+    row.innerHTML = html;
+    msgs.appendChild(row);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
   function praAddMsg(role, content, qrs) {
     const msgs = document.getElementById('pra-messages');
     if (!msgs) return;
+    if (role !== 'user') window.O2CReview?.lockPrevious(msgs);   // earlier cards can't be used once the agent moved on
     const row = document.createElement('div');
     row.className = `msg-row ${role}`;
     const av = document.createElement('div');
@@ -37145,9 +37161,13 @@ window.roAskFollowUp = function() {
       const missing = mergedLines.filter(l => !(l.unitPrice > 0)).length;
       h += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:8px">PO Lines (${mergedLines.length})</div>`;
       if (missing > 0) h += `<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:6px 8px;margin-bottom:8px">⚠️ ${missing} line(s) missing a price — enter one below before posting.</div>`;
-      let grand = 0;
-      mergedLines.forEach((l, i) => { grand += (l.qty||0)*(l.unitPrice||0); h += ptpoLineCard(l, i, true); });
-      h += `<div style="border-top:2px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:700">Est. Total</span><span data-grand-total style="font-size:14px;font-weight:700;color:#1a5c2e">${fNpo(grand)}</span></div>`;
+      mergedLines.forEach((l, i) => { h += ptpoLineCard(l, i, true); });
+      const t = ptpoTotals();
+      h += `<div style="border-top:2px solid var(--border);margin-top:10px;padding-top:8px">
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);padding:2px 0"><span>Subtotal</span><span data-sub-total>${fNpo(t.sub)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);padding:2px 0"><span>Tax</span><span data-tax-total>${fNpo(t.tax)}</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px"><span style="font-size:12px;font-weight:700">Est. Total (incl. tax)</span><span data-grand-total style="font-size:14px;font-weight:700;color:#1a5c2e">${fNpo(t.sub + t.tax)}</span></div>
+      </div>`;
     }
     panel.innerHTML = h;
   }
@@ -37210,11 +37230,24 @@ window.roAskFollowUp = function() {
     const lt = (l.qty||0)*(l.unitPrice||0);
     document.querySelectorAll(`[data-lt="${idx}"]`).forEach(el => { el.textContent = lt > 0 ? fNpo(lt) : '—'; });
 
-    let grand = 0; _ptpoState.mergedLines.forEach(x => grand += (x.qty||0)*(x.unitPrice||0));
-    document.querySelectorAll('[data-grand-total]').forEach(el => { el.textContent = fNpo(grand); });
+    const t = ptpoTotals();
+    document.querySelectorAll('[data-sub-total]').forEach(el => { el.textContent = fNpo(t.sub); });
+    document.querySelectorAll('[data-tax-total]').forEach(el => { el.textContent = fNpo(t.tax); });
+    document.querySelectorAll('[data-grand-total]').forEach(el => { el.textContent = fNpo(t.sub + t.tax); });
 
     if (sync) ptpoSyncLine(idx, field, l[field]);
   };
+
+  // Subtotal and tax of the PO lines — tax from each line's tax code rate (an estimate; SAP calculates the final amount)
+  function ptpoTotals() {
+    const rates = new Map((_ptpoState.taxCodes || []).map(t => [t.code, Number(t.rate) || 0]));
+    let sub = 0, tax = 0;
+    (_ptpoState.mergedLines || []).forEach(x => {
+      const net = (x.qty||0)*(x.unitPrice||0);
+      sub += net; tax += net * (rates.get(x.taxCode) || 0) / 100;
+    });
+    return { sub, tax };
+  }
 
   async function ptpoSyncLine(idx, field, value) {
     if (!_ptpoSessionId) return;
@@ -41200,6 +41233,68 @@ window.roAskFollowUp = function() {
     const label = sel.options[sel.selectedIndex].text;
     const cardName = label.split(' — ').slice(1).join(' — ').replace(/ \(\d+ open\)$/, '');
     send(p, JSON.stringify({ action:'select_customer', cardCode: sel.value, cardName: cardName || sel.value }));
+  };
+
+  // ── Several source documents (cfg.multiSource, e.g. PO → GRPO): tick, view, continue ─────────────
+  window.cfSrcTick = function(cb) {
+    const box = cb.closest('[data-cf-srclist]'); if (!box) return;
+    const all = box.querySelectorAll('[data-cf-src]');
+    if (cb.hasAttribute('data-cf-src-all')) all.forEach(x => { x.checked = cb.checked; });
+    const n = [...all].filter(x => x.checked).length;
+    const head = box.querySelector('[data-cf-src-all]');
+    if (head) { head.checked = n > 0 && n === all.length; head.indeterminate = n > 0 && n < all.length; }
+    const go = box.querySelector('[data-cf-src-go]');
+    if (go) { go.disabled = !n; go.textContent = 'Continue with selected (' + n + ') →'; }
+    all.forEach(x => { const tr = x.closest('tr'); if (tr) tr.style.outline = x.checked ? '2px solid #0a6ed1' : ''; });
+  };
+
+  window.cfSelectSources = function(btn, p) {
+    const box = btn.closest('[data-cf-srclist]'); if (!box) return;
+    const docEntries = [...box.querySelectorAll('[data-cf-src]:checked')].map(x => Number(x.value));
+    if (!docEntries.length) { alert('Tick at least one document.'); return; }
+    send(p, JSON.stringify({ action: 'select_sources', docEntries }));
+  };
+
+  // "👁 View" — the document's open lines in a pop-up; the list stays as it is (nothing is sent to the chat)
+  window.cfViewSource = async function(p, docEntry) {
+    let d;
+    try {
+      d = await fetch(AGENTS[p].api + '/source-lines?' + new URLSearchParams({ sessionId: sessions[p] || '', docEntry }), { headers: { 'x-auth-token': tok() } }).then(r => r.json());
+    } catch (e) { d = { ok: false, error: e.message }; }
+    if (!d.ok) { alert(d.error || 'Could not load the document.'); return; }
+    document.getElementById('cf-view-src')?.remove();
+    const f2 = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const td = 'padding:6px 8px;border-bottom:1px solid #f3f4f6';
+    const rows = d.lines.map((l, i) => '<tr><td style="' + td + '">' + (i + 1) + '</td><td style="' + td + ';font-weight:600">' + escText(l.itemCode) + '</td><td style="' + td + '">' + escText(l.itemName) + '</td>'
+      + '<td style="' + td + ';text-align:right">' + f2(l.openQty) + ' ' + escText(l.unit || '') + '</td><td style="' + td + ';text-align:right">' + f2(l.unitPrice) + '</td>'
+      + '<td style="' + td + ';text-align:right">' + f2(l.discountPercent) + '%</td><td style="' + td + '">' + escText(l.taxCode || '—') + '</td><td style="' + td + '">' + escText(l.warehouse || '—') + '</td>'
+      + '<td style="' + td + ';text-align:right;font-weight:600">' + f2(l.openQty * l.unitPrice * (1 - (l.discountPercent || 0) / 100)) + '</td></tr>').join('');
+    const ov = document.createElement('div');
+    ov.id = 'cf-view-src';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(980px,100%);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.3)">'
+      + '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc;flex-wrap:wrap">'
+      + '<div style="flex:1;min-width:200px"><div style="font-weight:700;color:#0a6ed1;font-size:14px">👁 ' + escText(d.label) + ' #' + escText(d.docNum) + '</div>'
+      + '<div style="font-size:12px;color:#6b7280">' + escText(d.cardName) + ' (' + escText(d.cardCode) + ') · ' + escText(d.docDate || '') + (d.dueDate ? ' · due ' + escText(d.dueDate) : '') + (d.numAtCard ? ' · Ref ' + escText(d.numAtCard) : '') + (d.currency ? ' · ' + escText(d.currency) : '') + '</div></div>'
+      + '<button type="button" data-pick style="background:#0a6ed1;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer">☑ Select this ' + escText(d.label) + '</button>'
+      + '<button type="button" data-close style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer">✕ Close</button></div>'
+      + '<div style="overflow:auto;padding:10px 14px"><div style="font-size:12px;color:#6b7280;margin-bottom:6px">' + d.lines.length + ' open line(s)</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:700px"><thead><tr style="background:#eef6fc;color:#0a6ed1;font-size:10.5px;text-transform:uppercase">'
+      + '<th style="padding:6px 8px;text-align:left">#</th><th style="padding:6px 8px;text-align:left">Item</th><th style="padding:6px 8px;text-align:left">Description</th><th style="padding:6px 8px;text-align:right">Open Qty</th>'
+      + '<th style="padding:6px 8px;text-align:right">Price</th><th style="padding:6px 8px;text-align:right">Disc</th><th style="padding:6px 8px;text-align:left">Tax Code</th><th style="padding:6px 8px;text-align:left">Whse</th><th style="padding:6px 8px;text-align:right">Net</th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table></div></div>';
+    document.body.appendChild(ov);
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    ov.querySelector('[data-close]').onclick = close;
+    ov.querySelector('[data-pick]').onclick = () => {
+      // tick this document in the newest list that is still usable
+      const cbs = [...document.querySelectorAll('[data-cf-srclist][data-prefix="' + p + '"] [data-cf-src][value="' + Number(docEntry) + '"]')].filter(x => !x.disabled);
+      const cb = cbs.pop();
+      if (cb && !cb.checked) { cb.checked = true; window.cfSrcTick(cb); }
+      close();
+    };
   };
 
   function field(row, f) { return row.querySelector('[data-f="' + f + '"]'); }

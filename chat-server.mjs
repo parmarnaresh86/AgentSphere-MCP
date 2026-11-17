@@ -475,19 +475,19 @@ const formatQuotation = (d) => {
   const q = d.quotation;
   let out = `### ✅ Sales Quotation Created\n\n| | |\n|---|---|\n|**Doc #**|${q.DocNum}|\n|**Entry**|${q.DocEntry}|\n|**Customer**|${q.CardCode}|\n|**Total**|${fmt(q.DocTotal)} ${q.DocCurrency||""}|`;
   if (d.approvalRequired) out += `\n\n⚠️ **Approval needed:**\n` + d.approvalReasons.map((r)=>`- ${r}`).join("\n");
-  out += `\n\n[🖨️ Print Quotation](/api/print/quotation/${q.DocEntry}){:target="_blank"}`;
+  out += `\n\n[🖨️ Print Quotation](/api/print/quotation/${q.DocEntry})`;
   return out;
 };
 
 const formatSalesOrder = (d) => d.status === "BLOCKED_BY_CREDIT_LIMIT"
   ? `### ❌ Blocked — Credit Limit\n\n|Field|Value|\n|---|---|\n|**Customer**|${d.cardCode}|\n|**Credit Limit**|${fmt(d.creditLimit)}|\n|**Projected**|${fmt(d.projectedExposure)}|`
-  : `### ✅ Sales Order Created\n\n|Field|Value|\n|---|---|\n|**Doc #**|${d.salesOrder.DocNum}|\n|**Entry**|${d.salesOrder.DocEntry}|\n|**Customer**|${d.salesOrder.CardCode}|\n|**Total**|${fmt(d.salesOrder.DocTotal)} ${d.salesOrder.DocCurrency||""}|\n\n[🖨️ Print Order](/api/print/order/${d.salesOrder.DocEntry}){:target="_blank"}`;
+  : `### ✅ Sales Order Created\n\n|Field|Value|\n|---|---|\n|**Doc #**|${d.salesOrder.DocNum}|\n|**Entry**|${d.salesOrder.DocEntry}|\n|**Customer**|${d.salesOrder.CardCode}|\n|**Total**|${fmt(d.salesOrder.DocTotal)} ${d.salesOrder.DocCurrency||""}|\n\n[🖨️ Print Order](/api/print/order/${d.salesOrder.DocEntry})`;
 
 const formatDelivery = (d) =>
-  `### ✅ Delivery Note Created\n\n|Field|Value|\n|---|---|\n|**Doc #**|${d.delivery.DocNum}|\n|**Entry**|${d.delivery.DocEntry}|\n|**Customer**|${d.delivery.CardCode}|${d.trackingNumber?`\n|**Tracking**|${d.trackingNumber}|`:""}\n\n[🖨️ Print Delivery](/api/print/delivery/${d.delivery.DocEntry}){:target="_blank"}`;
+  `### ✅ Delivery Note Created\n\n|Field|Value|\n|---|---|\n|**Doc #**|${d.delivery.DocNum}|\n|**Entry**|${d.delivery.DocEntry}|\n|**Customer**|${d.delivery.CardCode}|${d.trackingNumber?`\n|**Tracking**|${d.trackingNumber}|`:""}\n\n[🖨️ Print Delivery](/api/print/delivery/${d.delivery.DocEntry})`;
 
 const formatPod   = (d) => `### ✅ POD Confirmed\n\n|Field|Value|\n|---|---|\n|**Delivery**|${d.deliveryDocEntry}|\n|**Reference**|${d.podReference}|${d.exceptions?`\n|**Exceptions**|${d.exceptions}|`:""}`;
-const formatInvoice = (d) => `### ✅ A/R Invoice Created\n\n|Field|Value|\n|---|---|\n|**Doc #**|${d.invoice.DocNum}|\n|**Entry**|${d.invoice.DocEntry}|\n|**Customer**|${d.invoice.CardCode}|\n|**Total**|${fmt(d.invoice.DocTotal)} ${d.invoice.DocCurrency||""}|\n|**Due**|${d.invoice.DocDueDate?.slice(0,10)||"—"}|\n\n[🖨️ Print Invoice](/api/print/invoice/${d.invoice.DocEntry}){:target="_blank"}`;
+const formatInvoice = (d) => `### ✅ A/R Invoice Created\n\n|Field|Value|\n|---|---|\n|**Doc #**|${d.invoice.DocNum}|\n|**Entry**|${d.invoice.DocEntry}|\n|**Customer**|${d.invoice.CardCode}|\n|**Total**|${fmt(d.invoice.DocTotal)} ${d.invoice.DocCurrency||""}|\n|**Due**|${d.invoice.DocDueDate?.slice(0,10)||"—"}|\n\n[🖨️ Print Invoice](/api/print/invoice/${d.invoice.DocEntry})`;
 const formatPayment = (d) => `### ✅ Payment Applied\n\n|Field|Value|\n|---|---|\n|**Doc #**|${d.payment.DocNum}|\n|**Entry**|${d.payment.DocEntry}|\n|**Customer**|${d.payment.CardCode}|\n|**Amount**|${fmt(d.payment.TransferSum||d.payment.CashSum)}|\n|**Cleared**|${d.clearedInvoices?.length||0} invoice(s)|`;
 
 // P2P formatters
@@ -1603,7 +1603,7 @@ function printGuide(msg) {
   if (!n) return "Please specify a document number, e.g. `print quotation 88`";
   const type = /quot/.test(m) ? "quotation" : /order/.test(m) ? "order" : /deliver/.test(m) ? "delivery" : /invoice/.test(m) ? "invoice" : null;
   if (!type) return "Specify doc type: `print quotation 88` | `print order 123` | `print delivery 45` | `print invoice 67`";
-  return `[🖨️ Open Print Preview — ${type} #${n}](/api/print/${type}/${n}){:target="_blank"}`;
+  return `[🖨️ Open Print Preview — ${type} #${n}](/api/print/${type}/${n})`;
 }
 
 /**

@@ -198,7 +198,7 @@
         const rate = num(ts?.selectedOptions?.[0]?.dataset.rate);
         const tx = t * rate / 100;
         sub += t; tax += tx;
-        tr.querySelector('[data-lt]').textContent = fmt(t);
+        const lt = tr.querySelector('[data-lt]'); if (lt) lt.textContent = fmt(t);   // absent on qty-only cards
         const tc = tr.querySelector('[data-ltax]'); if (tc) tc.textContent = fmt(tx);
       });
       const set = (sel, v) => { const e = c.querySelector(sel); if (e) e.textContent = fmt(v); };

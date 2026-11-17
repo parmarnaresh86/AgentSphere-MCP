@@ -203,10 +203,12 @@ function buildPOSummary(session) {
   out += `| # | Item Code | Description | Qty | Unit | Unit Price | Total | Whs | Tax Code |\n`;
   out += `|---|---|---|---|---|---|---|---|---|\n`;
   const taxCodes = session.taxCodes || [];
-  let grand = 0;
+  const rates = new Map(taxCodes.map(t => [t.Code, Number(t.Rate) || 0]));
+  let grand = 0, taxSum = 0;
   mergedLines.forEach((l, i) => {
     const lt = (l.qty || 0) * (l.unitPrice || 0);
     grand += lt;
+    taxSum += lt * (rates.get(l.taxCode) || 0) / 100;
     // Raw <input> tags — marked passes inline HTML through unmodified, so these render as
     // real editable fields right in the chat table, wired to the same ptpoEditLine()/
     // ptpoSyncLine() the PO Builder sidebar cards use (shared by index via data-idx).
@@ -214,7 +216,9 @@ function buildPOSummary(session) {
     const whInput    = `<input type="text" class="ptpo-wh-input" data-idx="${i}" value="${String(l.warehouseCode || '').replace(/"/g, '&quot;')}" placeholder="Whs" onchange="ptpoEditLine(${i},'warehouseCode',this.value,true)" style="width:50px;padding:2px 5px;font-size:12px;border:1px solid #ccc;border-radius:4px">`;
     out += `| ${i+1} | **${l.itemCode}** | ${l.itemName || '—'} | ${fmtN(l.qty,0)} | ${l.unit||'EA'} | ${priceInput} | <span data-lt="${i}">${lt > 0 ? fmtN(lt) : '—'}</span> | ${whInput} | ${taxSelectHtml(i, l.taxCode, taxCodes)} |\n`;
   });
-  out += `\n**Estimated Total: <span data-grand-total>${fmtN(grand)}</span>**`;
+  out += `\nSubtotal: <span data-sub-total>${fmtN(grand)}</span> · Tax: <span data-tax-total>${fmtN(taxSum)}</span>\n\n` +
+    `**Estimated Total (incl. tax): <span data-grand-total>${fmtN(grand + taxSum)}</span>**\n\n` +
+    `_Tax is estimated from each line's tax code rate — SAP calculates the final amount when posting._`;
   const missing = mergedLines.filter(l => !(l.unitPrice > 0)).length;
   if (missing > 0) out += `\n\n⚠️ **${missing} line(s)** have no unit price carried over from the PR — enter one in the table above.`;
   return out;
@@ -361,10 +365,11 @@ export function createPRtoPOAgentRouter(deps) {
                   });
                 }
               }
-              // Vendor tracking
-              if (full.CardCode) {
-                if (autoVendorCode === null) { autoVendorCode = full.CardCode; autoVendorName = full.CardName; }
-                else if (autoVendorCode !== full.CardCode) mixedVendors = true;
+              // Vendor tracking — a PR's preferred vendor is on its lines (LineVendor); header CardCode as fallback
+              const prVendor = full.CardCode || (full.DocumentLines || []).find(l => l.LineVendor && l.LineStatus !== 'bost_Closed')?.LineVendor || '';
+              if (prVendor) {
+                if (autoVendorCode === null) { autoVendorCode = prVendor; autoVendorName = full.CardName || ''; }
+                else if (autoVendorCode !== prVendor) mixedVendors = true;
               }
             }
 
@@ -388,10 +393,14 @@ export function createPRtoPOAgentRouter(deps) {
               quickReplies = ['Skip (Open Order)'];
               if (vendors.length > 0) vendorList = vendors.map(v => ({ code: v.CardCode, name: v.CardName }));
             } else {
-              // Single consistent vendor
+              // Single consistent vendor (a line vendor has no name on the PR — look it up)
+              if (!autoVendorName) {
+                try { autoVendorName = (await sap.get(`/BusinessPartners('${autoVendorCode.replace(/'/g, "''")}')`, { $select: 'CardCode,CardName' }))?.CardName || ''; }
+                catch { /* show the code */ }
+              }
               session.vendor = { cardCode: autoVendorCode, cardName: autoVendorName || autoVendorCode };
               session.step = 'CONFIRM_DATE';
-              reply = `✅ **${merged.length} line(s)** from **${selNums}**.\n\n**Vendor**: ${autoVendorCode} — ${autoVendorName}\n\n**When is this order required by?**`;
+              reply = `✅ **${merged.length} line(s)** from **${selNums}**.\n\n**Vendor**: ${autoVendorCode} — ${autoVendorName || autoVendorCode}\n\n**When is this order required by?**`;
               quickReplies = [datePlusDays(7), datePlusDays(14), 'Skip (today)'];
             }
           }
@@ -519,7 +528,7 @@ export function createPRtoPOAgentRouter(deps) {
               `| **Vendor** | ${session.vendor ? `${session.vendor.cardCode} — ${session.vendor.cardName}` : '_(Open)_'} |\n` +
               `| **Lines** | ${session.mergedLines.length} |\n` +
               `| **Source PRs** | ${srcNums} |\n\n` +
-              `[🖨️ Print Purchase Order](/api/pr-to-po/print/${result.DocEntry}){:target="_blank"}\n\n` +
+              `[🖨️ Print Purchase Order](/api/pr-to-po/print/${result.DocEntry})\n\n` +
               `Would you like to **convert more PRs**?`;
             quickReplies = ['Yes, Convert More PRs', 'No, Done'];
             meta = { docEntry: result.DocEntry, docNum: result.DocNum, printUrl: `/api/pr-to-po/print/${result.DocEntry}` };
