@@ -104,6 +104,33 @@
       if (on) box.querySelector('[data-h]')?.focus();
     },
 
+    /** Header search field (type 'search'): add matches from the server while typing. */
+    searchHeader(input) {
+      const url = input.dataset.searchUrl, q = input.value.trim();
+      input.closest('div').querySelector('[data-h-name]').textContent = '';
+      if (!url || q.length < 2 || !input.list) return;
+      clearTimeout(input._t);
+      input._t = setTimeout(async () => {
+        try {
+          const r = await fetch(url + '?q=' + encodeURIComponent(q), { headers: { 'x-auth-token': localStorage.getItem('hanny_token') || '' } }).then(x => x.json());
+          const have = new Set([...input.list.options].map(o => o.value.toUpperCase()));
+          (r.vendors || r.items || r.rows || []).forEach(x => {
+            if (have.has(String(x.code).toUpperCase())) return;
+            const o = document.createElement('option'); o.value = x.code; o.textContent = x.name || ''; input.list.appendChild(o);
+          });
+        } catch { /* the preloaded list still works */ }
+      }, 250);
+    },
+
+    /** Header search field picked / typed: keep the code, show the name (the server checks the code on post). */
+    pickHeader(input) {
+      const raw = input.value.trim();
+      const opt = [...(input.list?.options || [])].find(o => o.value.toLowerCase() === raw.toLowerCase()
+        || (o.textContent && o.textContent.toLowerCase() === raw.toLowerCase()));
+      if (opt) input.value = opt.value;
+      input.closest('div').querySelector('[data-h-name]').textContent = opt ? opt.textContent : (raw ? 'Checked when you post' : 'Open — no vendor');
+    },
+
     toggleRow(btn) {
       const tr = btn.closest('tr');
       const on = !tr.classList.contains('o2c-editing');

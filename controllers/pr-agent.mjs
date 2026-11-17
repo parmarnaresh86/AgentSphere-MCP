@@ -13,7 +13,7 @@ import { Router } from 'express';
 import { searchItems as searchItemsShared, searchVendors as searchVendorsShared } from '../lib/master-search.mjs';
 import { buildReviewCard, readReviewPost } from '../lib/o2c-review.mjs';
 
-const HEADER_KEYS = ['docDate', 'requiredDate', 'comments'];
+const HEADER_KEYS = ['vendor', 'docDate', 'requiredDate', 'comments'];
 const isIsoDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
 
 // ── Session store ──────────────────────────────────────────────────────────────
@@ -255,19 +255,25 @@ export function createPurchaseRequestAgentRouter(deps) {
 
       let card = null;   // review card HTML — shown as its own message, not through the markdown renderer
 
-      // Review card: header (posting date, required by, comments) and rows (item, qty, warehouse) editable
+      // Review card: header (preferred vendor, posting date, required by, comments) and rows (item, qty, warehouse) editable
       // with ✏️, rows removable, "+ Add Row" for more items. Every render gets a new seq; only the newest card posts.
       const reviewCard = async (s, sessId, headerOverride) => {
         s.reviewSeq = (s.reviewSeq || 0) + 1;
         const h = headerOverride || s._header || {};
-        const [items, whs] = await Promise.all([searchItems(sap, '', 500), getWarehouses(sap)]);
+        const [items, whs, vendors] = await Promise.all([searchItems(sap, '', 500), getWarehouses(sap), searchVendorsShared(sap, '', { top: 300 })]);
+        // vendor field: the code typed on a refused card stays; its name only when it is the session's vendor
+        const vCode = h.vendor != null ? String(h.vendor) : (s.vendor?.cardCode || '');
+        const vName = !vCode ? 'Open — no vendor' : (s.vendor && s.vendor.cardCode === vCode ? s.vendor.cardName : '');
         return buildReviewCard({
-          title: '📋 Purchase Request Ready to Post', partyLabel: 'Preferred Vendor',
+          title: '📋 Purchase Request Ready to Post', partyLabel: 'Preferred Vendor', partyInHeader: true,
           party: s.vendor ? { code: s.vendor.cardCode, name: s.vendor.cardName } : { code: '—', name: 'Open — no vendor' },
           seq: s.reviewSeq, send: 'praSend', postAction: 'post_pr', postLabel: '✅ Post Purchase Request',
           qtyOnly: true,
           addRow: { items: items.map(i => ({ code: i.ItemCode, name: i.ItemName })), sessionId: sessId, searchApi: '/api/pr-agent' },
           header: [
+            { key: 'vendor', label: 'Preferred Vendor', type: 'search', value: vCode, hint: vName, wide: true,
+              placeholder: '🔍 Vendor code or name — leave empty for an open request',
+              options: vendors.map(v => ({ code: v.CardCode, name: v.CardName })), searchUrl: '/api/pr-agent/vendors' },
             { key: 'docDate', label: 'Posting Date', type: 'date', value: h.docDate || today() },
             { key: 'requiredDate', label: 'Required By', type: 'date', value: h.requiredDate || s.dueDate || today() },
             { key: 'comments', label: 'Comments', value: h.comments ?? s.comments ?? '', placeholder: 'Optional', wide: true },
@@ -290,6 +296,15 @@ export function createPurchaseRequestAgentRouter(deps) {
         if (!isIsoDate(header.docDate)) return { ok: false, error: 'Posting Date is not a valid date.', header };
         if (!isIsoDate(header.requiredDate)) return { ok: false, error: 'Required By is not a valid date.', header };
         if (header.requiredDate < header.docDate) return { ok: false, error: 'Required By cannot be before the Posting Date.', header };
+        // Preferred vendor: empty = open request; otherwise an active vendor in SAP
+        let vendor = null;
+        const vCode = String(header.vendor || '').split(' — ')[0].trim();
+        if (vCode) {
+          const hit = (await searchVendors(sap, vCode)).find(v => v.CardCode.toUpperCase() === vCode.toUpperCase());
+          if (!hit) return { ok: false, error: 'Vendor ' + vCode + ' was not found in SAP (active vendors only) — pick one from the list or leave it empty.', header };
+          vendor = { cardCode: hit.CardCode, cardName: hit.CardName };
+          header.vendor = hit.CardCode;
+        } else header.vendor = '';
         const whsList = await getWarehouses(sap);
         const lines = [];
         for (const [i, l] of rp.lines.entries()) {
@@ -307,7 +322,7 @@ export function createPurchaseRequestAgentRouter(deps) {
           lines.push({ itemCode: it.ItemCode, itemName: it.ItemName || l.itemName || it.ItemCode, qty: l.quantity,
             unit: l.unit || it.PurchaseUnit || it.SalesUnit || 'EA', unitPrice: Number(l.unitPrice) || 0, warehouseCode: whs, isNew: false });
         }
-        return { ok: true, header, lines };
+        return { ok: true, header, lines, vendor };
       };
 
       // Post the session's PR. SAP keeps the preferred vendor on each line (LineVendor), not on the header.
@@ -625,9 +640,9 @@ export function createPurchaseRequestAgentRouter(deps) {
         session.comments = /^skip$|^none$/i.test(msgL) ? null : msg || null;
         session.step = 'CONFIRM';
         session._header = null;
-        reply = `### 📋 Check the Purchase Request\n\nEdit anything on the card below — **✏️ Edit Header** for dates / comments, **✏️** on a row for quantity / warehouse, **🗑** to remove a row, **+ Add Row** to add an item — then click **✅ Post Purchase Request**.`;
+        reply = `### 📋 Check the Purchase Request\n\nEdit anything on the card below — **✏️ Edit Header** for vendor / dates / comments, **✏️** on a row for quantity / warehouse, **🗑** to remove a row, **+ Add Row** to add an item — then click **✅ Post Purchase Request**.`;
         card = await reviewCard(session, sid);
-        quickReplies = ['✏️ Change Vendor', '❌ Cancel'];
+        quickReplies = ['❌ Cancel'];
         meta = { prLines: session.prLines, vendor: session.vendor, dueDate: session.dueDate };
       }
 
@@ -651,6 +666,7 @@ export function createPurchaseRequestAgentRouter(deps) {
             } else {
               session.prLines = chk.lines;
               session._header = chk.header;
+              session.vendor = chk.vendor;
               session.dueDate = chk.header.requiredDate;
               session.comments = chk.header.comments || null;
               try {
@@ -672,7 +688,7 @@ export function createPurchaseRequestAgentRouter(deps) {
               } catch (e) {
                 reply = `❌ **Failed to post Purchase Request**\n\nSAP Error: _${e.message}_\n\nFix it on the card below and post again, or **Cancel**.`;
                 card = await reviewCard(session, sid);
-                quickReplies = ['✏️ Change Vendor', '❌ Cancel'];
+                quickReplies = ['❌ Cancel'];
               }
             }
           } finally {
@@ -682,16 +698,6 @@ export function createPurchaseRequestAgentRouter(deps) {
         } else if (action) {
           reply = `⚠️ That step is already finished — use the card below.`;
           card = await reviewCard(session, sid);
-        } else if (/edit|change|modify|back|vendor|✏️/i.test(msgL) && !/cancel/i.test(msgL)) {
-          session.step = 'VENDOR';
-          const editVendors = await searchVendors(sap, '');
-          const hint = session._suggestedVendorCode
-            ? `\n\n_(Suggested: **${session._suggestedVendorCode}**)_`
-            : '';
-          reply = `Let's revisit the header details.\n\n**Change the vendor?**${hint}\n\nSelect from the list or type **skip**:`;
-          quickReplies = session._suggestedVendorCode ? [`Use ${session._suggestedVendorCode}`, 'Skip'] : ['Skip'];
-          if (editVendors.length > 0)
-            vendorComboList = editVendors.map(v => ({ code: v.CardCode, name: v.CardName }));
         } else if (/cancel|^no\b|discard/i.test(msgL)) {
           _sessions.set(sid, initSession());
           reply = `Purchase request **cancelled**. Come back anytime!\n\nType **"start"** to create a new purchase request.`;
@@ -699,9 +705,9 @@ export function createPurchaseRequestAgentRouter(deps) {
         } else {
           reply = /yes|post|confirm|submit|✅/i.test(msgL)
             ? `Click **✅ Post Purchase Request** on the card below to post it.`
-            : `Make changes on the card below — **✏️ Edit Header**, **✏️** on a row, **+ Add Row** — or choose **Change Vendor** / **Cancel**.`;
+            : `Make changes on the card below — **✏️ Edit Header** for vendor / dates / comments, **✏️** on a row, **+ Add Row** — or **Cancel**.`;
           card = await reviewCard(session, sid);
-          quickReplies = ['✏️ Change Vendor', '❌ Cancel'];
+          quickReplies = ['❌ Cancel'];
         }
       }
 
@@ -905,7 +911,7 @@ function renderPRPrint(doc, people = {}) {
 <body>
 <div class="watermark">REQUISITION</div>
 <div class="print-btn">
-  <button class="btn-close" onclick="window.close()">✕ Close</button>
+  <button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'poa-print-close'},'*') : window.close()">✕ Close</button>
   <button class="btn-print" onclick="window.print()">🖨️ Print</button>
 </div>
 

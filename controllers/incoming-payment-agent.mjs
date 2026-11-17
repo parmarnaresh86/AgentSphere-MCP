@@ -324,7 +324,7 @@ function renderPaymentPrint(doc) {
 </style></head><body>
 <div class="watermark">PAYMENT RECEIPT</div>
 <div class="print-btn">
-  <button class="btn-close" onclick="window.close()">&#10005; Close</button>
+  <button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'poa-print-close'},'*') : window.close()">&#10005; Close</button>
   <button class="btn-print" onclick="window.print()">&#128424; Print</button>
 </div>
 <div class="header">

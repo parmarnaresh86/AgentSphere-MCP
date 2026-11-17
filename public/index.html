@@ -19407,7 +19407,7 @@ setInterval(() => {
         if (!r.created && !r.ok) throw new Error(r.error || 'Request failed');
         body.innerHTML = `<table style="width:100%;font-size:12px;border-collapse:collapse">${(r.created || []).map(c => `<tr><td style="padding:6px">${c.ok ? '✅' : '❌'}</td>
           <td style="padding:6px">${c.ok ? `Purchase Request <b>${_fdEsc(c.docNum)}</b>` : `<span style="color:#BB0000">${_fdEsc(c.error)}</span>`}</td><td style="padding:6px">${fmtN(c.qty)} by ${_fdEsc(c.requiredDate)}</td>
-          <td style="padding:6px">${c.ok ? `<a href="/api/pr-agent/print/${c.docEntry}?token=${encodeURIComponent(tok())}" target="_blank" rel="noopener">Print</a>` : ''}</td></tr>`).join('')}</table>
+          <td style="padding:6px">${c.ok ? `<a href="/api/pr-agent/print/${c.docEntry}" onclick="event.preventDefault();poaShowPrintModal(this.getAttribute('href'),'Purchase Request Preview')">Print</a>` : ''}</td></tr>`).join('')}</table>
           <p style="font-size:11.5px;color:var(--muted)">The plan is reloaded — created requests now count as supply.</p>`;
         FD.rp = null;
         await fdEnsurePlanData(info.code);
@@ -34892,7 +34892,8 @@ window.roAskFollowUp = function() {
     const b = document.createElement('div');
     b.className = `bubble ${role}`;
     b.innerHTML = role === 'bot' ? renderMd(content) : escHtml(content);
-    b.querySelectorAll('a[href*="/print/"]').forEach(a => { a.className = 'print-link'; a.target = '_blank'; });
+    b.querySelectorAll('a[href*="/print/"]').forEach(a => { a.className = 'print-link'; });
+    if (typeof interceptPrintLinks === 'function') interceptPrintLinks(b, 'Purchase Request Preview');   // in-screen pop-up, not a new tab
     row.appendChild(av); row.appendChild(b);
     msgs.appendChild(row);
     msgs.scrollTop = msgs.scrollHeight;
@@ -35177,7 +35178,7 @@ window.roAskFollowUp = function() {
       [['Document #', result.docNum],['Entry', result.docEntry],['Lines', prLines.length],['Vendor', vendor ? vendor.cardCode : 'Open'],['Required By', dueDate || '—']].forEach(([l,v]) => {
         h += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(0,0,0,.06)"><span style="color:var(--muted)">${escHtml(String(l))}</span><span style="font-weight:600">${escHtml(String(v||'—'))}</span></div>`;
       });
-      h += `</div><a href="/api/pr-agent/print/${result.docEntry}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px;background:var(--shell);color:#fff;border-radius:4px;cursor:pointer;font-size:12.5px;font-weight:600;text-decoration:none;box-sizing:border-box;margin-bottom:14px">🖨️ Print Requisition PR #${result.docNum}</a>`;
+      h += `</div><a href="/api/pr-agent/print/${result.docEntry}" onclick="event.preventDefault();poaShowPrintModal(this.getAttribute('href'),'Purchase Request Preview')" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px;background:var(--shell);color:#fff;border-radius:4px;cursor:pointer;font-size:12.5px;font-weight:600;text-decoration:none;box-sizing:border-box;margin-bottom:14px">🖨️ Print Requisition PR #${result.docNum}</a>`;
       if (prLines.length) {
         h += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:8px">Items (${prLines.length})</div>`;
         prLines.forEach(l => { h += praItemCard(l); });

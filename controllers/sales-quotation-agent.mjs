@@ -310,7 +310,7 @@ function renderPrintLayout(doc) {
 </style></head><body>
 <div class="watermark">SALES QUOTATION</div>
 <div class="print-btn">
-  <button class="btn-close" onclick="window.close()">✕ Close</button>
+  <button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'poa-print-close'},'*') : window.close()">✕ Close</button>
   <button class="btn-print" onclick="window.print()">🖨️ Print</button>
 </div>
 <div class="header">

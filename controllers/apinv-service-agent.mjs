@@ -213,7 +213,7 @@ function renderServicePrint(doc, accounts) {
   .footer{text-align:center;margin-top:24px;font-size:9px;color:#aaa;border-top:1px solid #eee;padding-top:12px}
   @media print{.print-btn{display:none}}
 </style></head><body>
-<div class="print-btn"><button class="btn-close" onclick="window.close()">&#x2715; Close</button><button class="btn-print" onclick="window.print()">&#x1F5A8; Print</button></div>
+<div class="print-btn"><button class="btn-close" onclick="window.parent!==window ? window.parent.postMessage({type:'poa-print-close'},'*') : window.close()">&#x2715; Close</button><button class="btn-print" onclick="window.print()">&#x1F5A8; Print</button></div>
 <div class="header">
   <div><div class="co-name">${escHtml(company)}</div><div style="color:#888;font-size:11px;margin-top:2px">SAP Business One &mdash; A/P Invoice (Service)</div></div>
   <div><div class="doc-title">A/P Invoice</div><div style="font-size:13px;color:#444;text-align:right">AP # ${escHtml(String(doc.DocNum))}</div></div>
