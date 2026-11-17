@@ -195,6 +195,12 @@ async function fetchUserValidValues(sap) {
 
 // ── Report aggregation ────────────────────────────────────────────────────────
 // Clip [a, b) to [from, to); an open interval runs until now.
+// A shift or sort run still open after this long was left open (no clock-out / no pause): the report
+// counts it up to this many hours after its start, not up to now, so old open runs don't fill today.
+const OPEN_CAP_MS = 12 * 3600 * 1000;
+const isStaleOpen = (start, end) => !end && Date.now() - new Date(start).getTime() > OPEN_CAP_MS;
+const cappedEnd = (start, end) => end || (isStaleOpen(start, end) ? new Date(new Date(start).getTime() + OPEN_CAP_MS).toISOString() : null);
+
 function overlapSecs(a, b, from, to) {
   const s = Math.max(new Date(a).getTime(), new Date(from).getTime());
   const e = Math.min(b ? new Date(b).getTime() : Date.now(), new Date(to).getTime());
@@ -214,11 +220,13 @@ function buildReport(company, from, to) {
     return users.get(id);
   };
   for (const s of shifts) {
+    // a shift left open long ago adds nothing to this period — it is only listed under Shifts (Not clocked out)
+    if (isStaleOpen(s.clock_in, s.clock_out) && !overlapSecs(s.clock_in, cappedEnd(s.clock_in, s.clock_out), from, to)) continue;
     const x = u(s.user_id, nameOf(s));
     x.shifts++;
-    x.shiftSecs += overlapSecs(s.clock_in, s.clock_out, from, to);
+    x.shiftSecs += overlapSecs(s.clock_in, cappedEnd(s.clock_in, s.clock_out), from, to);
     if (!x.firstIn || s.clock_in < x.firstIn) x.firstIn = s.clock_in;
-    if (!s.clock_out) x.open = true;
+    if (!s.clock_out && !isStaleOpen(s.clock_in, s.clock_out)) x.open = true;
     else if (!x.lastOut || s.clock_out > x.lastOut) x.lastOut = s.clock_out;
   }
 
@@ -235,7 +243,8 @@ function buildReport(company, from, to) {
   };
 
   for (const w of work) {
-    const secs = overlapSecs(w.start_at, w.end_at, from, to);
+    const secs = overlapSecs(w.start_at, cappedEnd(w.start_at, w.end_at), from, to);
+    if (!secs && isStaleOpen(w.start_at, w.end_at)) continue;   // an old run left open adds nothing to this period
     const name = nameOf(w);
     u(w.user_id, name).workSecs += secs;
     const i = it(w.item_code, w.item_name);
@@ -285,7 +294,8 @@ function buildReport(company, from, to) {
       notes: t.notes || '', sap: t.sap_error ? 'Error' : t.sap_dirty ? 'Waiting' : t.sap_synced_at ? 'Synced' : '—',
     })).sort((a, b) => String(b.timeOut).localeCompare(String(a.timeOut))),
     shifts: shifts.map(s => ({ id: s.id, userId: s.user_id, name: nameOf(s), clockIn: s.clock_in, clockOut: s.clock_out,
-      minutes: Math.round(overlapSecs(s.clock_in, s.clock_out, s.clock_in, '9999-12-31') / 60), clockedBy: s.clocked_by })),
+      stale: isStaleOpen(s.clock_in, s.clock_out),   // open > 12 h: not clocked out, counted as 12 h
+      minutes: Math.round(overlapSecs(s.clock_in, cappedEnd(s.clock_in, s.clock_out), s.clock_in, '9999-12-31') / 60), clockedBy: s.clocked_by })),
   };
 }
 

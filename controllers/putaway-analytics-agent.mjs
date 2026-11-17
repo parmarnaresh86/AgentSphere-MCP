@@ -132,7 +132,6 @@ function normalise({ H, L, S, I = {} }) {
 // ── Analysis ──────────────────────────────────────────────────────────────────
 const round = (n, d = 1) => n == null || !Number.isFinite(n) ? null : +n.toFixed(d);
 const perHour = (qty, mins) => mins > 0 ? round(qty / (mins / 60), 1) : null;
-const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const sum = (a, f) => a.reduce((s, x) => s + (f(x) || 0), 0);
 const WAIT_BUCKETS = [['< 30 min', 0, 30], ['30–60 min', 30, 60], ['1–2 h', 60, 120], ['2–4 h', 120, 240], ['4 h – same day', 240, 1440], ['Next day +', 1440, Infinity]];
 
@@ -147,9 +146,9 @@ function analyse(rows, today = ymd(new Date())) {
   // User-wise with working window per putaway day.
   const users = new Map();
   for (const r of done) {
-    if (!users.has(r.user)) users.set(r.user, { user: r.user || '(blank)', lines: 0, qty: 0, mins: 0, durations: [], waits: [], days: new Map(), docs: new Set(), sameAsSorter: 0 });
+    if (!users.has(r.user)) users.set(r.user, { user: r.user || '(blank)', lines: 0, qty: 0, mins: 0, waits: [], days: new Map(), docs: new Set(), sameAsSorter: 0 });
     const u = users.get(r.user);
-    u.lines++; u.qty += r.qty; u.mins += r.mins; u.durations.push(r.mins); u.docs.add(r.docEntry);
+    u.lines++; u.qty += r.qty; u.mins += r.mins; u.docs.add(r.docEntry);
     if (r.wait != null) u.waits.push(r.wait);
     if (r.sorter && r.sorter === r.user) u.sameAsSorter++;
     const d = u.days.get(r.putDate) || { first: Infinity, last: -Infinity };
@@ -159,7 +158,7 @@ function analyse(rows, today = ymd(new Date())) {
     const ds = [...u.days.values()], span = sum(ds, d => d.last - d.first);
     return {
       user: u.user, lines: u.lines, sharePct: done.length ? round(u.lines / done.length * 100) : 0, docs: u.docs.size, qty: u.qty,
-      putHours: round(u.mins / 60), avgMinPerLine: round(u.mins / u.lines), medianMinPerLine: round(median(u.durations)),
+      putHours: round(u.mins / 60), avgMinPerLine: round(u.mins / u.lines),
       qtyPerHour: perHour(u.qty, u.mins), daysWorked: ds.length, linesPerDay: round(u.lines / ds.length),
       avgFirstIn: hhmm(sum(ds, d => d.first) / ds.length), avgLastOut: hhmm(sum(ds, d => d.last) / ds.length),
       avgWaitMin: u.waits.length ? round(sum(u.waits, w => w) / u.waits.length, 0) : null,
@@ -202,13 +201,18 @@ function analyse(rows, today = ymd(new Date())) {
     const all = rows.filter(f), d = all.filter(r => r.done), m = sum(d, r => r.mins), w = d.map(r => r.wait).filter(x => x != null);
     return { mode, lines: all.length, done: d.length, open: all.length - d.length, ready: all.filter(r => !r.done && r.sorted).length,
       sharePct: rows.length ? round(all.length / rows.length * 100) : null, qty: sum(d, r => r.qty), putHours: round(m / 60),
-      avgMinPerLine: d.length ? round(m / d.length) : null, medianMinPerLine: round(median(d.map(r => r.mins))), qtyPerHour: perHour(sum(d, r => r.qty), m),
+      avgMinPerLine: d.length ? round(m / d.length) : null, qtyPerHour: perHour(sum(d, r => r.qty), m),
       avgWaitMin: w.length ? round(sum(w, x => x) / w.length, 0) : null, items: new Set(all.map(r => r.itemCode)).size,
       users: [...new Set(d.map(r => r.user).filter(Boolean))].sort() };
   }).filter(h => h.lines);
   const fk = handling.find(h => h.mode === 'Forklift'), mn = handling.find(h => h.mode === 'Manual');
   const forkliftUsers = [...users.keys()].map(u => {
     const d = done.filter(r => r.user === u && r.forklift === true);
+    return { user: u || '(blank)', lines: d.length, qty: sum(d, r => r.qty), avgMinPerLine: d.length ? round(sum(d, r => r.mins) / d.length) : null };
+  }).filter(x => x.lines).sort((a, b) => b.lines - a.lines);
+  // Manual rows (no forklift needed) per user — for the Manual KPI
+  const manualUsers = [...users.keys()].map(u => {
+    const d = done.filter(r => r.user === u && r.forklift === false);
     return { user: u || '(blank)', lines: d.length, qty: sum(d, r => r.qty), avgMinPerLine: d.length ? round(sum(d, r => r.mins) / d.length) : null };
   }).filter(x => x.lines).sort((a, b) => b.lines - a.lines);
 
@@ -229,9 +233,9 @@ function analyse(rows, today = ymd(new Date())) {
       documents: docs.size, completedDocs: docStatus('C'), inProcessDocs: docStatus('P'), openDocs: docStatus('O'),
       lines: rows.length, linesDone: done.length, linesOpen: open.length, readyToPutaway: open.filter(r => r.sorted).length,
       completionPct: rows.length ? round(done.length / rows.length * 100) : null, qtyPutAway: doneQty,
-      putHours: round(totalMins / 60), avgMinPerLine: done.length ? round(totalMins / done.length) : null, medianMinPerLine: round(median(done.map(r => r.mins))),
+      putHours: round(totalMins / 60), avgMinPerLine: done.length ? round(totalMins / done.length) : null,
       qtyPerHour: perHour(doneQty, totalMins), users: users.size,
-      avgWaitMin: waits.length ? round(sum(waits, w => w) / waits.length, 0) : null, medianWaitMin: round(median(waits), 0),
+      avgWaitMin: waits.length ? round(sum(waits, w => w) / waits.length, 0) : null,
       nextDayPct: done.length ? round(done.filter(r => r.sortDate && r.putDate > r.sortDate).length / done.length * 100) : null,
       ownSortPct: done.length ? Math.round(done.filter(r => r.sorter && r.sorter === r.user).length / done.length * 100) : null,
       storageWhs: toList.length, bins: new Set(done.map(r => r.toBin).filter(Boolean)).size,
@@ -239,8 +243,13 @@ function analyse(rows, today = ymd(new Date())) {
       forkliftLines: fk?.lines ?? 0, forkliftDone: fk?.done ?? 0, forkliftOpen: fk?.open ?? 0, forkliftReady: fk?.ready ?? 0,
       forkliftPct: fk?.sharePct ?? (rows.length ? 0 : null), forkliftAvgMin: fk?.avgMinPerLine ?? null, manualAvgMin: mn?.avgMinPerLine ?? null,
       forkliftItems: fk?.items ?? 0, forkliftKnown: rows.some(r => r.forklift != null),
+      // Manual handling: rows whose item does not need a forklift (U_Forklift / OITM.U_FR = NO)
+      manualLines: mn?.lines ?? 0, manualDone: mn?.done ?? 0, manualOpen: mn?.open ?? 0, manualReady: mn?.ready ?? 0,
+      manualPct: mn?.sharePct ?? (rows.length ? 0 : null), manualQty: mn?.qty ?? 0, manualPutHours: mn?.putHours ?? 0,
+      manualQtyPerHour: mn?.qtyPerHour ?? null, manualAvgWaitMin: mn?.avgWaitMin ?? null, manualItems: mn?.items ?? 0,
+      notSetLines: handling.find(h => h.mode === 'Not set')?.lines ?? 0,
     },
-    userWise, daily, waitDist, flow, handling, forkliftUsers,
+    userWise, daily, waitDist, flow, handling, forkliftUsers, manualUsers,
     toWhsWise: group(r => r.toWhs, () => ''),
     binWise: group(r => r.toBin, r => r.toWhs),
     itemWise: group(r => r.itemCode, r => r.itemName),

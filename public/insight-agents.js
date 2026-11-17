@@ -1511,9 +1511,10 @@ html:is([data-ui="fiori"],.ia-fi) #${PANEL_ID} ::-webkit-scrollbar-track{backgro
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         indexAxis: spec.horizontal ? 'y' : 'x',
+        interaction: { mode: 'index', intersect: false, axis: spec.horizontal ? 'y' : 'x' },
         plugins: { legend: { display: spec.series.length > 1, position: fi ? 'bottom' : 'top',
             labels: fi ? { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'rectRounded', color: '#1d2d3e', font: tick.font } : { boxWidth: 10, font: { size: 11 } } },
-          tooltip: { mode: 'index', intersect: false, callbacks: { label: c => c.raw == null ? null : `${c.dataset.label}: ${val(c.raw)}` },
+          tooltip: { mode: 'index', intersect: false, axis: spec.horizontal ? 'y' : 'x', callbacks: { label: c => c.raw == null ? null : `${c.dataset.label}: ${val(c.raw)}` },
             ...(fi ? { backgroundColor: '#fff', titleColor: '#1d2d3e', bodyColor: '#1d2d3e', borderColor: '#d9d9d9', borderWidth: 1, cornerRadius: 8, padding: 10, titleFont: { ...tick.font, weight: '700' }, bodyFont: tick.font } : {}) } },
         scales: spec.horizontal
           ? { y: { stacked: !!spec.stacked, ticks: { ...tick, callback(v) { const l = String(this.getLabelForValue(v)); return l.length > 22 ? l.slice(0, 21) + '…' : l; } }, grid: { display: false } },

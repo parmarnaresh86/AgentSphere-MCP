@@ -288,7 +288,7 @@ function goBack() {
   const C = {
     user: { key: 'user', label: 'User' }, lines: { key: 'lines', label: 'Lines', fmt: 'int' }, share: { key: 'sharePct', label: 'Share', fmt: 'pct' },
     docs: { key: 'docs', label: 'Docs', fmt: 'int' }, qty: { key: 'qty', label: 'Qty', fmt: 'num' }, hours: { key: 'putHours', label: 'Putaway h', fmt: 'num' },
-    avg: { key: 'avgMinPerLine', label: 'Avg min/line', fmt: 'num' }, med: { key: 'medianMinPerLine', label: 'Median min', fmt: 'num' },
+    avg: { key: 'avgMinPerLine', label: 'Avg min/line', fmt: 'num' },
     qph: { key: 'qtyPerHour', label: 'Qty / h', fmt: 'num' }, days: { key: 'daysWorked', label: 'Days', fmt: 'int' }, lpd: { key: 'linesPerDay', label: 'Lines/day', fmt: 'num' },
     wait: { key: 'avgWaitMin', label: 'Avg wait (min)', fmt: 'int' }, own: { key: 'ownSortPct', label: 'Own sorted', fmt: 'pct' },
     key: { key: 'key', label: 'Item' }, desc: { key: 'label', label: 'Description', wrap: true },
@@ -359,37 +359,37 @@ function goBack() {
           };
         })() },
 
-      { label: 'Avg min / line', value: n1(k.avgMinPerLine), sub: `median ${n1(k.medianMinPerLine)} min · ${n1(k.putHours)} h total`, tab: 'items', tone: '',
+      { label: 'Avg min / line', value: n1(k.avgMinPerLine), sub: `${n1(k.putHours)} h total`, tab: 'items', tone: '',
         hint: 'Average Time OUT − Time IN per put-away row', detail: (() => {
           const slow = D.itemWise.filter(i => i.lines >= 2).sort((a, b) => b.avgMinPerLine - a.avgMinPerLine);
           return {
-            formula: '**Avg min / line** = Σ minutes of put-away rows ÷ lines put away · **Median** = middle value of the per-row minutes',
-            steps: [scopeStep(), DONE_STEP, 'Average = total minutes ÷ put-away rows; median = middle value when all row times are sorted.'],
+            formula: '**Avg min / line** = Σ minutes of put-away rows ÷ lines put away',
+            steps: [scopeStep(), DONE_STEP, 'Minutes per row = Time OUT − Time IN.', 'Average = total minutes ÷ put-away rows.'],
             sources: [SRC.row, SRC.fork],
             actions: ['Forklift rows take longer by nature — compare **Forklift** vs **Manual** before judging a user.', 'Fastest / slowest user consider only users with at least 3 lines.'],
-            stats: [{ label: 'Average (min)', value: k.avgMinPerLine, fmt: 'num' }, { label: 'Median (min)', value: k.medianMinPerLine, fmt: 'num' }, { label: 'Putaway hours', value: k.putHours, fmt: 'num' },
+            stats: [{ label: 'Average (min)', value: k.avgMinPerLine, fmt: 'num' }, { label: 'Putaway hours', value: k.putHours, fmt: 'num' },
               { label: 'Forklift avg (min)', value: k.forkliftAvgMin, fmt: 'num' }, { label: 'Manual avg (min)', value: k.manualAvgMin, fmt: 'num' },
               { label: 'Fastest user', value: byAvg[0] ? `${byAvg[0].user} · ${byAvg[0].avgMinPerLine} min` : '—' }, { label: 'Slowest user', value: byAvg.length > 1 ? `${byAvg[byAvg.length - 1].user} · ${byAvg[byAvg.length - 1].avgMinPerLine} min` : '—' }],
             chart: userChart('Average minutes per line by user', 'Avg min', 'avgMinPerLine', 'num', users.filter(x => x.avgMinPerLine != null)),
             table: { title: 'Slowest items (2+ lines)', columns: [C.key, C.desc, C.lines, C.qty, C.avg, C.wait], rows: slow },
-            insight: `**A putaway row takes ${n1(k.avgMinPerLine)} min on average (median ${n1(k.medianMinPerLine)} min).**\n\n` +
+            insight: `**A putaway row takes ${n1(k.avgMinPerLine)} min on average.**\n\n` +
               (k.forkliftAvgMin != null && k.manualAvgMin != null ? `- Forklift rows ${n1(k.forkliftAvgMin)} min vs manual ${n1(k.manualAvgMin)} min.\n` : '') +
               (slow[0] ? `- Slowest item: ${slow[0].key} at ${slow[0].avgMinPerLine} min per line.` : ''),
           };
         })() },
 
-      { label: 'Sort → putaway wait', value: dur(k.medianWaitMin), sub: `median · average ${dur(k.avgWaitMin)}`, tab: 'users',
-        tone: k.medianWaitMin == null ? '' : k.medianWaitMin <= 120 ? 'good' : k.medianWaitMin <= 1440 ? 'warn' : 'bad', hint: 'Sort Time OUT → putaway Time IN', detail: {
-          formula: '**Wait** = (putaway date + Time IN) − (sort date + sort Time OUT), in minutes · tile shows the **median**',
+      { label: 'Sort → putaway wait', value: dur(k.avgWaitMin), sub: 'average per put-away row', tab: 'users',
+        tone: k.avgWaitMin == null ? '' : k.avgWaitMin <= 120 ? 'good' : k.avgWaitMin <= 1440 ? 'warn' : 'bad', hint: 'Sort Time OUT → putaway Time IN', detail: {
+          formula: '**Wait** = (putaway date + Time IN) − (sort date + sort Time OUT), in minutes · tile shows the **average**',
           steps: [scopeStep(), DONE_STEP, 'Each put-away row is linked to its @SORTING line (U_SortCode = Code) for the sort date and sort Time OUT.',
-            'Wait = minutes between the sort finishing and the putaway starting (can span days). Negative or missing values are left out.', 'Median and average over all rows with a wait.'],
+            'Wait = minutes between the sort finishing and the putaway starting (can span days). Negative or missing values are left out.', 'Average = total wait ÷ rows with a wait.'],
           sources: [SRC.row, SRC.sort],
           actions: ['A long wait means sorted stock sits in the receiving area — schedule putaway right after sorting peaks.'],
-          stats: [{ label: 'Median wait (min)', value: k.medianWaitMin, fmt: 'int' }, { label: 'Average wait (min)', value: k.avgWaitMin, fmt: 'int' }, { label: 'Next-day putaway', value: k.nextDayPct, fmt: 'pct' },
+          stats: [{ label: 'Average wait (min)', value: k.avgWaitMin, fmt: 'int' }, { label: 'Next-day putaway', value: k.nextDayPct, fmt: 'pct' },
             { label: 'Rows with a wait', value: waitTotal, fmt: 'int' }],
           chart: { title: 'Rows by wait time', fmt: 'int', labels: D.waitDist.map(w => w.label), series: [{ name: 'Rows', values: D.waitDist.map(w => w.lines) }] },
           table: { title: 'Average wait by user', columns: [C.user, C.lines, C.wait, C.own], rows: users },
-          insight: `**Half of the rows wait ${dur(k.medianWaitMin)} or less between sorting and putaway (average ${dur(k.avgWaitMin)}).**\n\n` +
+          insight: `**A row waits ${dur(k.avgWaitMin)} on average between sorting and putaway.**\n\n` +
             `- ${k.nextDayPct ?? 0}% are put away on a later day than they were sorted.` } },
 
       { label: 'Next-day putaway', value: k.nextDayPct == null ? '—' : n1(k.nextDayPct) + '%', sub: 'of lines put away after the sort day', tab: 'lines',
@@ -462,6 +462,36 @@ function goBack() {
                 `- ${fmt(k.forkliftOpen)} forklift row(s) are still open, ${fmt(k.forkliftReady)} of them already sorted.`,
           };
         })() },
+
+      // Manual handling — rows that need no forklift (U_Forklift = NO, else item master "Forklift Required?" = NO)
+      { label: 'Manual lines', value: k.forkliftKnown ? fmt(k.manualLines) : '—',
+        sub: k.forkliftKnown ? `${k.manualPct ?? 0}% of lines · ${n1(k.manualAvgMin)} min/line` : 'no forklift / manual data', tab: 'forklift',
+        tone: '', hint: 'Rows put away by hand — no forklift needed', detail: (() => {
+          const mu = (D.manualUsers || []).map(x => ({ ...x, user: userLabel(x.user) }));
+          const saving = k.forkliftAvgMin != null && k.manualAvgMin != null ? k.forkliftAvgMin - k.manualAvgMin : null;
+          return {
+            formula: '**Manual lines** = putaway rows with U_Forklift = NO (empty → item master OITM.U_FR = NO)',
+            steps: [scopeStep(), 'Handling per row: the putaway row\'s **U_Forklift**; when empty, the GRPO line item\'s **"Forklift Required?"** (OITM.U_FR). NO = manual.',
+              'Count manual rows; share = manual rows ÷ all rows × 100.', DONE_STEP, 'Avg min / line and qty / hour are calculated over the manual rows that are put away.',
+              'Rows with neither flag set are counted as **Not set** — they are in neither the forklift nor the manual figures.'],
+            sources: [SRC.fork, SRC.row],
+            actions: ['Manual rows need no driver — any free user can take them; give them to users while forklifts are busy.',
+              'Rows marked **Not set** have no forklift flag: set "Forklift Required?" on those items so they count as forklift or manual.'],
+            stats: [{ label: 'Manual rows', value: k.manualLines, fmt: 'int' }, { label: 'Share of rows', value: k.manualPct, fmt: 'pct' }, { label: 'Put away', value: k.manualDone, fmt: 'int' },
+              { label: 'Still open', value: k.manualOpen, fmt: 'int' }, { label: 'Ready (sorted)', value: k.manualReady, fmt: 'int' }, { label: 'Manual items', value: k.manualItems, fmt: 'int' },
+              { label: 'Qty put away', value: k.manualQty, fmt: 'num' }, { label: 'Manual avg (min)', value: k.manualAvgMin, fmt: 'num' }, { label: 'Qty / hour', value: k.manualQtyPerHour, fmt: 'num' },
+              { label: 'Forklift avg (min)', value: k.forkliftAvgMin, fmt: 'num' }, { label: 'Not set rows', value: k.notSetLines, fmt: 'int' }],
+            chart: handling.length ? { title: 'Manual vs forklift — rows and avg minutes', fmt: 'num', labels: handling.map(h => h.mode),
+              series: [{ name: 'Rows', values: handling.map(h => h.lines) }, { name: 'Avg min / line', type: 'line', color: '#D97706', values: handling.map(h => h.avgMinPerLine) }] } : null,
+            table: { title: 'Manual rows by user', columns: [C.user, C.lines, C.qty, C.avg], rows: mu },
+            insight: !k.forkliftKnown ? '**No forklift / manual information yet** — fill "Forklift Required?" on the item master or U_Forklift on the putaway rows.'
+              : `**${fmt(k.manualLines)} rows (${k.manualPct}%) are put away by hand, at ${n1(k.manualAvgMin)} min per row.**\n\n` +
+                (saving != null ? `- Forklift rows take ${n1(k.forkliftAvgMin)} min — ${n1(Math.abs(saving))} min ${saving >= 0 ? 'more' : 'less'} per row than manual.\n` : '') +
+                (mu[0] ? `- ${mu[0].user} puts away the most manual rows (${mu[0].lines}).\n` : '') +
+                `- ${fmt(k.manualOpen)} manual row(s) are still open, ${fmt(k.manualReady)} of them already sorted.` +
+                (k.notSetLines ? `\n- ${fmt(k.notSetLines)} row(s) have no forklift flag (Not set).` : ''),
+          };
+        })() },
     ];
   }
 
@@ -531,7 +561,7 @@ function goBack() {
     draw('ch-speed', { type: 'bar',
       data: { labels: u.map(x => userLabel(x.user)), datasets: [{ data: u.map(x => x.avgMinPerLine), ...barStyle }] },
       options: base({ indexAxis: 'y', scales: { x: axis({ beginAtZero: true, title: { display: true, text: 'Minutes', color: css('--axis') } }), y: noGrid() },
-        tooltip: { callbacks: { label: i => { const x = u[i.dataIndex]; return [`avg ${x.avgMinPerLine} min · median ${x.medianMinPerLine} min`, `${fmtQ(x.qtyPerHour)} qty / hour`]; } } } }) });
+        tooltip: { callbacks: { label: i => { const x = u[i.dataIndex]; return [`avg ${x.avgMinPerLine} min / line`, `${fmtQ(x.qtyPerHour)} qty / hour`]; } } } }) });
   }
 
   // ── Flow heatmap: receiving → storage warehouse ─────────────────────────
@@ -557,7 +587,7 @@ function goBack() {
   const TABLES = {
     users: { label: 'User scorecard', rows: () => D.userWise, cols: [
       ['user', 'User', v => esc(userLabel(v))], ['lines', 'Lines', 'bar'], ['sharePct', 'Share %', 'n1'], ['docs', 'Docs', 'n'], ['qty', 'Qty', 'q'],
-      ['putHours', 'Putaway h', 'n1'], ['avgMinPerLine', 'Avg min/line', 'n1'], ['medianMinPerLine', 'Median min', 'n1'], ['qtyPerHour', 'Qty / h', 'q'],
+      ['putHours', 'Putaway h', 'n1'], ['avgMinPerLine', 'Avg min/line', 'n1'], ['qtyPerHour', 'Qty / h', 'q'],
       ['daysWorked', 'Days', 'n'], ['linesPerDay', 'Lines/day', 'n1'], ['avgFirstIn', 'Avg first in'], ['avgLastOut', 'Avg last out'],
       ['avgWaitMin', 'Avg wait', v => dur(v)], ['ownSortPct', 'Own sorted %', 'n']] },
     docs: { label: 'Putaway documents', rows: () => D.documents, cols: [
@@ -578,7 +608,7 @@ function goBack() {
     forklift: { label: 'Forklift vs manual', rows: () => D.handling || [], cols: [
       ['mode', 'Handling', v => v === 'Forklift' ? '<span class="badge b-fork">Forklift</span>' : esc(v)], ['lines', 'Lines', 'bar'], ['sharePct', 'Share %', 'n1'],
       ['done', 'Put away', 'n'], ['open', 'Open', 'n'], ['ready', 'Ready (sorted)', 'n'], ['qty', 'Qty put away', 'q'], ['putHours', 'Putaway h', 'n1'],
-      ['avgMinPerLine', 'Avg min/line', 'n1'], ['medianMinPerLine', 'Median min', 'n1'], ['avgWaitMin', 'Avg wait', v => dur(v)], ['items', 'Items', 'n'], ['users', 'Put away by', v => users(v)]] },
+      ['avgMinPerLine', 'Avg min/line', 'n1'], ['avgWaitMin', 'Avg wait', v => dur(v)], ['items', 'Items', 'n'], ['users', 'Put away by', v => users(v)]] },
     backlog: { label: () => `Backlog (${D.backlog.length})`, rows: () => D.backlog, cols: [
       ['ready', 'State', v => v ? '<span class="badge b-no">Sorted · ready</span>' : '<span class="badge" style="background:#EEF0F2;color:#556B82">Not sorted</span>'],
       ['ageDays', 'Age (days)', v => v == null ? '—' : `<span class="badge ${v > 7 ? 'b-age' : 'b-no'}">${v}</span>`], ['docNum', 'Putaway No.', 'n'], ['grpo', 'GRPO'],

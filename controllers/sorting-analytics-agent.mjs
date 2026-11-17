@@ -100,7 +100,6 @@ function normalise(r) {
 // ── Analysis ──────────────────────────────────────────────────────────────────
 const round = (n, d = 1) => n == null || !Number.isFinite(n) ? null : +n.toFixed(d);
 const perHour = (qty, mins) => mins > 0 ? round(qty / (mins / 60), 1) : null;
-const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
 function analyse(rows, today = ymd(new Date())) {
   const done = rows.filter(r => r.sorted && r.mins != null);
@@ -113,9 +112,9 @@ function analyse(rows, today = ymd(new Date())) {
   // Sorter-wise, incl. the working window per day (first Time IN → last Time OUT).
   const users = new Map();
   for (const r of done) {
-    if (!users.has(r.user)) users.set(r.user, { user: r.user || '(blank)', lines: 0, qty: 0, mins: 0, durations: [], days: new Map(), items: new Set() });
+    if (!users.has(r.user)) users.set(r.user, { user: r.user || '(blank)', lines: 0, qty: 0, mins: 0, days: new Map(), items: new Set() });
     const u = users.get(r.user);
-    u.lines++; u.qty += r.qty; u.mins += r.mins; u.durations.push(r.mins); u.items.add(r.itemCode);
+    u.lines++; u.qty += r.qty; u.mins += r.mins; u.items.add(r.itemCode);
     const d = u.days.get(r.date) || { first: Infinity, last: -Infinity, mins: 0 };
     d.first = Math.min(d.first, r.tin); d.last = Math.max(d.last, r.tin + r.mins); d.mins += r.mins;
     u.days.set(r.date, d);
@@ -125,7 +124,7 @@ function analyse(rows, today = ymd(new Date())) {
     const span = sum(ds, d => d.last - d.first);
     return {
       user: u.user, lines: u.lines, sharePct: done.length ? round(u.lines / done.length * 100) : 0, qty: u.qty,
-      sortHours: round(u.mins / 60), avgMinPerLine: round(u.mins / u.lines), medianMinPerLine: round(median(u.durations)),
+      sortHours: round(u.mins / 60), avgMinPerLine: round(u.mins / u.lines),
       qtyPerHour: perHour(u.qty, u.mins), daysWorked: ds.length, linesPerDay: round(u.lines / ds.length),
       avgFirstIn: hhmm(sum(ds, d => d.first) / ds.length), avgLastOut: hhmm(sum(ds, d => d.last) / ds.length),
       avgFirstInMin: round(sum(ds, d => d.first) / ds.length, 0), avgLastOutMin: round(sum(ds, d => d.last) / ds.length, 0),
@@ -173,7 +172,7 @@ function analyse(rows, today = ymd(new Date())) {
       lines: rows.length, sortedLines: done.length, openLines: open.length,
       completionPct: rows.length ? round(done.length / rows.length * 100) : null,
       qtySorted: doneQty, sortHours: round(totalMins / 60), avgMinPerLine: done.length ? round(totalMins / done.length) : null,
-      medianMinPerLine: round(median(done.map(r => r.mins))), qtyPerHour: perHour(doneQty, totalMins),
+      qtyPerHour: perHour(doneQty, totalMins),
       sorters: users.size, sortingDays: days.size, linesPerDay: days.size ? round(done.length / days.size) : null,
       grpos: new Set(rows.map(r => r.grpo)).size, items: new Set(rows.map(r => r.itemCode)).size,
       oldestOpenDays: backlog[0]?.ageDays ?? null, openQty: sum(open, r => r.qty),

@@ -245,6 +245,7 @@ function goBack() {
     <div class="shell-subtitle">Goods Receipt PO lines · sorter shifts · user &amp; item-wise sorting time</div>
   </div>
   <div class="shell-spacer"></div>
+  <button class="btn primary sup-only" id="btn-load-top" hidden title="Load the Goods Receipt PO lines of the period set on the Supervisor tab into the sorting list">📥 Load GRPO for Sorting</button>
   <span class="shell-badge" id="company-badge">…</span>
 </div>
 
@@ -286,13 +287,17 @@ function goBack() {
     <div class="card-bd row">
       <div class="fg"><label>GRPO date from</label><input type="date" id="ld-from"/></div>
       <div class="fg"><label>To</label><input type="date" id="ld-to"/></div>
-      <button class="btn primary" id="btn-load">Load GRPO lines</button>
+      <button class="btn" data-ldpreset="0" title="GRPOs posted today">Today</button>
+      <button class="btn" data-ldpreset="6" title="GRPOs of the last 7 days">Last 7 days</button>
+      <button class="btn" data-ldpreset="30" title="GRPOs of the last 30 days">Last 30 days</button>
+      <button class="btn primary" id="btn-load">📥 Load GRPO for Sorting</button>
       <span class="spacer"></span>
       <div class="fg"><label>Queue per sorter</label><input type="number" id="set-queue" min="1" max="100" style="width:90px"/></div>
       <div class="fg"><label>Auto-assign</label>
         <select id="set-auto"><option value="1">On — top up on clock-in &amp; completion</option><option value="0">Off — manual only</option></select></div>
       <button class="btn" id="btn-save-set">Save</button>
     </div>
+    <div id="ld-result" class="card-bd" style="display:none;padding-top:0;font-size:12.5px"></div>
   </div>
 
   <div class="kpis" id="kpis"></div>
@@ -694,11 +699,35 @@ function goBack() {
       toast((on ? 'Clocked out' : 'Clocked in') + assignedMsg(r.assigned)); await refresh();
     });
   });
-  $('btn-load').addEventListener('click', e => act(e.currentTarget, async () => {
-    toast('Loading GRPO lines from SAP…');
-    const r = await api('/load', { method: 'POST', body: { from: $('ld-from').value, to: $('ld-to').value } });
-    toast(`${r.fetched} GRPO lines read (${r.source}) · ${r.inserted} new · ${r.existing} already loaded${assignedMsg(r.assigned)}`);
-    await loadSup();
+  // Load GRPO lines for the period on the Supervisor tab; the result stays under the load card.
+  async function loadGrpo(btn) {
+    const res = $('ld-result');
+    const label = btn.textContent; btn.textContent = '⏳ Loading…';
+    res.style.display = 'block'; res.style.color = 'var(--muted)';
+    res.textContent = `Loading GRPO lines ${$('ld-from').value} → ${$('ld-to').value} from SAP…`;
+    try {
+      const r = await api('/load', { method: 'POST', body: { from: $('ld-from').value, to: $('ld-to').value } });
+      const when = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      res.style.color = r.inserted ? 'var(--green)' : 'var(--text)';
+      res.innerHTML = `<b>${when} — ${r.fetched} GRPO line(s) read for ${esc(r.from)} → ${esc(r.to)}</b> (${r.source === 'db' ? 'SAP DB' : 'Service Layer'}): ` +
+        (r.fetched === 0 ? 'no GRPOs were posted in this period — pick another period.'
+          : r.inserted ? `<b>${r.inserted} new line(s) added</b> to the sorting list, ${r.existing} already loaded${assignedMsg(r.assigned)}.`
+          : `all ${r.existing} line(s) were already in the sorting list — nothing new to load${assignedMsg(r.assigned)}.`);
+      toast(r.inserted ? `${r.inserted} new GRPO line(s) loaded` : r.fetched ? 'No new GRPO lines — all already loaded' : 'No GRPOs in this period');
+      await loadSup();
+    } catch (e) {
+      res.style.color = 'var(--red)'; res.textContent = 'Load failed: ' + e.message; throw e;
+    } finally { btn.textContent = label; }
+  }
+  $('btn-load').addEventListener('click', e => act(e.currentTarget, () => loadGrpo(e.currentTarget)));
+  $('btn-load-top').addEventListener('click', e => act(e.currentTarget, async () => {
+    document.querySelector('.tab[data-view="sup"]')?.click();
+    await loadGrpo(e.currentTarget);
+    $('ld-result').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+  document.querySelectorAll('[data-ldpreset]').forEach(b => b.addEventListener('click', () => {
+    const to = new Date(), from = new Date(); from.setDate(from.getDate() - Number(b.dataset.ldpreset));
+    $('ld-from').value = localYmd(from); $('ld-to').value = localYmd(to);
   }));
   $('btn-save-set').addEventListener('click', e => act(e.currentTarget, async () => {
     const r = await api('/settings', { method: 'PUT', body: { queue_size: Number($('set-queue').value), auto_assign: $('set-auto').value === '1' } });
@@ -741,13 +770,13 @@ function goBack() {
     userItem: [['name','Sorter'],['itemCode','Item'],['itemName','Description'],['linesWorked','Lines worked','num'],['linesDone','Lines done','num'],['qtySorted','Qty sorted','q'],['workMinutes','Sort time','m'],['qtyPerHour','Qty / hour','q']],
     shifts: [['name','Sorter'],['clockIn','Clock in','dt'],['clockOut','Clock out','dt'],['minutes','Duration','m'],['clockedBy','Clocked by']],
   };
-  function cell(v, kind) {
+  function cell(v, kind, row) {
     if (kind === 'day') return v ? new Date(v).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
     if (kind === 'hm') return tm(v);
     if (kind === 'sap') return v === 'Synced' ? '<span class="sap-ok">✓ Synced</span>' : v === 'Error' ? '<span class="sap-err">⚠ Error</span>' : v === 'Waiting' ? '<span class="sap-wait">⏳ Waiting</span>' : '—';
     if (kind === 'm') return mins(v);
     if (kind === 't') return v ? dtm(v) : (v === null ? '—' : '');
-    if (kind === 'dt') return v ? dtm(v) : '<span class="badge b-on">On shift</span>';
+    if (kind === 'dt') return v ? dtm(v) : row?.stale ? '<span class="badge" style="background:var(--orange-bg);color:#B45309" title="Open for more than 12 hours — counted as 12 hours. Clock this sorter out on the Supervisor tab.">⚠ Not clocked out</span>' : '<span class="badge b-on">On shift</span>';
     if (kind === 'pct') return v == null ? '—' : v + '%';
     if (kind === 'q') return v == null ? '—' : fmtQty(v);
     if (Array.isArray(v)) return esc(v.join(', '));
@@ -757,7 +786,7 @@ function goBack() {
     if (!rows.length) return `<div class="empty">No data in this period.</div>`;
     const cols = COLS[key], right = k => ['num','m','pct','q'].includes(k) ? ' class="num"' : '';
     return `<table class="rt"><thead><tr>${cols.map(c => `<th${right(c[2])}>${c[1]}</th>`).join('')}</tr></thead><tbody>${
-      rows.map(r => `<tr>${cols.map((c, i) => `<td${i ? right(c[2]) + ` data-label="${esc(c[1])}"` : ' class="c-main"'}>${cell(r[c[0]], c[2])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      rows.map(r => `<tr>${cols.map((c, i) => `<td${i ? right(c[2]) + ` data-label="${esc(c[1])}"` : ' class="c-main"'}>${cell(r[c[0]], c[2], r)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   }
   function renderReport() {
     const R = S.report, sum = (a, k) => a.reduce((s, x) => s + (x[k] || 0), 0);
